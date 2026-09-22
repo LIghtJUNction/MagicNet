@@ -4,8 +4,9 @@
 The packaged template intentionally contains readable, policy-oriented rules.
 This pass makes the hot path cheaper by prioritizing exact high-frequency
 matches, protecting narrow WeChat route/DNS classifiers from broad ad lists,
-removing exact duplicates, and coalescing adjacent pure rule-set dispatches
-that resolve to the same target.
+prioritizing known foreign domains over country-IP fallbacks, and coalescing
+stateless rule-set dispatches. DNS response evaluation and route metadata
+mutations are ordering barriers, not redundant rules.
 """
 
 from __future__ import annotations
@@ -61,10 +62,36 @@ def _normalize_rule(rule: Any) -> Any:
     return normalized
 
 
+def _state_barrier(rule: Any) -> bool:
+    """Do not move or deduplicate across mutable evaluation state or modes."""
+    if not isinstance(rule, dict):
+        return True
+    if rule.get("action", "route") not in {"route", "reject", "hijack-dns"}:
+        return True
+    if "match_response" in rule or "clash_mode" in rule:
+        return True
+    return any(_state_barrier(child) for child in rule.get("rules", []))
+
+
+def _pure_dispatch(rule: Any, key: str, matcher: str = "rule_set") -> bool:
+    """Accept both implicit and explicit route actions, never scoped rules."""
+    return (
+        isinstance(rule, dict)
+        and set(rule) - {"action"} == {matcher, key}
+        and rule.get("action", "route") == "route"
+    )
+
+
 def _dedupe_rules(rules: list[Any]) -> list[Any]:
     seen: set[str] = set()
     result: list[Any] = []
     for rule in rules:
+        # evaluate/resolve/sniff/route-options can change subsequent matches.
+        # Repeated actions, and the same terminal rule on either side, matter.
+        if _state_barrier(rule):
+            seen.clear()
+            result.append(rule)
+            continue
         marker = _stable_marker(rule)
         if marker in seen:
             continue
@@ -78,6 +105,12 @@ def _contains(rule: dict[str, Any], key: str, expected: Any) -> bool:
     if isinstance(value, list):
         return expected in value
     return value == expected
+
+
+def _only_rule_sets(rule: dict[str, Any], allowed: set[str]) -> bool:
+    value = rule.get("rule_set", [])
+    tags = value if isinstance(value, list) else [value]
+    return bool(tags) and all(tag in allowed for tag in tags)
 
 
 def _move_before(
@@ -94,6 +127,9 @@ def _move_before(
         None,
     )
     if moving_index is None or anchor_index is None or moving_index <= anchor_index:
+        return rules
+
+    if any(_state_barrier(rule) for rule in rules[anchor_index:moving_index + 1]):
         return rules
 
     rule = rules.pop(moving_index)
@@ -117,8 +153,7 @@ def _move_rule_set_tag_before(
         (
             i
             for i, rule in enumerate(rules)
-            if isinstance(rule, dict)
-            and set(rule) == {"rule_set", dispatch_key}
+            if _pure_dispatch(rule, dispatch_key)
             and rule.get(dispatch_key) == dispatch_value
             and _contains(rule, "rule_set", tag)
         ),
@@ -131,7 +166,12 @@ def _move_rule_set_tag_before(
     if source_index is None or anchor_index is None or source_index <= anchor_index:
         return rules
 
+    if any(_state_barrier(rule) for rule in rules[anchor_index:source_index + 1]):
+        return rules
+
     source = rules[source_index]
+    moved = copy.deepcopy(source)
+    moved["rule_set"] = [tag]
     # sing-box accepts a single tag as well as a list; never split it into characters.
     value = source["rule_set"]
     tags = value if isinstance(value, list) else [value]
@@ -146,7 +186,7 @@ def _move_rule_set_tag_before(
     anchor_index = next(
         i for i, candidate in enumerate(rules) if isinstance(candidate, dict) and anchor(candidate)
     )
-    rules.insert(anchor_index, {"rule_set": [tag], dispatch_key: dispatch_value})
+    rules.insert(anchor_index, moved)
     return rules
 
 
@@ -159,14 +199,11 @@ def _compact_adjacent_rule_sets(rules: list[Any], dispatch_key: str) -> list[Any
     """
 
     result: list[Any] = []
-    pure_keys = {"rule_set", dispatch_key}
     for rule in rules:
         if (
             result
-            and isinstance(rule, dict)
-            and isinstance(result[-1], dict)
-            and set(rule) == pure_keys
-            and set(result[-1]) == pure_keys
+            and _pure_dispatch(rule, dispatch_key)
+            and _pure_dispatch(result[-1], dispatch_key)
             and rule.get(dispatch_key) == result[-1].get(dispatch_key)
             and isinstance(rule.get("rule_set"), list)
             and isinstance(result[-1].get("rule_set"), list)
@@ -179,10 +216,49 @@ def _compact_adjacent_rule_sets(rules: list[Any], dispatch_key: str) -> list[Any
     return result
 
 
+def _dns_fast_path(rules: list[Any]) -> list[Any]:
+    """Fast-path port 53 only for the template's scoped sniff -> DNS pair.
+
+    Keep protocol sniffing as a fallback for DNS on non-standard ports. Do not
+    invent a DNS policy for custom inbounds or cross earlier policy rules.
+    """
+    result: list[Any] = []
+    for index, rule in enumerate(rules):
+        if (
+            isinstance(rule, dict)
+            and set(rule) == {"inbound", "action"}
+            and rule.get("action") == "sniff"
+            and index + 1 < len(rules)
+            and rules[index + 1] == {"protocol": "dns", "action": "hijack-dns"}
+        ):
+            inbounds = rule["inbound"]
+            tags = inbounds if isinstance(inbounds, list) else [inbounds]
+            if tags and all(tag in ("mixed-in", "tun-in") for tag in tags):
+                fast = {"inbound": copy.deepcopy(inbounds), "port": 53, "action": "hijack-dns"}
+                if not result or result[-1] != fast:
+                    result.append(fast)
+        result.append(rule)
+    return result
+
+
 def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     dispatch_key = "outbound" if section == "route" else "server"
     rules = [_normalize_rule(rule) for rule in rules]
     rules = _dedupe_rules(rules)
+    if section == "route":
+        rules = _dns_fast_path(rules)
+        # A maintained domain classification is more specific than the country
+        # of a resolved IP. Preserve domestic/service exceptions above this tail.
+        cn_ip_tags = {"lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"}
+        rules = _move_rule_set_tag_before(
+            rules,
+            "metacubex-geosite-geolocation-not-cn",
+            "outbound",
+            "proxy-rule",
+            lambda rule: _pure_dispatch(rule, "outbound")
+            and rule.get("outbound") == "cn-direct"
+            and _only_rule_sets(rule, cn_ip_tags),
+        )
 
     google_target = "google-proxy" if section == "route" else "doh-google"
     wechat_target = "cn-direct" if section == "route" else "bootstrap-local-dns"
@@ -191,7 +267,8 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     # Evaluate the cheap exact-domain rule before binary service rule sets.
     rules = _move_before(
         rules,
-        lambda rule: rule.get(dispatch_key) == google_target
+        lambda rule: _pure_dispatch(rule, dispatch_key, "domain")
+        and rule.get(dispatch_key) == google_target
         and _contains(rule, "domain", "android.clients.google.com"),
         lambda rule: _contains(rule, "rule_set", "meta-google-gemini"),
     )
@@ -203,7 +280,7 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     if section == "dns":
         rules = _move_before(
             rules,
-            lambda rule: set(rule) == {"domain_suffix", dispatch_key}
+            lambda rule: _pure_dispatch(rule, dispatch_key, "domain_suffix")
             and rule.get(dispatch_key) == wechat_target
             and _contains(rule, "domain_suffix", "wechat.com")
             and _contains(rule, "domain_suffix", "weixin.com"),
