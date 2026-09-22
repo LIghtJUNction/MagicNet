@@ -28,8 +28,7 @@ on:
       - '.github/actions/test-cache/**'
       - '.github/workflows/network-regression.yml'
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'src/MagicNet/network-check.sh'
       - 'src/MagicNet/lib/magicnet/**'
@@ -51,11 +50,9 @@ on:
 
 permissions:
   contents: read
-
 concurrency:
   group: network-regression-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
@@ -70,12 +67,10 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
       - name: Restore deterministic network test results
         uses: ./.github/actions/test-cache
         with:
           mode: restore
-
       - name: Install missing probe dependencies
         shell: bash
         run: |
@@ -88,7 +83,6 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends "${packages[@]}"
           fi
-
       - name: Check shell syntax and real TLS fixtures
         shell: bash
         run: |
@@ -97,7 +91,6 @@ jobs:
             shellcheck -s sh src/MagicNet/network-check.sh
           python3 scripts/ci-test-cache.py --timeout 240 network network-check-fixtures -- \
             python3 scripts/test-network-check.py
-
       - name: Save successful deterministic network tests
         if: ${{ always() && !cancelled() }}
         uses: ./.github/actions/test-cache
@@ -113,12 +106,6 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
-      - name: Restore deterministic network test results
-        uses: ./.github/actions/test-cache
-        with:
-          mode: restore
-
       - name: Install missing isolated networking tools
         shell: bash
         run: |
@@ -130,20 +117,13 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends iproute2 iptables util-linux
           fi
-
+      # A cached pass cannot attest to the current runner kernel/netfilter.
       - name: Exercise DNS packets through production rules
-        run: |
-          python3 scripts/ci-test-cache.py --timeout 150 network dns-kernel -- \
-            python3 scripts/test-dns-kernel.py --require
-
-      - name: Save successful deterministic network tests
-        if: ${{ always() && !cancelled() }}
-        uses: ./.github/actions/test-cache
-        with:
-          mode: save
+        run: timeout --kill-after=5s 150s python3 scripts/test-dns-kernel.py --require
 
   internet-observation:
     name: Public endpoints (runner observation only)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -151,9 +131,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
-      # Deliberately never cache this step: it observes current public endpoint
-      # reachability, while deterministic behavior is covered by the jobs above.
+      # Public endpoint reachability is not Android/module acceptance.
       - name: Record public HTTPS outcomes without disguising failures
         shell: bash
         run: |
@@ -173,7 +151,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           case "$rc" in 0|1|2) ;; *) exit "$rc" ;; esac
-
       - name: Upload public network observation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()

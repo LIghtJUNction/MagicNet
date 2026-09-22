@@ -1,15 +1,16 @@
-name: WebUI
+name: WebUI Preview
+
+# Code Quality owns automatic WebUI tests. This workflow only exports an
+# explicitly requested preview; do not duplicate npm checks on every PR.
 on:
-  pull_request:
-    paths: ['webui/**', '.github/workflows/webui.yml']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: webui-${{ github.ref }}
+  group: webui-preview-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  check:
+  preview:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
