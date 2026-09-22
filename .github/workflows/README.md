@@ -7,8 +7,10 @@ phases, safety boundaries, cache policy and remaining coverage limits.
 ## android-kernelsu-acceptance.yml
 
 This runs on every pull request, merge group, push to `main` and manual dispatch.
-Uncached harness checks precede an Android 15 / KernelSU x86_64 AVD. The automatic
-path uses a local fixture, real installation/reboots and app-UID TUN controls.
+Uncached harness checks precede an Android 15 x86_64 stock-kernel AVD. After
+Android userspace boots, the pinned official KernelSU v3.2.0 x86_64 userspace
+activates its KMI-matched LKM through upstream late-load. The automatic path uses
+a local fixture, real KernelSU installation/reboots and app-UID TUN controls.
 `Android Simulation Gate` rejects failed or unexecuted jobs. Its required-check
 status in branch protection must be configured separately.
 

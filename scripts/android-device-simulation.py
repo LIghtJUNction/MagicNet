@@ -9,7 +9,9 @@ boot. No public proxy feed or subscription credential is used.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
+import copy
 import hashlib
 import importlib.util
 import json
@@ -33,6 +35,11 @@ KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+# Production ships these as Android arm64-only helper components. They are not
+# used by this standalone TUN lifecycle fixture. Exclude only an exact known
+# path carrying an AArch64 ELF; x86_64 copies are preserved and any other ELF
+# architecture still fails closed below.
+OPTIONAL_ARM64_HELPERS = ('bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -91,7 +98,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 'production_zip_sha256': digest(source),
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
                 'payload_sha256': {name: digest(path) for name, path in replacements.items()},
-                'excluded_build_cache_sha256': {}}
+                'excluded_build_cache_sha256': {},
+                'excluded_optional_arm64_sha256': {},
+                'compatibility_aliases': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + '.partial')
@@ -104,7 +113,10 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
-            for item in entries:
+            for source_item in entries:
+                # ZipFile.writestr mutates its ZipInfo; keep input metadata usable
+                # when the compatibility alias is checked after its target.
+                item = copy.copy(source_item)
                 parts = PurePosixPath(item.filename).parts
                 require(parts and not item.filename.startswith('/') and '..' not in parts
                         and '\\' not in item.filename and '\x00' not in item.filename
@@ -121,6 +133,43 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 if item.filename.startswith('.local/state/') and item.filename.endswith(('.asset', '.archive')):
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
+                    continue
+                if item.filename in OPTIONAL_ARM64_HELPERS and data.startswith(b'\x7fELF'):
+                    require(stat.S_IFMT(mode) in (0, stat.S_IFREG),
+                            'optional architecture helper must be a regular file')
+                    require(len(data) >= 64 and data[:6] == b'\x7fELF\x02\x01',
+                            'optional architecture helper has unsupported ELF format')
+                    machine = struct.unpack_from('<H', data, 18)[0]
+                    if machine == 183:  # EM_AARCH64
+                        manifest['excluded_optional_arm64_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
+                        continue
+                    require(machine == 62, 'optional helper has unexpected ELF architecture')
+                    # An x86_64 helper is already runnable in this fixture; keep it.
+                if item.filename == 'cli':
+                    # KAM can dereference the tracked cli -> bin/magicnet-cli
+                    # symlink in its raw ZIP. Accept only that exact alias,
+                    # never arbitrary same-architecture/unknown executables.
+                    target = 'bin/magicnet-cli'
+                    if stat.S_ISLNK(mode):
+                        require(data == target.encode(), 'unexpected CLI symlink target')
+                        # BusyBox unzip requires symlink payloads to be stored.
+                        item.compress_type = zipfile.ZIP_STORED
+                        representation = 'symlink'
+                    else:
+                        require(stat.S_IFMT(mode) in (0, stat.S_IFREG)
+                                and data.startswith(b'\x7fELF')
+                                and data == original.read(target),
+                                'CLI alias differs from the canonical executable')
+                        data = replacements[target].read_bytes()
+                        item.create_system = 3
+                        item.external_attr = (stat.S_IFREG | 0o755) << 16
+                        representation = 'executable-copy'
+                    manifest['compatibility_aliases']['cli'] = {
+                        'target': target, 'representation': representation,
+                        'source_sha256': hashlib.sha256(original.read(item.filename)).hexdigest(),
+                        'fixture_sha256': hashlib.sha256(data).hexdigest(),
+                    }
+                    output.writestr(item, data)
                     continue
                 if item.filename in replacements:
                     require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
@@ -177,6 +226,7 @@ class Device:
         self.serial = os.environ.get('ANDROID_SERIAL', '')
         require(re.fullmatch(r'emulator-[0-9]+', self.serial) is not None, 'explicit emulator serial required')
         self.verified = False
+        self.late_load_on_reboot = False
 
     def run(self, *args: str, timeout: float = 30, check: bool = True,
             input_text: str | None = None) -> subprocess.CompletedProcess:
@@ -234,6 +284,28 @@ class Device:
         self.root()
         self.shell(f'test ! -e {MOD} && test ! -e {STAGED}')
 
+    def late_load_kernelsu(self) -> dict:
+        require(self.verified, 'device identity not verified')
+        require(self.shell('getenforce').stdout.strip() == 'Enforcing',
+                'SELinux must be Enforcing before KernelSU late-load')
+        current = self.shell(KSUD + ' boot-info current-kmi', timeout=30).stdout.strip()
+        supported = self.shell(KSUD + ' boot-info supported-kmis', timeout=30).stdout.split()
+        require(bool(current) and current in supported,
+                'official KernelSU userspace does not embed this stock AVD KMI')
+        # v3.2.0 late-load loads the KMI-matched x86_64 kernelsu.ko, installs
+        # userspace, handles modules_update, then executes service/boot stages.
+        self.shell(KSUD + ' late-load', timeout=120)
+        version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
+        require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
+                'KernelSU late-load did not expose a positive kernel interface version')
+        self.shell(f'test -x {BB}')
+        require(self.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0',
+                'real KernelSU SELinux domain required after late-load')
+        require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
+                'KernelSU late-load changed SELinux enforcement')
+        self.late_load_on_reboot = True
+        return {'mode': 'late-load-lkm', 'kmi': current, 'kernel_version': version}
+
     def reboot(self):
         require(self.verified, 'device identity not verified')
         old = self.shell('cat /proc/sys/kernel/random/boot_id').stdout.strip()
@@ -242,6 +314,8 @@ class Device:
         self.wait_boot(previous=old)
         self.root()
         require(self.shell('getenforce').stdout.strip() == 'Enforcing', 'SELinux changed across reboot')
+        if self.late_load_on_reboot:
+            self.late_load_kernelsu()
 
     def ready(self, timeout: float = 90):
         deadline = time.monotonic() + timeout
@@ -300,9 +374,11 @@ class Report:
         rows = [cases.get(name, {'name': name, 'status': 'not_run', 'seconds': 0}) for name in PHASES]
         passed = all(row['status'] == 'passed' for row in rows)
         data = {'schema': 1, 'status': 'passed' if passed else 'failed',
-                'scope': 'Android-15-KernelSU-x86_64-standalone-TUN-fixture',
-                'not_tested': ['ARM64 execution', 'OEM kernels', 'Play/GMS login/download',
-                               'public proxy quality', 'eBPF dataplane', 'IPv6 packet forwarding'],
+                'scope': 'Android-15-KernelSU-v3.2.0-late-load-x86_64-standalone-TUN-fixture',
+                'not_tested': ['KernelSU built-in/early-boot mode', 'ARM64 execution', 'OEM kernels',
+                               'Play/GMS login/download', 'public proxy quality', 'eBPF dataplane',
+                               'IPv6 packet forwarding', 'eCapture execution',
+                               'proxylink subscription parsing'],
                 'provenance': self.provenance, 'cases': rows}
         (self.out / 'simulation.json').write_text(json.dumps(data, indent=2) + '\n')
         suite = ET.Element('testsuite', name='Android KernelSU lifecycle', tests=str(len(rows)),
@@ -360,6 +436,102 @@ def invalid_config_rollback(device: Device):
         device.kshell('rm -f ' + bad)
 
 
+def migration_node() -> dict:
+    # Data-only migration canary, not an operational/public proxy. The initial
+    # fixture still routes direct; after migration only sentinel controls count
+    # as connectivity evidence. No password or real subscription is involved.
+    return {'type': 'socks', 'tag': 'ci-upgrade-canary', 'server': '127.0.0.1',
+            'server_port': 19080, 'version': '5'}
+
+
+def upgrade_candidate(original: dict) -> dict:
+    require(isinstance(original, dict), 'upgrade config is not an object')
+    outbounds = original.get('outbounds')
+    require(isinstance(outbounds, list) and all(isinstance(v, dict) for v in outbounds),
+            'upgrade config has invalid outbounds')
+    node = migration_node()
+    require(not any(v.get('tag') == node['tag'] for v in outbounds), 'duplicate migration canary')
+    # Do not mutate the baseline used by the earlier TUN/rollback controls.
+    return original | {'outbounds': outbounds + [node]}
+
+
+def verify_migrated_node(config: dict) -> None:
+    require(isinstance(config, dict), 'migrated config is not an object')
+    outbounds = config.get('outbounds')
+    require(isinstance(outbounds, list) and all(isinstance(v, dict) for v in outbounds),
+            'migrated config has invalid outbounds')
+    expected = migration_node()
+    nodes = [v for v in outbounds if v.get('tag') == expected['tag']]
+    require(len(nodes) == 1, 'migration canary missing or duplicated')
+    require(all(type(nodes[0].get(k)) is type(v) and nodes[0].get(k) == v
+                for k, v in expected.items())
+            and not any(k in nodes[0] for k in ('username', 'password', 'detour')),
+            'migration changed canary endpoint or protocol')
+
+
+def save_upgrade_candidate(device: Device) -> None:
+    before = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout,
+                        object_pairs_hook=unique_keys)
+    candidate = upgrade_candidate(before)
+    name = 'ci-upgrade-' + os.urandom(8).hex() + '.json'
+    path = MOD + '/.tmp/webui-payload/' + name
+    encoded = base64.b64encode(json.dumps(candidate).encode()).decode('ascii')
+    created = False
+    try:
+        actual = device.kshell(MOD + '/cli webui payload create tmp ' + name).stdout.strip()
+        created = True
+        require(actual == path, 'unexpected upgrade payload path')
+        for offset in range(0, len(encoded), 32768):
+            device.kshell(MOD + '/cli webui payload append tmp ' + name + ' '
+                          + shlex.quote(encoded[offset:offset + 32768]))
+        device.kshell(MOD + '/cli config-editor save-file sing-box ' + path, timeout=90)
+        verify_migrated_node(json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout,
+                                       object_pairs_hook=unique_keys))
+        device.kshell(MOD + '/cli service restart sing-box', timeout=90)
+        device.ready()
+    finally:
+        if created:
+            device.kshell(MOD + '/cli webui payload remove tmp ' + name)
+
+
+def upgrade_preservation(device: Device) -> dict:
+    # The production upgrade regenerates managed policy and imports server
+    # nodes; a direct-only standalone config is intentionally not migratable.
+    # Prepare a real, valid node BEFORE ksud installs. Never seed after reboot.
+    save_upgrade_candidate(device)
+    marker = hashlib.sha256(os.urandom(32)).hexdigest()
+    setting = MOD + '/.config/magicnet/network-policy.conf'
+    before_policy = device.kshell('cat ' + setting).stdout
+    require(bool(before_policy.strip()), 'network policy snapshot is empty')
+    device.kshell(f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
+    device.kshell(f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
+    device.reboot()
+    require(device.kshell(f'cat {MOD}/.config/magicnet/ci-upgrade-marker').stdout == marker,
+            'upgrade lost user config')
+    require(device.kshell('cat ' + setting).stdout == before_policy, 'upgrade changed network policy')
+    current = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout,
+                         object_pairs_hook=unique_keys)
+    verify_migrated_node(current)
+    # The installer must have regenerated the managed template, not left the
+    # old standalone marker/config and accidentally passed the canary check.
+    device.kshell(f'test ! -e {MOD}/.config/sing-box/standalone-config')
+    device.ready()
+    return {'node_preserved': True, 'user_policy_preserved': True,
+            'standalone_marker_removed': True, 'proxy_connectivity_tested': False}
+
+
+def device_resources(device: Device) -> dict:
+    sdk = device.shell('getprop ro.build.version.sdk').stdout.strip()
+    require(sdk == '35', 'Android API 35 is required by this fixture')
+    memory = device.shell('cat /proc/meminfo').stdout
+    matches = re.findall(r'^MemTotal:\s+([1-9][0-9]*) kB\s*$', memory, re.M)
+    require(len(matches) == 1, 'device memory observation unavailable')
+    requested = os.environ.get('AVD_MEMORY')
+    require(requested is None or requested in ('2048', '4096'), 'invalid requested AVD memory')
+    return {'sdk': int(sdk), 'requested_memory_mib': int(requested) if requested else None,
+            'observed_memtotal_kib': int(matches[0]), 'memory_source': '/proc/meminfo'}
+
+
 def diagnostics(device: Device, out: Path):
     if not device.verified:
         return
@@ -394,19 +566,12 @@ def main() -> int:
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
+                report.provenance['device'] = device_resources(device)
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
-                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD} && {KSUD} debug version')
-                device.shell(KSUD + ' install', timeout=90)
-                device.reboot()
-                device.shell(f'test -x {BB}')
-                require(device.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0', 'real KernelSU SELinux domain required')
-                require(device.kshell('getenforce').stdout.strip() == 'Enforcing', 'permissive KernelSU fixture rejected')
-                version = device.kshell(KSUD + ' debug version').stdout.strip()
-                require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
-                        'KernelSU kernel interface did not report a positive version')
-                report.provenance['kernelsu_version'] = version
+                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD}')
+                report.provenance['kernelsu'] = device.late_load_kernelsu()
                 device.run('install', '-t', '-r', os.environ['MAGICNET_NETWORK_PROBE_APK'], timeout=90)
             with report.phase('install-before-first-boot'):
                 device.run('push', str(archive), REMOTE + '/module.zip', timeout=120)
@@ -447,13 +612,7 @@ def main() -> int:
                     require(len(pids) == 1, 'restart left duplicate core processes')
                 tun_controls(device, out, 'restart-idempotence')
             with report.phase('upgrade-preservation'):
-                marker = hashlib.sha256(os.urandom(32)).hexdigest()
-                device.kshell(f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
-                device.kshell(f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
-                # Do NOT re-seed the config/marker after upgrade; that would mask data loss.
-                device.reboot()
-                require(device.kshell(f'cat {MOD}/.config/magicnet/ci-upgrade-marker').stdout == marker, 'upgrade lost user config')
-                device.ready()
+                report.provenance['upgrade'] = upgrade_preservation(device)
                 tun_controls(device, out, 'upgrade-preservation')
             with report.phase('disable-reboot'):
                 device.kshell(KSUD + ' module disable MagicNet')

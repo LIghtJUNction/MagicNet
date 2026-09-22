@@ -15,11 +15,17 @@ and an ordinary application-UID probe APK. The production ARM64 ZIP still goes
 through the existing package checks. KAM validation previously in `init.yml` is
 now run in this job before packaging; no KAM check was dropped.
 
-A disposable Android 15 / API 35 x86_64 AVD boots a real KernelSU kernel with KVM.
-Automatic runs give it 2 GiB RAM; manual dispatch also offers 4 GiB. The driver
-requires an explicit emulator serial, qemu identity, x86_64 ABI, SELinux Enforcing,
-a positive KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses
-KernelSU BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+A disposable Android 15 / API 35 x86_64 AVD boots its **stock kernel** with KVM.
+After Android userspace is fully booted, the pinned official KernelSU v3.2.0
+x86_64 `ksud` verifies that its embedded KMI set contains the running stock KMI
+and executes the upstream `late-load` LKM path. This keeps the stock kernel and
+stock ramdisk/vendor modules paired while still using a real KernelSU kernel
+interface, module manager, SELinux rules and module lifecycle. Automatic runs
+request 2 GiB RAM; manual dispatch also offers 4 GiB, while the report records
+the guest's observed `/proc/meminfo` separately. The driver requires an explicit
+emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positive
+KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses KernelSU
+BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
 
 Only four ABI-specific executables are replaced in a **separate test ZIP**, before
 installation: CLI, sing-box, jq and yq. Other unexpected foreign-architecture ELF
@@ -40,7 +46,7 @@ The driver checks twelve phases:
 | Phase | Required evidence |
 | --- | --- |
 | Environment | Disposable emulator identity; valid ABI-specific ZIP |
-| KernelSU bootstrap | Real userspace install, reboot, kernel version and enforcing KSU domain |
+| KernelSU bootstrap | Official v3.2.0 late-load against the running stock KMI; positive kernel interface and enforcing KSU domain |
 | Install before first boot | Actual module installer; payload hashes at its destination |
 | Cold boot | A new kernel boot ID; lifecycle-owned core in the KSU domain; process, API and TUN ready |
 | Application-UID TUN controls | Marker delivery, rejection, delivery again, and config restoration |
@@ -74,11 +80,12 @@ logcat/kernel/service diagnostics. Failed and unexecuted phases are explicit
 failures, not skipped green tests. Artifact upload and emulator cleanup use
 `always()`. Missing KVM/SDK/ADB or a failed boot is a failure, not certification.
 
-Only dependencies, compiler outputs and a pristine **pre-boot** AVD are cached.
-No dirty device snapshot or device-test success is cached. Kernel archive and
-ksud hashes are checked again on cache hits; cached shell manifests are not
-executed. The real DNS NAT job in `network-regression.yml` also runs its packet
-checks each time against the current host kernel instead of reusing a pass.
+Only dependencies, compiler outputs and a pristine **pre-boot** stock AVD are
+cached. No dirty device snapshot or device-test success is cached. The official
+KernelSU userspace is downloaded fresh and SHA-256 verified on every run; no
+third-party replacement kernel is injected. The real DNS NAT job in
+`network-regression.yml` also runs its packet checks each time against the
+current host kernel instead of reusing a pass.
 
 ## Workflow cleanup
 
@@ -108,10 +115,11 @@ workflow must actually complete before reporting device acceptance as passed.
 
 ## Remaining coverage limits
 
-This fixture exercises one Android release, one x86_64 KSU kernel and a standalone
-TUN configuration. It does not execute the shipped ARM64 binaries, OEM netd or
-vendor policies, GMS/Play login/download, a real subscription, eBPF forwarding or
-IPv6 packet forwarding. Existing host/network-namespace/eBPF tests are retained
+This fixture exercises one Android release, the official KernelSU v3.2.0
+**late-load LKM** mode on x86_64, and a standalone TUN configuration. It does not
+prove KernelSU built-in/early-boot mode, execute the shipped ARM64 binaries, cover
+OEM netd/vendor policies, GMS/Play login/download, a real subscription, eBPF
+forwarding or IPv6 packet forwarding. Existing host/network-namespace/eBPF tests are retained
 and complementary, not relabelled as Android evidence. A matrix of real ARM64/OEM
 runners is still needed for those claims. Reductions in installation-time surprises
 come from moving these explicit lifecycle checks before merge, not from treating
