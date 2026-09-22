@@ -302,7 +302,13 @@ class DeviceTests(unittest.TestCase):
         device.verified = True
         device.late_load_on_reboot = True
         order = []
-        with patch.object(device, 'shell', return_value=cp(BOOT)), \
+        def shell(command, **_):
+            if command == 'cat /proc/sys/kernel/random/boot_id':
+                return cp(BOOT)
+            if command == 'getenforce':
+                return cp('Enforcing\n')
+            raise AssertionError(command)
+        with patch.object(device, 'shell', side_effect=shell), \
              patch.object(device, 'run', return_value=cp()) as run, \
              patch.object(device, 'wait_boot', side_effect=lambda **_: order.append('boot')), \
              patch.object(device, 'root', side_effect=lambda: order.append('root')), \
