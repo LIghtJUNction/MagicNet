@@ -2,7 +2,7 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-four ABI-specific executables and removes the build-only download caches already
+all bundled ABI-specific executables and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -35,11 +35,8 @@ KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
-# Production ships these as Android arm64-only helper components. They are not
-# used by this standalone TUN lifecycle fixture. Exclude only an exact known
-# path carrying an AArch64 ELF; x86_64 copies are preserved and any other ELF
-# architecture still fails closed below.
-OPTIONAL_ARM64_HELPERS = ('bin/ecapture', 'bin/proxylink')
+# Optional components must be replaced when present, never silently omitted.
+OPTIONAL_PAYLOADS = ('bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -90,7 +87,8 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly four ABI replacements are required')
+    require(set(PAYLOADS) <= set(replacements) <= set(PAYLOADS + OPTIONAL_PAYLOADS),
+            'required ABI replacements missing or unknown replacement supplied')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -99,7 +97,6 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
                 'payload_sha256': {name: digest(path) for name, path in replacements.items()},
                 'excluded_build_cache_sha256': {},
-                'excluded_optional_arm64_sha256': {},
                 'compatibility_aliases': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +107,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             names = [item.filename for item in entries]
             require(len(names) == len(set(names)), 'duplicate ZIP members')
             require(PROVENANCE not in names, 'refuse to repackage an existing fixture')
-            require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
+            require(set(replacements).issubset(names), 'production ZIP is missing runtime payloads')
+            require(set(names).intersection(OPTIONAL_PAYLOADS) <= set(replacements),
+                    'bundled optional tool has no ABI replacement')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
             for source_item in entries:
@@ -134,17 +133,6 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
                     continue
-                if item.filename in OPTIONAL_ARM64_HELPERS and data.startswith(b'\x7fELF'):
-                    require(stat.S_IFMT(mode) in (0, stat.S_IFREG),
-                            'optional architecture helper must be a regular file')
-                    require(len(data) >= 64 and data[:6] == b'\x7fELF\x02\x01',
-                            'optional architecture helper has unsupported ELF format')
-                    machine = struct.unpack_from('<H', data, 18)[0]
-                    if machine == 183:  # EM_AARCH64
-                        manifest['excluded_optional_arm64_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
-                        continue
-                    require(machine == 62, 'optional helper has unexpected ELF architecture')
-                    # An x86_64 helper is already runnable in this fixture; keep it.
                 if item.filename == 'cli':
                     # KAM can dereference the tracked cli -> bin/magicnet-cli
                     # symlink in its raw ZIP. Accept only that exact alias,
@@ -288,13 +276,19 @@ class Device:
         require(self.verified, 'device identity not verified')
         require(self.shell('getenforce').stdout.strip() == 'Enforcing',
                 'SELinux must be Enforcing before KernelSU late-load')
-        current = self.shell(KSUD + ' boot-info current-kmi', timeout=30).stdout.strip()
-        supported = self.shell(KSUD + ' boot-info supported-kmis', timeout=30).stdout.split()
+        # A pristine AVD has no KernelSU BusyBox yet. Use the official embedded
+        # asset, not a host binary or fake command, before boot-info/late-load.
+        self.shell('mkdir -p /data/adb/ksu/bin')
+        self.shell(KSUD + ' debug extract-binary busybox ' + BB, timeout=30)
+        self.shell(f'chmod 0755 {BB} && {BB} --install -s /data/adb/ksu/bin')
+        command = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD
+        current = self.shell(command + ' boot-info current-kmi', timeout=30).stdout.strip()
+        supported = self.shell(command + ' boot-info supported-kmis', timeout=30).stdout.split()
         require(bool(current) and current in supported,
                 'official KernelSU userspace does not embed this stock AVD KMI')
         # v3.2.0 late-load loads the KMI-matched x86_64 kernelsu.ko, installs
         # userspace, handles modules_update, then executes service/boot stages.
-        self.shell(KSUD + ' late-load', timeout=120)
+        self.shell(command + ' late-load', timeout=120)
         version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
         require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
                 'KernelSU late-load did not expose a positive kernel interface version')
@@ -476,6 +470,7 @@ def save_upgrade_candidate(device: Device) -> None:
     name = 'ci-upgrade-' + os.urandom(8).hex() + '.json'
     path = MOD + '/.tmp/webui-payload/' + name
     encoded = base64.b64encode(json.dumps(candidate).encode()).decode('ascii')
+    require(len(encoded) <= 6 * 1024 * 1024, 'upgrade fixture exceeds payload budget')
     created = False
     try:
         actual = device.kshell(MOD + '/cli webui payload create tmp ' + name).stdout.strip()
@@ -505,6 +500,14 @@ def upgrade_preservation(device: Device) -> dict:
     require(bool(before_policy.strip()), 'network policy snapshot is empty')
     device.kshell(f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
     device.kshell(f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
+    # Read the installer's actual staged result before activation. No reseeding.
+    device.kshell(f'test -f {STAGED}/module.prop')
+    verify_migrated_node(json.loads(device.kshell(f'cat {STAGED}/.config/sing-box/config.json').stdout,
+                                   object_pairs_hook=unique_keys))
+    require(device.kshell(f'cat {STAGED}/.config/magicnet/ci-upgrade-marker').stdout == marker,
+            'staged upgrade lost user config')
+    require(device.kshell(f'cat {STAGED}/.config/magicnet/network-policy.conf').stdout == before_policy,
+            'staged upgrade changed network policy')
     device.reboot()
     require(device.kshell(f'cat {MOD}/.config/magicnet/ci-upgrade-marker').stdout == marker,
             'upgrade lost user config')
@@ -516,7 +519,8 @@ def upgrade_preservation(device: Device) -> dict:
     # old standalone marker/config and accidentally passed the canary check.
     device.kshell(f'test ! -e {MOD}/.config/sing-box/standalone-config')
     device.ready()
-    return {'node_preserved': True, 'user_policy_preserved': True,
+    return {'node_preserved': True, 'staged_node_preserved': True,
+            'staged_policy_preserved': True, 'user_policy_preserved': True,
             'standalone_marker_removed': True, 'proxy_connectivity_tested': False}
 
 
@@ -563,6 +567,9 @@ def main() -> int:
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
                 replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq')})
+                with zipfile.ZipFile(source) as production:
+                    replacements.update({name: tools / Path(name).name for name in OPTIONAL_PAYLOADS
+                                         if name in production.namelist()})
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()

@@ -80,6 +80,14 @@ class WorkflowTests(unittest.TestCase):
                         'leemikepop/avd-kernelsu-x86_64'):
             self.assertNotIn(retired, workflow_text)
 
+    def test_complete_payload_preparation_cannot_be_skipped(self):
+        step = self.step('Prepare complete x86_64 installation payloads')
+        self.assertNotIn('if', step)
+        self.assertNotIn('continue-on-error', step)
+        self.assertIn('scripts/prepare-android-fixture-tools.sh', step['run'])
+        self.assertEqual(self.step('Restore pristine Android AVD')['with']['key'],
+                         self.step('Save pristine Android AVD')['with']['key'])
+
     def test_exact_serial_stock_kernel_and_enforcing_not_disabled(self):
         self.assertEqual(self.flow['env']['ANDROID_SERIAL'], 'emulator-5554')
         boot = self.step('Boot pristine Android 15 AVD')['run']

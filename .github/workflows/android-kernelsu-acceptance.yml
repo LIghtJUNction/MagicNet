@@ -281,6 +281,10 @@ jobs:
           set -euo pipefail
           scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
+      - name: Prepare complete x86_64 installation payloads
+        shell: bash
+        run: bash scripts/prepare-android-fixture-tools.sh "$RUNNER_TEMP/magicnet-x86-tools"
+
       - name: Download and verify official KernelSU userspace
         shell: bash
         run: |
@@ -343,7 +347,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v3-api35-google-apis-x86_64
+          key: android-avd-v4-api35-google-apis-x86_64-stock-late-load
 
       - name: Enable KVM
         shell: bash

@@ -261,8 +261,12 @@ class DeviceTests(unittest.TestCase):
         device.verified = True
         calls = []
         def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
             calls.append(command)
             values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
                 'getenforce': 'Enforcing\n',
                 SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
                 SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\nandroid15-6.6\n',
@@ -285,8 +289,12 @@ class DeviceTests(unittest.TestCase):
         device.verified = True
         calls = []
         def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
             calls.append(command)
             values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
                 'getenforce': 'Enforcing\n',
                 SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
                 SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\n',

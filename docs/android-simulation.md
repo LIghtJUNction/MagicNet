@@ -17,7 +17,8 @@ now run in this job before packaging; no KAM check was dropped.
 
 A disposable Android 15 / API 35 x86_64 AVD boots its **stock kernel** with KVM.
 After Android userspace is fully booted, the pinned official KernelSU v3.2.0
-x86_64 `ksud` verifies that its embedded KMI set contains the running stock KMI
+x86_64 `ksud` first extracts its own embedded BusyBox using `debug extract-binary`,
+then verifies that its embedded KMI set contains the running stock KMI
 and executes the upstream `late-load` LKM path. This keeps the stock kernel and
 stock ramdisk/vendor modules paired while still using a real KernelSU kernel
 interface, module manager, SELinux rules and module lifecycle. Automatic runs
@@ -27,8 +28,10 @@ emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positiv
 KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses KernelSU
 BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
 
-Only four ABI-specific executables are replaced in a **separate test ZIP**, before
-installation: CLI, sing-box, jq and yq. Other unexpected foreign-architecture ELF
+All bundled ABI-specific executables are replaced in a **separate test ZIP**, before
+installation: CLI, sing-box, jq and yq, plus eCapture/Proxylink when present.
+The extra payloads use verified release/source pins; missing replacements fail
+preparation instead of silently removing installed tools. Other unexpected foreign-architecture ELF
 files fail preparation instead of surviving until boot. Installer/lifecycle scripts
 are not rewritten. The original ZIP remains untouched. The report records its
 SHA-256, the fixture ZIP hash, the source commit and each replacement hash.
@@ -53,7 +56,7 @@ The driver checks twelve phases:
 | Invalid-config rollback | Malformed config rejected; active config unchanged; service still ready |
 | Stop cleanup | No core, TUN, owned DNS/firewall rules or table-2022 routes remain |
 | Restart idempotence | Two restarts, exactly one core each time, followed by app-UID controls |
-| Upgrade preservation | Real reinstall/reboot preserves a marker inside the supported `.config/magicnet` migration scope; no re-seeding to hide data loss |
+| Upgrade preservation | Real reinstall checks the staged node, marker and policy before reboot, then checks the activated result; no re-seeding to hide data loss |
 | Disable/reboot | Real KernelSU disable and reboot leave the module stopped |
 | Enable/reboot | Real enable and reboot restore readiness and app-UID controls |
 | Uninstall/reboot | Real uninstall and reboot remove active/staged module directories and owned networking |

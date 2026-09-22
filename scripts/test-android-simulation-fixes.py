@@ -132,34 +132,38 @@ class ArchiveRegressionTests(unittest.TestCase):
     def test_archive_without_optional_cli_alias_still_works(self):
         self.assertEqual(self.build()['compatibility_aliases'], {})
 
-    def test_exact_arm64_optional_helpers_are_excluded_and_attested(self):
+    def test_every_bundled_optional_helper_is_replaced_and_attested(self):
         entries = dict(self.entries)
-        optional = {}
-        for name in SIM.OPTIONAL_ARM64_HELPERS:
-            data = elf(183, name.encode() + b'-arm64-only')
-            entries[name] = (data, stat.S_IFREG | 0o755)
-            optional[name] = data
+        for name in SIM.OPTIONAL_PAYLOADS:
+            entries[name] = (elf(183, name.encode()), stat.S_IFREG | 0o755)
+            path = self.root / Path(name).name
+            path.write_bytes(elf(62, name.encode() + b'-fixture'))
+            self.replacements[name] = path
         report = self.build(entries)
-        self.assertEqual(report['excluded_optional_arm64_sha256'],
-                         {name: __import__('hashlib').sha256(data).hexdigest()
-                          for name, data in optional.items()})
         with zipfile.ZipFile(self.output) as z:
-            for name in optional:
-                self.assertNotIn(name, z.namelist())
+            for name in SIM.OPTIONAL_PAYLOADS:
+                self.assertEqual(z.read(name), self.replacements[name].read_bytes())
+                self.assertIn(name, report['payload_sha256'])
+        self.assertNotIn('excluded_optional_arm64_sha256', report)
 
-    def test_x86_optional_helper_is_preserved_not_silently_removed(self):
-        name = SIM.OPTIONAL_ARM64_HELPERS[0]
-        data = elf(62, b'x86-helper')
-        self.build(self.entries | {name: (data, stat.S_IFREG | 0o755)})
-        with zipfile.ZipFile(self.output) as z:
-            self.assertEqual(z.read(name), data)
+    def test_missing_optional_replacement_fails_instead_of_dropping_it(self):
+        for name in SIM.OPTIONAL_PAYLOADS:
+            for machine in (183, 62, 40):
+                with self.subTest(name=name, machine=machine), self.assertRaisesRegex(RuntimeError, 'no ABI replacement'):
+                    self.build(self.entries | {name: (elf(machine), stat.S_IFREG | 0o755)})
+                self.assertFalse(self.output.exists())
 
-    def test_unknown_or_wrong_arch_helper_still_fails(self):
+    def test_wrong_arch_optional_replacement_still_fails(self):
+        name = SIM.OPTIONAL_PAYLOADS[0]
+        path = self.root / 'invalid'
+        path.write_bytes(elf(183))
+        self.replacements[name] = path
+        with self.assertRaisesRegex(RuntimeError, 'invalid x86_64 ELF'):
+            self.build(self.entries | {name: (elf(183), stat.S_IFREG | 0o755)})
+
+    def test_unknown_foreign_helper_still_fails(self):
         with self.assertRaisesRegex(RuntimeError, 'unreplaced foreign ELF'):
             self.build(self.entries | {'bin/other-helper': (elf(183), stat.S_IFREG | 0o755)})
-        with self.assertRaisesRegex(RuntimeError, 'unexpected ELF architecture'):
-            self.build(self.entries | {SIM.OPTIONAL_ARM64_HELPERS[0]:
-                                        (elf(40), stat.S_IFREG | 0o755)})
 
     def test_directory_cannot_masquerade_as_cli_executable(self):
         with self.assertRaisesRegex(RuntimeError, 'differs'):
@@ -254,6 +258,7 @@ class MemoryDevice:
         self.marker = None
         self.installed = False
         self.rebooted = False
+        self.staged = None
 
     def kshell(self, command, **kwargs):
         self.calls.append(command)
@@ -283,6 +288,17 @@ class MemoryDevice:
             return result()
         if args == [prefix, 'service', 'restart', 'sing-box']:
             return result()
+        if command == 'test -f ' + SIM.STAGED + '/module.prop':
+            if self.staged is None:
+                raise RuntimeError('staged install missing')
+            return result()
+        if command == 'cat ' + SIM.STAGED + '/.config/sing-box/config.json':
+            return result(json.dumps(self.staged))
+        if command == 'cat ' + SIM.STAGED + '/.config/magicnet/ci-upgrade-marker':
+            return result('lost' if self.fault == 'staged-marker' else self.marker)
+        if command == 'cat ' + SIM.STAGED + '/.config/magicnet/network-policy.conf':
+            return result('changed\n' if self.fault == 'staged-policy'
+                          else 'MAGICNET_NETWORK_IPV6_POLICY=ipv4_only\n')
         if command == 'cat ' + SIM.MOD + '/.config/magicnet/network-policy.conf':
             return result('changed\n' if self.installed and self.fault == 'lose-policy'
                           else 'MAGICNET_NETWORK_IPV6_POLICY=ipv4_only\n')
@@ -295,14 +311,14 @@ class MemoryDevice:
             self.installed = True
             nodes = [node for node in self.config['outbounds'] if node.get('server')]
             # Model only the migration contract, not the production policy engine.
-            self.config = {'outbounds': [{'type': 'direct', 'tag': 'direct'}] + nodes,
+            self.staged = {'outbounds': [{'type': 'direct', 'tag': 'direct'}] + nodes,
                            'route': {'final': 'proxy'}}
             if self.fault == 'drop-node':
-                self.config['outbounds'].pop()
+                self.staged['outbounds'].pop()
             if self.fault == 'change-node':
-                self.config['outbounds'][-1]['server_port'] += 1
+                self.staged['outbounds'][-1]['server_port'] += 1
             if self.fault == 'duplicate-node':
-                self.config['outbounds'].append(copy.deepcopy(nodes[0]))
+                self.staged['outbounds'].append(copy.deepcopy(nodes[0]))
             return result()
         if command == 'cat ' + SIM.MOD + '/.config/magicnet/ci-upgrade-marker':
             return result('lost' if self.fault == 'lose-marker' else self.marker)
@@ -322,6 +338,9 @@ class MemoryDevice:
         if self.fault == 'reboot-failed':
             raise RuntimeError('injected reboot failure')
         self.rebooted = True
+        self.config = copy.deepcopy(self.staged)
+        if self.fault == 'activation-drop':
+            self.config['outbounds'].pop()
 
 
 class UpgradeTransactionTests(unittest.TestCase):
@@ -329,6 +348,8 @@ class UpgradeTransactionTests(unittest.TestCase):
         device = MemoryDevice()
         report = SIM.upgrade_preservation(device)
         self.assertTrue(report['node_preserved'])
+        self.assertTrue(report['staged_node_preserved'])
+        self.assertTrue(report['staged_policy_preserved'])
         self.assertTrue(report['user_policy_preserved'])
         self.assertTrue(report['standalone_marker_removed'])
         self.assertIs(report['proxy_connectivity_tested'], False)
@@ -342,12 +363,12 @@ class UpgradeTransactionTests(unittest.TestCase):
         self.assertEqual(device.config['route']['final'], 'proxy', 'test overwrote migrated config')
 
     def test_endpoint_loss_or_change_fails(self):
-        for fault in ('drop-node', 'change-node', 'duplicate-node'):
+        for fault in ('drop-node', 'change-node', 'duplicate-node', 'activation-drop'):
             with self.subTest(fault=fault), self.assertRaises(RuntimeError):
                 SIM.upgrade_preservation(MemoryDevice(fault))
 
     def test_user_setting_or_marker_loss_fails(self):
-        for fault in ('lose-policy', 'lose-marker', 'keep-standalone'):
+        for fault in ('lose-policy', 'lose-marker', 'keep-standalone', 'staged-policy', 'staged-marker'):
             with self.subTest(fault=fault), self.assertRaises(RuntimeError):
                 SIM.upgrade_preservation(MemoryDevice(fault))
 
@@ -382,6 +403,64 @@ class UpgradeTransactionTests(unittest.TestCase):
         self.assertGreater(len(appends), 1)
         self.assertTrue(all(len(part) <= 32768 for part in appends))
         self.assertEqual(device.config['test-padding'], 'x' * 70000)
+
+
+    def test_oversized_upgrade_never_creates_payload_or_installs(self):
+        device = MemoryDevice()
+        device.config['test-padding'] = 'x' * (6 * 1024 * 1024)
+        with self.assertRaisesRegex(RuntimeError, 'payload budget'):
+            SIM.upgrade_preservation(device)
+        self.assertFalse(device.installed)
+        self.assertEqual(device.buffers, {})
+        self.assertFalse(any('payload create' in c for c in device.calls))
+
+
+class BootstrapTests(unittest.TestCase):
+    def bootstrap(self, fault=''):
+        calls = []
+        class Stub:
+            verified = True
+            late_load_on_reboot = False
+            def shell(self, command, **kwargs):
+                calls.append(command)
+                if 'extract-binary' in command and fault == 'extract-failed':
+                    raise RuntimeError('extract failed')
+                if command == 'getenforce':
+                    return result('Enforcing')
+                if 'current-kmi' in command:
+                    if not any('extract-binary busybox' in c for c in calls):
+                        raise RuntimeError('missing embedded tools')
+                    return result('android15-6.6')
+                if 'supported-kmis' in command:
+                    return result('android14-6.1' if fault == 'unsupported' else 'android15-6.6')
+                if 'debug version' in command:
+                    return result('Kernel Version: 0' if fault == 'no-kernel' else 'Kernel Version: 12345')
+                return result()
+            def kshell(self, command, **kwargs):
+                if command == 'id -Z':
+                    return result('u:r:shell:s0' if fault == 'wrong-domain' else 'u:r:ksu:s0')
+                if command == 'getenforce':
+                    return result('Permissive' if fault == 'permissive' else 'Enforcing')
+                raise AssertionError(command)
+        device = Stub()
+        report = SIM.Device.late_load_kernelsu(device)
+        return device, calls, report
+
+    def test_official_busybox_precedes_kmi_and_real_late_load(self):
+        device, calls, report = self.bootstrap()
+        extract = next(i for i,c in enumerate(calls) if 'extract-binary busybox' in c)
+        kmi = next(i for i,c in enumerate(calls) if 'current-kmi' in c)
+        load = next(i for i,c in enumerate(calls) if c.endswith(' late-load'))
+        self.assertLess(extract, kmi)
+        self.assertLess(kmi, load)
+        self.assertTrue(device.late_load_on_reboot)
+        self.assertEqual(report['kmi'], 'android15-6.6')
+        self.assertIn('PATH=/data/adb/ksu/bin:', calls[load])
+
+    def test_bootstrap_preconditions_and_real_kernel_gate_still_fail(self):
+        for fault in ('extract-failed', 'unsupported', 'no-kernel', 'wrong-domain', 'permissive'):
+            with self.subTest(fault=fault), self.assertRaises(RuntimeError):
+                self.bootstrap(fault)
 
 
 class FailureGateTests(unittest.TestCase):
