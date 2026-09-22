@@ -69,7 +69,12 @@ if kind == 'rule':
     if op == 'del':
         if s.get('fail_delete'): done(2)
         if record not in s[key]: done(1)
-        if not s.get('lie_delete'): s[key].remove(record)
+        if not s.get('lie_delete'):
+            if s.get('wildcard_delete'):
+                # Netlink can match another recorded sibling at this priority.
+                sibling = next(x for x in s[key] if x.split(':', 1)[0] == a[1])
+                s[key].remove(sibling)
+            else: s[key].remove(record)
     elif op == 'add':
         assert (root / 'module/.state/hotspot/tun-rules.list.pending').is_file()
         if s.get('fail_add'): done(2)
@@ -198,6 +203,43 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.change(kernel=1, rule4=[foreign] + self.read()['rule4'])
         self.run_helper('magicnet_lifecycle_after_stop', 2)
         self.assertFalse(self.read()['writes'])
+        self.assertTrue(self.state.exists())
+
+    def test_owned_shared_priorities_goto_and_terminal_rules_are_idempotent(self):
+        for wildcard in (False, True):
+            for cycle in range(3):
+                with self.subTest(wildcard=wildcard, cycle=cycle):
+                    baseline4 = ['9002: from 192.0.2.0/24 lookup 2022']
+                    self.change(kernel=1, rule4=baseline4, rule6=[], route4=[], route6=[], wildcard_delete=wildcard)
+                    self.run_helper('magicnet_kernel_route_state_begin')
+                    owned4 = ['9000: from all iif magicnet0 goto 9010',
+                              '9001: not from all iif lo lookup 2022',
+                              '9001: from 0.0.0.0 iif lo lookup 2022',
+                              '9001: from 172.19.0.0/30 iif lo lookup 2022',
+                              '9010: from all nop']
+                    self.change(kernel=0, rule4=baseline4 + owned4,
+                                rule6=['9000: from all unreachable', '9010: from all nop'],
+                                route4=['default dev magicnet0 scope link'])
+                    self.run_helper('magicnet_kernel_route_state_capture')
+                    ledger = self.state.read_text()
+                    for line in owned4:
+                        self.assertIn(line, ledger)
+                    self.change(kernel=1)
+                    self.run_helper('magicnet_lifecycle_after_stop')
+                    self.assertEqual(self.read()['rule4'], baseline4)
+                    self.assertEqual(self.read()['rule6'], [])
+                    self.assertEqual(self.read()['route4'], [])
+                    writes = self.read()['writes']
+                    self.run_helper('magicnet_lifecycle_after_stop')
+                    self.assertEqual(self.read()['writes'], writes)
+
+    def test_same_priority_foreign_table_is_visible_before_any_deletion(self):
+        self.active()
+        foreign = '9000: from all fwmark 0x400000 lookup 100'
+        self.change(kernel=1, rule4=[foreign] + self.read()['rule4'])
+        self.run_helper('magicnet_lifecycle_after_stop', 2)
+        self.assertFalse(self.read()['writes'])
+        self.assertIn(foreign, self.read()['rule4'])
         self.assertTrue(self.state.exists())
 
     def test_hotspot_ambiguous_source_rule_is_never_deleted(self):

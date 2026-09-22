@@ -388,3 +388,15 @@
     background: CanvasText;
   }
 }
+
+/* Shared page alignment; long tool/config forms use one readable column. */
+.page-surface > div { min-width: 0; }
+.mn-page-header { align-items: center; }
+.mn-page-actions { align-items: center; }
+.mn-page-heading > h2 { line-height: 1.2; text-wrap: balance; }
+.mn-page-actions > .mn-button { white-space: normal; }
+@media (max-width: 639px) {
+  .mn-page-header { padding-bottom: 8px; }
+  .mn-workspace-header { margin-bottom: 24px; }
+  .mn-page-actions { gap: 8px; }
+}

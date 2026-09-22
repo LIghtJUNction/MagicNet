@@ -13,7 +13,7 @@ use crate::service::{
     transparent_cmd,
 };
 use crate::subscriptions::{
-    setup_subscription, sub_apply_file, sub_filter, sub_get, sub_list, sub_resolve_host,
+    setup_subscription, sub_apply_file, sub_clear, sub_filter, sub_get, sub_list, sub_resolve_host,
     sub_schedule, sub_set, sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all,
     sub_user_agent,
 };
@@ -74,7 +74,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "route" => route_cmd, "{list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}";
     "dns" => dns_cmd, "{status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}";
     "warp" => warp_cmd, "{status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}";
-    "sub" => subscription_command, "{update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}";
+    "sub" => subscription_command, "{update <sing-box|all>|update-all|clear|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}";
     "block" => block_cmd, "{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}";
     "mcp" => mcp, "{status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}";
     "webui" => webui_cmd, "{status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}";
@@ -219,6 +219,7 @@ fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {
         Some("apply-file") => sub_apply_file(app, &full_args),
         Some("update") => sub_update(app, &full_args),
         Some("update-all") => sub_update_all(app),
+        Some("clear") if args.len() == 1 => sub_clear(app),
         Some("status") => sub_status(app),
         Some("schedule") => sub_schedule(app, &full_args),
         Some("user-agent") => sub_user_agent(app, &full_args),

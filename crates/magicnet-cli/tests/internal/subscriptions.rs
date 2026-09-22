@@ -412,3 +412,75 @@ fn candidate_temp_directory_symlink_is_rejected_without_creating_outside_files()
         "candidate setup must not traverse the candidate directory symlink"
     );
 }
+
+#[test]
+fn clear_sources_is_repeatable_and_preserves_the_active_configuration() {
+    let app = temp_app();
+    let dir = app.moddir.join(".config/sing-box");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("subscription.url"),
+        "https://example.com/private\n",
+    )
+    .unwrap();
+    fs::write(dir.join("subscription.local"), "proxies: []\n").unwrap();
+    fs::write(dir.join("config.json"), "{\"keep\":true}").unwrap();
+    for _ in 0..3 {
+        sub_clear(&app).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("subscription.url")).unwrap(),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("subscription.local")).unwrap(),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("config.json")).unwrap(),
+            "{\"keep\":true}"
+        );
+        assert!(!app
+            .moddir
+            .join(".state/sing-box/subscription-update.lock")
+            .exists());
+    }
+}
+
+#[test]
+fn clear_cannot_race_a_live_subscription_writer_or_recovery() {
+    let app = temp_app();
+    let dir = app.moddir.join(".config/sing-box");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("subscription.url"), "original").unwrap();
+    let guard = SubscriptionSourceGuard::acquire(&app).unwrap();
+    assert!(sub_clear(&app).is_err());
+    assert_eq!(
+        fs::read_to_string(dir.join("subscription.url")).unwrap(),
+        "original"
+    );
+    drop(guard);
+    fs::create_dir_all(app.moddir.join(".state/sing-box/subscription-transaction")).unwrap();
+    assert!(sub_clear(&app).is_err());
+    assert_eq!(
+        fs::read_to_string(dir.join("subscription.url")).unwrap(),
+        "original"
+    );
+}
+
+#[test]
+fn clear_failure_keeps_both_sources_and_releases_its_lock() {
+    let app = temp_app();
+    let dir = app.moddir.join(".config/sing-box");
+    fs::create_dir_all(dir.join("subscription.local")).unwrap();
+    fs::write(dir.join("subscription.url"), "original").unwrap();
+    assert!(sub_clear(&app).is_err());
+    assert_eq!(
+        fs::read_to_string(dir.join("subscription.url")).unwrap(),
+        "original"
+    );
+    assert!(dir.join("subscription.local").is_dir());
+    assert!(!app
+        .moddir
+        .join(".state/sing-box/subscription-update.lock")
+        .exists());
+}

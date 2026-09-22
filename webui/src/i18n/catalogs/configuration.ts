@@ -1,4 +1,18 @@
 export default {
+  "最多支持 {value} 个订阅来源，请删减后保存；不会截断链接。": ["Up to {value} subscription sources are supported. Remove extra lines before saving; no links will be truncated.", "Поддерживается до {value} источников. Удалите лишние строки перед сохранением; ссылки не будут обрезаны."],
+  "网页登录": ["Sign in with browser", "Войти через браузер"],
+  "在浏览器中授权，也可用其他设备扫码。": ["Authorize in your browser, or scan the QR code on another device.", "Подтвердите вход в браузере или отсканируйте QR-код другим устройством."],
+  "使用 Auth key 接入": ["Use an auth key instead", "Подключиться с Auth key"],
+
+  "订阅链接，每行一个": ["Subscription links, one per line", "Ссылки подписок, по одной на строку"],
+  "支持 Clash / Mihomo、sing-box 与分享链接订阅": ["Clash / Mihomo, sing-box and share-link subscriptions", "Подписки Clash / Mihomo, sing-box и ссылки узлов"],
+  "移除所有来源": ["Remove all sources", "Удалить все источники"],
+  "移除所有订阅来源？": ["Remove all subscription sources?", "Удалить все источники подписок?"],
+  "仅移除来源链接和本地订阅文件，当前核心配置不会删除或重启。": ["Only source links and local subscription files are removed. The current core configuration is kept without a restart.", "Удаляются только ссылки и локальные файлы подписок. Текущая конфигурация сохраняется без перезапуска ядра."],
+  "来源未移除，请重新读取状态后重试。": ["Sources were not removed. Refresh the status and retry.", "Источники не удалены. Обновите состояние и повторите попытку."],
+  "来源已移除。当前核心配置保持不变。": ["Sources removed. The current core configuration is unchanged.", "Источники удалены. Текущая конфигурация ядра не изменена."],
+  "来源已移除，但状态读取失败，请重新读取。": ["Sources removed, but status could not be read. Refresh to confirm.", "Источники удалены, но состояние не удалось прочитать. Обновите его для подтверждения."],
+
   "保存并应用": ["Save and apply", "Сохранить и применить"],
   "添加并启用": ["Add and enable", "Добавить и включить"],
   "正在更新订阅，完成后用量与节点会自动刷新。": ["Updating subscriptions. Usage and nodes will refresh automatically when complete.", "Подписки обновляются. После завершения данные трафика и узлы обновятся автоматически."],

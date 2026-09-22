@@ -366,7 +366,16 @@ magicnet_singbox_subscription_resolve_public() {
         done
 }
 
-magicnet_singbox_try_fetch_subscription() (
+# Linux/Android monotonic seconds: changing the wall clock cannot extend a fetch.
+magicnet_singbox_fetch_clock() {
+    IFS=' ' read -r _fetch_uptime _fetch_idle </proc/uptime || return 1
+    printf '%s\n' "${_fetch_uptime%%.*}"
+}
+
+# One pinned HTTPS hop. The caller owns the small, private .response sidecar;
+# raw headers are streamed only into the numeric usage parser, never persisted.
+magicnet_singbox_fetch_response() (
+    umask 077
     _url="$1"
     _download_file="$2"
     _connect_timeout="$3"
@@ -374,59 +383,140 @@ magicnet_singbox_try_fetch_subscription() (
     _resolve_file="${_download_file}.resolve"
     _stream_fifo="${_download_file}.stream"
     _headers_fifo="${_download_file}.headers"
-    command -v curl >/dev/null 2>&1 || return 127
-    rm -f "$_download_file" "${_download_file}.usage.json" "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
-    magicnet_singbox_subscription_resolve_public "$_url" >"$_resolve_file" || {
-        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
-        return 1
-    }
-    [ -s "$_resolve_file" ] || {
-        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
-        return 1
-    }
-    mkfifo "$_stream_fifo" || {
-        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
-        return 1
-    }
-    mkfifo "$_headers_fifo" || {
+    _curl_pid=
+    _headers_pid=
+    _response_start=$(magicnet_singbox_fetch_clock) || return 1
+    trap 'exit 130' HUP INT TERM
+    trap '
+        [ -z "$_curl_pid" ] || { kill "$_curl_pid" 2>/dev/null || true; wait "$_curl_pid" 2>/dev/null || true; }
+        exec 9>&-
+        [ -z "$_headers_pid" ] || { kill "$_headers_pid" 2>/dev/null || true; wait "$_headers_pid" 2>/dev/null || true; }
         rm -f "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
-        return 1
-    }
-    # Keep one writer open until curl finishes, including failures before curl
-    # opens its header output. Close it in both children so the reader sees EOF.
+    ' EXIT
+    command -v curl >/dev/null 2>&1 || return 127
+    rm -f "$_download_file" "${_download_file}.usage.json" "${_download_file}.response" "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
+    magicnet_singbox_subscription_parse_authority "$_url" || return 3
+    [ "$_max_time" -ge "$MAGICNET_SUB_RESOLVE_TIMEOUT" ] || MAGICNET_SUB_RESOLVE_TIMEOUT=$_max_time
+    magicnet_singbox_subscription_resolve_public "$_url" >"$_resolve_file" || return 6
+    [ -s "$_resolve_file" ] || return 6
+    _max_time=$((_max_time - $(magicnet_singbox_fetch_clock) + _response_start))
+    [ "$_max_time" -gt 0 ] || return 28
+    mkfifo "$_stream_fifo" "$_headers_fifo" || return 1
+    # The header writer guard covers failures before curl opens its outputs.
     exec 9<>"$_headers_fifo"
     (exec 9>&-; head -c 65537 <"$_headers_fifo" | magicnet_singbox_parse_subscription_usage) >"${_download_file}.usage.json" &
     _headers_pid=$!
-    set -- -fsS --noproxy '*' --max-redirs 0 --proto '=https' --proto-redir '=https' \
-        --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES" --dump-header "$_headers_fifo"
+    # -q must be first: neither .curlrc nor environment proxies may change the
+    # direct-fetch policy. Never use -L: every redirect must be resolved/checked.
+    set -- -q -fs --globoff --path-as-is --noproxy '*' --max-redirs 0 --proto '=https' --proto-redir '=https' \
+        --compressed --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES" --dump-header "$_headers_fifo"
     [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] || set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
+    # Repeating --resolve for the same authority replaces, rather than extends,
+    # its address set. Keep all validated A/AAAA records in a single entry.
+    _resolve_authority=
+    _resolve_addresses=
     while IFS='|' read -r _resolved_host _resolved_port _resolved_address; do
-        set -- "$@" --resolve "${_resolved_host}:${_resolved_port}:${_resolved_address}"
+        [ -n "$_resolved_address" ] || return 6
+        if [ -z "$_resolve_authority" ]; then
+            _resolve_authority="${_resolved_host}:${_resolved_port}"
+        fi
+        [ "$_resolve_authority" = "${_resolved_host}:${_resolved_port}" ] || return 6
+        _resolve_addresses="${_resolve_addresses:+${_resolve_addresses},}${_resolved_address}"
     done <"$_resolve_file"
-    set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" -o - "$_url"
+    # Literal IPv6 URLs need no DNS override (old Android curl versions do not
+    # accept an IPv6 host in --resolve). The resolver validated the literal above.
+    case "$_subscription_host" in
+        *:*) ;;
+        *) set -- "$@" --resolve "${_resolve_authority}:${_resolve_addresses}" ;;
+    esac
+    set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" \
+        --write-out '%{http_code}\n%{redirect_url}\n' -o "$_stream_fifo" "$_url"
+    # FD 8 is a write-only body guard. Even failures before curl opens -o close
+    # this descriptor and deliver EOF to head; an oversized body still gets EPIPE.
     env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-        timeout "$_max_time" curl "$@" >"$_stream_fifo" 9>&- &
+        timeout "$_max_time" curl "$@" >"${_download_file}.response" 8>"$_stream_fifo" 9>&- &
     _curl_pid=$!
-    # Consume the FIFO exactly once. `head -c` keeps reading short pipe reads
-    # until it reaches the budget plus one byte or EOF, so unknown-length and
-    # chunked bodies are rejected without reopening a FIFO after curl exits.
-    # `wait` preserves curl/HTTP/timeout failure separately.
-    head -c "$((MAGICNET_SUB_MAX_RESPONSE_BYTES + 1))" <"$_stream_fifo" >"$_download_file"
-    _stream_result=$?
+    _stream_result=0
+    head -c "$((MAGICNET_SUB_MAX_RESPONSE_BYTES + 1))" <"$_stream_fifo" >"$_download_file" || _stream_result=$?
     if [ "$_stream_result" -ne 0 ]; then
         kill "$_curl_pid" 2>/dev/null || true
     fi
-    wait "$_curl_pid"
-    _fetch_result=$?
+    _fetch_result=0
+    wait "$_curl_pid" || _fetch_result=$?
+    _curl_pid=
     exec 9>&-
     wait "$_headers_pid" || true
-    rm -f "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
-    if [ "$_stream_result" -ne 0 ] || [ "$_fetch_result" -ne 0 ] ||
-        [ ! -s "$_download_file" ] ||
-        [ "$(wc -c <"$_download_file")" -gt "$MAGICNET_SUB_MAX_RESPONSE_BYTES" ]; then
-        rm -f "$_download_file" "${_download_file}.usage.json" "$_resolve_file" "$_stream_fifo"
-        return 1
-    fi
+    _headers_pid=
+    [ "$_stream_result" -eq 0 ] || return 23
+    [ "$(wc -c <"$_download_file")" -le "$MAGICNET_SUB_MAX_RESPONSE_BYTES" ] || return 63
+    [ "$(wc -c <"${_download_file}.response")" -le 65536 ] || return 63
+    return "$_fetch_result"
+)
+
+# One total budget includes DNS, redirects, retry backoff and the body. A
+# certificate failure is never retried insecurely; cache use is decided above.
+magicnet_singbox_try_fetch_subscription() (
+    _fetch_url="$1"
+    _fetch_target="$2"
+    _fetch_connect="$3"
+    _fetch_budget="$4"
+    case "$_fetch_connect:$_fetch_budget" in *[!0-9:]*) return 1 ;; esac
+    [ "${#_fetch_connect}" -le 3 ] && [ "${#_fetch_budget}" -le 3 ] || return 1
+    [ "$_fetch_connect" -gt 0 ] && [ "$_fetch_budget" -gt 0 ] || return 1
+    _fetch_connect=$(printf '%s' "$_fetch_connect" | sed 's/^0*//')
+    _fetch_budget=$(printf '%s' "$_fetch_budget" | sed 's/^0*//')
+    [ "$_fetch_connect" -le 30 ] || _fetch_connect=30
+    [ "$_fetch_budget" -le 120 ] || _fetch_budget=120
+    _fetch_deadline=$(($(magicnet_singbox_fetch_clock) + _fetch_budget))
+    _fetch_hops=0
+    _fetch_retries=0
+    _fetch_complete=0
+    trap 'exit 130' HUP INT TERM
+    trap '
+        rm -f "${_fetch_target}.response"
+        if [ "$_fetch_complete" -ne 1 ]; then rm -f "$_fetch_target" "${_fetch_target}.usage.json"; fi
+    ' EXIT
+    while :; do
+        _fetch_left=$((_fetch_deadline - $(magicnet_singbox_fetch_clock)))
+        [ "$_fetch_left" -gt 0 ] || { warn "Subscription fetch timed out"; return 1; }
+        _fetch_rc=0
+        magicnet_singbox_fetch_response "$_fetch_url" "$_fetch_target" "$_fetch_connect" "$_fetch_left" || _fetch_rc=$?
+        _fetch_http=$(sed -n '1p' "${_fetch_target}.response" 2>/dev/null || true)
+        case "$_fetch_rc:$_fetch_http" in
+            0:2[0-9][0-9])
+                [ -s "$_fetch_target" ] || { warn "Subscription response is empty"; return 1; }
+                _fetch_complete=1
+                return 0
+                ;;
+            0:301|0:302|0:303|0:307|0:308)
+                [ "$_fetch_hops" -lt 5 ] || { warn "Subscription redirect limit exceeded"; return 1; }
+                _fetch_url=$(sed -n '2p' "${_fetch_target}.response")
+                # libcurl resolves relative Location values but does not fetch
+                # them. The next hop repeats HTTPS/public-address validation.
+                magicnet_singbox_subscription_parse_authority "$_fetch_url" || {
+                    warn "Subscription redirect is not a permitted HTTPS URL"
+                    return 1
+                }
+                _fetch_hops=$((_fetch_hops + 1))
+                continue
+                ;;
+            22:408|22:429|22:500|22:502|22:503|22:504|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|124:*) ;;
+            127:*) return 127 ;;
+            *)
+                # Only numeric codes are disclosed; URLs and response bodies
+                # can include subscription credentials.
+                case "$_fetch_http" in [0-9][0-9][0-9]) warn "Subscription HTTP status: $_fetch_http" ;; esac
+                warn "Subscription fetch failed (transport code $_fetch_rc)"
+                return 1
+                ;;
+        esac
+        [ "$_fetch_retries" -lt 2 ] || return 1
+        _fetch_retries=$((_fetch_retries + 1))
+        _fetch_left=$((_fetch_deadline - $(magicnet_singbox_fetch_clock)))
+        [ "$_fetch_left" -gt "$_fetch_retries" ] || return 1
+        warn "Retrying direct subscription fetch ($_fetch_retries/2)"
+        sleep "$_fetch_retries"
+    done
 )
 
 magicnet_singbox_normalize_subscription_file() {
@@ -576,8 +666,8 @@ magicnet_singbox_fetch_subscription() {
         error "Subscription URL file is empty: $_url_file"
         return 1
     fi
-    if [ "$_ok" -le 0 ]; then
-        error "No subscription source is available"
+    if [ "$_ok" -ne "$_index" ]; then
+        error "Incomplete subscription fetch ($_ok/$_index); keeping the previous configuration"
         return 1
     fi
     MAGICNET_SUB_CONFIGURED_COUNT="$_index"

@@ -84,6 +84,86 @@ pub fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
     apply_subscription_text(app, &text)
 }
 
+/// Forget subscription sources without tearing down a working network or
+/// deleting the current validated configuration. Source edits and updates share
+/// the same exclusive owner directory; lifecycle writes remain serialized too.
+pub fn sub_clear(app: &App) -> Result<(), String> {
+    let _lifecycle = crate::service::config_apply_lock(app)?;
+    let _update = SubscriptionSourceGuard::acquire(app)?;
+    if app
+        .moddir
+        .join(".state/sing-box/subscription-transaction")
+        .exists()
+    {
+        return Err("subscription recovery is pending; retry after recovery".to_string());
+    }
+    crate::replace_module_text_files_transactionally(
+        app,
+        &[
+            (Path::new(SUBSCRIPTION_URL_PATH), ""),
+            (Path::new(".config/sing-box/subscription.local"), ""),
+        ],
+    )?;
+    clear_node_cache(app);
+    println!("[info] Subscription sources removed; the current validated core configuration is unchanged.");
+    Ok(())
+}
+
+struct SubscriptionSourceGuard {
+    directory: PathBuf,
+    owner: String,
+}
+
+impl SubscriptionSourceGuard {
+    fn acquire(app: &App) -> Result<Self, String> {
+        // The bounded reader forks: /proc/self would describe its worker,
+        // not the caller whose PID owns this source-edit lock.
+        let stat_path = PathBuf::from(format!("/proc/{}/stat", std::process::id()));
+        let stat = read_proc_text_bounded(&stat_path, MAX_PROC_STAT_BYTES)
+            .map_err(|_| "cannot inspect subscription writer identity".to_string())?;
+        let start = crate::proc_start_time(&stat)
+            .ok_or_else(|| "cannot identify subscription writer".to_string())?;
+        cleanup_stale_update_lock(app);
+        let directory = app.moddir.join(".state/sing-box/subscription-update.lock");
+        fs::create_dir_all(directory.parent().expect("subscription lock has a parent"))
+            .map_err(|_| "cannot prepare subscription lock".to_string())?;
+        fs::create_dir(&directory)
+            .map_err(|_| "subscription update is busy; retry after it completes".to_string())?;
+        let owner = format!(
+            "{}:{}:clear-{}\n",
+            std::process::id(),
+            start,
+            SUBSCRIPTION_CANDIDATE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        );
+        let publish = (|| -> io::Result<()> {
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(directory.join("owner"))?;
+            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+            file.write_all(owner.as_bytes())?;
+            file.sync_all()
+        })();
+        if publish.is_err() {
+            let _ = fs::remove_file(directory.join("owner"));
+            let _ = fs::remove_dir(&directory);
+            return Err("cannot publish subscription lock owner".to_string());
+        }
+        Ok(Self { directory, owner })
+    }
+}
+
+impl Drop for SubscriptionSourceGuard {
+    fn drop(&mut self) {
+        let owner_file = self.directory.join("owner");
+        if fs::read_to_string(&owner_file).ok().as_deref() == Some(self.owner.as_str()) {
+            let _ = fs::remove_file(owner_file);
+            let _ = fs::remove_dir(&self.directory);
+        }
+    }
+}
+
 pub fn sub_user_agent(app: &App, args: &[String]) -> Result<(), String> {
     match args.get(2).map(String::as_str).unwrap_or("get") {
         "get" => {

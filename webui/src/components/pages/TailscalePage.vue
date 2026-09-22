@@ -4,6 +4,7 @@ import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, RefreshCw, Trash2, 
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
+import SectionDisclosure from "@/components/ui/SectionDisclosure.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
@@ -330,6 +331,7 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
     </p>
     <p v-if="customControl" role="alert" class="text-sm text-[var(--mn-warning)]">{{ errorMessage("custom-control") }}</p>
 
+    <div v-if="snapshot" class="tailscale-setup space-y-6">
     <div class="tailscale-device-name space-y-2">
       <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>
       <Input id="tailscale-hostname" v-model="hostname" :disabled="locked || !snapshot || customControl"
@@ -339,10 +341,10 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
     <section class="tailscale-panel space-y-4">
       <div class="tailscale-method-heading flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 class="font-medium">{{ t("网页授权登录（推荐）") }}</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("支持一键网页登录或使用其他设备扫码快速授权上线。") }}</p>
+          <h3 class="font-medium">{{ t("网页登录") }}</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("在浏览器中授权，也可用其他设备扫码。") }}</p>
         </div>
-        <Button :disabled="saveDisabled" :loading="saving" @click="submit('browser')">{{ t("登录 Tailscale 并自动配置") }}</Button>
+        <Button :disabled="saveDisabled" :loading="saving" :aria-label="t('登录 Tailscale 并自动配置')" @click="submit('browser')"><Globe :size="16" aria-hidden="true" />{{ t("网页登录") }}<ArrowUpRight :size="15" aria-hidden="true" /></Button>
       </div>
       <div v-if="loginUrl" class="tailscale-auth space-y-4">
         <div class="flex flex-wrap items-start justify-between gap-2">
@@ -367,11 +369,8 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
       <p v-if="loginMessage && !loginUrl" role="status" class="text-sm leading-6">{{ loginMessage }}</p>
     </section>
 
-    <section class="tailscale-panel space-y-4">
-      <div>
-        <h3 class="font-medium">{{ t("Auth Key 密钥接入") }}</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("也可以直接填入从 Tailscale 控制台生成的预授权 Auth key。") }}</p>
-      </div>
+    <SectionDisclosure :title="t('使用 Auth key 接入')">
+      <p class="mb-4 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("也可以直接填入从 Tailscale 控制台生成的预授权 Auth key。") }}</p>
       <form class="max-w-xl space-y-5" @submit.prevent="submit('key')" @input="edited = true" @change="edited = true">
         <fieldset :disabled="locked || !snapshot || customControl" class="min-w-0 space-y-5">
           <div class="space-y-2">
@@ -398,7 +397,8 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
         </div>
         <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t("重启会短暂中断现有连接。配置保留在本机。") }}</p>
       </form>
-    </section>
+    </SectionDisclosure>
+    </div>
     <div v-if="message" :role="hasError ? 'alert' : 'status'" aria-live="polite" class="text-sm leading-6"
       :class="hasError ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">{{ message }}</div>
     <Button v-if="needsRestart" variant="ghost" size="sm" :disabled="locked" @click="retryRestart">{{ t("重试重启核心") }}</Button>
@@ -406,10 +406,11 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
 </template>
 
 <style scoped>
-.tailscale-page { max-width: 64rem; margin-inline: auto; }
+.tailscale-page { max-width: 832px; margin-inline: auto; }
 .tailscale-page :deep(button) { overflow-wrap: anywhere; }
 .tailscale-device-name { max-width: 32rem; }
-.tailscale-panel { padding: 1.25rem; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface); }
+.tailscale-setup { border-top: 1px solid var(--mn-border); padding-top: 1.5rem; }
+.tailscale-panel { padding: 1.25rem; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface-raised); }
 .tailscale-auth { border-top: 1px solid var(--mn-border); padding-top: 1rem; }
 .tailscale-method-heading > div { flex: 1 1 16rem; min-width: 0; }
 .tailscale-status-actions { border-top: 1px solid var(--mn-border); padding-top: .75rem; }

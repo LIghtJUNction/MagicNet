@@ -445,3 +445,7 @@ magicnet_singbox_subscription_fingerprint() {
     fi
     unset _fingerprint_value
 }
+
+magicnet_singbox_source_is_clash() {
+    sed "1s/^$(printf '\357\273\277')//" "$1" | grep -Eq '^[[:space:]]*proxies:[[:space:]]*($|#|\[)'
+}

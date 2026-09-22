@@ -1,35 +1,36 @@
-magicnet_singbox_extract_clash_nodes() {
+# Detect the mapping key, not a particular YAML serialization. BOM, CRLF and
+# comments are common in provider responses. Conversion still validates YAML.
+
+magicnet_singbox_extract_clash_nodes() (
     _source_file="$1"
     _nodes_dir="$2"
-    mkdir -p "$_nodes_dir"
-    _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
-
-    awk -v outdir="$_nodes_dir" -v start="$_start_index" '
-        { gsub(/\r/, "") }
-        BEGIN { in_proxies = 0; idx = 0; file = "" }
-        /^[^[:space:]-][^:]*:/ {
-            if ($0 ~ /^proxies:[[:space:]]*$/) {
-                in_proxies = 1
-                next
-            }
-            if (in_proxies) {
-                in_proxies = 0
+    mkdir -p "$_nodes_dir" || return 1
+    _start_index=$(find "$_nodes_dir" -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) | wc -l)
+    # This is only a node boundary/count extractor for the native fallback;
+    # the complete document, including anchors, goes to the pinned converter.
+    sed "1s/^$(printf '\357\273\277')//" "$_source_file" | awk -v outdir="$_nodes_dir" -v start_index="$_start_index" '
+        BEGIN { inside = 0; idx = 0; file = ""; item_indent = -1 }
+        { sub(/\r$/, ""); indent = match($0, /[^ ]/) - 1 }
+        /^[[:space:]]*proxies:[[:space:]]*(#.*)?$/ {
+            inside = 1; key_indent = indent; next
+        }
+        inside && /^[[:space:]]*($|#)/ { next }
+        inside && indent <= key_indent && $0 !~ /^[[:space:]]*-/ { inside = 0 }
+        inside && /^[[:space:]]*-[[:space:]]*/ {
+            if (item_indent < 0) item_indent = indent
+            if (indent == item_indent) {
+                if (file != "") close(file)
+                idx++; file = outdir "/node-" (start_index + idx) ".yaml"
+                line = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+                print line > file; next
             }
         }
-        in_proxies && /^[[:space:]]*-[[:space:]]*/ {
-            idx++
-            file = outdir "/node-" (start + idx) ".yaml"
-            line = $0
-            sub(/^[[:space:]]*-[[:space:]]*/, "", line)
-            print line > file
-            next
-        }
-        in_proxies && file != "" && /^[[:space:]]+[[:alnum:]_-]+:/ {
-            print $0 >> file
+        inside && file != "" && indent > item_indent {
+            print substr($0, item_indent + 3) >> file
         }
         END { print idx }
-    ' "$_source_file"
-}
+    '
+)
 
 magicnet_singbox_extract_share_links() {
     _source_file="$1"

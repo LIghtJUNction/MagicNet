@@ -111,7 +111,10 @@ magicnet_kernel_route_new_rules() (
     while IFS= read -r _rule; do
         [ -n "$_rule" ] || continue
         # An identical pre-existing rule remains foreign; never adopt it.
-        printf '%s\n' "$_before" | grep -Fqx -- "$_rule" || printf '%s\n' "$_rule"
+        if ! printf '%s\n' "$_before" | grep -Fqx -- "$_rule" &&
+            magicnet_kernel_route_candidate_rule "$_rule"; then
+            printf '%s\n' "$_rule"
+        fi
     done <<EOF
 $_after
 EOF
@@ -149,45 +152,80 @@ magicnet_kernel_route_rules() (
     printf '%s\n' "$_rules" | awk '
         $1 ~ /^[0-9]+:$/ {
             priority = $1; sub(/:$/, "", priority)
-            table = ""
-            for (i = 2; i < NF; i++) if ($i == "lookup") table = $(i + 1)
-            if (table == "2022" && ((priority >= 9000 && priority <= 9099) || priority == 32768)) {
+            # Observe every occupant, including foreign tables at the same
+            # priority. A filtered view cannot safely detect delete ambiguity.
+            if ((priority >= 9000 && priority <= 9099) || priority == 32768) {
+                gsub(/ \[detached\]/, "")
                 $1 = $1; print
             }
         }
     '
 )
 
+# Match only the pinned sing-tun auto-route shapes. Merely appearing in the
+# reserved priority window does not make a rule ours. The pre-start difference
+# and verified active TUN generation are still required before recording it.
+magicnet_kernel_route_candidate_rule() {
+    printf '%s\n' "$1" | awk '
+        {
+            priority = $1; sub(/:$/, "", priority)
+            for (i = 2; i < NF; i++) {
+                if ($i == "lookup" && $(i + 1) == "2022") owned = 1
+                if ($i == "goto" && $(i + 1) == "9010" && priority <= 9010) owned = 1
+            }
+            if (priority <= 9010 && ($NF == "nop" || $NF == "unreachable")) owned = 1
+        }
+        END { exit !owned }
+    '
+}
+
 magicnet_kernel_route_delete_exact_rule() (
     _family="$1"
     _record="$2"
-    # No eval, expansion of filenames, shell syntax or arbitrary table selection.
     case "$_record" in '' | *[!a-zA-Z0-9_.,:/\ -]*) return 2 ;; esac
-    _current="$(magicnet_kernel_route_rules "$_family")" || return 2
-    printf '%s\n' "$_current" | grep -Fqx -- "$_record" || return 0
-    _before="$(printf '%s\n' "$_current" | grep -Fxc -- "$_record")"
-    # Netlink treats omitted/zero-valued selectors as wildcards when deleting.
-    # Full printed tokens alone cannot disambiguate a second rule at this index.
     _priority="${_record%%:*}"
-    printf '%s\n' "$_current" | awk -v priority="${_priority}:" -v exact="$_record" '
-        $1 == priority && $0 != exact { ambiguous = 1 }
-        END { exit ambiguous ? 1 : 0 }
-    ' || return 2
-    if magicnet_kernel_running; then return 2; else _kernel_rc=$?; fi
-    [ "$_kernel_rc" -eq 1 ] || return 2
-    set -f
-    # The ledger contains normalized ip-rule tokens only (validated above).
-    # shellcheck disable=SC2086
-    set -- $_record
-    _priority="${1%:}"
-    shift
-    case "$_family" in
-    4) ip rule del priority "$_priority" "$@" >/dev/null 2>&1 || return 1 ;;
-    6) ip -6 rule del priority "$_priority" "$@" >/dev/null 2>&1 || return 1 ;;
-    esac
-    _current="$(magicnet_kernel_route_rules "$_family")" || return 2
-    _after="$(printf '%s\n' "$_current" | grep -Fxc -- "$_record" || true)"
-    [ "$_after" -eq "$((_before - 1))" ]
+    _state="$(magicnet_kernel_route_state_file)"
+    if grep -Fqx 'phase=active' "$_state"; then
+        _owned="$(sed -n "s/^rule${_family}=//p" "$_state")" || return 2
+    elif [ "${MAGICNET_ALLOW_DISRUPTIVE_RECOVERY:-0}" = 1 ]; then
+        _owned="$(magicnet_kernel_route_new_rules "$_family")" || return 2
+    else
+        return 2
+    fi
+    _attempt=0
+    while :; do
+        _current="$(magicnet_kernel_route_rules "$_family")" || return 2
+        printf '%s\n' "$_current" | grep -Fqx -- "$_record" || return 0
+        _group="$(printf '%s\n' "$_current" | awk -v p="${_priority}:" '$1 == p')"
+        # sing-tun legitimately creates several rules at one priority. Allow
+        # that only when EVERY occupant was recorded for this generation.
+        while IFS= read -r _other; do
+            printf '%s\n' "$_owned" | grep -Fqx -- "$_other" || return 2
+        done <<EOF
+$_group
+EOF
+        _before="$(printf '%s\n' "$_group" | wc -l)"
+        if magicnet_kernel_running; then return 2; else _kernel_rc=$?; fi
+        [ "$_kernel_rc" -eq 1 ] || return 2
+        _attempt=$((_attempt + 1))
+        [ "$_attempt" -le 128 ] || return 2
+        set -f
+        # No eval: only normalized, bounded ip-rule tokens from our ledger.
+        # shellcheck disable=SC2086
+        set -- $_record
+        shift
+        case "$_family" in
+        4) ip rule del priority "$_priority" "$@" >/dev/null 2>&1 || return 1 ;;
+        6) ip -6 rule del priority "$_priority" "$@" >/dev/null 2>&1 || return 1 ;;
+        *) return 2 ;;
+        esac
+        _current="$(magicnet_kernel_route_rules "$_family")" || return 2
+        _after="$(printf '%s\n' "$_current" | awk -v p="${_priority}:" '$1 == p { count++ } END { print count+0 }')"
+        [ "$_after" -eq "$((_before - 1))" ] || return 2
+        # Zero/omitted selectors can be wildcards in netlink. A deletion of a
+        # different owned sibling is safe; loop until this record is absent.
+        # New/unrecorded occupants abort the next iteration, never get adopted.
+    done
 )
 
 magicnet_kernel_route_cleanup_rule_family() (

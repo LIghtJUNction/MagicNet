@@ -57,6 +57,7 @@ const plainJson = computed(() => `${deferredText.value}\n`);
 
 const syntaxState = computed(() => {
   if (checking.value) return { valid: false, error: null, checking: true };
+  if (!deferredText.value.trim()) return { valid: false, error: null, checking: false };
   const error = parseJsonSyntaxError(deferredText.value);
   return { valid: error === null, error, checking: false };
 });
@@ -168,7 +169,8 @@ onBeforeUnmount(() => {
       <span>JSON</span>
       <span v-if="checking" role="status">{{ t("正在检查") }}</span>
       <span v-else-if="syntaxState.error" class="json-editor__status--error" role="status">{{ t("发现语法错误") }}</span>
-      <span v-else class="json-editor__status--valid" role="status">{{ t("语法正确") }}</span>
+      <span v-else-if="syntaxState.valid" class="json-editor__status--valid" role="status">{{ t("语法正确") }}</span>
+      <span v-else role="status">{{ t("未校验") }}</span>
     </div>
 
     <div class="json-editor__shell" :style="{ minHeight }">

@@ -35,12 +35,17 @@ export type SubscriptionSavePlan = {
 export type PendingSubscriptionApply = {
   snapshot: string;
   revision: number;
+  sourceMode?: "url" | "local";
+  draftAtSubmission?: string;
+  previousGeneration?: string;
 };
 
 export type SubscriptionEditorReconcileInput = {
   draft: string;
   lastLoadedSnapshot: string;
   deviceSnapshot: string;
+  deviceSourceMode?: "url" | "local";
+  deviceGeneration?: string;
   dirty: boolean;
   loadedOnce: boolean;
   editRevision: number;
@@ -60,13 +65,17 @@ export function reconcileSubscriptionEditor(
   input: SubscriptionEditorReconcileInput,
 ): SubscriptionEditorReconcileResult {
   const acceptedPending = Boolean(
-    input.pendingApply && input.deviceSnapshot === input.pendingApply.snapshot,
+    input.pendingApply && input.deviceSnapshot === input.pendingApply.snapshot
+      && (input.deviceSourceMode ?? "url") === (input.pendingApply.sourceMode ?? "url")
+      && (input.pendingApply.previousGeneration === undefined
+        || (Boolean(input.deviceGeneration)
+          && input.deviceGeneration !== input.pendingApply.previousGeneration)),
   );
   const maySyncAccepted = Boolean(
     acceptedPending
       && input.pendingApply
       && input.editRevision === input.pendingApply.revision
-      && input.draft === input.pendingApply.snapshot,
+      && input.draft === (input.pendingApply.draftAtSubmission ?? input.pendingApply.snapshot),
   );
   const syncOrdinary = !input.loadedOnce || (!input.dirty && !input.pendingApply);
   const syncedDraft = maySyncAccepted || syncOrdinary;
@@ -123,7 +132,7 @@ export function buildSubscriptionSavePlan(text: string, limit = 5): Subscription
   const parsed = raw.map(parseSubscriptionLine);
   const validUrls = parsed.filter((item): item is URL => item instanceof URL);
   const uniqueUrls = uniqueNonEmpty(validUrls.map((url) => url.toString()));
-  const lines = uniqueUrls.slice(0, limit);
+  const lines = uniqueUrls;
   const invalid = parsed.length - validUrls.length;
   const duplicate = Math.max(0, validUrls.length - uniqueUrls.length);
   const overLimit = Math.max(0, uniqueUrls.length - limit);
@@ -139,10 +148,12 @@ export function buildSubscriptionSavePlan(text: string, limit = 5): Subscription
     };
   }
   if (!lines.length) return plan("error", t("没有可保存的订阅 URL。"), lines, raw, limit);
-  if (overLimit || duplicate) {
+  if (overLimit) {
+    return { ...plan("error", t("最多支持 {value} 个订阅来源，请删减后保存；不会截断链接。", { value: limit }), lines, raw, limit), duplicate, overLimit, http };
+  }
+  if (duplicate) {
     const notes = [
       duplicate ? t("去重 {value} 个", { value: duplicate }) : "",
-      overLimit ? t("只保存前 {value} 个唯一 URL", { value: limit }) : "",
     ].filter(Boolean).join("，");
     return { ...plan("warning", notes, lines, raw, limit), duplicate, overLimit, http };
   }
@@ -232,7 +243,7 @@ function plan(status: SubscriptionSavePlan["status"], message: string, lines: st
 }
 
 function subscriptionLines(text: string): string[] {
-  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return text.split(/\r\n?|\n/).map((line) => line.trim()).filter(Boolean);
 }
 
 function isHttpsUrl(line: string): boolean {

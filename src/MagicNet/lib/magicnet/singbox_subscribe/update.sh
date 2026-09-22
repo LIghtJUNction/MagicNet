@@ -901,14 +901,21 @@ magicnet_singbox_update_subscription_unlocked() {
 
     _node_total=0
     _native_parser=none
+    _native_complete=1
     while IFS= read -r _source_file || [ -n "$_source_file" ]; do
         [ -s "$_source_file" ] || continue
-        if grep -Eq '^proxies:[[:space:]]*$' "$_source_file"; then
+        if magicnet_singbox_source_is_clash "$_source_file"; then
             _node_count=$(magicnet_singbox_extract_clash_nodes "$_source_file" "$_nodes_dir")
             _native_kind=clash
         else
             _node_count=$(magicnet_singbox_extract_share_links "$_source_file" "$_nodes_dir")
             _native_kind=share-links
+        fi
+        [ "${_node_count:-0}" -gt 0 ] || _native_complete=0
+        # Native parsing deliberately has a small grammar. Do not turn an
+        # unavailable converter into a successful but incomplete network config.
+        if [ "$_native_kind" = clash ] && grep -Eq '^[[:space:]]*(<<|ws-opts|grpc-opts|http-opts|h2-opts|reality-opts|plugin|plugin-opts|obfs|alpn|client-fingerprint|fingerprint):' "$_source_file"; then
+            _native_complete=0
         fi
         _node_total=$((_node_total + ${_node_count:-0}))
         case "$_native_parser:$_native_kind" in
@@ -933,6 +940,12 @@ magicnet_singbox_update_subscription_unlocked() {
             _skipped="$2"
             MAGICNET_SUB_CONVERTER_RESULT=success
         fi
+    fi
+    if [ "${MAGICNET_SUB_CONVERTER_RESULT:-not_attempted}" != success ] && [ "$_native_complete" != 1 ]; then
+        error "A subscription requires the bundled converter; refusing a partial import. The current configuration is unchanged."
+        magicnet_singbox_update_status convert failed incomplete_conversion || true
+        magicnet_singbox_update_cleanup_stage
+        return 1
     fi
     if [ "${MAGICNET_SUB_CONVERTER_RESULT:-not_attempted}" != success ] &&
         [ "${_node_total:-0}" -gt 0 ]; then
