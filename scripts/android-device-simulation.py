@@ -2,7 +2,7 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-five ABI-specific executables (and the packaged CLI alias) and removes the build-only download caches already
+six ABI-specific executables (and the packaged CLI alias) and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -33,7 +33,7 @@ REMOTE = '/sdcard/Download/MagicNet/ci-simulation'
 KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
-PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq', 'bin/ecapture')
+PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq', 'bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -84,7 +84,7 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly five ABI replacements are required')
+    require(set(replacements) == set(PAYLOADS), 'exactly six ABI replacements are required')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -105,6 +105,7 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
+            foreign = []
             for source_item in entries:
                 item = copy.copy(source_item)
                 parts = PurePosixPath(item.filename).parts
@@ -137,8 +138,10 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     item.create_system = 3
                     item.external_attr = (stat.S_IFREG | 0o755) << 16
                 elif data.startswith(b'\x7fELF'):
-                    require(elf_x86_64(data[:64]), f'unreplaced foreign ELF: {item.filename}')
+                    if not elf_x86_64(data[:64]):
+                        foreign.append(item.filename)
                 output.writestr(item, data)
+            require(not foreign, 'unreplaced foreign ELF: ' + ', '.join(sorted(foreign)))
             marker = zipfile.ZipInfo(PROVENANCE)
             marker.create_system = 3
             marker.external_attr = (stat.S_IFREG | 0o644) << 16
@@ -399,7 +402,7 @@ def main() -> int:
                 keys = {'bin/magicnet-cli': 'MAGICNET_X86_CLI', 'bin/sing-box': 'MAGICNET_X86_SINGBOX'}
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
-                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq', 'ecapture')})
+                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq', 'ecapture', 'proxylink')})
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()

@@ -146,6 +146,15 @@ class ArchiveTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.output.with_suffix('.zip.partial').exists())
 
+    def test_all_missing_architecture_replacements_are_reported_together(self):
+        self.archive(self.entries | {'bin/forgotten-a': elf(183), 'bin/forgotten-b': elf(183)})
+        with self.assertRaises(RuntimeError) as error:
+            self.build()
+        self.assertIn('bin/forgotten-a', str(error.exception))
+        self.assertIn('bin/forgotten-b', str(error.exception))
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.output.with_suffix('.zip.partial').exists())
+
     def test_path_traversal_and_ambiguous_members_rejected(self):
         for name in ('../outside', '/absolute', 'bin/../outside', 'bin\\outside',
                      'bin//outside', 'bin/./outside', 'C:/outside'):
