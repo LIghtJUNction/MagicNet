@@ -2,7 +2,8 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-four ABI-specific executables and removes the build-only download caches already
+the ABI-specific executables (including optional bundled tools and CLI aliases)
+and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -10,6 +11,7 @@ boot. No public proxy feed or subscription credential is used.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import importlib.util
 import json
@@ -33,6 +35,7 @@ KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+OPTIONAL_PAYLOADS = ('bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -83,7 +86,8 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly four ABI replacements are required')
+    require(set(PAYLOADS) <= set(replacements) <= set(PAYLOADS + OPTIONAL_PAYLOADS),
+            'required ABI replacements missing or unknown replacement supplied')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -91,7 +95,7 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 'production_zip_sha256': digest(source),
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
                 'payload_sha256': {name: digest(path) for name, path in replacements.items()},
-                'excluded_build_cache_sha256': {}}
+                'excluded_build_cache_sha256': {}, 'alias_payload_sha256': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + '.partial')
@@ -101,10 +105,13 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             names = [item.filename for item in entries]
             require(len(names) == len(set(names)), 'duplicate ZIP members')
             require(PROVENANCE not in names, 'refuse to repackage an existing fixture')
-            require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
+            require(set(replacements).issubset(names), 'production ZIP is missing runtime payloads')
+            require(set(names).intersection(OPTIONAL_PAYLOADS) <= set(replacements),
+                    'bundled optional tool has no ABI replacement')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
             for item in entries:
+                item = copy.copy(item)  # writestr must not mutate source offsets for alias checks
                 parts = PurePosixPath(item.filename).parts
                 require(parts and not item.filename.startswith('/') and '..' not in parts
                         and '\\' not in item.filename and '\x00' not in item.filename
@@ -127,6 +134,20 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     data = replacements[item.filename].read_bytes()
                     item.create_system = 3
                     item.external_attr = (stat.S_IFREG | 0o755) << 16
+                elif item.filename == 'cli':
+                    # KAM may dereference the source symlink while packaging.
+                    # Only this reviewed alias may inherit the CLI replacement,
+                    # and only when its original bytes equal the original CLI.
+                    if stat.S_ISLNK(mode):
+                        require(data == b'bin/magicnet-cli', 'unexpected CLI symlink target')
+                    else:
+                        require(stat.S_IFMT(mode) in (0, stat.S_IFREG)
+                                and data == original.read('bin/magicnet-cli'),
+                                'CLI alias differs from canonical payload')
+                        data = replacements['bin/magicnet-cli'].read_bytes()
+                        item.create_system = 3
+                        item.external_attr = (stat.S_IFREG | 0o755) << 16
+                        manifest['alias_payload_sha256']['cli'] = hashlib.sha256(data).hexdigest()
                 elif data.startswith(b'\x7fELF'):
                     require(elf_x86_64(data[:64]), f'unreplaced foreign ELF: {item.filename}')
                 output.writestr(item, data)
@@ -391,9 +412,15 @@ def main() -> int:
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
                 replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq')})
+                with zipfile.ZipFile(source) as source_zip:
+                    for name in OPTIONAL_PAYLOADS:
+                        if name in source_zip.namelist():
+                            replacements[name] = tools / PurePosixPath(name).name
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
+                report.provenance['memory'] = load_script('android-simulation-upgrade').memory_observation(
+                    device.shell('cat /proc/meminfo').stdout, os.environ.get('AVD_MEMORY'))
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
@@ -447,13 +474,10 @@ def main() -> int:
                     require(len(pids) == 1, 'restart left duplicate core processes')
                 tun_controls(device, out, 'restart-idempotence')
             with report.phase('upgrade-preservation'):
-                marker = hashlib.sha256(os.urandom(32)).hexdigest()
-                device.kshell(f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
-                device.kshell(f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
-                # Do NOT re-seed the config/marker after upgrade; that would mask data loss.
-                device.reboot()
-                require(device.kshell(f'cat {MOD}/.config/magicnet/ci-upgrade-marker').stdout == marker, 'upgrade lost user config')
-                device.ready()
+                migration = load_script('android-simulation-upgrade').verify_upgrade(device)
+                (out / 'upgrade-migration.json').write_text(json.dumps(migration, indent=2) + '\n')
+                # The local node checks migration metadata, not proxy transport.
+                # The separate app-UID controls still prove the actual TUN path.
                 tun_controls(device, out, 'upgrade-preservation')
             with report.phase('disable-reboot'):
                 device.kshell(KSUD + ' module disable MagicNet')

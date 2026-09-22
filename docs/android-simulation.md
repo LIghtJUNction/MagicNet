@@ -1,118 +1,124 @@
 # Android / KernelSU simulation
 
-The automatic `Android KernelSU Acceptance` workflow runs on pull requests,
-merge groups and pushes to `main`. It has no path exclusions. `Android Simulation
-Gate` fails if the harness or emulator job fails, is cancelled, or is skipped.
-This adds a check; it does **not** silently change GitHub branch protection or the
-signed-release workflow. Require this check in the repository's merge rules before
-calling it a mandatory merge/release policy. Keep the existing CI Quality Gate.
+The automatic `Android KernelSU Acceptance` workflow runs on every pull request,
+merge group and push to `main`. `Android Simulation Gate` fails if either the
+harness or device job fails, is cancelled or is skipped. This check is not a
+branch-protection or release-policy change: configure it as required separately.
+The existing CI Quality Gate and signed-release checks remain independent.
 
-## What runs
+## Environment and artifact identity
 
-The host harness tests run first without a cached success. The device job builds
-the current module, the exact pinned sing-box source, Android x86_64 CLI/core,
-and an ordinary application-UID probe APK. The production ARM64 ZIP still goes
-through the existing package checks. KAM validation previously in `init.yml` is
-now run in this job before packaging; no KAM check was dropped.
+The device job builds the reviewed module and pinned sing-box, plus Android
+x86_64 CLI/core and an application-UID probe APK. The ARM64 module still passes
+its existing package checks. The separate AVD ZIP contains matching x86_64
+executables for CLI, sing-box, jq and yq, and for eCapture/Proxylink when bundled.
+The additional tools are not removed to evade architecture checks. eCapture uses
+the same release's Android amd64 asset, pinned by SHA-256; Proxylink builds from
+the exact revision declared by the production build hook, with CGO disabled.
+Unknown foreign ELF files and missing replacements fail fixture preparation.
 
-A disposable Android 15 / API 35 x86_64 AVD boots a real KernelSU kernel with KVM.
-Automatic runs give it 2 GiB RAM; manual dispatch also offers 4 GiB. The driver
-requires an explicit emulator serial, qemu identity, x86_64 ABI, SELinux Enforcing,
-a positive KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses
-KernelSU BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+KAM can package the top-level `cli` symlink as a regular ELF copy. The fixture
+replaces that copy only when its original bytes equal `bin/magicnet-cli`.
+An actual symlink must point exactly to `bin/magicnet-cli`. Mismatched copies,
+escaping links or special files fail; arbitrary same-name files are not repaired.
+ZipInfo records are copied before writing so output offsets cannot corrupt later
+reads from the source ZIP. Build-only `.local/state` downloads are excluded using
+the production packager's rule, with a hash recorded for every excluded member.
+The original archive and installer/lifecycle scripts are not modified. Reports
+record the original and fixture ZIP hashes, source commit, replacements and aliases.
 
-Only four ABI-specific executables are replaced in a **separate test ZIP**, before
-installation: CLI, sing-box, jq and yq. Other unexpected foreign-architecture ELF
-files fail preparation instead of surviving until boot. Installer/lifecycle scripts
-are not rewritten. The original ZIP remains untouched. The report records its
-SHA-256, the fixture ZIP hash, the source commit and each replacement hash.
-This does not validate ARM64 execution or claim that the test ZIP is a signed
-release package. Fixture ZIPs are temporary and are not uploaded as releases.
+A disposable Android 15 / API 35 x86_64 AVD boots a real KernelSU kernel under KVM.
+The driver requires an explicit emulator serial, qemu identity, x86_64 ABI,
+SELinux Enforcing, positive KernelSU version and the real `u:r:ksu:s0` domain.
+KernelSU BusyBox uses `ASH_STANDALONE=1`; permissive mode is never enabled.
+Automatic runs request 2048 MiB; manual dispatch can request 4096 MiB. The emulator
+may raise its allocation. `provenance.memory` separates `requested_emulator_mib`
+from `observed_guest_memtotal_kib`; guest MemTotal is not configured VM RAM.
 
-The real `ksud module install` runs first. An offline standalone configuration is
-seeded afterwards, before the first module boot. That configuration uses a local
-hosts resolver and direct test routing: no free proxy node, subscription account,
-public DNS or remote rule-set is required for the acceptance assertions. Build
-inputs and the initial SDK/kernel downloads still require network access.
+The actual `ksud module install` runs before an offline standalone configuration
+is seeded for first boot. That configuration uses a hosts resolver, direct routing
+and no public proxy, subscription credential or remote rule set. SDK/build asset
+downloads still require network access. Transfers use
+`/sdcard/Download/MagicNet/ci-simulation`; execution uses `/data/adb`.
+Never run the driver against a phone.
 
-The driver checks twelve phases:
+## Required phases
 
-| Phase | Required evidence |
+| Phase | Evidence |
 | --- | --- |
-| Environment | Disposable emulator identity; valid ABI-specific ZIP |
-| KernelSU bootstrap | Real userspace install, reboot, kernel version and enforcing KSU domain |
-| Install before first boot | Actual module installer; payload hashes at its destination |
-| Cold boot | A new kernel boot ID; lifecycle-owned core in the KSU domain; process, API and TUN ready |
-| Application-UID TUN controls | Marker delivery, rejection, delivery again, and config restoration |
-| Invalid-config rollback | Malformed config rejected; active config unchanged; service still ready |
-| Stop cleanup | No core, TUN, owned DNS/firewall rules or table-2022 routes remain |
-| Restart idempotence | Two restarts, exactly one core each time, followed by app-UID controls |
-| Upgrade preservation | Real reinstall/reboot preserves a marker inside the supported `.config/magicnet` migration scope; no re-seeding to hide data loss |
-| Disable/reboot | Real KernelSU disable and reboot leave the module stopped |
-| Enable/reboot | Real enable and reboot restore readiness and app-UID controls |
-| Uninstall/reboot | Real uninstall and reboot remove active/staged module directories and owned networking |
+| Environment | Disposable identity, ABI-correct fixture and observed memory |
+| KernelSU bootstrap | Userspace install, reboot, positive kernel version, enforcing KSU domain |
+| Install before first boot | Real module installer and installed payload hashes |
+| Cold boot | Changed kernel boot ID; lifecycle-owned core; process/API/TUN ready |
+| App-UID TUN controls | Marker delivery, rejection, delivery again and original config restoration |
+| Invalid-config rollback | Same-path valid control, malformed config rejection, unchanged active config and readiness |
+| Stop cleanup | No core, TUN or owned DNS/firewall/table-2022 state |
+| Restart idempotence | Two restarts with exactly one core each, then app-UID controls |
+| Upgrade preservation | Actual staged and activated node fields and user setting survive reinstall/reboot |
+| Disable/reboot | Real KernelSU disable and no active module networking |
+| Enable/reboot | Real enable, readiness and app-UID controls |
+| Uninstall/reboot | No active/staged module or owned networking |
 
-Boot checks require the kernel boot ID to change; an old `sys.boot_completed=1`
-cannot satisfy a reboot. All ADB operations and readiness loops have deadlines.
-No manual move from `modules_update`, manual `service.sh` invocation, fake `su`,
-or post-boot binary injection is used in this automatic path. Temporary Android
-transfers use `/sdcard/Download/MagicNet/ci-simulation`; executables run from
-`/data/adb`, not noexec shared storage. Never run this driver against a phone.
+A boot-completed flag from the previous boot cannot satisfy reboot checks.
+All ADB operations and readiness loops have deadlines. The automatic path never
+moves `modules_update` manually, invokes `service.sh` instead of booting, injects
+binaries after first boot or uses fake `su`.
 
-The app-UID controls reuse `android-tun-proof.py`. A random marker is served on
-host loopback and exposed through `adb reverse`. The app connects to a sentinel
-address through a UID-specific TUN override. A reject rule must prevent both the
-response and server-side connection. Restoring the rule must restore delivery,
-and restoring the original config must succeed. A timeout is not an acceptable
-negative-control result. Root-shell connectivity is not application connectivity.
+The TUN controls reuse `android-tun-proof.py`: a random host-loopback marker is
+exposed by `adb reverse`; an ordinary app UID reaches it only through the sentinel
+TUN override. Rejection must prevent both the response and server connection;
+a timeout is not an acceptable negative control. The positive case and original
+configuration must then be restored. Root-shell connectivity does not count.
 
-## Reports and cache boundaries
+## Upgrade fixture contract
+
+Production upgrades import nodes with a `server` field into the newly shipped
+template. A direct-only standalone configuration has no migratable node and is
+intentionally rejected. Before reinstall, the fixture adds one credential-free
+loopback SOCKS node through the existing private payload/save API, leaving the
+initial direct routing policy unchanged. A readback confirms that the save worked.
+
+The actual installer must produce a staged configuration containing exactly one
+node with the original type, tag, loopback address, port and SOCKS version, plus
+the user setting stored in `.config/magicnet`. After a real reboot, both are checked
+again in the active module. No configuration is re-seeded after installation to
+conceal loss. Missing staging, changed fields, lost settings or failed readiness
+fail the phase. The node is metadata for migration, not a running proxy server;
+`upgrade-migration.json` explicitly reports `node_transport_tested=false`.
+The app-UID TUN proof runs separately after migration.
+
+The upgraded configuration belongs to the production template, not the original
+hosts-only fixture. Background Android traffic may attempt public DNS or proxy
+connections; public connectivity is not used as migration/TUN evidence.
+
+## Reports and caches
 
 `artifacts/android-kernelsu/` contains `simulation.json`, `simulation-junit.xml`,
-`simulation-summary.md`, separate TUN-control results for each phase and bounded
-logcat/kernel/service diagnostics. Failed and unexecuted phases are explicit
-failures, not skipped green tests. Artifact upload and emulator cleanup use
-`always()`. Missing KVM/SDK/ADB or a failed boot is a failure, not certification.
+`simulation-summary.md`, per-stage TUN results, `upgrade-migration.json` on successful
+migration and bounded diagnostics. Failed and unexecuted phases are failures,
+not green skips. Cleanup and artifact upload use `always()`.
+Only dependencies, compiler outputs and a pristine pre-boot AVD are cached; no
+mutated VM or device-test success is cached. Cached kernel/ksud bytes are rehashed.
+Real DNS NAT tests also send packets against the current host kernel every run.
 
-Only dependencies, compiler outputs and a pristine **pre-boot** AVD are cached.
-No dirty device snapshot or device-test success is cached. Kernel archive and
-ksud hashes are checked again on cache hits; cached shell manifests are not
-executed. The real DNS NAT job in `network-regression.yml` also runs its packet
-checks each time against the current host kernel instead of reusing a pass.
+KAM validation formerly in `init.yml` is preserved in the Android build job.
+Automatic WebUI checks stay in Code Quality; `webui-preview.yml` is manual-only.
+Onboarding, uninstall-browser, network-evidence and release workflows retain their
+unique checks. Public endpoint observations and the optional Android public proxy
+benchmark remain manual-only and cannot replace device acceptance.
 
-## Workflow cleanup
-
-`init.yml` was removed after moving all its commands into the existing Android
-build job. The old automatic `webui.yml` was replaced by manual-only
-`webui-preview.yml`; Code Quality remains the single automatic WebUI check and
-the source/preview artifacts remain available on demand. Runner public-endpoint
-observations are manual-only. Unique installation-onboarding, uninstall-browser,
-network-evidence, rules-release and signed module-release workflows are retained.
-
-The optional `public_benchmark` input defaults to false. It runs the legacy public
-proxy benchmark only after the offline simulation, writes to
-`artifacts/android-public-benchmark/`, and cannot replace offline acceptance.
-Public endpoint reachability and proxy quality are observations, not proof that
-Google Play login or downloads work.
-
-## Reproduce the host checks
+## Reproduce and interpret results
 
 ```sh
 python3 scripts/test-android-device-simulation.py
-python3 scripts/test-android-simulation-workflow.py  # requires PyYAML
-python3 scripts/test-android-device-simulation.py --check-core /path/to/built/sing-box
+python3 scripts/test-android-simulation-fixes.py
+python3 scripts/test-android-simulation-workflow.py
+python3 scripts/test-android-simulation-fixes.py --check-core /path/to/built/sing-box
 ```
 
-The first two commands test the **harness**, not a device. The full Android
-workflow must actually complete before reporting device acceptance as passed.
-
-## Remaining coverage limits
-
-This fixture exercises one Android release, one x86_64 KSU kernel and a standalone
-TUN configuration. It does not execute the shipped ARM64 binaries, OEM netd or
-vendor policies, GMS/Play login/download, a real subscription, eBPF forwarding or
-IPv6 packet forwarding. Existing host/network-namespace/eBPF tests are retained
-and complementary, not relabelled as Android evidence. A matrix of real ARM64/OEM
-runners is still needed for those claims. Reductions in installation-time surprises
-come from moving these explicit lifecycle checks before merge, not from treating
-one emulator as every Android device.
+Workflow tests require PyYAML. These commands test harness behavior and config
+syntax, not Android execution. The full Actions device job must actually complete
+before reporting acceptance passed. One Android release/x86_64 kernel does not
+establish ARM64 execution, OEM netd policies, Play/GMS login/download, real proxy
+quality, eCapture capture behavior, Proxylink conversion, Android eBPF forwarding
+or IPv6 packet forwarding. Existing host and namespace tests remain complementary.

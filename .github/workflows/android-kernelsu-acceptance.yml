@@ -35,7 +35,7 @@ on:
         type: boolean
         default: false
       memory_mb:
-        description: AVD RAM; automatic checks use 2 GiB to exercise a constrained device
+        description: Requested AVD RAM; observed guest MemTotal is recorded separately
         required: true
         type: choice
         options: ["2048", "4096"]
@@ -83,6 +83,7 @@ jobs:
       - name: Test simulation safety and workflow wiring
         run: |
           python3 scripts/test-android-device-simulation.py
+          python3 scripts/test-android-simulation-fixes.py
           python3 scripts/test-android-simulation-workflow.py
           python3 scripts/test-android-acceptance-contract.py
           python3 scripts/test-android-avd-storage.py
@@ -228,7 +229,9 @@ jobs:
           printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
 
       - name: Validate offline config against the exact core
-        run: python3 scripts/test-android-device-simulation.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
+        run: |
+          python3 scripts/test-android-device-simulation.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
+          python3 scripts/test-android-simulation-fixes.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
 
       - name: Build current MagicNet module
         env:
@@ -273,6 +276,9 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Prepare additional Android x86_64 tools
+        run: bash scripts/prepare-android-fixture-tools.sh "$RUNNER_TEMP/magicnet-x86-tools"
 
       - name: Build application-UID network probe
         shell: bash
