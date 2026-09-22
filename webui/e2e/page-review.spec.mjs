@@ -27,7 +27,12 @@ for (const theme of ["light", "dark"]) {
       const surface = page.locator(`.page-surface[data-page="${id}"]`);
       await expect(surface).toBeVisible();
       await expect(surface.locator("h2").first()).toBeVisible();
-      await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        window.scrollTo({ top: 0, behavior: "instant" });
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), id).toBe(true);
       await page.screenshot({ path: info.outputPath(`${theme}-${id}.png`), fullPage: true, timeout: 20_000 });
     }

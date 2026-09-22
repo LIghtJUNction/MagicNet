@@ -116,7 +116,10 @@ struct SubscriptionSourceGuard {
 
 impl SubscriptionSourceGuard {
     fn acquire(app: &App) -> Result<Self, String> {
-        let stat = read_proc_text_bounded(Path::new("/proc/self/stat"), MAX_PROC_STAT_BYTES)
+        // The bounded reader forks: /proc/self would describe its worker,
+        // not the caller whose PID owns this source-edit lock.
+        let stat_path = PathBuf::from(format!("/proc/{}/stat", std::process::id()));
+        let stat = read_proc_text_bounded(&stat_path, MAX_PROC_STAT_BYTES)
             .map_err(|_| "cannot inspect subscription writer identity".to_string())?;
         let start = crate::proc_start_time(&stat)
             .ok_or_else(|| "cannot identify subscription writer".to_string())?;
