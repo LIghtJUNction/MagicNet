@@ -265,6 +265,25 @@ jobs:
             "$RUNNER_TEMP/magicnet-x86-tools/jq" | sha256sum --check --strict
           GOBIN="$RUNNER_TEMP/magicnet-x86-tools" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go install github.com/mikefarah/yq/v4@v4.53.3
+          # Match the production eCapture version with its Android x86_64 build.
+          # Never retain an ARM64 helper in an otherwise x86_64 fixture.
+          curl --fail --location --retry 3 --max-time 120 \
+            https://github.com/gojue/ecapture/releases/download/v2.5.2/ecapture-v2.5.2-android-amd64.tar.gz \
+            -o "$RUNNER_TEMP/ecapture-android-amd64.tar.gz"
+          printf '%s  %s\n' 904f8335b70ea42fe00070b1af107b8a6fadfcdc4697d990b64b4740922cde54 \
+            "$RUNNER_TEMP/ecapture-android-amd64.tar.gz" | sha256sum --check --strict
+          python3 - <<'PY_ECAPTURE'
+          import os, tarfile
+          from pathlib import Path, PurePosixPath
+          root = Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(root / 'ecapture-android-amd64.tar.gz') as archive:
+              members = [m for m in archive if PurePosixPath(m.name).name == 'ecapture']
+              if len(members) != 1 or not members[0].isfile() or not 0 < members[0].size < 100 * 1024 * 1024:
+                  raise RuntimeError('invalid eCapture release payload')
+              with archive.extractfile(members[0]) as stream:
+                  (root / 'magicnet-x86-tools/ecapture').write_bytes(stream.read())
+          PY_ECAPTURE
+          file "$RUNNER_TEMP/magicnet-x86-tools/ecapture" | grep -q 'x86-64'
           chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*
           for tool in jq yq; do
             file "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q 'x86-64'
