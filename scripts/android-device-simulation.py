@@ -328,6 +328,28 @@ def tun_controls(device: Device, out: Path, phase: str):
             ('positive', 'reject', 'positive_after', 'restored')), 'app-UID TUN controls failed')
 
 
+def invalid_config_rollback(device: Device):
+    bad = MOD + '/.tmp/webui-payload/ci-invalid.json'
+    save = f'{MOD}/cli config-editor save-file sing-box {bad}'
+    try:
+        # Positive control on the exact same path and command. A permission or
+        # path-validation failure must not masquerade as malformed-JSON rejection.
+        device.kshell(f'mkdir -p {MOD}/.tmp/webui-payload && '
+                      f'cp {MOD}/.config/sing-box/config.json {bad} && chmod 0600 {bad}')
+        device.kshell(save, timeout=90)
+        device.ready()
+        before = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
+        device.kshell(f'printf "{{" >{bad}')
+        result = device.kshell(save, timeout=90, check=False)
+        require(result.returncode not in (0, 124, 127),
+                'invalid configuration was accepted or validation unavailable')
+        after = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
+        require(before == after, 'invalid config changed the active configuration')
+        device.ready()
+    finally:
+        device.kshell('rm -f ' + bad)
+
+
 def diagnostics(device: Device, out: Path):
     if not device.verified:
         return
@@ -401,17 +423,7 @@ def main() -> int:
             with report.phase('app-uid-tun-controls'):
                 tun_controls(device, out, 'app-uid-tun-controls')
             with report.phase('invalid-config-rollback'):
-                before = device.kshell(MOD + '/cli config-editor get sing-box').stdout
-                bad = MOD + '/.tmp/webui-payload/ci-invalid.json'
-                try:
-                    device.kshell(f'mkdir -p {MOD}/.tmp/webui-payload && printf "{{" >{bad} && chmod 0600 {bad}')
-                    cp = device.kshell(f'{MOD}/cli config-editor save-file sing-box {bad}', check=False)
-                    require(cp.returncode not in (0, 124, 127), 'invalid configuration was accepted or validation unavailable')
-                    after = device.kshell(MOD + '/cli config-editor get sing-box').stdout
-                    require(json.loads(before) == json.loads(after), 'invalid config changed the active configuration')
-                    device.ready()
-                finally:
-                    device.kshell('rm -f ' + bad)
+                invalid_config_rollback(device)
             with report.phase('stop-cleanup'):
                 device.kshell(MOD + '/cli service stop sing-box', timeout=90)
                 device.stopped()

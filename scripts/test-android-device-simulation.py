@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import warnings
 import xml.etree.ElementTree as ET
 import zipfile
@@ -306,6 +306,63 @@ class DeviceTests(unittest.TestCase):
                 bb.chmod(0o755)
                 result = subprocess.run(['sh', '-c', command], timeout=2)
                 self.assertEqual(result.returncode, expected, (live, pid_rc))
+
+
+class InvalidConfigTests(unittest.TestCase):
+    def device(self, reject_rc=1, changed=False, deny_valid=False):
+        calls = []
+        reads = 0
+        saves = 0
+
+        def shell(command, **options):
+            nonlocal reads, saves
+            calls.append(command)
+            if 'config-editor save-file' in command:
+                saves += 1
+                if saves == 1:
+                    if deny_valid:
+                        raise RuntimeError('valid payload path denied')
+                    return cp()
+                self.assertIs(options.get('check'), False)
+                return cp(rc=reject_rc)
+            if 'config-editor get' in command:
+                reads += 1
+                return cp(json.dumps({'fixture': 2 if changed and reads > 1 else 1}))
+            return cp()
+
+        return Mock(kshell=Mock(side_effect=shell)), calls
+
+    def test_valid_same_path_control_precedes_malformed_rejection(self):
+        device, calls = self.device()
+        SIM.invalid_config_rollback(device)
+        saves = [i for i, c in enumerate(calls) if 'config-editor save-file' in c]
+        malformed = next(i for i, c in enumerate(calls) if 'printf "{"' in c)
+        self.assertLess(saves[0], malformed)
+        self.assertLess(malformed, saves[1])
+        self.assertEqual(calls[saves[0]], calls[saves[1]])
+        self.assertTrue(calls[-1].startswith('rm -f '))
+        self.assertEqual(device.ready.call_count, 2)
+
+    def test_path_permission_failure_cannot_count_as_invalid_json_rejection(self):
+        device, calls = self.device(deny_valid=True)
+        with self.assertRaisesRegex(RuntimeError, 'valid payload path denied'):
+            SIM.invalid_config_rollback(device)
+        self.assertFalse(any('printf "{"' in c for c in calls))
+        self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_accepted_invalid_config_or_unavailable_validator_fails(self):
+        for code in (0, 124, 127):
+            with self.subTest(code=code):
+                device, calls = self.device(reject_rc=code)
+                with self.assertRaises(RuntimeError):
+                    SIM.invalid_config_rollback(device)
+                self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_failed_validation_must_not_change_active_config(self):
+        device, calls = self.device(changed=True)
+        with self.assertRaisesRegex(RuntimeError, 'changed the active configuration'):
+            SIM.invalid_config_rollback(device)
+        self.assertTrue(calls[-1].startswith('rm -f '))
 
 
 class ReportTests(unittest.TestCase):
