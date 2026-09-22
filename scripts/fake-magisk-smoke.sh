@@ -424,6 +424,7 @@ write_mock curl '
 out=""
 url=""
 write_out=""
+headers=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -o)
@@ -434,7 +435,11 @@ while [[ $# -gt 0 ]]; do
             write_out="${2:-}"
             shift 2
             ;;
-        -x|--max-time|--connect-timeout|-H|--data|--data-binary)
+        -D|--dump-header)
+            headers="${2:-}"
+            shift 2
+            ;;
+        -x|--max-time|--connect-timeout|-H|--data|--data-binary|--noproxy|--max-redirs|--proto|--proto-redir|--max-filesize|--user-agent|--resolve)
             shift 2
             ;;
         --*)
@@ -456,6 +461,7 @@ render_http_metrics() {
     local total="$4"
     local rendered="$write_out"
     rendered="${rendered//\%\{http_code\}/$code}"
+    rendered="${rendered//\%\{redirect_url\}/}"
     rendered="${rendered//\%\{time_connect\}/$connect}"
     rendered="${rendered//\%\{time_starttransfer\}/$start}"
     rendered="${rendered//\%\{time_total\}/$total}"
@@ -505,11 +511,13 @@ YAML
     printf "%b" "    tls: true\n    servername: \"edge.example\r.test\"\n"
 }
 if [[ -n "$out" ]]; then
+    [[ -z "$headers" ]] || printf "HTTP/1.1 200 OK\r\n\r\n" >"$headers"
     if [[ "$out" == "-" ]]; then
         emit_subscription_fixture
     else
         emit_subscription_fixture >"$out"
     fi
+    [[ -z "$write_out" ]] || render_http_metrics 200 0.010 0.020 0.030
     exit 0
 fi
 printf "%s\n" "{}"

@@ -2,7 +2,7 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-four ABI-specific executables and removes the build-only download caches already
+five ABI-specific executables (and the packaged CLI alias) and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -10,6 +10,7 @@ boot. No public proxy feed or subscription credential is used.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import importlib.util
 import json
@@ -32,7 +33,7 @@ REMOTE = '/sdcard/Download/MagicNet/ci-simulation'
 KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
-PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq', 'bin/ecapture')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -83,7 +84,7 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly four ABI replacements are required')
+    require(set(replacements) == set(PAYLOADS), 'exactly five ABI replacements are required')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -104,7 +105,8 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
-            for item in entries:
+            for source_item in entries:
+                item = copy.copy(source_item)
                 parts = PurePosixPath(item.filename).parts
                 require(parts and not item.filename.startswith('/') and '..' not in parts
                         and '\\' not in item.filename and '\x00' not in item.filename
@@ -122,9 +124,16 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
                     continue
-                if item.filename in replacements:
+                replacement = item.filename
+                if item.filename == 'cli' and data.startswith(b'\x7fELF'):
+                    # KAM dereferences this symlink in the production ZIP. Only
+                    # accept the byte-identical CLI alias, not arbitrary ELFs.
+                    require(data == original.read('bin/magicnet-cli'), 'unexpected CLI alias payload')
+                    replacement = 'bin/magicnet-cli'
+                    manifest['payload_sha256']['cli'] = manifest['payload_sha256'][replacement]
+                if replacement in replacements:
                     require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
-                    data = replacements[item.filename].read_bytes()
+                    data = replacements[replacement].read_bytes()
                     item.create_system = 3
                     item.external_attr = (stat.S_IFREG | 0o755) << 16
                 elif data.startswith(b'\x7fELF'):
@@ -390,7 +399,7 @@ def main() -> int:
                 keys = {'bin/magicnet-cli': 'MAGICNET_X86_CLI', 'bin/sing-box': 'MAGICNET_X86_SINGBOX'}
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
-                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq')})
+                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq', 'ecapture')})
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()

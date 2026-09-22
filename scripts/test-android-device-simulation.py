@@ -90,6 +90,32 @@ class ArchiveTests(unittest.TestCase):
                     self.assertEqual(result.getinfo(name).external_attr, original.getinfo(name).external_attr)
                     self.assertEqual(result.getinfo(name).date_time, original.getinfo(name).date_time)
 
+    def test_packaged_cli_alias_is_replaced_and_attested(self):
+        self.archive(self.entries | {'cli': self.entries['bin/magicnet-cli']})
+        manifest = self.build()
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read('cli'), self.replacements['bin/magicnet-cli'].read_bytes())
+            self.assertEqual(archive.read('bin/ecapture'), self.replacements['bin/ecapture'].read_bytes())
+        self.assertEqual(manifest['payload_sha256']['cli'], manifest['payload_sha256']['bin/magicnet-cli'])
+
+    def test_different_cli_elf_is_rejected_not_silently_replaced(self):
+        self.archive(self.entries | {'cli': elf(183) + b'not the CLI'})
+        with self.assertRaisesRegex(RuntimeError, 'unexpected CLI alias'):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_original_cli_symlink_is_preserved(self):
+        self.archive()
+        with zipfile.ZipFile(self.source, 'a') as archive:
+            item = zipfile.ZipInfo('cli')
+            item.create_system = 3
+            item.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(item, 'bin/magicnet-cli')
+        self.build()
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertTrue(stat.S_ISLNK(archive.getinfo('cli').external_attr >> 16))
+            self.assertEqual(archive.read('cli'), b'bin/magicnet-cli')
+
     def test_release_zip_cannot_be_overwritten(self):
         self.archive()
         before = self.source.read_bytes()
