@@ -206,7 +206,6 @@ fn envelope(command: &str, data: Value) -> Value {
 fn capabilities_value() -> Value {
     envelope(
         "machine.capabilities",
-        "tailscale.status",
         json!({
             "machine_schema": MACHINE_SCHEMA,
             "commands": MACHINE_COMMANDS,
