@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import ts from './node_modules/typescript/lib/typescript.js';
-import { computed, ref } from 'vue';
+import { computed, ref, reactive } from 'vue';
 import { parseTailscaleControl, transitionConfirmed } from './src/components/pages/tailscaleControl.ts';
 const code = readFileSync(new URL('./src/components/pages/TailscaleControls.vue', import.meta.url), 'utf8')
  .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import[\s\S]*?;\s*$/gm,'');
@@ -11,7 +11,7 @@ const initial={enabled:true,resumable:false,logout_pending:false,local_identity:
 const tick=()=>new Promise(r=>setImmediate(r));
 function controls(options={}) {
  const calls=[],events=[],hooks={}; let backend={...initial,...options.backend};
- const props={disabled:false,online:true,hostname:'phone',refreshKey:''};
+ const props=reactive({disabled:false,online:true,hostname:'phone',refreshKey:''});
  const deps={computed,ref,watch:()=>{},defineProps:()=>props,defineEmits:()=>(name,value)=>events.push([name,value]),
   ...Object.fromEntries(['onMounted','onActivated','onDeactivated','onUnmounted'].map(name=>[name,fn=>hooks[name]=fn])),
   t:key=>key,parseTailscaleControl,transitionConfirmed,
