@@ -55,3 +55,22 @@ The first command exercises host-side archive and orchestration regressions, not
 Android. The second validates initial and upgrade JSON with an actual built core.
 Both commands are wired into the existing uncached harness/core-check steps.
 A full Android/KSU job is still required before concluding that #344 is resolved.
+
+## Stock-kernel KernelSU runtime
+
+The previous CI booted a third-party KernelSU GKI beside the SDK's current stock
+ramdisk/vendor modules. A real run exposed a `module_layout` version mismatch in
+`virtio_blk.ko`; Android repeatedly rebooted before userspace, so extending the
+boot timeout would only hide the incompatibility.
+
+The fixture now boots the unmodified SDK AVD kernel. After Android reports a new
+boot ID and completes userspace startup, the pinned official KernelSU v3.2.0
+x86_64 `ksud` checks `boot-info current-kmi` against its embedded
+`supported-kmis` and uses upstream `late-load`. Every subsequent reboot repeats
+that activation before MagicNet readiness assertions. KernelSU's late-load path
+owns `modules_update`, SELinux policy, service and boot-completed stages; the
+harness still does not manually move module directories or invoke
+`service.sh` as a substitute for lifecycle activation.
+
+This proves the real late-load LKM mode only. Built-in/early-boot KernelSU remains
+an explicit coverage gap.
