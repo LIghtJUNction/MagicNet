@@ -1,0 +1,33 @@
+name: Offline Review Bootstrap
+on:
+  push:
+    branches: [fix/subscription-lifecycle-ui-v1.5.15]
+    paths: [.github/workflows/offline-review-bootstrap.yml]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare source and public dependencies
+        run: |
+          set -eu
+          mkdir -p /tmp/subscription-review
+          git archive --format=tar.gz HEAD > /tmp/subscription-review/source.tar.gz
+          git rev-parse HEAD > /tmp/subscription-review/source-sha.txt
+          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box .kam/bases/hooks .kam/bases/workflows
+          tar -czf /tmp/subscription-review/submodules.tar.gz --exclude=.git src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box .kam/bases/hooks .kam/bases/workflows
+          (cd webui && npm ci --ignore-scripts)
+          tar -czf /tmp/subscription-review/node-modules.tar.gz webui/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subscription-state-review
+          path: /tmp/subscription-review/
+          retention-days: 1
