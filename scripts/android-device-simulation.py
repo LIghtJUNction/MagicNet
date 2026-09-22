@@ -226,6 +226,7 @@ class Device:
         self.serial = os.environ.get('ANDROID_SERIAL', '')
         require(re.fullmatch(r'emulator-[0-9]+', self.serial) is not None, 'explicit emulator serial required')
         self.verified = False
+        self.late_load_on_reboot = False
 
     def run(self, *args: str, timeout: float = 30, check: bool = True,
             input_text: str | None = None) -> subprocess.CompletedProcess:
@@ -283,6 +284,28 @@ class Device:
         self.root()
         self.shell(f'test ! -e {MOD} && test ! -e {STAGED}')
 
+    def late_load_kernelsu(self) -> dict:
+        require(self.verified, 'device identity not verified')
+        require(self.shell('getenforce').stdout.strip() == 'Enforcing',
+                'SELinux must be Enforcing before KernelSU late-load')
+        current = self.shell(KSUD + ' boot-info current-kmi', timeout=30).stdout.strip()
+        supported = self.shell(KSUD + ' boot-info supported-kmis', timeout=30).stdout.split()
+        require(bool(current) and current in supported,
+                'official KernelSU userspace does not embed this stock AVD KMI')
+        # v3.2.0 late-load loads the KMI-matched x86_64 kernelsu.ko, installs
+        # userspace, handles modules_update, then executes service/boot stages.
+        self.shell(KSUD + ' late-load', timeout=120)
+        version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
+        require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
+                'KernelSU late-load did not expose a positive kernel interface version')
+        self.shell(f'test -x {BB}')
+        require(self.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0',
+                'real KernelSU SELinux domain required after late-load')
+        require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
+                'KernelSU late-load changed SELinux enforcement')
+        self.late_load_on_reboot = True
+        return {'mode': 'late-load-lkm', 'kmi': current, 'kernel_version': version}
+
     def reboot(self):
         require(self.verified, 'device identity not verified')
         old = self.shell('cat /proc/sys/kernel/random/boot_id').stdout.strip()
@@ -291,6 +314,8 @@ class Device:
         self.wait_boot(previous=old)
         self.root()
         require(self.shell('getenforce').stdout.strip() == 'Enforcing', 'SELinux changed across reboot')
+        if self.late_load_on_reboot:
+            self.late_load_kernelsu()
 
     def ready(self, timeout: float = 90):
         deadline = time.monotonic() + timeout
@@ -349,10 +374,11 @@ class Report:
         rows = [cases.get(name, {'name': name, 'status': 'not_run', 'seconds': 0}) for name in PHASES]
         passed = all(row['status'] == 'passed' for row in rows)
         data = {'schema': 1, 'status': 'passed' if passed else 'failed',
-                'scope': 'Android-15-KernelSU-x86_64-standalone-TUN-fixture',
-                'not_tested': ['ARM64 execution', 'OEM kernels', 'Play/GMS login/download',
-                               'public proxy quality', 'eBPF dataplane', 'IPv6 packet forwarding',
-                               'eCapture execution', 'proxylink subscription parsing'],
+                'scope': 'Android-15-KernelSU-v3.2.0-late-load-x86_64-standalone-TUN-fixture',
+                'not_tested': ['KernelSU built-in/early-boot mode', 'ARM64 execution', 'OEM kernels',
+                               'Play/GMS login/download', 'public proxy quality', 'eBPF dataplane',
+                               'IPv6 packet forwarding', 'eCapture execution',
+                               'proxylink subscription parsing'],
                 'provenance': self.provenance, 'cases': rows}
         (self.out / 'simulation.json').write_text(json.dumps(data, indent=2) + '\n')
         suite = ET.Element('testsuite', name='Android KernelSU lifecycle', tests=str(len(rows)),
@@ -544,16 +570,8 @@ def main() -> int:
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
-                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD} && {KSUD} debug version')
-                device.shell(KSUD + ' install', timeout=90)
-                device.reboot()
-                device.shell(f'test -x {BB}')
-                require(device.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0', 'real KernelSU SELinux domain required')
-                require(device.kshell('getenforce').stdout.strip() == 'Enforcing', 'permissive KernelSU fixture rejected')
-                version = device.kshell(KSUD + ' debug version').stdout.strip()
-                require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
-                        'KernelSU kernel interface did not report a positive version')
-                report.provenance['kernelsu_version'] = version
+                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD}')
+                report.provenance['kernelsu'] = device.late_load_kernelsu()
                 device.run('install', '-t', '-r', os.environ['MAGICNET_NETWORK_PROBE_APK'], timeout=90)
             with report.phase('install-before-first-boot'):
                 device.run('push', str(archive), REMOTE + '/module.zip', timeout=120)
