@@ -135,6 +135,7 @@ check bash scripts/test-subscription-activation-order.sh
 check bash scripts/test-subscription-transaction-atomicity.sh
 check bash scripts/test-subscription-update-lock-safety.sh
 check bash scripts/test-subscription-transaction-journal-safety.sh
+check bash scripts/test-subscription-input-source-safety.sh
 check bash scripts/test-subscription-lifecycle.sh
 check bash scripts/test-subscription-stop-safety.sh
 check bash scripts/test-webui-build-cache.sh

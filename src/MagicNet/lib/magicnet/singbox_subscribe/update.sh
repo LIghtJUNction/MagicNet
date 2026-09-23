@@ -374,6 +374,53 @@ magicnet_singbox_transaction_reconcile() {
     unset _tx_generation _tx_restart_required _tx_policy_rc _tx_tmp _tx_work_tmp _tx_work_backup
 }
 
+# Official CLI/WebUI payload apply hands the shell an inherited
+# /proc/self/fd/<n> handle after unlinking the candidate inode. That
+# kernel path is always a symlink, so a blanket [ -L ] reject makes the
+# documented local-import entry unusable (issue #326). Named path
+# symlinks stay rejected to prevent TOCTOU replacement of the source.
+magicnet_singbox_input_source_is_self_fd() {
+    _self_fd_path="$1"
+    case "$_self_fd_path" in
+    /proc/self/fd/*) ;;
+    *)
+        unset _self_fd_path
+        return 1
+        ;;
+    esac
+    _self_fd="${_self_fd_path#/proc/self/fd/}"
+    case "$_self_fd" in
+    '' | *[!0-9]*)
+        unset _self_fd _self_fd_path
+        return 1
+        ;;
+    0) ;;
+    0*)
+        unset _self_fd _self_fd_path
+        return 1
+        ;;
+    esac
+    unset _self_fd _self_fd_path
+    return 0
+}
+
+magicnet_singbox_input_source_usable() {
+    _input_source="${1:-}"
+    [ -n "$_input_source" ] || return 1
+    if magicnet_singbox_input_source_is_self_fd "$_input_source"; then
+        [ -f "$_input_source" ] && [ -s "$_input_source" ]
+        _input_usable=$?
+        unset _input_source
+        return "$_input_usable"
+    fi
+    if [ -f "$_input_source" ] && [ -s "$_input_source" ] && [ ! -L "$_input_source" ]; then
+        unset _input_source
+        return 0
+    fi
+    unset _input_source
+    return 1
+}
+
 magicnet_singbox_transaction_begin_abort() {
     [ -n "${_tx_tmp:-}" ] && rm -rf "$_tx_tmp" 2>/dev/null || true
     unset _tx_dir _tx_tmp _tx_active_config _tx_active_work _tx_active_url _tx_active_local
@@ -394,8 +441,7 @@ magicnet_singbox_transaction_begin() {
     }
     # Validate the source and the rollback baseline before creating a journal
     # or touching a live generation. A failed recovery is not a valid baseline.
-    if [ ! -s "$_sub_input_source" ] || [ ! -f "$_sub_input_source" ] ||
-        [ -L "$_sub_input_source" ]; then
+    if ! magicnet_singbox_input_source_usable "$_sub_input_source"; then
         magicnet_singbox_transaction_begin_abort
         return 1
     fi
@@ -506,7 +552,8 @@ magicnet_singbox_transaction_begin() {
         export MAGICNET_SUB_URL_FILE
     fi
     if [ "$_sub_original_input_source" != "$_tx_active_url" ] &&
-        [ "$_sub_original_input_source" != "$_tx_active_local" ]; then
+        [ "$_sub_original_input_source" != "$_tx_active_local" ] &&
+        ! magicnet_singbox_input_source_is_self_fd "$_sub_original_input_source"; then
         rm -f "$_sub_original_input_source" 2>/dev/null || true
     fi
     unset _tx_dir _tx_tmp _tx_active_config _tx_active_work _tx_active_url _tx_active_local
