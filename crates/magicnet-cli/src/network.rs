@@ -200,9 +200,7 @@ pub(crate) fn ipv6_tun_cidr_valid(value: &str) -> bool {
             continue;
         }
         for group in half.split(':') {
-            if group.is_empty()
-                || group.len() > 4
-                || !group.chars().all(|c| c.is_ascii_hexdigit())
+            if group.is_empty() || group.len() > 4 || !group.chars().all(|c| c.is_ascii_hexdigit())
             {
                 return false;
             }
