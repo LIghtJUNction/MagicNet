@@ -30,6 +30,23 @@ magicnet_network_policy_value() {
     return 1
 }
 
+
+magicnet_dns_capture_policy_port() {
+    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-}"
+    [ -n "$_dns_capture_port" ] || _dns_capture_port="${MAGICNET_DNS_CAPTURE_PORT:-}"
+    [ -n "$_dns_capture_port" ] || _dns_capture_port="$(magicnet_network_policy_value MAGICNET_DNS_CAPTURE_PORT 2>/dev/null || true)"
+    case "$_dns_capture_port" in
+        ''|*[!0-9]*) _dns_capture_port=1053 ;;
+        *)
+            if [ "$_dns_capture_port" -lt 1 ] || [ "$_dns_capture_port" -gt 65535 ]; then
+                _dns_capture_port=1053
+            fi
+            ;;
+    esac
+    printf '%s\n' "$_dns_capture_port"
+    unset _dns_capture_port
+}
+
 magicnet_ipv6_mode() {
     _ipv6_mode="${MAGICNET_IPV6_MODE:-}"
     [ -n "$_ipv6_mode" ] || _ipv6_mode="$(magicnet_network_policy_value MAGICNET_IPV6_MODE 2>/dev/null || true)"
