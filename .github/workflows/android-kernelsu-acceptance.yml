@@ -56,10 +56,8 @@ env:
   AVD_NAME: MagicNet_API_35
   AVD_MEMORY: ${{ inputs.memory_mb || '2048' }}
   SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
-  KSU_CACHE: ${{ github.workspace }}/.cache/kernelsu-avd
+  KSU_RUNTIME: ${{ github.workspace }}/.ci/kernelsu-runtime
   KSU_RELEASE: v3.2.0
-  KSU_AVD_ARCHIVE: dist-A15-API35-6.6-x86_64-11987101-v320.zip
-  KSU_AVD_SHA256: ab52c00733ff08ee20a5822db68891a6bd0b43e5ee675dd4ffd8fe640ad1ccef
   KSUD_SHA256: db96b07ef42f6b9a84b5914d19c2f01608b1e10816fc28c0e84f07417d9bc062
   CARGO_NDK_VERSION: "4.1.2"
 
@@ -83,6 +81,7 @@ jobs:
       - name: Test simulation safety and workflow wiring
         run: |
           python3 scripts/test-android-device-simulation.py
+          python3 scripts/test-android-proxylink.py
           python3 scripts/test-android-simulation-workflow.py
           python3 scripts/test-android-acceptance-contract.py
           python3 scripts/test-android-avd-storage.py
@@ -265,8 +264,28 @@ jobs:
             "$RUNNER_TEMP/magicnet-x86-tools/jq" | sha256sum --check --strict
           GOBIN="$RUNNER_TEMP/magicnet-x86-tools" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go install github.com/mikefarah/yq/v4@v4.53.3
+          python3 scripts/build-android-proxylink.py "$RUNNER_TEMP/magicnet-x86-tools/proxylink"
+          # Match the production eCapture version with its Android x86_64 build.
+          # Never retain an ARM64 helper in an otherwise x86_64 fixture.
+          curl --fail --location --retry 3 --max-time 120 \
+            https://github.com/gojue/ecapture/releases/download/v2.5.2/ecapture-v2.5.2-android-amd64.tar.gz \
+            -o "$RUNNER_TEMP/ecapture-android-amd64.tar.gz"
+          printf '%s  %s\n' 904f8335b70ea42fe00070b1af107b8a6fadfcdc4697d990b64b4740922cde54 \
+            "$RUNNER_TEMP/ecapture-android-amd64.tar.gz" | sha256sum --check --strict
+          python3 - <<'PY_ECAPTURE'
+          import os, tarfile
+          from pathlib import Path, PurePosixPath
+          root = Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(root / 'ecapture-android-amd64.tar.gz') as archive:
+              members = [m for m in archive if PurePosixPath(m.name).name == 'ecapture']
+              if len(members) != 1 or not members[0].isfile() or not 0 < members[0].size < 100 * 1024 * 1024:
+                  raise RuntimeError('invalid eCapture release payload')
+              with archive.extractfile(members[0]) as stream:
+                  (root / 'magicnet-x86-tools/ecapture').write_bytes(stream.read())
+          PY_ECAPTURE
+          file "$RUNNER_TEMP/magicnet-x86-tools/ecapture" | grep -q 'x86-64'
           chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*
-          for tool in jq yq; do
+          for tool in jq yq proxylink; do
             file "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q 'x86-64'
             if readelf -l "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q INTERP; then
               echo "::error::$tool must not depend on a host-only ELF interpreter"
@@ -280,50 +299,22 @@ jobs:
           set -euo pipefail
           scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
-      - name: Restore KernelSU AVD assets
-        id: ksu-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
-
-      - name: Download and verify KernelSU AVD assets
-        if: steps.ksu-cache.outputs.cache-hit != 'true'
+      - name: Download and verify official KernelSU userspace
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$KSU_CACHE"
-          mkdir -p "$KSU_CACHE"
-          curl --fail --location --retry 4 --retry-all-errors --max-time 300 \
-            "https://github.com/leemikepop/avd-kernelsu-x86_64/releases/download/KernelSU-v3.2.0/$KSU_AVD_ARCHIVE" \
-            -o "$KSU_CACHE/$KSU_AVD_ARCHIVE"
-          printf '%s  %s\n' "$KSU_AVD_SHA256" "$KSU_CACHE/$KSU_AVD_ARCHIVE" | sha256sum --check --strict
+          rm -rf "$KSU_RUNTIME"
+          mkdir -p "$KSU_RUNTIME"
           curl --fail --location --retry 4 --retry-all-errors --max-time 180 \
             "https://github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/ksud-x86_64-linux-android" \
-            -o "$KSU_CACHE/ksud-x86_64-linux-android"
-          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
-
-      - name: Save KernelSU AVD assets
-        if: steps.ksu-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
-
-      - name: Verify cached KernelSU assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Verify bytes on cache hits too; never source an executable cache manifest.
-          printf '%s  %s\n' "$KSU_AVD_SHA256" "$KSU_CACHE/$KSU_AVD_ARCHIVE" | sha256sum --check --strict
-          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
-          kernel_dir="$RUNNER_TEMP/kernelsu-verified"
-          mkdir -p "$kernel_dir"
-          unzip -q "$KSU_CACHE/$KSU_AVD_ARCHIVE" -d "$kernel_dir"
-          kernel="$(find "$kernel_dir" -type f \( -name bzImage -o -name Image \) -print -quit)"
-          test -n "$kernel" && test -s "$kernel"
-          chmod 0755 "$KSU_CACHE/ksud-x86_64-linux-android"
-          printf 'KSU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
+            -o "$KSU_RUNTIME/ksud-x86_64-linux-android"
+          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_RUNTIME/ksud-x86_64-linux-android" | sha256sum --check --strict
+          file "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -q 'x86-64'
+          # ksud is an Android userspace binary. Executing it on the Ubuntu
+          # runner fails because its PT_INTERP is /system/bin/linker64; verify
+          # the target interpreter statically and execute it only inside the AVD.
+          readelf -l "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -Fq '/system/bin/linker64'
+          chmod 0755 "$KSU_RUNTIME/ksud-x86_64-linux-android"
 
       - name: Pin Android AVD storage
         shell: bash
@@ -342,7 +333,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v3-api35-google-apis-x86_64
+          key: android-avd-v4-api35-google-apis-x86_64-stock-late-load
 
       - name: Create pristine Android 15 AVD
         if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
@@ -373,7 +364,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v3-api35-google-apis-x86_64
+          key: android-avd-v4-api35-google-apis-x86_64-stock-late-load
 
       - name: Enable KVM
         shell: bash
@@ -386,14 +377,15 @@ jobs:
             exit 1
           fi
 
-      - name: Boot Android with KernelSU kernel
+      - name: Boot pristine Android 15 AVD
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/android-kernelsu
+          # Keep the stock AVD kernel and its stock vendor/ramdisk modules paired.
+          # KernelSU is loaded later through the official v3.2.0 LKM path.
           nohup emulator "@$AVD_NAME" \
             -port 5554 \
-            -kernel "$KSU_KERNEL" \
             -accel on \
             -no-window \
             -noaudio \
@@ -410,7 +402,7 @@ jobs:
         timeout-minutes: 25
         env:
           MAGICNET_DISPOSABLE_AVD: "1"
-          MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
+          MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
           MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools

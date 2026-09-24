@@ -70,6 +70,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "chain" => chain_cmd, "{status|enable|disable|set-upstream <tag>|set-exit <tag>|clear-upstream|clear-exit|mode <manual|auto>|select-upstream <tag>|select-exit <tag>}";
     "mode" => crate::webui_api::clash_mode_cmd, "[rule|global|direct]";
     "wifi" => wifi_cmd, "{status|enable|disable|mode <blacklist|whitelist>|interval <3-300>|add-ssid <ssid>|remove-ssid <ssid>|add-bssid <mac>|remove-bssid <mac>|check}";
+    "tailscale" => crate::tailscale_control::command, "{status|enable <revision>|disable <revision>|logout <revision>}";
     "hotspot" => hotspot_cmd, "{status|enable|disable|reconcile}";
     "route" => route_cmd, "{list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}";
     "dns" => dns_cmd, "{status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}";
@@ -127,6 +128,7 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
             | "dns" | "warp",
             "" | "status",
         ) => false,
+        ("tailscale", "" | "status") => false,
         ("network-access", "" | "status" | "inspect") => false,
         ("core", "selected") => false,
         ("ecapture", "" | "status" | "version" | "help") => false,
@@ -317,6 +319,8 @@ mod tests {
             "node current",
             "api groups",
             "api tailscale-status tailscale",
+            "tailscale status",
+            "--json tailscale status",
             "support bundle",
             "sysroute list",
             "sysroute snapshot",
@@ -345,6 +349,9 @@ mod tests {
     fn mutations_keep_post_command_reconciliation() {
         for text in [
             "service start",
+            "tailscale disable revision",
+            "tailscale enable revision",
+            "tailscale logout revision",
             "service ensure",
             "service stop",
             "service restart",

@@ -90,6 +90,32 @@ class ArchiveTests(unittest.TestCase):
                     self.assertEqual(result.getinfo(name).external_attr, original.getinfo(name).external_attr)
                     self.assertEqual(result.getinfo(name).date_time, original.getinfo(name).date_time)
 
+    def test_packaged_cli_alias_is_replaced_and_attested(self):
+        self.archive(self.entries | {'cli': self.entries['bin/magicnet-cli']})
+        manifest = self.build()
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read('cli'), self.replacements['bin/magicnet-cli'].read_bytes())
+            self.assertEqual(archive.read('bin/ecapture'), self.replacements['bin/ecapture'].read_bytes())
+        self.assertEqual(manifest['payload_sha256']['cli'], manifest['payload_sha256']['bin/magicnet-cli'])
+
+    def test_different_cli_elf_is_rejected_not_silently_replaced(self):
+        self.archive(self.entries | {'cli': elf(183) + b'not the CLI'})
+        with self.assertRaisesRegex(RuntimeError, 'unexpected CLI alias'):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_original_cli_symlink_is_preserved(self):
+        self.archive()
+        with zipfile.ZipFile(self.source, 'a') as archive:
+            item = zipfile.ZipInfo('cli')
+            item.create_system = 3
+            item.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(item, 'bin/magicnet-cli')
+        self.build()
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertTrue(stat.S_ISLNK(archive.getinfo('cli').external_attr >> 16))
+            self.assertEqual(archive.read('cli'), b'bin/magicnet-cli')
+
     def test_release_zip_cannot_be_overwritten(self):
         self.archive()
         before = self.source.read_bytes()
@@ -117,6 +143,15 @@ class ArchiveTests(unittest.TestCase):
         self.archive(self.entries | {'bin/forgotten-helper': elf(183)})
         with self.assertRaisesRegex(RuntimeError, 'unreplaced foreign ELF'):
             self.build()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.output.with_suffix('.zip.partial').exists())
+
+    def test_all_missing_architecture_replacements_are_reported_together(self):
+        self.archive(self.entries | {'bin/forgotten-a': elf(183), 'bin/forgotten-b': elf(183)})
+        with self.assertRaises(RuntimeError) as error:
+            self.build()
+        self.assertIn('bin/forgotten-a', str(error.exception))
+        self.assertIn('bin/forgotten-b', str(error.exception))
         self.assertFalse(self.output.exists())
         self.assertFalse(self.output.with_suffix('.zip.partial').exists())
 
@@ -255,6 +290,77 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(run.call_args.args, ('shell', '-T', SIM.KSUD + ' debug su'))
         self.assertIn('ASH_STANDALONE=1', run.call_args.kwargs['input_text'])
         self.assertIn("exec /data/adb/ksu/bin/busybox sh -c 'exit 17'", run.call_args.kwargs['input_text'])
+
+    def test_official_late_load_requires_matching_kmi_and_real_ksu_domain(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+        def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
+            calls.append(command)
+            values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
+                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\nandroid15-6.6\n',
+                SIM.KSUD + ' late-load': '',
+                SIM.KSUD + ' debug version': 'Kernel Version: 32389\n',
+                f'test -x {SIM.BB}': '',
+            }
+            return cp(values[command])
+        def kshell(command, **_):
+            return cp('u:r:ksu:s0\n' if command == 'id -Z' else 'Enforcing\n')
+        with patch.object(device, 'shell', side_effect=shell), patch.object(device, 'kshell', side_effect=kshell):
+            evidence = device.late_load_kernelsu()
+        self.assertEqual(evidence, {'mode': 'late-load-lkm', 'kmi': 'android15-6.6',
+                                    'kernel_version': 'Kernel Version: 32389'})
+        self.assertTrue(device.late_load_on_reboot)
+        self.assertIn(SIM.KSUD + ' late-load', calls)
+
+    def test_late_load_rejects_unsupported_kmi_before_loading(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+        def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
+            calls.append(command)
+            values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
+                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\n',
+            }
+            return cp(values[command])
+        with patch.object(device, 'shell', side_effect=shell), self.assertRaisesRegex(RuntimeError, 'does not embed'):
+            device.late_load_kernelsu()
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
+        self.assertFalse(device.late_load_on_reboot)
+
+    def test_reboot_reactivates_late_load_only_after_android_boot(self):
+        device = self.device()
+        device.verified = True
+        device.late_load_on_reboot = True
+        order = []
+        def shell(command, **_):
+            if command == 'cat /proc/sys/kernel/random/boot_id':
+                return cp(BOOT)
+            if command == 'getenforce':
+                return cp('Enforcing\n')
+            raise AssertionError(command)
+        with patch.object(device, 'shell', side_effect=shell), \
+             patch.object(device, 'run', return_value=cp()) as run, \
+             patch.object(device, 'wait_boot', side_effect=lambda **_: order.append('boot')), \
+             patch.object(device, 'root', side_effect=lambda: order.append('root')), \
+             patch.object(device, 'late_load_kernelsu',
+                          side_effect=lambda: order.append('late-load') or {}) as late:
+            device.reboot()
+        self.assertEqual(order, ['boot', 'root', 'late-load'])
+        self.assertEqual(run.call_args.args, ('reboot',))
+        late.assert_called_once_with()
 
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()

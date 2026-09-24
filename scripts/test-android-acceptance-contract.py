@@ -102,7 +102,7 @@ for package in requested:
 
     def test_sdk_bootstrap_precedes_all_android_consumers(self):
         names = [step.get("name") for step in self.steps]
-        for consumer in ("Build application-UID network probe", "Create pristine Android 15 AVD", "Boot Android with KernelSU kernel"):
+        for consumer in ("Build application-UID network probe", "Create pristine Android 15 AVD", "Boot pristine Android 15 AVD"):
             self.assertLess(names.index("Locate Android SDK tools"), names.index(consumer))
 
     def test_sdk_bootstrap_exports_all_tools_without_global_path_assumptions(self):

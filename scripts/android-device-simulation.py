@@ -2,7 +2,7 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-four ABI-specific executables and removes the build-only download caches already
+six ABI-specific executables (and the packaged CLI alias) and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -10,6 +10,7 @@ boot. No public proxy feed or subscription credential is used.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import importlib.util
 import json
@@ -32,7 +33,7 @@ REMOTE = '/sdcard/Download/MagicNet/ci-simulation'
 KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
-PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq', 'bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -83,7 +84,7 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly four ABI replacements are required')
+    require(set(replacements) == set(PAYLOADS), 'exactly six ABI replacements are required')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -104,7 +105,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
-            for item in entries:
+            foreign = []
+            for source_item in entries:
+                item = copy.copy(source_item)
                 parts = PurePosixPath(item.filename).parts
                 require(parts and not item.filename.startswith('/') and '..' not in parts
                         and '\\' not in item.filename and '\x00' not in item.filename
@@ -122,14 +125,23 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
                     continue
-                if item.filename in replacements:
+                replacement = item.filename
+                if item.filename == 'cli' and data.startswith(b'\x7fELF'):
+                    # KAM dereferences this symlink in the production ZIP. Only
+                    # accept the byte-identical CLI alias, not arbitrary ELFs.
+                    require(data == original.read('bin/magicnet-cli'), 'unexpected CLI alias payload')
+                    replacement = 'bin/magicnet-cli'
+                    manifest['payload_sha256']['cli'] = manifest['payload_sha256'][replacement]
+                if replacement in replacements:
                     require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
-                    data = replacements[item.filename].read_bytes()
+                    data = replacements[replacement].read_bytes()
                     item.create_system = 3
                     item.external_attr = (stat.S_IFREG | 0o755) << 16
                 elif data.startswith(b'\x7fELF'):
-                    require(elf_x86_64(data[:64]), f'unreplaced foreign ELF: {item.filename}')
+                    if not elf_x86_64(data[:64]):
+                        foreign.append(item.filename)
                 output.writestr(item, data)
+            require(not foreign, 'unreplaced foreign ELF: ' + ', '.join(sorted(foreign)))
             marker = zipfile.ZipInfo(PROVENANCE)
             marker.create_system = 3
             marker.external_attr = (stat.S_IFREG | 0o644) << 16
@@ -177,6 +189,7 @@ class Device:
         self.serial = os.environ.get('ANDROID_SERIAL', '')
         require(re.fullmatch(r'emulator-[0-9]+', self.serial) is not None, 'explicit emulator serial required')
         self.verified = False
+        self.late_load_on_reboot = False
 
     def run(self, *args: str, timeout: float = 30, check: bool = True,
             input_text: str | None = None) -> subprocess.CompletedProcess:
@@ -234,6 +247,34 @@ class Device:
         self.root()
         self.shell(f'test ! -e {MOD} && test ! -e {STAGED}')
 
+    def late_load_kernelsu(self) -> dict:
+        require(self.verified, 'device identity not verified')
+        require(self.shell('getenforce').stdout.strip() == 'Enforcing',
+                'SELinux must be Enforcing before KernelSU late-load')
+        # A pristine AVD has no KernelSU BusyBox yet. Use the official embedded
+        # asset, not a host binary or fake command, before boot-info/late-load.
+        self.shell('mkdir -p /data/adb/ksu/bin')
+        self.shell(KSUD + ' debug extract-binary busybox ' + BB, timeout=30)
+        self.shell(f'chmod 0755 {BB} && {BB} --install -s /data/adb/ksu/bin')
+        command = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD
+        current = self.shell(command + ' boot-info current-kmi', timeout=30).stdout.strip()
+        supported = self.shell(command + ' boot-info supported-kmis', timeout=30).stdout.split()
+        require(bool(current) and current in supported,
+                'official KernelSU userspace does not embed this stock AVD KMI')
+        # v3.2.0 late-load loads the KMI-matched x86_64 kernelsu.ko, installs
+        # userspace, handles modules_update, then executes service/boot stages.
+        self.shell(command + ' late-load', timeout=120)
+        version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
+        require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
+                'KernelSU late-load did not expose a positive kernel interface version')
+        self.shell(f'test -x {BB}')
+        require(self.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0',
+                'real KernelSU SELinux domain required after late-load')
+        require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
+                'KernelSU late-load changed SELinux enforcement')
+        self.late_load_on_reboot = True
+        return {'mode': 'late-load-lkm', 'kmi': current, 'kernel_version': version}
+
     def reboot(self):
         require(self.verified, 'device identity not verified')
         old = self.shell('cat /proc/sys/kernel/random/boot_id').stdout.strip()
@@ -242,6 +283,8 @@ class Device:
         self.wait_boot(previous=old)
         self.root()
         require(self.shell('getenforce').stdout.strip() == 'Enforcing', 'SELinux changed across reboot')
+        if self.late_load_on_reboot:
+            self.late_load_kernelsu()
 
     def ready(self, timeout: float = 90):
         deadline = time.monotonic() + timeout
@@ -300,7 +343,7 @@ class Report:
         rows = [cases.get(name, {'name': name, 'status': 'not_run', 'seconds': 0}) for name in PHASES]
         passed = all(row['status'] == 'passed' for row in rows)
         data = {'schema': 1, 'status': 'passed' if passed else 'failed',
-                'scope': 'Android-15-KernelSU-x86_64-standalone-TUN-fixture',
+                'scope': 'Android-15-KernelSU-v3.2.0-late-load-x86_64-standalone-TUN-fixture',
                 'not_tested': ['ARM64 execution', 'OEM kernels', 'Play/GMS login/download',
                                'public proxy quality', 'eBPF dataplane', 'IPv6 packet forwarding'],
                 'provenance': self.provenance, 'cases': rows}
@@ -390,23 +433,15 @@ def main() -> int:
                 keys = {'bin/magicnet-cli': 'MAGICNET_X86_CLI', 'bin/sing-box': 'MAGICNET_X86_SINGBOX'}
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
-                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq')})
+                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq', 'ecapture', 'proxylink')})
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
-                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD} && {KSUD} debug version')
-                device.shell(KSUD + ' install', timeout=90)
-                device.reboot()
-                device.shell(f'test -x {BB}')
-                require(device.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0', 'real KernelSU SELinux domain required')
-                require(device.kshell('getenforce').stdout.strip() == 'Enforcing', 'permissive KernelSU fixture rejected')
-                version = device.kshell(KSUD + ' debug version').stdout.strip()
-                require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
-                        'KernelSU kernel interface did not report a positive version')
-                report.provenance['kernelsu_version'] = version
+                device.shell(f'cp {REMOTE}/ksud {KSUD} && chmod 0755 {KSUD}')
+                report.provenance['kernelsu'] = device.late_load_kernelsu()
                 device.run('install', '-t', '-r', os.environ['MAGICNET_NETWORK_PROBE_APK'], timeout=90)
             with report.phase('install-before-first-boot'):
                 device.run('push', str(archive), REMOTE + '/module.zip', timeout=120)

@@ -781,17 +781,29 @@ fn tailscale_record(app: &App, config: Option<&Value>) -> StateRecord {
                 .count()
         })
         .unwrap_or(0);
-    let state = match count {
-        0 => "absent",
-        1 => "configured",
+    let paused = crate::tailscale_control::paused_state(app);
+    let state = match (&paused, count, config.is_some()) {
+        (_, _, false) => "unknown",
+        (Ok((_, true)), _, _) => "logout-pending",
+        (Ok((true, false)), 0, _) => "disabled",
+        (_, 0, _) => "absent",
+        (_, 1, _) => "configured",
         _ => "multiple",
     };
     StateRecord::new(Domain::Tailscale)
         .field("state", state)
         .field("endpoint_count", count.to_string())
+        .field(
+            "pause_state",
+            if paused.is_ok() { "known" } else { "unknown" },
+        )
+        .bool("resumable", paused.is_ok_and(|(resumable, _)| resumable))
         .bool(
             "auth_material",
-            regular_nonempty(&app.moddir.join(TAILSCALE_AUTH)),
+            fs::read_to_string(app.moddir.join(TAILSCALE_AUTH))
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                .is_some_and(|value| value.as_object().is_some_and(|keys| !keys.is_empty())),
         )
 }
 

@@ -57,6 +57,7 @@ mod selector_store;
 mod service;
 mod state;
 mod subscriptions;
+mod tailscale_control;
 #[cfg(test)]
 mod test_support;
 mod utils;

@@ -27,11 +27,12 @@ function page(options = {}) {
     inspectTailscale: () => configured,
     parseTailscaleLogin: text => JSON.parse(text),
     saveTailscale: async () => { calls.push('save'); return options.save ? options.save() : { saved: true, stage: 'done', snapshot: configured }; },
-    removeTailscale: async () => { calls.push('remove'); return { saved: true, stage: 'done', snapshot: { ...configured, configured: false } }; },
     TailscaleSetupError: class extends Error {},
   };
-  const make = new Function(...Object.keys(dependencies), compiled + '\nreturn {read,submit,disconnectTailscale,retryRestart,snapshot,hostname,edited,authKey,isOnline,loading,saving,confirmRemove,needsRestart,startLoginPolling};');
-  return { ...make(...Object.values(dependencies)), calls, lifecycle, document, listeners, timers, state };
+  const make = new Function(...Object.keys(dependencies), compiled + '\nreturn {read,submit,reloadAfterControl,retryRestart,snapshot,hostname,edited,authKey,isOnline,loading,saving,controlState,needsRestart,startLoginPolling};');
+  const instance = make(...Object.values(dependencies));
+  instance.controlState.value = {enabled:true,resumable:false,logout_pending:false,local_identity:true,core:'running',revision:'a'.repeat(64)};
+  return { ...instance, calls, lifecycle, document, listeners, timers, state };
 }
 
 test('existing browser login performs a read, not a config write or core restart', async () => {
@@ -71,11 +72,12 @@ test('a save completing after navigation does not restart polling or open author
   p.lifecycle.onDeactivated(); pending.resolve({ saved: true, stage: 'done', snapshot: configured }); await work;
   assert.deepEqual(p.calls, ['save']); assert.equal(p.snapshot.value, null); assert.equal(p.saving.value, false);
 });
-test('removal requires explicit confirmation and retries are limited to failed restarts', async () => {
-  const p = page(); p.snapshot.value = configured;
-  await p.disconnectTailscale(); await p.retryRestart(); assert.deepEqual(p.calls, []);
-  p.confirmRemove.value = true; await p.disconnectTailscale();
-  assert.deepEqual(p.calls, ['remove','refresh']); assert.equal(p.snapshot.value.configured, false); assert.equal(p.confirmRemove.value, false);
+test('lifecycle changes invalidate login polling and reload the real configuration', async () => {
+  const p = page(); p.snapshot.value = configured; p.isOnline.value = true;
+  p.authKey.value = 'private'; p.edited.value = true;
+  p.reloadAfterControl(); await tick();
+  assert.equal(p.authKey.value, ''); assert.equal(p.edited.value, false);
+  assert.equal(p.calls[0], 'config-editor get sing-box');
 });
 test('a failed status read produces unknown, never stale online success', async () => {
   const p = page({ read: () => ({ ok: false, stdout: '' }) }); p.snapshot.value = configured; p.isOnline.value = true;
