@@ -83,7 +83,7 @@ magicnet_singbox_apply_transparent_mode() {
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
     _tun_mtu="$(magicnet_tun_mtu)"
     _udp_timeout="$(magicnet_udp_timeout)"
-    _dns_capture_port="$(magicnet_dns_capture_port)"
+    _dns_capture_port="$(magicnet_dns_capture_policy_port)"
     _tun_inet="$(magicnet_tun_inet)"
     _tun_inet6="$(magicnet_tun_inet6)"
     _jq="${MODDIR}/bin/jq"
