@@ -296,8 +296,11 @@ jobs:
             -o "$KSU_RUNTIME/ksud-x86_64-linux-android"
           printf '%s  %s\n' "$KSUD_SHA256" "$KSU_RUNTIME/ksud-x86_64-linux-android" | sha256sum --check --strict
           file "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -q 'x86-64'
+          # ksud is an Android userspace binary. Executing it on the Ubuntu
+          # runner fails because its PT_INTERP is /system/bin/linker64; verify
+          # the target interpreter statically and execute it only inside the AVD.
+          readelf -l "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -Fq '/system/bin/linker64'
           chmod 0755 "$KSU_RUNTIME/ksud-x86_64-linux-android"
-          "$KSU_RUNTIME/ksud-x86_64-linux-android" --version
 
       - name: Pin Android AVD storage
         shell: bash
