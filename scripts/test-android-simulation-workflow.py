@@ -65,24 +65,30 @@ class WorkflowTests(unittest.TestCase):
                         names.index('Install and benchmark MagicNet in KernelSU AVD'))
         self.assertIn('android-public-benchmark', benchmark['env']['MAGICNET_ANDROID_REPORT_DIR'])
 
-    def test_only_pristine_vm_is_saved_and_cached_kernel_is_reverified(self):
+    def test_only_pristine_vm_is_cached_and_official_ksud_is_verified_fresh(self):
         names = [s.get('name') for s in self.steps]
-        boot = names.index('Boot Android with KernelSU kernel')
+        boot = names.index('Boot pristine Android 15 AVD')
         self.assertLess(names.index('Save pristine Android AVD'), boot)
         for step in self.steps[boot + 1:]:
             self.assertNotIn('actions/cache', step.get('uses', ''))
-        verify = self.step('Verify cached KernelSU assets')['run']
-        self.assertGreaterEqual(verify.count('sha256sum --check --strict'), 2)
-        self.assertNotRegex(verify, r'(?m)^\s*(?:source|\.)\s+')
-        self.assertNotIn('if', self.step('Verify cached KernelSU assets'))
+        download = self.step('Download and verify official KernelSU userspace')['run']
+        self.assertEqual(download.count('sha256sum --check --strict'), 1)
+        self.assertIn('github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/', download)
+        self.assertIn('ksud-x86_64-linux-android', download)
+        workflow_text = (WORKFLOWS / 'android-kernelsu-acceptance.yml').read_text()
+        for retired in ('KSU_KERNEL', 'KSU_AVD_ARCHIVE', 'KSU_AVD_SHA256',
+                        'leemikepop/avd-kernelsu-x86_64'):
+            self.assertNotIn(retired, workflow_text)
 
-    def test_exact_serial_kernel_and_enforcing_not_disabled(self):
+    def test_exact_serial_stock_kernel_and_enforcing_not_disabled(self):
         self.assertEqual(self.flow['env']['ANDROID_SERIAL'], 'emulator-5554')
-        boot = self.step('Boot Android with KernelSU kernel')['run']
+        boot = self.step('Boot pristine Android 15 AVD')['run']
         self.assertIn('-port 5554', boot)
-        self.assertIn('-kernel "$KSU_KERNEL"', boot)
+        self.assertNotRegex(boot, r'(?m)^\\s*-kernel(?:\\s|$)')
+        self.assertNotIn('KSU_KERNEL', boot)
         self.assertIn('-accel on', boot)
         self.assertIn('-no-snapshot-save', boot)
+        self.assertIn('-show-kernel', boot)
         self.assertNotIn('permissive', boot)
         self.assertNotIn('setenforce', boot)
 
