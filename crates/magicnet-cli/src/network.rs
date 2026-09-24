@@ -143,10 +143,7 @@ fn normalize_mtu(value: &str) -> Option<u16> {
 }
 
 pub(crate) fn normalize_dns_capture_port(value: &str) -> Option<u16> {
-    value
-        .parse::<u16>()
-        .ok()
-        .filter(|port| *port >= 1)
+    value.parse::<u16>().ok().filter(|port| *port >= 1)
 }
 
 pub(crate) fn ipv4_tun_cidr_valid(value: &str) -> bool {
@@ -203,7 +200,10 @@ pub(crate) fn ipv6_tun_cidr_valid(value: &str) -> bool {
             continue;
         }
         for group in half.split(':') {
-            if group.is_empty() || group.len() > 4 || !group.chars().all(|c| c.is_ascii_hexdigit()) {
+            if group.is_empty()
+                || group.len() > 4
+                || !group.chars().all(|c| c.is_ascii_hexdigit())
+            {
                 return false;
             }
             groups += 1;
