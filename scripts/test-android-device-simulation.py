@@ -291,6 +291,77 @@ class DeviceTests(unittest.TestCase):
         self.assertIn('ASH_STANDALONE=1', run.call_args.kwargs['input_text'])
         self.assertIn("exec /data/adb/ksu/bin/busybox sh -c 'exit 17'", run.call_args.kwargs['input_text'])
 
+    def test_official_late_load_requires_matching_kmi_and_real_ksu_domain(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+        def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
+            calls.append(command)
+            values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
+                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\nandroid15-6.6\n',
+                SIM.KSUD + ' late-load': '',
+                SIM.KSUD + ' debug version': 'Kernel Version: 32389\n',
+                f'test -x {SIM.BB}': '',
+            }
+            return cp(values[command])
+        def kshell(command, **_):
+            return cp('u:r:ksu:s0\n' if command == 'id -Z' else 'Enforcing\n')
+        with patch.object(device, 'shell', side_effect=shell), patch.object(device, 'kshell', side_effect=kshell):
+            evidence = device.late_load_kernelsu()
+        self.assertEqual(evidence, {'mode': 'late-load-lkm', 'kmi': 'android15-6.6',
+                                    'kernel_version': 'Kernel Version: 32389'})
+        self.assertTrue(device.late_load_on_reboot)
+        self.assertIn(SIM.KSUD + ' late-load', calls)
+
+    def test_late_load_rejects_unsupported_kmi_before_loading(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+        def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
+            calls.append(command)
+            values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
+                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\n',
+            }
+            return cp(values[command])
+        with patch.object(device, 'shell', side_effect=shell), self.assertRaisesRegex(RuntimeError, 'does not embed'):
+            device.late_load_kernelsu()
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
+        self.assertFalse(device.late_load_on_reboot)
+
+    def test_reboot_reactivates_late_load_only_after_android_boot(self):
+        device = self.device()
+        device.verified = True
+        device.late_load_on_reboot = True
+        order = []
+        def shell(command, **_):
+            if command == 'cat /proc/sys/kernel/random/boot_id':
+                return cp(BOOT)
+            if command == 'getenforce':
+                return cp('Enforcing\n')
+            raise AssertionError(command)
+        with patch.object(device, 'shell', side_effect=shell), \
+             patch.object(device, 'run', return_value=cp()) as run, \
+             patch.object(device, 'wait_boot', side_effect=lambda **_: order.append('boot')), \
+             patch.object(device, 'root', side_effect=lambda: order.append('root')), \
+             patch.object(device, 'late_load_kernelsu',
+                          side_effect=lambda: order.append('late-load') or {}) as late:
+            device.reboot()
+        self.assertEqual(order, ['boot', 'root', 'late-load'])
+        self.assertEqual(run.call_args.args, ('reboot',))
+        late.assert_called_once_with()
+
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()
         with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)), \
