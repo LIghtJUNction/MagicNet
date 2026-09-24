@@ -230,7 +230,9 @@ magicnet_dns_capture_enabled() {
 }
 
 magicnet_dns_capture_port() {
-    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-1053}"
+    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-}"
+    [ -n "$_dns_capture_port" ] || _dns_capture_port="${MAGICNET_DNS_CAPTURE_PORT:-}"
+    [ -n "$_dns_capture_port" ] || _dns_capture_port="$(magicnet_network_policy_value MAGICNET_DNS_CAPTURE_PORT 2>/dev/null || true)"
     case "$_dns_capture_port" in
     '' | *[!0-9]*) _dns_capture_port=1053 ;;
     *)
