@@ -2,6 +2,13 @@
 #
 # Shared Kamfw bootstrap for MagicNet entry scripts.
 
+# Inherited loader and shell hooks can execute attacker-controlled code
+# before MagicNet validates its runtime. Strip them at bootstrap.
+unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_DYNAMIC_WEAK
+unset LD_ORIGIN_PATH LD_PROFILE LD_SHOW_AUXV LD_TRACE_LOADED_OBJECTS
+unset LD_USE_LOAD_BIAS LD_VERBOSE LD_WARN
+unset ENV BASH_ENV CDPATH
+
 case "$0" in
     */*) MODDIR=${0%/*} ;;
     *) MODDIR=${MODDIR:-$(pwd)} ;;

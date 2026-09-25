@@ -417,6 +417,15 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
         (".config/magicnet/network-policy.conf", "MAGICNET_UDP_TIMEOUT") => {
             matches!(value, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
         }
+        (".config/magicnet/network-policy.conf", "MAGICNET_DNS_CAPTURE_PORT") => {
+            crate::network::normalize_dns_capture_port(value).is_some()
+        }
+        (".config/magicnet/network-policy.conf", "MAGICNET_TUN_INET") => {
+            crate::network::ipv4_tun_cidr_valid(value)
+        }
+        (".config/magicnet/network-policy.conf", "MAGICNET_TUN_INET6") => {
+            crate::network::ipv6_tun_cidr_valid(value)
+        }
         (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_ENABLED") => {
             matches!(value, "0" | "1")
         }
@@ -647,11 +656,25 @@ mod tests {
             network,
             "MAGICNET_IPV6_MODE=prefer_ipv4\nMAGICNET_TUN_MTU=1400\nMAGICNET_UDP_TIMEOUT=5m\n"
         ));
+        assert!(sourced_conf_content_matches_schema(
+            network,
+            concat!(
+                "MAGICNET_IPV6_MODE=prefer_ipv4\n",
+                "MAGICNET_TUN_MTU=1400\n",
+                "MAGICNET_UDP_TIMEOUT=5m\n",
+                "MAGICNET_DNS_CAPTURE_PORT=15353\n",
+                "MAGICNET_TUN_INET=172.20.0.1/30\n",
+                "MAGICNET_TUN_INET6=fdfe:dcba:9876::1/126\n"
+            )
+        ));
         for invalid in [
             "MAGICNET_IPV6_MODE=ipv6_only\n",
             "MAGICNET_TUN_MTU=1279\n",
             "MAGICNET_TUN_MTU=1501\n",
             "MAGICNET_UDP_TIMEOUT=1h\n",
+            "MAGICNET_DNS_CAPTURE_PORT=0\n",
+            "MAGICNET_TUN_INET=127.0.0.1/30\n",
+            "MAGICNET_TUN_INET6=fe80::1/64\n",
         ] {
             assert!(!sourced_conf_content_matches_schema(network, invalid));
         }

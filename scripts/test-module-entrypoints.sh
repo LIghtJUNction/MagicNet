@@ -23,6 +23,27 @@ printf '%s\n' 'import() { :; }' > "$fixture/lib/kamfw/.kamfwrc"
 
 MODDIR="$fixture" sh -c '. "$1"' entry-test "$ENTRY" || fail 'valid bootstrap fixture did not load'
 
+# Inherited loader/shell hooks must be stripped before Kamfw or MagicNet load.
+set +e
+output=$(
+    LD_PRELOAD=/tmp/evil.so \
+        LD_LIBRARY_PATH=/tmp/evil-lib \
+        BASH_ENV=/tmp/evil.rc \
+        ENV=/tmp/evil.rc \
+        CDPATH=/tmp \
+        MODDIR="$fixture" sh -c '
+            . "$1"
+            [ -z "${LD_PRELOAD+x}" ] || exit 11
+            [ -z "${LD_LIBRARY_PATH+x}" ] || exit 12
+            [ -z "${BASH_ENV+x}" ] || exit 13
+            [ -z "${ENV+x}" ] || exit 14
+            [ -z "${CDPATH+x}" ] || exit 15
+        ' entry-env "$ENTRY" 2>&1
+)
+status=$?
+set -e
+[[ "$status" -eq 0 ]] || fail "bootstrap did not strip inherited loader/shell hooks (status=$status output=$output)"
+
 rm -f "$fixture/lib/kamfw/.kamfwrc"
 set +e
 output=$(MODDIR="$fixture" sh -c '. "$1"' entry-test "$ENTRY" 2>&1)

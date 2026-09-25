@@ -230,7 +230,13 @@ magicnet_dns_capture_enabled() {
 }
 
 magicnet_dns_capture_port() {
-    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-1053}"
+    if command -v magicnet_dns_capture_policy_port >/dev/null 2>&1; then
+        magicnet_dns_capture_policy_port
+        return
+    fi
+    # network.sh is also sourced directly by host regression tests. Preserve a
+    # self-contained env/default fallback when the policy helper is not loaded.
+    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-${MAGICNET_DNS_CAPTURE_PORT:-1053}}"
     case "$_dns_capture_port" in
     '' | *[!0-9]*) _dns_capture_port=1053 ;;
     *)

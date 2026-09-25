@@ -9,18 +9,36 @@ magicnet_dns_capture_singbox_mark() {
     printf '%s\n' 1073741824
 }
 
+# Android runtime paths are module-owned. Inherited MAGICNET_LIB_DIR can
+# redirect privileged shell sourcing to an attacker-controlled tree.
+# MAGICNET_TEST_FORCE_ANDROID only tightens this check for host fixtures.
+magicnet_android_runtime() {
+    [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]
+}
+
 magicnet_lib_dir() {
-    if [ -n "${MAGICNET_LIB_DIR:-}" ]; then
-        printf '%s\n' "$MAGICNET_LIB_DIR"
-    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
-        printf '%s\n' "${MODDIR}/lib/magicnet"
+    _requested="${MAGICNET_LIB_DIR:-}"
+    _module_lib="${MODDIR}/lib/magicnet"
+    if [ -n "$_requested" ]; then
+        if ! magicnet_android_runtime || [ "$_requested" = "$_module_lib" ]; then
+            printf '%s\n' "$_requested"
+            unset _requested _module_lib
+            return
+        fi
+    fi
+    unset _requested
+    if [ -f "${_module_lib}/primitives.sh" ]; then
+        printf '%s\n' "$_module_lib"
     elif [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        unset _module_lib
         # BASH_SOURCE is guarded by the Bash-only branch above.
         # shellcheck disable=SC3054
         cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+        return
     else
-        printf '%s\n' "${MODDIR}/lib/magicnet"
+        printf '%s\n' "$_module_lib"
     fi
+    unset _module_lib
 }
 
 magicnet_source_primitives() {
