@@ -1,0 +1,195 @@
+# shellcheck shell=ash
+##########################################################################################
+#
+# KAM framework- Cross-Root Manager Utility Library
+# 跨 Root 管理器工具框架--模块开发辅助库
+#
+##########################################################################################
+
+export MODDIR=${MODPATH:-${MODDIR:-${1:-${0%/*}}}}
+. "${MODDIR}/.config/kamfw/.envrc"
+if [ -d "${MODDIR}/.config/kamfw/env.d" ]; then
+    for _kamfw_rcfile in "${MODDIR}/.config/kamfw/env.d/"*.envrc; do
+        [ -r "$_kamfw_rcfile" ] || continue
+        . "$_kamfw_rcfile"
+    done
+fi
+
+# NOTE: persisted language override is intentionally NOT sourced here.
+# The `lang` helper (lib/kamfw/lang.sh) will source `${KAMFW_DIR}/.kamfw_lang`
+# when necessary (so that loading environment files has a single, well-defined place).
+# =============================================================================
+# 实验区域
+# =============================================================================
+
+
+# =============================================================================
+# 基础函数
+# =============================================================================
+
+[ -t 1 ] && export IS_TTY=true ||export IS_TTY=false
+
+# terminal print (tty)
+tprint() {
+    $IS_TTY && printf '%s\n' "$*"
+}
+
+# GUI print (not tty)
+gprint() {
+    $IS_TTY || printf '%s\n' "$*"
+}
+
+# ui_print plus
+print() {
+    if [ "${BOOTMODE:-true}" = "true" ]; then
+        printf '%s\n' "$1"
+    elif [ -e "/proc/self/fd/${OUTFD:-}" ]; then
+        printf 'ui_print %s\nui_print\n' "$1" >&"$OUTFD"
+    fi
+}
+
+has_command() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# 换行符变量
+NL='
+'
+
+# =============================================================================
+# 内部API
+# =============================================================================
+
+_kamfw_load () {
+    _kamfw_load_name=$1
+
+    _kamfw_load_path=${KAMFW_DIR}/$1.sh
+    case " ${KAM_MODULES} " in
+        *" ${_kamfw_load_name} "*)
+            return 0
+            ;;
+    esac
+
+    if [ -f "$_kamfw_load_path" ]; then
+        . "$_kamfw_load_path"
+        KAM_MODULES="${KAM_MODULES:-} ${_kamfw_load_name}"
+    else
+        print "Error: Module '$1' not found"
+        return 1
+    fi
+}
+
+_kamfw_list () {
+    print "Available modules:"
+    for module in ${KAM_MODULES}; do
+        print "  $module"
+    done
+}
+
+_kamfw_help () {
+    print "Usage: kamfw <command>"
+    print "Commands:"
+    print "  load <module>"
+    print "  unload <module>"
+    print "  list"
+    print "  help"
+}
+
+# =============================================================================
+# 工具加载库
+# =============================================================================
+
+kamfw() {
+    # 指令：
+    # load 加载子模块
+    # unload 卸载子模块
+    # list 列出所有子模块
+    # help 显示帮助信息
+    case "$1" in
+        load)
+            shift
+            _kamfw_load "$@"
+            ;;
+        list)
+            _kamfw_list
+            ;;
+        *)
+            _kamfw_help
+            ;;
+
+    esac
+}
+
+import() { _kamfw_load "$@"; }
+
+[ -t 0 ] && alias import='_kamfw_load'
+
+# =============================================================================
+# INIT
+# =============================================================================
+
+import i18n
+import base
+import logging
+import kam
+
+ui_print() {
+    print "$@"
+}
+
+if ! has_command "abort"; then
+    abort() {
+        print "ERROR: $1"
+        exit 1
+    }
+fi
+
+if ! has_command "set_perm"; then
+    set_perm() {
+        [ $# -lt 4 ] && abort "set_perm needs at least 4 arguments"
+        [ -e "$1" ] || abort "set_perm: Target '$1' not found"
+
+        _target=$1; _owner=$2; _grp=$3; _perm=$4; _con=${5:-u:object_r:system_file:s0}
+
+        chown "$_owner:$_grp" "$_target"
+        chmod "$_perm" "$_target"
+
+        if has_command chcon; then
+            chcon "$_con" "$_target" 2>/dev/null || true
+        elif has_command restorecon; then
+            restorecon "$_target"
+        fi
+    }
+fi
+
+if ! has_command "set_perm_recursive"; then
+    set_perm_recursive() {
+        [ $# -lt 5 ] && abort "set_perm_recursive needs at least 5 arguments"
+        [ -d "$1" ] || abort "set_perm_recursive: Dir '$1' not found"
+
+        _dir=$1; _owner=$2; _grp=$3; _dperm=$4; _fperm=$5; _con=${6:-u:object_r:system_file:s0}
+
+        chown -R "$_owner:$_grp" "$_dir"
+        find "$_dir" -type d -exec chmod "$_dperm" {} +
+        find "$_dir" -type f -exec chmod "$_fperm" {} +
+
+        if has_command chcon; then
+            chcon -R "$_con" "$_dir" 2>/dev/null || true
+        elif has_command restorecon; then
+            restorecon -R "$_dir"
+        fi
+    }
+fi
+# ui_print <msg>
+#     Print message to console. Avoid 'echo'.
+#
+# abort <msg>
+#     Print error message and terminate installation.
+#
+# set_perm <target> <owner> <group> <permission> [context]
+#     Set permissions for a file.
+#     Default context: "u:object_r:system_file:s0"
+#
+# set_perm_recursive <dir> <owner> <group> <dirperm> <fileperm> [context]
+#     Recursively set permissions for a directory.
+#     Default context: "u:object_r:system_file:s0"

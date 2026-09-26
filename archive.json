@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "source_repository": "MemDeco-WG/kamfw",
+  "source_commit": "35b2284c08446f6e22447a63d7c3331619e2e854",
+  "source_tree": "e615227fb77f8ce1bb4cb90c83e794d4de7ee56d",
+  "files": 43,
+  "bytes": 211961,
+  "scope": "byte-identical tracked source snapshot, including license; not upstream history or a runtime backup",
+  "upstream_modified": false
+}
