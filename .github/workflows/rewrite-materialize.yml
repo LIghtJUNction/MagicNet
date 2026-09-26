@@ -1,4 +1,4 @@
-name: Materialize Reviewed Rewrite Repair
+name: Preserve Pinned kamfw Source
 on:
   push:
     branches: ['work/rewrite-transfer-20260926']
@@ -6,232 +6,65 @@ on:
 permissions:
   contents: write
 jobs:
-  materialize:
+  archive:
     if: github.repository == 'LIghtJUNction/MagicNet' && github.ref == 'refs/heads/work/rewrite-transfer-20260926'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Read exact public framework revision without executing its code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          repository: MemDeco-WG/kamfw
+          ref: 35b2284c08446f6e22447a63d7c3331619e2e854
           persist-credentials: false
-      - name: Apply reviewed patch without moving repository refs
+          fetch-depth: 1
+          submodules: false
+      - name: Copy verified Git objects into the owner's archive repository
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
-          def git(*args):
-              return subprocess.check_output(['git', *args])
-          patch = r'''diff --git a/scripts/android-device-simulation.py b/scripts/android-device-simulation.py
-          index 399396d..12cf61f 100644
-          --- a/scripts/android-device-simulation.py
-          +++ b/scripts/android-device-simulation.py
-          @@ -10,6 +10,7 @@ boot. No public proxy feed or subscription credential is used.
-           from __future__ import annotations
-           
-           import contextlib
-          +import copy
-           import hashlib
-           import importlib.util
-           import json
-          @@ -91,7 +92,8 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
-                           'production_zip_sha256': digest(source),
-                           'source_sha': os.environ.get('GITHUB_SHA', 'local'),
-                           'payload_sha256': {name: digest(path) for name, path in replacements.items()},
-          -                'excluded_build_cache_sha256': {}}
-          +                'excluded_build_cache_sha256': {},
-          +                'replaced_aliases': {}}
-               # Write atomically; failed fixture preparation must not leave a usable ZIP.
-               destination.parent.mkdir(parents=True, exist_ok=True)
-               tmp = destination.with_name(destination.name + '.partial')
-          @@ -104,7 +106,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
-                       require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
-                       require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
-                       require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
-          -            for item in entries:
-          +            for source_item in entries:
-          +                # writestr mutates ZipInfo offsets; never alter input metadata.
-          +                item = copy.copy(source_item)
-                           parts = PurePosixPath(item.filename).parts
-                           require(parts and not item.filename.startswith('/') and '..' not in parts
-                                   and '\\' not in item.filename and '\x00' not in item.filename
-          @@ -122,7 +126,24 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
-                               require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
-                               manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
-                               continue
-          -                if item.filename in replacements:
-          +                if item.filename == 'cli' and data.startswith(b'\x7fELF'):
-          +                    # Some ZIP producers dereference cli -> bin/magicnet-cli.
-          +                    # Only a byte-identical alias of the original CLI can be
-          +                    # rebound; a different ELF is not an alias and must fail.
-          +                    require(not stat.S_ISLNK(mode), 'CLI alias must not disguise an ELF as a link')
-          +                    require(data == original.read('bin/magicnet-cli'),
-          +                            'CLI alias differs from canonical payload')
-          +                    manifest['replaced_aliases']['cli'] = {
-          +                        'target': 'bin/magicnet-cli',
-          +                        'original_sha256': hashlib.sha256(data).hexdigest(),
-          +                        'replacement_sha256': manifest['payload_sha256']['bin/magicnet-cli'],
-          +                    }
-          +                    data = replacements['bin/magicnet-cli'].read_bytes()
-          +                    item.create_system = 3
-          +                    item.external_attr = (stat.S_IFREG | 0o755) << 16
-          +                elif item.filename == 'cli' and stat.S_ISLNK(mode):
-          +                    require(data == b'bin/magicnet-cli', 'CLI alias has an unexpected link target')
-          +                elif item.filename in replacements:
-                               require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
-                               data = replacements[item.filename].read_bytes()
-                               item.create_system = 3
-          diff --git a/scripts/fake-magisk-smoke.sh b/scripts/fake-magisk-smoke.sh
-          index bf19c91..0bc9532 100755
-          --- a/scripts/fake-magisk-smoke.sh
-          +++ b/scripts/fake-magisk-smoke.sh
-          @@ -177,6 +177,7 @@ SH
-               export MODDIR
-               export BOOTMODE=true
-               export MAGICNET_NONINTERACTIVE=1
-          +    export MAGICNET_CACHE_ROOT="$TMP/cache"
-               export TMPDIR="$TMP/tmp"
-               mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
-               if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
-          @@ -423,6 +424,7 @@ exit 0
-           write_mock curl '
-           out=""
-           url=""
-          +headers=""
-           write_out=""
-           while [[ $# -gt 0 ]]; do
-               case "$1" in
-          @@ -430,11 +432,15 @@ while [[ $# -gt 0 ]]; do
-                       out="${2:-}"
-                       shift 2
-                       ;;
-          +        -D|--dump-header)
-          +            headers="${2:-}"
-          +            shift 2
-          +            ;;
-                   -w|--write-out)
-                       write_out="${2:-}"
-                       shift 2
-                       ;;
-          -        -x|--max-time|--connect-timeout|-H|--data|--data-binary)
-          +        -x|--max-time|--connect-timeout|-H|--data|--data-binary|--noproxy|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|--user-agent)
-                       shift 2
-                       ;;
-                   --*)
-          @@ -456,6 +462,11 @@ render_http_metrics() {
-               local total="$4"
-               local rendered="$write_out"
-               rendered="${rendered//\%\{http_code\}/$code}"
-          +    rendered="${rendered//\%\{redirect_url\}/}"
-          +    rendered="${rendered//\%\{time_namelookup\}/0.001}"
-          +    rendered="${rendered//\%\{time_appconnect\}/0.015}"
-          +    rendered="${rendered//\%\{size_download\}/128}"
-          +    rendered="${rendered//\%\{num_redirects\}/0}"
-               rendered="${rendered//\%\{time_connect\}/$connect}"
-               rendered="${rendered//\%\{time_starttransfer\}/$start}"
-               rendered="${rendered//\%\{time_total\}/$total}"
-          @@ -469,6 +480,9 @@ if [[ -n "${MAGICNET_FAKE_CURL_HTTP_CODE_URL:-}" && "$url" == "$MAGICNET_FAKE_CU
-               [[ -z "$write_out" ]] || render_http_metrics "${MAGICNET_FAKE_CURL_HTTP_CODE:-429}" 0.010 0.020 0.030
-               exit 0
-           fi
-          +if [[ -n "$headers" ]]; then
-          +    printf "HTTP/1.1 200 OK\r\nContent-Type: application/yaml\r\n\r\n" >"$headers"
-          +fi
-           case "$url" in
-               http://127.0.0.1:9090/version)
-                   printf "%s\n" "{\"version\":\"fake\"}"
-          @@ -510,6 +524,7 @@ if [[ -n "$out" ]]; then
-               else
-                   emit_subscription_fixture >"$out"
-               fi
-          +    [[ -z "$write_out" ]] || render_http_metrics 200 0.010 0.020 0.030
-               exit 0
-           fi
-           printf "%s\n" "{}"
-          diff --git a/scripts/test-android-device-simulation.py b/scripts/test-android-device-simulation.py
-          index bd34832..c8eaa1f 100644
-          --- a/scripts/test-android-device-simulation.py
-          +++ b/scripts/test-android-device-simulation.py
-          @@ -120,6 +120,40 @@ class ArchiveTests(unittest.TestCase):
-                   self.assertFalse(self.output.exists())
-                   self.assertFalse(self.output.with_suffix('.zip.partial').exists())
-           
-          +    def test_dereferenced_cli_alias_uses_same_replacement_and_records_provenance(self):
-          +        self.archive(self.entries | {'cli': self.entries['bin/magicnet-cli']})
-          +        manifest = self.build()
-          +        with zipfile.ZipFile(self.output) as result:
-          +            self.assertEqual(result.read('cli'), result.read('bin/magicnet-cli'))
-          +            self.assertTrue(SIM.elf_x86_64(result.read('cli')))
-          +        self.assertEqual(manifest['replaced_aliases']['cli']['target'], 'bin/magicnet-cli')
-          +        self.assertEqual(manifest['replaced_aliases']['cli']['replacement_sha256'],
-          +                         manifest['payload_sha256']['bin/magicnet-cli'])
-          +
-          +    def test_different_cli_binary_cannot_be_silently_rebound(self):
-          +        self.archive(self.entries | {'cli': elf(183) + b'unrelated'})
-          +        with self.assertRaisesRegex(RuntimeError, 'differs from canonical'):
-          +            self.build()
-          +        self.assertFalse(self.output.exists())
-          +
-          +    def test_real_cli_symlink_is_preserved_but_wrong_target_is_rejected(self):
-          +        for target, accepted in ((b'bin/magicnet-cli', True), (b'../foreign', False)):
-          +            with self.subTest(target=target):
-          +                self.archive()
-          +                with zipfile.ZipFile(self.source, 'a') as stream:
-          +                    item = zipfile.ZipInfo('cli')
-          +                    item.create_system = 3
-          +                    item.external_attr = (stat.S_IFLNK | 0o777) << 16
-          +                    stream.writestr(item, target)
-          +                if accepted:
-          +                    self.build()
-          +                    with zipfile.ZipFile(self.output) as result:
-          +                        self.assertEqual(result.read('cli'), target)
-          +                        self.assertTrue(stat.S_ISLNK(result.getinfo('cli').external_attr >> 16))
-          +                else:
-          +                    with self.assertRaisesRegex(RuntimeError, 'unexpected link target'):
-          +                        self.build()
-          +
-               def test_path_traversal_and_ambiguous_members_rejected(self):
-                   for name in ('../outside', '/absolute', 'bin/../outside', 'bin\\outside',
-                                'bin//outside', 'bin/./outside', 'C:/outside'):
-          '''.encode()
-          assert hashlib.sha256(patch).hexdigest() == '79b572f37390ce4086a9f351a36058b1f5ca196474acb8928b41dd9e0acc4e77'
-          artifact = pathlib.Path(os.environ['RUNNER_TEMP'])/'rewrite-objects'
-          artifact.mkdir()
-          patch_path = artifact/'reviewed.patch'
-          patch_path.write_bytes(patch)
-          subprocess.run(['git','apply','--index','--whitespace=error-all',str(patch_path)],check=True)
-          helper = '.github/workflows/rewrite-materialize.yml'
-          subprocess.run(['git','rm','--',helper],check=True)
-          expected = {helper,'scripts/android-device-simulation.py','scripts/fake-magisk-smoke.sh','scripts/test-android-device-simulation.py'}
-          changes = set(git('diff','--cached','--name-only','-z').decode().rstrip('\0').split('\0'))
-          assert changes == expected
-          subprocess.run(['python3','scripts/test-android-device-simulation.py'],check=True)
-          subprocess.run(['bash','-n','scripts/fake-magisk-smoke.sh'],check=True)
-          base = 'https://api.github.com/repos/LIghtJUNction/MagicNet'
-          def api(path, data=None):
-              request = urllib.request.Request(base+path, data=None if data is None else json.dumps(data).encode(), headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},method='GET' if data is None else 'POST')
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          def git(*args): return subprocess.check_output(['git',*args])
+          revision='35b2284c08446f6e22447a63d7c3331619e2e854'
+          expected_tree='e615227fb77f8ce1bb4cb90c83e794d4de7ee56d'
+          assert git('rev-parse','HEAD').decode().strip()==revision
+          assert git('rev-parse','HEAD^{tree}').decode().strip()==expected_tree
+          base='https://api.github.com/repos/LIghtJUNction/MagicNet'
+          def api(path,data):
+              request=urllib.request.Request(base+path,data=json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
               with urllib.request.urlopen(request,timeout=30) as response: return json.load(response)
-          parent = git('rev-parse','HEAD').decode().strip()
-          tree = []
-          for path in sorted(changes):
-              if path == helper:
-                  tree.append({'path':path,'mode':'100644','type':'blob','sha':None})
-                  continue
-              staged = git('show',':'+path)
-              blob = api('/git/blobs',{'content':base64.b64encode(staged).decode(),'encoding':'base64'})
-              assert blob['sha'] == hashlib.sha1(b'blob '+str(len(staged)).encode()+b'\0'+staged).hexdigest()
-              mode = git('ls-files','--stage','--',path).decode().split()[0]
-              tree.append({'path':path,'mode':mode,'type':'blob','sha':blob['sha']})
-          tree_sha = api('/git/trees',{'base_tree':api('/git/commits/'+parent)['tree']['sha'],'tree':tree})['sha']
-          assert tree_sha == git('write-tree').decode().strip()
-          commit = api('/git/commits',{'message':'test: repair exact curl response and x86_64 CLI alias fixtures\n\nPreserve all assertions and reject nonidentical executable aliases. No production network validation is weakened.','tree':tree_sha,'parents':[parent]})['sha']
-          (artifact/'result.json').write_text(json.dumps({'schema':1,'parent':parent,'commit':commit,'tree':tree_sha,'patch_sha256':hashlib.sha256(patch).hexdigest(),'paths':sorted(changes)},indent=2)+'\n')
-          print('Created reviewed Git objects; repository refs are unchanged.')
+          tree=[]; total=0; seen=set()
+          records=[item for item in git('ls-files','-s','-z').split(b'\0') if item]
+          assert 0 < len(records) <= 512
+          for record in records:
+              metadata,raw_path=record.split(b'\t',1)
+              mode,source_sha,stage=metadata.decode().split()
+              path=raw_path.decode(); parts=pathlib.PurePosixPath(path)
+              assert stage=='0' and mode in ('100644','100755','120000')
+              assert not parts.is_absolute() and '..' not in parts.parts and '.git' not in parts.parts
+              assert parts.name!='.env' and not (parts.name.startswith('.env.') and parts.name!='.env.example')
+              data=git('cat-file','blob',source_sha)
+              total+=len(data)
+              assert len(data)<=2*1024*1024 and total<=16*1024*1024
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==source_sha
+              if source_sha not in seen:
+                  uploaded=api('/git/blobs',{'content':base64.b64encode(data).decode(),'encoding':'base64'})['sha']
+                  assert uploaded==source_sha
+                  seen.add(source_sha)
+              tree.append({'path':path,'mode':mode,'type':'blob','sha':source_sha})
+          copied=api('/git/trees',{'tree':tree})['sha']
+          assert copied==expected_tree
+          manifest={'schema':1,'source_repository':'MemDeco-WG/kamfw','source_commit':revision,'source_tree':copied,'files':len(records),'bytes':total,'scope':'byte-identical tracked source snapshot, including license; not upstream history or a runtime backup','upstream_modified':False}
+          blob=api('/git/blobs',{'content':json.dumps(manifest,indent=2)+'\n','encoding':'utf-8'})['sha']
+          root=api('/git/trees',{'tree':[{'path':'kamfw','mode':'040000','type':'tree','sha':copied},{'path':'archive.json','mode':'100644','type':'blob','sha':blob}]})['sha']
+          commit=api('/git/commits',{'message':'archive: preserve pinned kamfw source and license\n\nSource: MemDeco-WG/kamfw@'+revision+'\nCopied source tree: '+copied+'\nNo upstream repository or production branch is modified.','tree':root,'parents':[]})['sha']
+          output=pathlib.Path(os.environ['RUNNER_TEMP'])/'kamfw-archive'; output.mkdir()
+          (output/'result.json').write_text(json.dumps({'schema':1,'commit':commit,'tree':root,'source':manifest,'refs_updated':False},indent=2)+'\n')
+          print('Pinned source copied with identical Git tree; archive ref is not yet created.')
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: reviewed-rewrite-objects
-          path: ${{ runner.temp }}/rewrite-objects/
-          retention-days: 2
+          name: kamfw-archive-provenance
+          path: ${{ runner.temp }}/kamfw-archive/
+          retention-days: 3
