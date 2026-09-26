@@ -56,21 +56,22 @@ Android. The second validates initial and upgrade JSON with an actual built core
 Both commands are wired into the existing uncached harness/core-check steps.
 A full Android/KSU job is still required before concluding that #344 is resolved.
 
-## Stock-kernel KernelSU runtime
+## Pinned KernelSU x86_64 AVD kernel
 
-The previous CI booted a third-party KernelSU GKI beside the SDK's current stock
-ramdisk/vendor modules. A real run exposed a `module_layout` version mismatch in
-`virtio_blk.ko`; Android repeatedly rebooted before userspace, so extending the
-boot timeout would only hide the incompatibility.
+An earlier CI revision mixed a KernelSU GKI with an SDK image whose vendor
+modules were built for a different kernel and exposed a real `module_layout`
+mismatch. Replacing that with a stock-kernel LKM late-load also proved invalid:
+KernelSU v3.2.0 x86_64 requires kernel-side syscall-hardening compatibility
+patches, so an arbitrary stock AVD kernel is not a valid late-load target.
 
-The fixture now boots the unmodified SDK AVD kernel. After Android reports a new
-boot ID and completes userspace startup, the pinned official KernelSU v3.2.0
-x86_64 `ksud` checks `boot-info current-kmi` against its embedded
-`supported-kmis` and uses upstream `late-load`. Every subsequent reboot repeats
-that activation before MagicNet readiness assertions. KernelSU's late-load path
-owns `modules_update`, SELinux policy, service and boot-completed stages; the
-harness still does not manually move module directories or invoke
-`service.sh` as a substitute for lifecycle activation.
+The fixture now downloads the API35/6.6 x86_64 KernelSU v3.2.0 kernel built for
+Android CI build 11987101, verifies the release archive SHA-256 and its
+`build-info.txt`, then boots the emulator with that pinned `bzImage`. Official
+`ksud` verifies that a positive KernelSU kernel interface already exists before
+running upstream `late-load` to initialize userspace, `modules_update`, SELinux
+policy, service and boot-completed stages. Every reboot repeats only this
+userspace lifecycle activation; the harness never injects an LKM into the stock
+kernel or manually substitutes `service.sh` for KernelSU lifecycle ownership.
 
-This proves the real late-load LKM mode only. Built-in/early-boot KernelSU remains
-an explicit coverage gap.
+This proves the pinned API35 x86_64 KernelSU-kernel path. Stock-kernel LKM
+injection, ARM64 and OEM kernels remain explicit coverage gaps.
