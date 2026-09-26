@@ -66,6 +66,38 @@ class CliContract(unittest.TestCase):
         nodes = json.loads((self.root / '.config/nodes/local.json').read_text())
         self.assertEqual(nodes[0]['password'], '$(touch /tmp/no);"\\')
 
+    def test_share_links_and_base64_feeds_reach_real_decoder(self):
+        self.initialize()
+        body = 'trojan://p%40ss%2B%E6%97%A5@[2001:db8::1]:443?sni=edge.test#日本😀\ninvalid://row'
+        for revision, document in enumerate((body, base64.urlsafe_b64encode(body.encode()).decode().rstrip('='))):
+            reply = self.rpc(self.request('sources.import', {'body': document}, revision))
+            self.assertTrue(reply['ok'], reply)
+            self.assertEqual(reply['data']['nodes'], 1)
+            self.assertEqual(reply['data']['rejected'], 1)
+            nodes = json.loads((self.root / '.config/nodes/local.json').read_text())
+            self.assertEqual(nodes[0]['password'], 'p@ss+日')
+            self.assertEqual(nodes[0]['server'], '2001:db8::1')
+            self.assertNotIn('p@ss', json.dumps(reply))
+
+    def test_invalid_replacement_preserves_imported_nodes_and_revision(self):
+        self.initialize()
+        self.assertTrue(self.rpc(self.request('sources.import', {'body': 'trojan://p@example.test:443'}))['ok'])
+        original = {p: p.read_bytes() for p in (self.root / '.config').rglob('*') if p.is_file()}
+        reply = self.rpc(self.request('sources.import', {'body': 'vless://broken'}, 1))
+        self.assertFalse(reply['ok'])
+        self.assertEqual(reply['error']['code'], 'no_supported_nodes')
+        self.assertEqual(original, {p: p.read_bytes() for p in (self.root / '.config').rglob('*') if p.is_file()})
+
+    def test_plugin_file_paths_are_rejected_from_both_formats(self):
+        self.initialize()
+        for body in ('ss://aes-128-gcm:p@example.test:443?plugin=v2ray-plugin%3Bcert%3D%2Fprivate%2Fkey',
+                     json.dumps({'outbounds': [{'type': 'shadowsocks', 'server': 'example.test', 'server_port': 443,
+                         'method': 'aes-128-gcm', 'password': 'p', 'plugin': 'v2ray-plugin', 'plugin_opts': 'cert=/private/key'}]})):
+            reply = self.rpc(self.request('sources.import', {'body': body}))
+            self.assertEqual(reply['error']['code'], 'no_supported_nodes')
+            self.assertNotIn('/private/key', json.dumps(reply))
+        self.assertFalse((self.root / '.config/nodes/local.json').exists())
+
     def test_default_native_activation_is_gated(self):
         self.initialize()
         self.assertEqual(self.rpc(self.request('service.start'))['error']['code'], 'acceptance_required')

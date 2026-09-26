@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "archive_repository": "LIghtJUNction/MagicNet",
+  "archive_branch": "archive/kamfw-pre-rewrite-20260926",
+  "archive_commit": "c706c2efd5810240cbca018ff1557ad927e7ad96",
+  "source_repository": "MemDeco-WG/kamfw",
+  "source_commit": "35b2284c08446f6e22447a63d7c3331619e2e854",
+  "source_tree": "e615227fb77f8ce1bb4cb90c83e794d4de7ee56d",
+  "files": 43,
+  "bytes": 211961,
+  "verified_identical_git_tree": true,
+  "scope": "Tracked source and license, independently stored in the owner's repository. Not upstream history or runtime data.",
+  "upstream_modified": false,
+  "evidence_run": 36244037670
+}

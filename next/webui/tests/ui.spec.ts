@@ -97,3 +97,13 @@ test('stop is available with a draft and does not silently overwrite it',async({
   await page.getByRole('navigation').getByRole('button',{name:'概览',exact:true}).click(); await page.getByRole('button',{name:'停止服务',exact:true}).click();
   await expect(page.getByRole('status').filter({hasText:'操作已返回'})).toBeVisible(); await page.getByRole('navigation').getByRole('button',{name:'订阅',exact:true}).click(); await expect(urls).toHaveValue('https://draft.test/a');
 });
+
+test('Base64 subscription exposes rejected rows and preserves parsed credentials',async({page})=>{
+  await boot(page); await page.getByRole('navigation').getByRole('button',{name:'订阅',exact:true}).click();
+  const input=page.getByLabel('订阅内容'); await expect(input).toBeEnabled();
+  await input.fill(Buffer.from('trojan://p%40ss@example.test:443#日本\nvless://broken').toString('base64'));
+  await page.getByRole('button',{name:'校验并保存本地节点'}).click();
+  await expect(page.getByRole('status').filter({hasText:'已保存 1 个节点；1 个条目无法转换'})).toBeVisible();
+  const nodes=JSON.parse(await readFile(join(root,'.config/nodes/local.json'),'utf8'));
+  expect(nodes[0].password).toBe('p@ss');
+});

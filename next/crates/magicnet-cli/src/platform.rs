@@ -207,11 +207,12 @@ impl Platform for Native {
                 "The subscription exceeds its document limit",
             ));
         }
-        if serde_json::from_slice::<serde_json::Value>(bytes).is_ok() {
-            return Ok(bytes.into());
+        let document = magicnet_core::subscription::share::document(bytes)?;
+        if serde_json::from_slice::<serde_json::Value>(&document).is_ok() {
+            return Ok(document);
         }
         let mut spec = Spec::new(Self::binary(root, "yq")?).args(["eval", "-o=json", ".", "-"]);
-        spec.input = bytes.into();
+        spec.input = document;
         spec.output_limit = kamfw::fs::MAX_DOCUMENT;
         spec.timeout = Duration::from_secs(5);
         let output = execute(&spec)?;

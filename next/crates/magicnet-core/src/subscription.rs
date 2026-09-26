@@ -4,6 +4,10 @@ use kamfw::{Error, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
+mod clash;
+mod plugin;
+pub mod share;
+
 const ALLOWED: &[&str] = &[
     "shadowsocks",
     "vmess",
@@ -87,7 +91,7 @@ pub fn parse_json(bytes: &[u8], source_id: &str) -> Result<Parsed> {
     let mut seen = BTreeSet::new();
     for node in nodes {
         let candidate = if clash {
-            convert_clash(node)
+            clash::convert(node)
         } else {
             Ok(node.clone())
         };
@@ -98,6 +102,15 @@ pub fn parse_json(bytes: &[u8], source_id: &str) -> Result<Parsed> {
         let protocol = candidate.get("type").and_then(Value::as_str).unwrap_or("");
         if !ALLOWED.contains(&protocol)
             || private_field(&candidate, 0)
+            || candidate.get("plugin").is_some_and(|name| {
+                !name.as_str().is_some_and(|name| {
+                    candidate
+                        .get("plugin_opts")
+                        .map_or(Some(""), Value::as_str)
+                        .is_some_and(|opts| plugin::validate(name, opts).is_ok())
+                })
+            })
+            || (candidate.get("plugin_opts").is_some() && candidate.get("plugin").is_none())
             || !candidate
                 .get("server")
                 .and_then(Value::as_str)
@@ -133,94 +146,6 @@ pub fn parse_json(bytes: &[u8], source_id: &str) -> Result<Parsed> {
         ));
     }
     Ok(result)
-}
-
-fn convert_clash(node: &Value) -> Result<Value> {
-    let bad = || {
-        Error::new(
-            "unsupported_node",
-            "This Clash node needs an unsupported conversion",
-        )
-    };
-    let kind = node.get("type").and_then(Value::as_str).ok_or_else(bad)?;
-    let protocol = match kind {
-        "ss" => "shadowsocks",
-        "socks5" => "socks",
-        "http" | "vmess" | "vless" | "trojan" | "hysteria2" | "tuic" | "anytls" => kind,
-        _ => return Err(bad()),
-    };
-    let mut out = json!({"type": protocol, "server": node.get("server").ok_or_else(bad)?, "server_port": node.get("port").ok_or_else(bad)?});
-    for (from, to) in [
-        ("cipher", "method"),
-        ("uuid", "uuid"),
-        ("password", "password"),
-        ("username", "username"),
-        ("alterId", "alter_id"),
-        ("flow", "flow"),
-        ("congestion-controller", "congestion_control"),
-    ] {
-        if let Some(value) = node.get(from) {
-            out[to] = value.clone();
-        }
-    }
-    if kind == "vmess" {
-        out["security"] = node.get("cipher").cloned().unwrap_or(json!("auto"));
-        out.as_object_mut().unwrap().remove("method");
-    }
-    if kind == "socks5" {
-        out["version"] = json!("5");
-    }
-    if node.get("plugin").is_some() || node.get("reality-opts").is_some() {
-        return Err(bad());
-    }
-    if node
-        .get("tls")
-        .and_then(Value::as_bool)
-        .unwrap_or(matches!(kind, "trojan" | "hysteria2" | "tuic" | "anytls"))
-    {
-        let mut tls = json!({"enabled": true});
-        for (from, to) in [
-            ("servername", "server_name"),
-            ("sni", "server_name"),
-            ("skip-cert-verify", "insecure"),
-            ("alpn", "alpn"),
-        ] {
-            if let Some(value) = node.get(from) {
-                tls[to] = value.clone();
-            }
-        }
-        out["tls"] = tls;
-    }
-    if let Some(network) = node.get("network").and_then(Value::as_str) {
-        match network {
-            "tcp" => (),
-            "ws" => {
-                let mut transport = json!({"type": "ws"});
-                if let Some(options) = node.get("ws-opts") {
-                    for key in [
-                        "path",
-                        "headers",
-                        "max-early-data",
-                        "early-data-header-name",
-                    ] {
-                        if let Some(value) = options.get(key) {
-                            transport[match key {
-                                "max-early-data" => "max_early_data",
-                                "early-data-header-name" => "early_data_header_name",
-                                _ => key,
-                            }] = value.clone();
-                        }
-                    }
-                }
-                out["transport"] = transport;
-            }
-            "grpc" => {
-                out["transport"] = json!({"type": "grpc", "service_name": node.pointer("/grpc-opts/grpc-service-name").cloned().unwrap_or(json!(""))});
-            }
-            _ => return Err(bad()),
-        }
-    }
-    Ok(out)
 }
 
 pub fn attach(template: &Value, node_sets: &[Value]) -> Result<Value> {
