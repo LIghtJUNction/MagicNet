@@ -10,6 +10,7 @@ boot. No public proxy feed or subscription credential is used.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import importlib.util
 import json
@@ -91,7 +92,8 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 'production_zip_sha256': digest(source),
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
                 'payload_sha256': {name: digest(path) for name, path in replacements.items()},
-                'excluded_build_cache_sha256': {}}
+                'excluded_build_cache_sha256': {},
+                'replaced_aliases': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + '.partial')
@@ -104,7 +106,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
             require(set(PAYLOADS).issubset(names), 'production ZIP is missing runtime payloads')
             require('customize.sh' in names and 'module.prop' in names, 'not a module ZIP')
             require(sum(item.file_size for item in entries) <= 512 * 1024 * 1024, 'ZIP exceeds fixture budget')
-            for item in entries:
+            for source_item in entries:
+                # writestr mutates ZipInfo offsets; never alter input metadata.
+                item = copy.copy(source_item)
                 parts = PurePosixPath(item.filename).parts
                 require(parts and not item.filename.startswith('/') and '..' not in parts
                         and '\\' not in item.filename and '\x00' not in item.filename
@@ -122,7 +126,24 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
                     continue
-                if item.filename in replacements:
+                if item.filename == 'cli' and data.startswith(b'\x7fELF'):
+                    # Some ZIP producers dereference cli -> bin/magicnet-cli.
+                    # Only a byte-identical alias of the original CLI can be
+                    # rebound; a different ELF is not an alias and must fail.
+                    require(not stat.S_ISLNK(mode), 'CLI alias must not disguise an ELF as a link')
+                    require(data == original.read('bin/magicnet-cli'),
+                            'CLI alias differs from canonical payload')
+                    manifest['replaced_aliases']['cli'] = {
+                        'target': 'bin/magicnet-cli',
+                        'original_sha256': hashlib.sha256(data).hexdigest(),
+                        'replacement_sha256': manifest['payload_sha256']['bin/magicnet-cli'],
+                    }
+                    data = replacements['bin/magicnet-cli'].read_bytes()
+                    item.create_system = 3
+                    item.external_attr = (stat.S_IFREG | 0o755) << 16
+                elif item.filename == 'cli' and stat.S_ISLNK(mode):
+                    require(data == b'bin/magicnet-cli', 'CLI alias has an unexpected link target')
+                elif item.filename in replacements:
                     require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
                     data = replacements[item.filename].read_bytes()
                     item.create_system = 3

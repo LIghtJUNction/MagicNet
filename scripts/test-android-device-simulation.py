@@ -120,6 +120,40 @@ class ArchiveTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.output.with_suffix('.zip.partial').exists())
 
+    def test_dereferenced_cli_alias_uses_same_replacement_and_records_provenance(self):
+        self.archive(self.entries | {'cli': self.entries['bin/magicnet-cli']})
+        manifest = self.build()
+        with zipfile.ZipFile(self.output) as result:
+            self.assertEqual(result.read('cli'), result.read('bin/magicnet-cli'))
+            self.assertTrue(SIM.elf_x86_64(result.read('cli')))
+        self.assertEqual(manifest['replaced_aliases']['cli']['target'], 'bin/magicnet-cli')
+        self.assertEqual(manifest['replaced_aliases']['cli']['replacement_sha256'],
+                         manifest['payload_sha256']['bin/magicnet-cli'])
+
+    def test_different_cli_binary_cannot_be_silently_rebound(self):
+        self.archive(self.entries | {'cli': elf(183) + b'unrelated'})
+        with self.assertRaisesRegex(RuntimeError, 'differs from canonical'):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_real_cli_symlink_is_preserved_but_wrong_target_is_rejected(self):
+        for target, accepted in ((b'bin/magicnet-cli', True), (b'../foreign', False)):
+            with self.subTest(target=target):
+                self.archive()
+                with zipfile.ZipFile(self.source, 'a') as stream:
+                    item = zipfile.ZipInfo('cli')
+                    item.create_system = 3
+                    item.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    stream.writestr(item, target)
+                if accepted:
+                    self.build()
+                    with zipfile.ZipFile(self.output) as result:
+                        self.assertEqual(result.read('cli'), target)
+                        self.assertTrue(stat.S_ISLNK(result.getinfo('cli').external_attr >> 16))
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'unexpected link target'):
+                        self.build()
+
     def test_path_traversal_and_ambiguous_members_rejected(self):
         for name in ('../outside', '/absolute', 'bin/../outside', 'bin\\outside',
                      'bin//outside', 'bin/./outside', 'C:/outside'):

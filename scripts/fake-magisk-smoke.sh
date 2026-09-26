@@ -177,6 +177,7 @@ SH
     export MODDIR
     export BOOTMODE=true
     export MAGICNET_NONINTERACTIVE=1
+    export MAGICNET_CACHE_ROOT="$TMP/cache"
     export TMPDIR="$TMP/tmp"
     mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
     if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
@@ -423,6 +424,7 @@ exit 0
 write_mock curl '
 out=""
 url=""
+headers=""
 write_out=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -430,11 +432,15 @@ while [[ $# -gt 0 ]]; do
             out="${2:-}"
             shift 2
             ;;
+        -D|--dump-header)
+            headers="${2:-}"
+            shift 2
+            ;;
         -w|--write-out)
             write_out="${2:-}"
             shift 2
             ;;
-        -x|--max-time|--connect-timeout|-H|--data|--data-binary)
+        -x|--max-time|--connect-timeout|-H|--data|--data-binary|--noproxy|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|--user-agent)
             shift 2
             ;;
         --*)
@@ -456,6 +462,11 @@ render_http_metrics() {
     local total="$4"
     local rendered="$write_out"
     rendered="${rendered//\%\{http_code\}/$code}"
+    rendered="${rendered//\%\{redirect_url\}/}"
+    rendered="${rendered//\%\{time_namelookup\}/0.001}"
+    rendered="${rendered//\%\{time_appconnect\}/0.015}"
+    rendered="${rendered//\%\{size_download\}/128}"
+    rendered="${rendered//\%\{num_redirects\}/0}"
     rendered="${rendered//\%\{time_connect\}/$connect}"
     rendered="${rendered//\%\{time_starttransfer\}/$start}"
     rendered="${rendered//\%\{time_total\}/$total}"
@@ -468,6 +479,9 @@ fi
 if [[ -n "${MAGICNET_FAKE_CURL_HTTP_CODE_URL:-}" && "$url" == "$MAGICNET_FAKE_CURL_HTTP_CODE_URL" ]]; then
     [[ -z "$write_out" ]] || render_http_metrics "${MAGICNET_FAKE_CURL_HTTP_CODE:-429}" 0.010 0.020 0.030
     exit 0
+fi
+if [[ -n "$headers" ]]; then
+    printf "HTTP/1.1 200 OK\r\nContent-Type: application/yaml\r\n\r\n" >"$headers"
 fi
 case "$url" in
     http://127.0.0.1:9090/version)
@@ -510,6 +524,7 @@ if [[ -n "$out" ]]; then
     else
         emit_subscription_fixture >"$out"
     fi
+    [[ -z "$write_out" ]] || render_http_metrics 200 0.010 0.020 0.030
     exit 0
 fi
 printf "%s\n" "{}"
