@@ -418,47 +418,51 @@ class UpgradeTransactionTests(unittest.TestCase):
 class BootstrapTests(unittest.TestCase):
     def bootstrap(self, fault=''):
         calls = []
+
         class Stub:
             verified = True
             late_load_on_reboot = False
+
             def shell(self, command, **kwargs):
                 calls.append(command)
-                if 'extract-binary' in command and fault == 'extract-failed':
-                    raise RuntimeError('extract failed')
                 if command == 'getenforce':
                     return result('Enforcing')
-                if 'current-kmi' in command:
-                    if not any('extract-binary busybox' in c for c in calls):
-                        raise RuntimeError('missing embedded tools')
-                    return result('android15-6.6')
-                if 'supported-kmis' in command:
-                    return result('android14-6.1' if fault == 'unsupported' else 'android15-6.6')
                 if 'debug version' in command:
                     return result('Kernel Version: 0' if fault == 'no-kernel' else 'Kernel Version: 12345')
+                if 'extract-binary' in command and fault == 'extract-failed':
+                    raise RuntimeError('extract failed')
+                if 'current-kmi' in command:
+                    return result('' if fault == 'missing-kmi' else 'android15-6.6')
                 return result()
+
             def kshell(self, command, **kwargs):
                 if command == 'id -Z':
                     return result('u:r:shell:s0' if fault == 'wrong-domain' else 'u:r:ksu:s0')
                 if command == 'getenforce':
                     return result('Permissive' if fault == 'permissive' else 'Enforcing')
                 raise AssertionError(command)
+
         device = Stub()
         report = SIM.Device.late_load_kernelsu(device)
         return device, calls, report
 
-    def test_official_busybox_precedes_kmi_and_real_late_load(self):
+    def test_kernel_gate_precedes_busybox_kmi_and_real_userspace_late_load(self):
         device, calls, report = self.bootstrap()
-        extract = next(i for i,c in enumerate(calls) if 'extract-binary busybox' in c)
-        kmi = next(i for i,c in enumerate(calls) if 'current-kmi' in c)
-        load = next(i for i,c in enumerate(calls) if c.endswith(' late-load'))
+        probe = next(i for i, c in enumerate(calls) if 'debug version' in c)
+        extract = next(i for i, c in enumerate(calls) if 'extract-binary busybox' in c)
+        kmi = next(i for i, c in enumerate(calls) if 'current-kmi' in c)
+        load = next(i for i, c in enumerate(calls) if c.endswith(' late-load'))
+        self.assertLess(probe, extract)
         self.assertLess(extract, kmi)
         self.assertLess(kmi, load)
         self.assertTrue(device.late_load_on_reboot)
+        self.assertEqual(report['mode'], 'pinned-kernel-userspace-late-load')
         self.assertEqual(report['kmi'], 'android15-6.6')
         self.assertIn('PATH=/data/adb/ksu/bin:', calls[load])
+        self.assertFalse(any('supported-kmis' in call for call in calls))
 
     def test_bootstrap_preconditions_and_real_kernel_gate_still_fail(self):
-        for fault in ('extract-failed', 'unsupported', 'no-kernel', 'wrong-domain', 'permissive'):
+        for fault in ('extract-failed', 'no-kernel', 'missing-kmi', 'wrong-domain', 'permissive'):
             with self.subTest(fault=fault), self.assertRaises(RuntimeError):
                 self.bootstrap(fault)
 
