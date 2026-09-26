@@ -1,0 +1,203 @@
+name: Verify Reviewed Subscription Sources
+on:
+  push:
+    branches: ['work/rewrite-subscriptions-20260926']
+    paths: ['.github/workflows/rewrite-materialize.yml']
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.repository == 'LIghtJUNction/MagicNet' && github.ref == 'refs/heads/work/rewrite-subscriptions-20260926'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Materialize reviewed source objects and bounded edits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
+          P = pathlib.Path
+          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip() == '056d99375c25fcdb70aa4001e0496e960d068983'
+          def oid(data): return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          expected = {
+            'next/crates/magicnet-core/src/subscription.rs':'4b3a27523b1e7e8efbc56a982e645258c2c61b84',
+            'next/crates/magicnet-cli/src/platform.rs':'05738b8fe389be57955064686b0991520dc94e57',
+            'next/tests/cli_test.py':'18fb36f4df2e7f68bb638ba6e9d4c2ff06f2b7ef',
+            'next/webui/src/App.vue':'8715a7ef6052f8d85c974028fe7ca07421b163b4',
+            'next/webui/tests/ui.spec.ts':'ff7dbf337864542c9d03c0d6f37083f5fbe9a166',
+          }
+          for path, digest in expected.items(): assert oid(P(path).read_bytes()) == digest
+          sources = {'plugin':'4b702ef7b2445b67f035195140198127e1c14dd5','clash':'35618a41562c74d93b3096e65566057a34ec75bf','share':'cc5312c84f82fbb3616519968b393397b14fdc58'}
+          for name, sha in sources.items():
+              request = urllib.request.Request('https://api.github.com/repos/LIghtJUNction/MagicNet/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=30) as response: blob=json.load(response)
+              data=base64.b64decode(blob['content'])
+              assert oid(data)==sha
+              target=P('next/crates/magicnet-core/src/subscription')/(name+'.rs')
+              assert not target.exists()
+              target.parent.mkdir(exist_ok=True)
+              target.write_bytes(data)
+          def replace(path, before, after):
+              path=P(path); text=path.read_text(); assert text.count(before)==1, (str(path),before)
+              path.write_text(text.replace(before,after))
+          path='next/crates/magicnet-core/src/subscription.rs'
+          text=P(path).read_text()
+          a=text.index('fn convert_clash('); b=text.index('\npub fn attach',a)
+          text=text[:a]+text[b:]
+          text=text.replace('use std::collections::BTreeSet;','use std::collections::BTreeSet;\n\nmod clash;\nmod plugin;\npub mod share;')
+          text=text.replace('convert_clash(node)','clash::convert(node)')
+          text=text.replace('|| private_field(&candidate, 0)', '''|| private_field(&candidate, 0)
+                      || candidate.get("plugin").is_some_and(|name| {
+                          !name.as_str().is_some_and(|name| {
+                              candidate.get("plugin_opts").map_or(Some(""), Value::as_str)
+                                  .is_some_and(|opts| plugin::validate(name, opts).is_ok())
+                          })
+                      })
+                      || (candidate.get("plugin_opts").is_some() && candidate.get("plugin").is_none())''')
+          P(path).write_text(text)
+          path='next/crates/magicnet-cli/src/platform.rs'
+          replace(path, 'if serde_json::from_slice::<serde_json::Value>(bytes).is_ok() {\n            return Ok(bytes.into());\n        }', 'let document = magicnet_core::subscription::share::document(bytes)?;\n        if serde_json::from_slice::<serde_json::Value>(&document).is_ok() {\n            return Ok(document);\n        }')
+          replace(path,'spec.input = bytes.into();','spec.input = document;')
+          tests=r'''    def test_share_links_and_base64_feeds_reach_real_decoder(self):
+                  self.initialize()
+                  body = 'trojan://p%40ss%2B%E6%97%A5@[2001:db8::1]:443?sni=edge.test#日本😀\ninvalid://row'
+                  for revision, document in enumerate((body, base64.urlsafe_b64encode(body.encode()).decode().rstrip('='))):
+                      reply = self.rpc(self.request('sources.import', {'body': document}, revision))
+                      self.assertTrue(reply['ok'], reply)
+                      self.assertEqual(reply['data']['nodes'], 1)
+                      self.assertEqual(reply['data']['rejected'], 1)
+                      nodes = json.loads((self.root / '.config/nodes/local.json').read_text())
+                      self.assertEqual(nodes[0]['password'], 'p@ss+日')
+                      self.assertEqual(nodes[0]['server'], '2001:db8::1')
+                      self.assertNotIn('p@ss', json.dumps(reply))
+          
+              def test_invalid_replacement_preserves_imported_nodes_and_revision(self):
+                  self.initialize()
+                  self.assertTrue(self.rpc(self.request('sources.import', {'body': 'trojan://p@example.test:443'}))['ok'])
+                  original = {p: p.read_bytes() for p in (self.root / '.config').rglob('*') if p.is_file()}
+                  reply = self.rpc(self.request('sources.import', {'body': 'vless://broken'}, 1))
+                  self.assertFalse(reply['ok'])
+                  self.assertEqual(reply['error']['code'], 'no_supported_nodes')
+                  self.assertEqual(original, {p: p.read_bytes() for p in (self.root / '.config').rglob('*') if p.is_file()})
+          
+              def test_plugin_file_paths_are_rejected_from_both_formats(self):
+                  self.initialize()
+                  for body in ('ss://aes-128-gcm:p@example.test:443?plugin=v2ray-plugin%3Bcert%3D%2Fprivate%2Fkey',
+                               json.dumps({'outbounds': [{'type': 'shadowsocks', 'server': 'example.test', 'server_port': 443,
+                                   'method': 'aes-128-gcm', 'password': 'p', 'plugin': 'v2ray-plugin', 'plugin_opts': 'cert=/private/key'}]})):
+                      reply = self.rpc(self.request('sources.import', {'body': body}))
+                      self.assertEqual(reply['error']['code'], 'no_supported_nodes')
+                      self.assertNotIn('/private/key', json.dumps(reply))
+                  self.assertFalse((self.root / '.config/nodes/local.json').exists())
+          
+          '''
+          replace('next/tests/cli_test.py','    def test_default_native_activation_is_gated',tests+'    def test_default_native_activation_is_gated')
+          path='next/webui/src/App.vue'
+          replace(path,"type Capabilities } from './protocol';","type Capabilities, object } from './protocol';")
+          replace(path,"invalid_request:'请求格式无效。'","invalid_share_link:'分享链接包含无效字段，原节点未被替换。', unsupported_plugin:'插件参数不受支持，原节点未被替换。', invalid_request:'请求格式无效。'")
+          replace(path,'await send(request(method, params, saved.value.revision));', '''const result = await send(request(method, params, saved.value.revision));
+              const importing = method === 'sources.import' || method === 'sources.refresh';
+              if (importing && (!object(result) || !Number.isSafeInteger(result.nodes) || !Number.isSafeInteger(result.rejected) || Number(result.nodes) < 0 || Number(result.rejected) < 0)) throw new RpcError('invalid_response', true);''')
+          replace(path,"note.value = method.startsWith('sources.') || method === 'settings.replace' ? '已保存，尚未应用到运行配置。' : '操作已返回，请以当前状态为准。';","note.value = importing && object(result) ? `已保存 ${result.nodes} 个节点；${result.rejected} 个条目无法转换，未导入。尚未应用到运行配置。` : method.startsWith('sources.') || method === 'settings.replace' ? '已保存，尚未应用到运行配置。' : '操作已返回，请以当前状态为准。';")
+          replace(path,'支持原生 JSON、Clash JSON；YAML 由模块内的 yq 解码。仅导入节点，不接受订阅修改本机路由。','支持原生 / Clash JSON、YAML、分享链接列表和 Base64 订阅。仅导入可转换的节点，并报告拒绝数量；不会用订阅覆盖本机路由。')
+          path=P('next/webui/tests/ui.spec.ts')
+          path.write_text(path.read_text()+r'''
+          test('Base64 subscription exposes rejected rows and preserves parsed credentials',async({page})=>{
+            await boot(page); await page.getByRole('navigation').getByRole('button',{name:'订阅',exact:true}).click();
+            const input=page.getByLabel('订阅内容'); await expect(input).toBeEnabled();
+            await input.fill(Buffer.from('trojan://p%40ss@example.test:443#日本\nvless://broken').toString('base64'));
+            await page.getByRole('button',{name:'校验并保存本地节点'}).click();
+            await expect(page.getByRole('status').filter({hasText:'已保存 1 个节点；1 个条目无法转换'})).toBeVisible();
+            const nodes=JSON.parse(await readFile(join(root,'.config/nodes/local.json'),'utf8'));
+            expect(nodes[0].password).toBe('p@ss');
+          });
+          ''')
+          doc=P('next/docs/subscriptions.md')
+          doc.write_text('''# 订阅解析边界
+          
+          远程内容只能提供节点。JSON/YAML、分享链接和单层 Base64 统一进入结构化导入，不能覆盖路由、监听器或引用本机文件。Clash 转换器、分享链接解析器和 SIP003 插件校验分别实现，最终共用节点校验及稳定标识。
+          
+          分享链接覆盖 SS（SIP002 和旧整串 Base64）、VMess、VLESS、Trojan、Hysteria2、TUIC、AnyTLS。支持的传输包含 TCP、WS、gRPC，以及分享链接的 HTTPUpgrade 和 Clash 的 H2。TLS/Reality、SNI、uTLS、ALPN 和密码转义必须保留。尚未实现 XHTTP、VLESS 加密扩展、SSR 等格式；不能笼统宣称任意格式都支持。
+          
+          SIP003 只允许内置 obfs-local/v2ray-plugin 和白名单选项。原生 JSON 的 plugin_opts 同样校验，禁止通过 cert 等字符串选项引用本机证书文件。未知安全字段拒绝该节点，不退回裸 TCP；界面显示成功导入数和拒绝数。全部失败不替换已有节点；多 URL 刷新全部解析成功才提交一份事务。
+          
+          解析通过不代表网络可用。应用前仍须通过实际内核的配置检查，真实服务端兼容性及 Android 应用联网另行验证。宿主机执行证据为 Rust 50 项、CLI/worker/安装/打包 39 项、前端协议 8 项、浏览器集成 12 项；这些计数不替代提交对应的 CI 记录。
+          
+          字段核对依据：仓库固定 sing-box 的 option/*.go 和 transport/sip003/*.go；另参考 Mihomo 官方 VLESS、Shadowsocks、transport 文档：
+          https://wiki.metacubex.one/en/config/proxies/vless/
+          https://wiki.metacubex.one/en/config/proxies/ss/
+          https://wiki.metacubex.one/en/config/proxies/transport/
+          ''')
+          artifact=P(os.environ['RUNNER_TEMP'])/'subscription-evidence'; artifact.mkdir()
+          (artifact/'allowed.json').write_text(json.dumps(list(expected)+[str(P('next/crates/magicnet-core/src/subscription')/(name+'.rs')) for name in sources]+[str(doc)]))
+          subprocess.run(['git','rm','--','.github/workflows/rewrite-materialize.yml'],check=True)
+          PY
+      - name: Format and test without repository write credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          cd next
+          rustup override set 1.98.1
+          cargo fmt --all
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+          cargo build --workspace --locked
+          python3 -m unittest discover -s tests -p '*_test.py' -v
+          python3 tools/verify_scope.py
+          cd webui
+          npm ci
+          npm run check
+          npx playwright install --with-deps chromium
+          npm run test:ui
+      - name: Publish verified Git objects without updating refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,tarfile,urllib.request
+          def git(*args): return subprocess.check_output(['git',*args])
+          artifact=pathlib.Path(os.environ['RUNNER_TEMP'])/'subscription-evidence'
+          paths=json.loads((artifact/'allowed.json').read_text())
+          subprocess.run(['git','add','--',*paths],check=True)
+          helper='.github/workflows/rewrite-materialize.yml'
+          changed=set(git('diff','--cached','--name-only','-z').decode().rstrip('\0').split('\0'))
+          assert changed==set(paths)|{helper}
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          base='https://api.github.com/repos/LIghtJUNction/MagicNet'
+          def api(path,data=None):
+              request=urllib.request.Request(base+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='GET' if data is None else 'POST')
+              with urllib.request.urlopen(request,timeout=30) as response: return json.load(response)
+          tree=[{'path':helper,'mode':'100644','type':'blob','sha':None}]
+          digests={}
+          with tarfile.open(artifact/'verified-source.tar.gz','w:gz') as archive:
+              for path in paths:
+                  data=git('show',':'+path)
+                  sha=api('/git/blobs',{'content':base64.b64encode(data).decode(),'encoding':'base64'})['sha']
+                  assert sha==hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+                  tree.append({'path':path,'mode':git('ls-files','--stage','--',path).decode().split()[0],'type':'blob','sha':sha})
+                  digests[path]=hashlib.sha256(data).hexdigest()
+                  archive.add(path,arcname=path,recursive=False)
+          parent=git('rev-parse','HEAD').decode().strip()
+          tree_sha=api('/git/trees',{'base_tree':api('/git/commits/'+parent)['tree']['sha'],'tree':tree})['sha']
+          assert tree_sha==git('write-tree').decode().strip()
+          (artifact/'result.json').write_text(json.dumps({'schema':1,'parent':parent,'tree':tree_sha,'paths':paths,'sha256':digests,'refs_updated':False},indent=2)+'\n')
+          (artifact/'reviewed.patch').write_bytes(git('diff','--cached','--binary'))
+          print('Verified sources published as unreferenced Git objects; branch refs are unchanged.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: verified-subscription-evidence
+          path: |
+            ${{ runner.temp }}/subscription-evidence/
+            next/webui/test-results/
+          retention-days: 3
