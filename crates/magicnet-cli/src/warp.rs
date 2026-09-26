@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::{json, Map, Value};
 
@@ -106,7 +105,7 @@ fn test_warp(app: &App) -> Result<(), String> {
     if !warp_enabled(app) || read_endpoint(app).is_none() {
         return Err("WARP is not enabled and configured.".to_string());
     }
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",
@@ -141,7 +140,7 @@ fn test_warp(app: &App) -> Result<(), String> {
 fn select_final(app: &App, outbound: &str) -> Result<(), String> {
     let payload = format!(r#"{{"name":"{outbound}"}}"#);
     let endpoint = format!("{}/proxies/final", app.api);
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",

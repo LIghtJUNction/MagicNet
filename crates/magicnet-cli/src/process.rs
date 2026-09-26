@@ -9,7 +9,7 @@ use std::io::{self, Write};
 use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -575,6 +575,66 @@ fn clear_unsafe_subscription_environment(command: &mut Command) {
     }
 }
 
+const UNSAFE_LOADER_ENV: &[&str] = &[
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_DYNAMIC_WEAK",
+    "LD_ORIGIN_PATH",
+    "LD_PROFILE",
+    "LD_SHOW_AUXV",
+    "LD_TRACE_LOADED_OBJECTS",
+    "LD_USE_LOAD_BIAS",
+    "LD_VERBOSE",
+    "LD_WARN",
+    "ENV",
+    "BASH_ENV",
+    "CDPATH",
+];
+
+fn clear_unsafe_loader_environment(command: &mut Command) {
+    for key in UNSAFE_LOADER_ENV {
+        command.env_remove(key);
+    }
+}
+
+pub(crate) fn trusted_curl() -> Command {
+    let mut command = Command::new(trusted_curl_path());
+    clear_unsafe_loader_environment(&mut command);
+    command
+}
+
+fn trusted_curl_path() -> PathBuf {
+    let mut candidates = Vec::new();
+    if let Ok(moddir) = env::var("MODDIR") {
+        if !moddir.is_empty() {
+            let root = PathBuf::from(moddir);
+            candidates.push(root.join("bin/curl"));
+            candidates.push(root.join("system/bin/curl"));
+        }
+    }
+    if cfg!(target_os = "android") {
+        candidates.push(PathBuf::from("/system/bin/curl"));
+        candidates.push(PathBuf::from("/system/xbin/curl"));
+        candidates.push(PathBuf::from("/vendor/bin/curl"));
+    } else {
+        candidates.push(PathBuf::from("/usr/bin/curl"));
+        candidates.push(PathBuf::from("/bin/curl"));
+        candidates.push(PathBuf::from("/usr/local/bin/curl"));
+    }
+    for path in &candidates {
+        if path.is_file() {
+            return path.clone();
+        }
+    }
+    if cfg!(target_os = "android") {
+        PathBuf::from("/system/bin/curl")
+    } else {
+        PathBuf::from("curl")
+    }
+}
+
 fn trusted_shell() -> &'static str {
     if cfg!(target_os = "android") {
         "/system/bin/sh"
@@ -691,6 +751,7 @@ fn run_magicnet_shell(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
+    clear_unsafe_loader_environment(&mut command);
     clear_unsafe_subscription_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
@@ -1374,6 +1435,23 @@ mod process_group_tests {
         assert!(!super::watchdog_worker_is_live(child.id() as libc::pid_t));
         let _ = child.wait();
         Ok(())
+    }
+
+    #[test]
+    fn trusted_curl_prefers_an_absolute_host_binary() {
+        use std::path::Path;
+        let path = super::trusted_curl_path();
+        if path != Path::new("curl") {
+            assert!(
+                path.is_absolute(),
+                "trusted curl must not search PATH: {path:?}"
+            );
+            assert_eq!(\n                path.file_name().and_then(|name| name.to_str()),\n                Some("curl")\n            );
+        }
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"LD_PRELOAD"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"BASH_ENV"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"ENV"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"CDPATH"));
     }
 
     #[test]
