@@ -2,6 +2,7 @@ name: Source Snapshot
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: ['rewrite/20260926']
 
@@ -55,13 +56,15 @@ jobs:
                       raise SystemExit('Incomplete source checkout: ' + name)
                   output.add(source, arcname=name, recursive=False)
                   count += 1
+          with archive.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
           manifest = {
               'schema': 1,
               'revision': revision,
               'tree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
               'tracked_files': count,
               'submodules': subprocess.check_output(['git', 'submodule', 'status', '--recursive'], text=True).splitlines(),
-              'sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
+              'sha256': digest,
               'scope': 'tracked source only; not a runtime or Android acceptance result',
           }
           (destination / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
