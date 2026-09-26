@@ -21,8 +21,8 @@ requires an explicit emulator serial, qemu identity, x86_64 ABI, SELinux Enforci
 a positive KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses
 KernelSU BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
 
-Only four ABI-specific executables are replaced in a **separate test ZIP**, before
-installation: CLI, sing-box, jq and yq. Other unexpected foreign-architecture ELF
+Only six ABI-specific executables are replaced in a **separate test ZIP**, before
+installation: CLI, sing-box, jq, yq, eCapture and Proxylink. Other unexpected foreign-architecture ELF
 files fail preparation instead of surviving until boot. Installer/lifecycle scripts
 are not rewritten. The original ZIP remains untouched. The report records its
 SHA-256, the fixture ZIP hash, the source commit and each replacement hash.

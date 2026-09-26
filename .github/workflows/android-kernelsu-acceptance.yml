@@ -265,8 +265,24 @@ jobs:
             "$RUNNER_TEMP/magicnet-x86-tools/jq" | sha256sum --check --strict
           GOBIN="$RUNNER_TEMP/magicnet-x86-tools" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go install github.com/mikefarah/yq/v4@v4.53.3
+          curl --fail --location --retry 3 --max-time 180 \
+            https://github.com/gojue/ecapture/releases/download/v2.5.2/ecapture-v2.5.2-android-amd64.tar.gz \
+            -o "$RUNNER_TEMP/ecapture-v2.5.2-android-amd64.tar.gz"
+          printf '%s  %s\n' 904f8335b70ea42fe00070b1af107b8a6fadfcdc4697d990b64b4740922cde54 \
+            "$RUNNER_TEMP/ecapture-v2.5.2-android-amd64.tar.gz" | sha256sum --check --strict
+          tar -xOf "$RUNNER_TEMP/ecapture-v2.5.2-android-amd64.tar.gz" \
+            ecapture-v2.5.2-android-amd64/ecapture \
+            >"$RUNNER_TEMP/magicnet-x86-tools/ecapture"
+          proxylink_revision=$(sed -n 's/^PINNED_REV="\(.*\)"/\1/p' hooks/pre-build/4910.update_proxylink.sh)
+          test -n "$proxylink_revision"
+          git clone https://github.com/Fanju6/Proxylink.git "$RUNNER_TEMP/proxylink-source"
+          git -C "$RUNNER_TEMP/proxylink-source" checkout "$proxylink_revision"
+          test "$(git -C "$RUNNER_TEMP/proxylink-source" rev-parse HEAD)" = "$proxylink_revision"
+          (cd "$RUNNER_TEMP/proxylink-source/Proxylink" && \
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath \
+              -ldflags='-s -w' -o "$RUNNER_TEMP/magicnet-x86-tools/proxylink" .)
           chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*
-          for tool in jq yq; do
+          for tool in jq yq ecapture proxylink; do
             file "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q 'x86-64'
             if readelf -l "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q INTERP; then
               echo "::error::$tool must not depend on a host-only ELF interpreter"
