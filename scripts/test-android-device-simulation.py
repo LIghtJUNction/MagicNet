@@ -256,10 +256,11 @@ class DeviceTests(unittest.TestCase):
         self.assertIn('ASH_STANDALONE=1', run.call_args.kwargs['input_text'])
         self.assertIn("exec /data/adb/ksu/bin/busybox sh -c 'exit 17'", run.call_args.kwargs['input_text'])
 
-    def test_official_late_load_requires_matching_kmi_and_real_ksu_domain(self):
+    def test_pinned_kernel_userspace_late_load_requires_active_kernel_and_real_ksu_domain(self):
         device = self.device()
         device.verified = True
         calls = []
+
         def shell(command, **_):
             command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
             calls.append(command)
@@ -269,38 +270,42 @@ class DeviceTests(unittest.TestCase):
                 f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
                 'getenforce': 'Enforcing\n',
                 SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
-                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\nandroid15-6.6\n',
                 SIM.KSUD + ' late-load': '',
                 SIM.KSUD + ' debug version': 'Kernel Version: 32389\n',
                 f'test -x {SIM.BB}': '',
             }
             return cp(values[command])
+
         def kshell(command, **_):
             return cp('u:r:ksu:s0\n' if command == 'id -Z' else 'Enforcing\n')
-        with patch.object(device, 'shell', side_effect=shell), patch.object(device, 'kshell', side_effect=kshell):
+
+        with patch.object(device, 'shell', side_effect=shell), \
+             patch.object(device, 'kshell', side_effect=kshell):
             evidence = device.late_load_kernelsu()
-        self.assertEqual(evidence, {'mode': 'late-load-lkm', 'kmi': 'android15-6.6',
-                                    'kernel_version': 'Kernel Version: 32389'})
+        self.assertEqual(evidence, {
+            'mode': 'pinned-kernel-userspace-late-load',
+            'kmi': 'android15-6.6',
+            'kernel_version': 'Kernel Version: 32389',
+        })
         self.assertTrue(device.late_load_on_reboot)
         self.assertIn(SIM.KSUD + ' late-load', calls)
+        self.assertNotIn(SIM.KSUD + ' boot-info supported-kmis', calls)
 
-    def test_late_load_rejects_unsupported_kmi_before_loading(self):
+    def test_userspace_late_load_rejects_missing_kernel_interface_before_activation(self):
         device = self.device()
         device.verified = True
         calls = []
+
         def shell(command, **_):
-            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
             calls.append(command)
             values = {
-                'mkdir -p /data/adb/ksu/bin': '',
-                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
-                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
                 'getenforce': 'Enforcing\n',
-                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
-                SIM.KSUD + ' boot-info supported-kmis': 'android14-6.1\n',
+                SIM.KSUD + ' debug version': 'Kernel Version: 0\n',
             }
             return cp(values[command])
-        with patch.object(device, 'shell', side_effect=shell), self.assertRaisesRegex(RuntimeError, 'does not embed'):
+
+        with patch.object(device, 'shell', side_effect=shell), \
+             self.assertRaisesRegex(RuntimeError, 'pinned KernelSU kernel is not active'):
             device.late_load_kernelsu()
         self.assertNotIn(SIM.KSUD + ' late-load', calls)
         self.assertFalse(device.late_load_on_reboot)
