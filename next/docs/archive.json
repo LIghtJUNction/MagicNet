@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "original_magicnet_commit": "1fff02713d1afe63bd57f67158dbc278817c9b75",
+  "archive_branch": "archive/pre-rewrite-20260926",
+  "kamfw_commit": "35b2284c08446f6e22447a63d7c3331619e2e854",
+  "kamfw_upstream_write": "403; no upstream branch, PR or merge created",
+  "source_snapshot": {
+    "schema": 1,
+    "revision": "bc2f7af7de1037b8a6551c5aa2469a632ff66709",
+    "tree": "3e802b7411bbb10443e95487b03f3ddcda171ad5",
+    "tracked_files": 23333,
+    "submodules": [
+      " 13cff0dc1f30d8d0842e563008c7e2712233243f .kam/bases/hooks (heads/main)",
+      " 1d9524ee45ec4841a268589f4c9bf1bf94beebfb .kam/bases/workflows (heads/main)",
+      " f3335f9420d07b8c50b26488df2a9492da6bbb44 rules (f3335f9)",
+      " b4f4a55f3cfa155a8251e324379aa778eea4583f sing-box (b4f4a55)",
+      " af61098358a8141dea71f232b7eaebf4ccee8868 sing-box/clients/android (af61098)",
+      " 008f73fc6d576aced976659d6dc52a9a12365c24 sing-box/clients/apple (008f73f)",
+      " baeb3cbf8332d26b4f7b4c175a01f288ebbf3e7f sing-box/clients/apple/Frameworks/Runestone (heads/main)",
+      " cebee0d527c4e5d5500f971553628e0dfa8bae0f sing-box/clients/desktop (cebee0d)",
+      " af38bed3562e1174c6fc40d41a22fd766bc8c323 sing-box/clients/desktop/dashboard (af38bed)",
+      " 8c84dd1a859f36ec8601b082bd97b4ec888f0f4d sing-box/clients/desktop/dashboard/vendor/iterm2-color-schemes (8c84dd1a)",
+      " 7533d101472e934bf22b8be9305720408c343e25 src/MagicNet/.config/sing-box (7533d10)",
+      " 35b2284c08446f6e22447a63d7c3331619e2e854 src/MagicNet/lib/kamfw (heads/main)"
+    ],
+    "sha256": "6cf3bba7cccaec0f8eb4c70e4b48803a3e6cb4bb26c4962a145bd57187ab1006",
+    "scope": "tracked source only; not a runtime or Android acceptance result"
+  },
+  "source_snapshot_scope": "Tracked files and pinned dependencies; not a runtime backup. Snapshot commit additionally contains the source-export workflow."
+}

@@ -1,0 +1,30 @@
+{
+  "name": "magicnet-next-webui",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:ui": "playwright test",
+    "check": "npm run test && npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "vue": "3.5.35",
+    "kernelsu": "3.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.7",
+    "@playwright/test": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.16",
+    "vue-tsc": "3.3.11"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "nanoid": "3.3.18"
+  }
+}

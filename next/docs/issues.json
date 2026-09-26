@@ -1,0 +1,666 @@
+{
+  "schema": 1,
+  "repository": "LIghtJUNction/MagicNet",
+  "review_date": "2026-09-26",
+  "scope": "94 issue bodies returned by repository search, including historical reports; not all comments or physical reproductions. Issue states were not reliably returned. No issue is auto-closed.",
+  "issues": [
+    {
+      "number": 344,
+      "area": "android-acceptance",
+      "requirement": "真实安装/重启/升级/卸载；固定内核 ABI 和 AVD 路径；有效节点夹具；失败/超时/跳过不算通过",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 337,
+      "area": "lifecycle",
+      "requirement": "先确认进程归属并有界优雅停服；失败保留证据；不得留下指向死监听器的 DNS 重定向",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 336,
+      "area": "lifecycle",
+      "requirement": "先确认进程归属并有界优雅停服；失败保留证据；不得留下指向死监听器的 DNS 重定向",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 335,
+      "area": "hotspot",
+      "requirement": "仅接管实际下游，IPv6 能力不足须明确；不能把设备自身流量误作热点",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 334,
+      "area": "platform",
+      "requirement": "受控 PATH，正确 Android ip/route 表解析；只允许经过核验的 fd 输入例外",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 331,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 330,
+      "area": "dns-ipv6",
+      "requirement": "单一配置来源、冲突检查、真实 IPv6 策略、避免 root UID 旁路与 DNS 回环",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 329,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 328,
+      "area": "platform",
+      "requirement": "受控 PATH，正确 Android ip/route 表解析；只允许经过核验的 fd 输入例外",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 327,
+      "area": "tailscale",
+      "requirement": "用户态端点真实 tag、CGNAT/IPv6 路由顺序、可禁用与退出，不破坏 TUN",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 326,
+      "area": "platform",
+      "requirement": "受控 PATH，正确 Android ip/route 表解析；只允许经过核验的 fd 输入例外",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 324,
+      "area": "platform",
+      "requirement": "受控 PATH，正确 Android ip/route 表解析；只允许经过核验的 fd 输入例外",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 309,
+      "area": "android-acceptance",
+      "requirement": "真实安装/重启/升级/卸载；固定内核 ABI 和 AVD 路径；有效节点夹具；失败/超时/跳过不算通过",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 305,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 304,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 303,
+      "area": "android-acceptance",
+      "requirement": "真实安装/重启/升级/卸载；固定内核 ABI 和 AVD 路径；有效节点夹具；失败/超时/跳过不算通过",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 281,
+      "area": "repository-policy",
+      "requirement": "保留必要检查与审核，不因历史直接提交建议绕过当前分支保护",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 273,
+      "area": "architecture",
+      "requirement": "统一类型化机器协议与模块边界；只读无副作用；缺失数据不能显示成功",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 272,
+      "area": "mcp",
+      "requirement": "原生单一 CLI/MCP，不恢复已废弃的重复实现",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 261,
+      "area": "dataplane-upstream",
+      "requirement": "固定真实上游版本和校验；合法 VMess/WS 不应被掩盖；不伪造缺失规则资源",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 260,
+      "area": "rules",
+      "requirement": "白名单/关键登录规则优先级正确；删除确实生效，通用 Google 规则不能绕过全部拦截",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 254,
+      "area": "transactions",
+      "requirement": "独立有效回滚代、原生锁、崩溃恢复、锁冲突有界；禁止 unlink 活锁",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 253,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 199,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 191,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 190,
+      "area": "dataplane-upstream",
+      "requirement": "固定真实上游版本和校验；合法 VMess/WS 不应被掩盖；不伪造缺失规则资源",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 174,
+      "area": "hotspot",
+      "requirement": "仅接管实际下游，IPv6 能力不足须明确；不能把设备自身流量误作热点",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 173,
+      "area": "transport-evidence",
+      "requirement": "音频/WebRTC/长连接延迟需功能性或时序证据，抓到包不能单独证明可用",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 168,
+      "area": "repository-policy",
+      "requirement": "保留必要检查与审核，不因历史直接提交建议绕过当前分支保护",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 148,
+      "area": "dataplane-upstream",
+      "requirement": "固定真实上游版本和校验；合法 VMess/WS 不应被掩盖；不伪造缺失规则资源",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 141,
+      "area": "process-identity",
+      "requirement": "正确处理 argv 末尾 NUL，检查启动身份，避免每 PID shell 进程开销与误杀",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 139,
+      "area": "transport-evidence",
+      "requirement": "音频/WebRTC/长连接延迟需功能性或时序证据，抓到包不能单独证明可用",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 137,
+      "area": "dns-ipv6",
+      "requirement": "单一配置来源、冲突检查、真实 IPv6 策略、避免 root UID 旁路与 DNS 回环",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 135,
+      "area": "import-compatibility",
+      "requirement": "真实 YAML 解析、Unicode/VMess、数字 IP/IPv6 URL、自定义 UA、明确 AnyTLS 支持边界",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 133,
+      "area": "dns-ipv6",
+      "requirement": "单一配置来源、冲突检查、真实 IPv6 策略、避免 root UID 旁路与 DNS 回环",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 123,
+      "area": "architecture",
+      "requirement": "统一类型化机器协议与模块边界；只读无副作用；缺失数据不能显示成功",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 121,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 119,
+      "area": "transactions",
+      "requirement": "独立有效回滚代、原生锁、崩溃恢复、锁冲突有界；禁止 unlink 活锁",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 118,
+      "area": "transactions",
+      "requirement": "独立有效回滚代、原生锁、崩溃恢复、锁冲突有界；禁止 unlink 活锁",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 115,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 113,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 112,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 109,
+      "area": "hotspot",
+      "requirement": "仅接管实际下游，IPv6 能力不足须明确；不能把设备自身流量误作热点",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 101,
+      "area": "diagnostics",
+      "requirement": "日志与结构化结果分离；默认不泄露链路/订阅/SSID/节点凭据",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 100,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 99,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 97,
+      "area": "lifecycle",
+      "requirement": "先确认进程归属并有界优雅停服；失败保留证据；不得留下指向死监听器的 DNS 重定向",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 93,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 92,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 91,
+      "area": "hotspot",
+      "requirement": "仅接管实际下游，IPv6 能力不足须明确；不能把设备自身流量误作热点",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 90,
+      "area": "insufficient-detail",
+      "requirement": "原条目无可用技术细节；疑似敏感字符串不复制到代码、日志或清单",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 89,
+      "area": "tailscale",
+      "requirement": "用户态端点真实 tag、CGNAT/IPv6 路由顺序、可禁用与退出，不破坏 TUN",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 88,
+      "area": "import-compatibility",
+      "requirement": "真实 YAML 解析、Unicode/VMess、数字 IP/IPv6 URL、自定义 UA、明确 AnyTLS 支持边界",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 87,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 83,
+      "area": "architecture",
+      "requirement": "统一类型化机器协议与模块边界；只读无副作用；缺失数据不能显示成功",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 82,
+      "area": "architecture",
+      "requirement": "统一类型化机器协议与模块边界；只读无副作用；缺失数据不能显示成功",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 81,
+      "area": "architecture",
+      "requirement": "统一类型化机器协议与模块边界；只读无副作用；缺失数据不能显示成功",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 75,
+      "area": "process-identity",
+      "requirement": "正确处理 argv 末尾 NUL，检查启动身份，避免每 PID shell 进程开销与误杀",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 73,
+      "area": "import-compatibility",
+      "requirement": "真实 YAML 解析、Unicode/VMess、数字 IP/IPv6 URL、自定义 UA、明确 AnyTLS 支持边界",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 71,
+      "area": "diagnostics",
+      "requirement": "日志与结构化结果分离；默认不泄露链路/订阅/SSID/节点凭据",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 69,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 64,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 62,
+      "area": "import-compatibility",
+      "requirement": "真实 YAML 解析、Unicode/VMess、数字 IP/IPv6 URL、自定义 UA、明确 AnyTLS 支持边界",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 60,
+      "area": "import-compatibility",
+      "requirement": "真实 YAML 解析、Unicode/VMess、数字 IP/IPv6 URL、自定义 UA、明确 AnyTLS 支持边界",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 57,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 55,
+      "area": "policy",
+      "requirement": "Wi-Fi/SSID/BSSID 与应用 UID 策略可保存恢复，不能私自放宽全局安全策略",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 52,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 51,
+      "area": "application-network",
+      "requirement": "区分 OEM/UID/DNS/TLS/应用层证据；root HTTP 200 不是 Play/微信等应用正常的证明",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 49,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 46,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 44,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 40,
+      "area": "rules",
+      "requirement": "白名单/关键登录规则优先级正确；删除确实生效，通用 Google 规则不能绕过全部拦截",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 37,
+      "area": "policy",
+      "requirement": "Wi-Fi/SSID/BSSID 与应用 UID 策略可保存恢复，不能私自放宽全局安全策略",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 36,
+      "area": "rules",
+      "requirement": "白名单/关键登录规则优先级正确；删除确实生效，通用 Google 规则不能绕过全部拦截",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 34,
+      "area": "rules",
+      "requirement": "白名单/关键登录规则优先级正确；删除确实生效，通用 Google 规则不能绕过全部拦截",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 29,
+      "area": "selection",
+      "requirement": "保留独立分组与数字排毒默认，不凭空假设地区筛选有效",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 27,
+      "area": "configuration",
+      "requirement": "MTU 及差异来自配置；诊断不输出完整私有配置",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 26,
+      "area": "rules",
+      "requirement": "白名单/关键登录规则优先级正确；删除确实生效，通用 Google 规则不能绕过全部拦截",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 24,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 20,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 19,
+      "area": "installation",
+      "requirement": "非交互安装不能等待按键，语言选择和错误可观察",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 15,
+      "area": "lifecycle",
+      "requirement": "先确认进程归属并有界优雅停服；失败保留证据；不得留下指向死监听器的 DNS 重定向",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 14,
+      "area": "subscriptions",
+      "requirement": "任意编辑 URL 列表、删除/本地共存、CRLF/格式错误/网络失败保留有效配置",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 13,
+      "area": "dashboard",
+      "requirement": "离线控制台资源与访问控制",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 11,
+      "area": "onboarding",
+      "requirement": "明显的添加节点入口和服务开关",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 10,
+      "area": "retired-scope",
+      "requirement": "历史 mihomo/多内核要求需结合当前产品范围，不恢复已废弃架构",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 9,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 8,
+      "area": "retired-scope",
+      "requirement": "历史 mihomo/多内核要求需结合当前产品范围，不恢复已废弃架构",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 6,
+      "area": "dns-ipv6",
+      "requirement": "单一配置来源、冲突检查、真实 IPv6 策略、避免 root UID 旁路与 DNS 回环",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 5,
+      "area": "installation",
+      "requirement": "非交互安装不能等待按键，语言选择和错误可观察",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 4,
+      "area": "hotspot",
+      "requirement": "仅接管实际下游，IPv6 能力不足须明确；不能把设备自身流量误作热点",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 3,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "migration_required",
+      "production_verified": false
+    },
+    {
+      "number": 2,
+      "area": "onboarding",
+      "requirement": "明显的添加节点入口和服务开关",
+      "status": "partial_host_regression",
+      "production_verified": false
+    },
+    {
+      "number": 1,
+      "area": "webui",
+      "requirement": "真实 320px 中文布局、长文本/菜单/换行、可访问性、避免无用资产和换行格式问题",
+      "status": "partial_host_regression",
+      "production_verified": false
+    }
+  ]
+}

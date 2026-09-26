@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "stage": "isolated-candidate",
+  "production_cutover": false,
+  "checks": [
+    {
+      "id": "legacy_migration",
+      "requirement": "旧私有配置、订阅、节点选择、Tailscale 状态的迁移及反向回滚",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "runtime_ownership",
+      "requirement": "fork/exec 窗口、代际租约、真实进程竞争与所有权证明",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "kernel_cleanup",
+      "requirement": "Android DNS/路由/iptables/eBPF 所有权及停服网络恢复",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "readiness",
+      "requirement": "真实内核配置、监听器、DNS、接口及联网的分层验收",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "tailscale",
+      "requirement": "启用、禁用、退出登录、路由回收及状态恢复",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "network_features",
+      "requirement": "eBPF、热点、Wi-Fi、IPv6、UID/OEM 策略、规则和选择器",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "mcp_backup",
+      "requirement": "MCP 及加密备份/恢复功能移植",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "resource_bounds",
+      "requirement": "代际目录回收、运行日志有界采集及总订阅时间预算",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "native_contract",
+      "requirement": "原 schema=1 机器接口、状态文件和完整 CLI 兼容性",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "hooks_installer",
+      "requirement": "实际 KernelSU hooks、安装、升级、重启、卸载和回退",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "rooted_android",
+      "requirement": "固定 ABI/内核的 rooted Android 全流程验收",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "physical_device",
+      "requirement": "ARM64/OEM/真实应用网络回归，不能以 root curl 替代",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "upstream_kamfw",
+      "requirement": "上游写入权限及独立框架变更提交/审核",
+      "accepted": false,
+      "evidence": []
+    }
+  ]
+}
