@@ -1,0 +1,126 @@
+name: Verify Android Fixture Payload Repair
+on:
+  push:
+    branches: ['work/rewrite-android-20260926']
+    paths: ['.github/workflows/rewrite-materialize.yml']
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.repository == 'LIghtJUNction/MagicNet' && github.ref == 'refs/heads/work/rewrite-android-20260926'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - name: Materialize exact reviewed sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          P=pathlib.Path
+          def oid(data): return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()=='a084de19bbaa3cf994408a6c8aee94d642d3e224'
+          old={'scripts/android-device-simulation.py':'12cf61f49833fdb6a70d676bfb813d0d583e5645','scripts/test-android-device-simulation.py':'c8eaa1f12cf62c1dea4352ce57b3a649aca2a966','.github/workflows/android-kernelsu-acceptance.yml':'692d2c2a21565e8949b5c9a2d1af6be882738a97','scripts/test-android-simulation-workflow.py':'bf3b6e813c76d6924306b3404bfced0ca4c7a76c'}
+          for path,sha in old.items(): assert oid(P(path).read_bytes())==sha
+          sources={'scripts/prepare-android-fixture-tools.py':'3b4b4f1ff41f7641e77b08d67a66484f8b4236fc','scripts/test-android-fixture-tools.py':'3c3babf140fe8db27ec8cc85cfed5522c0a8c9c3'}
+          for path,sha in sources.items():
+              request=urllib.request.Request('https://api.github.com/repos/LIghtJUNction/MagicNet/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=30) as response: blob=json.load(response)
+              data=base64.b64decode(blob['content']); assert oid(data)==sha and not P(path).exists()
+              P(path).write_bytes(data)
+          def replace(path,old,new):
+              p=P(path); text=p.read_text(); assert text.count(old)==1,(path,old)
+              p.write_text(text.replace(old,new))
+          path='scripts/android-device-simulation.py'
+          replace(path,'four ABI-specific executables','six ABI-specific executables')
+          replace(path,"'bin/jq', 'bin/yq')","'bin/jq', 'bin/yq', 'bin/proxylink', 'bin/ecapture')")
+          replace(path,'exactly four ABI replacements are required','exactly six ABI replacements are required')
+          replace(path,"for name in ('jq', 'yq')","for name in ('jq', 'yq', 'proxylink', 'ecapture')")
+          path='.github/workflows/android-kernelsu-acceptance.yml'
+          replace(path,'python3 scripts/test-android-device-simulation.py\n','python3 scripts/test-android-device-simulation.py\n          python3 scripts/test-android-fixture-tools.py\n')
+          replace(path,'          chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*','          python3 scripts/prepare-android-fixture-tools.py "$RUNNER_TEMP/magicnet-x86-tools"\n          chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*')
+          replace(path,'            ${{ runner.temp }}/x86-payloads.txt','            ${{ runner.temp }}/x86-payloads.txt\n            ${{ runner.temp }}/magicnet-x86-tools/auxiliary-provenance.json')
+          replace('scripts/test-android-device-simulation.py','    def test_only_executables_and_provenance_change(self):', '''    def test_all_packaged_auxiliary_programs_are_replaced_not_omitted(self):
+                  self.assertEqual(set(SIM.PAYLOADS), {'bin/magicnet-cli', 'bin/sing-box', 'bin/jq',
+                                                     'bin/yq', 'bin/proxylink', 'bin/ecapture'})
+                  self.archive()
+                  manifest = self.build()
+                  with zipfile.ZipFile(self.output) as result:
+                      for name in ('bin/proxylink', 'bin/ecapture'):
+                          self.assertTrue(SIM.elf_x86_64(result.read(name)))
+                          self.assertIn(name, manifest['payload_sha256'])
+                  self.replacements.pop('bin/proxylink')
+                  with self.assertRaises(RuntimeError):
+                      self.build()
+          
+              def test_only_executables_and_provenance_change(self):''')
+          replace('scripts/test-android-simulation-workflow.py','    def test_only_pristine_vm_is_saved_and_cached_kernel_is_reverified(self):', '''    def test_auxiliary_tools_use_pinned_builds_before_boot(self):
+                  prepare = self.step('Prepare x86_64 fixture utilities')
+                  self.assertNotIn('if', prepare)
+                  self.assertNotIn('continue-on-error', prepare)
+                  self.assertIn('python3 scripts/prepare-android-fixture-tools.py', prepare['run'])
+                  names = [s.get('name') for s in self.steps]
+                  self.assertLess(names.index('Prepare x86_64 fixture utilities'), names.index('Boot Android with KernelSU kernel'))
+                  self.assertIn('auxiliary-provenance.json', self.step('Upload Android acceptance report')['with']['path'])
+          
+              def test_only_pristine_vm_is_saved_and_cached_kernel_is_reverified(self):''')
+          artifact=P(os.environ['RUNNER_TEMP'])/'android-repair';artifact.mkdir()
+          (artifact/'allowed.json').write_text(json.dumps(list(old)+list(sources)))
+          subprocess.run(['git','rm','--','.github/workflows/rewrite-materialize.yml'],check=True)
+          PY
+      - name: Verify harness and actual pinned tools without write credentials
+        run: |
+          set -euo pipefail
+          if ! python3 -c 'import yaml'; then sudo apt-get update && sudo apt-get install -y python3-yaml; fi
+          for test in test-android-fixture-tools test-android-device-simulation test-android-simulation-workflow test-android-acceptance-contract test-android-avd-storage test-android-adb test-android-tun-proof test-android-network-benchmark; do
+            python3 "scripts/$test.py"
+          done
+          python3 scripts/prepare-android-fixture-tools.py "$RUNNER_TEMP/verified-x86-tools"
+          cp "$RUNNER_TEMP/verified-x86-tools/auxiliary-provenance.json" "$RUNNER_TEMP/android-repair/"
+      - name: Publish verified tree without moving refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,tarfile,urllib.request
+          def git(*args): return subprocess.check_output(['git',*args])
+          artifact=pathlib.Path(os.environ['RUNNER_TEMP'])/'android-repair'
+          paths=json.loads((artifact/'allowed.json').read_text())
+          subprocess.run(['git','add','--',*paths],check=True)
+          helper='.github/workflows/rewrite-materialize.yml'
+          changed=set(git('diff','--cached','--name-only','-z').decode().rstrip('\0').split('\0'))
+          assert changed==set(paths)|{helper}
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          base='https://api.github.com/repos/LIghtJUNction/MagicNet'
+          def api(path,data=None):
+              request=urllib.request.Request(base+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='GET' if data is None else 'POST')
+              with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
+          tree=[{'path':helper,'mode':'100644','type':'blob','sha':None}]
+          digests={}
+          with tarfile.open(artifact/'verified-source.tar.gz','w:gz') as archive:
+              for path in paths:
+                  data=git('show',':'+path)
+                  sha=api('/git/blobs',{'content':base64.b64encode(data).decode(),'encoding':'base64'})['sha']
+                  assert sha==hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+                  tree.append({'path':path,'mode':git('ls-files','--stage','--',path).decode().split()[0],'type':'blob','sha':sha})
+                  digests[path]=hashlib.sha256(data).hexdigest()
+                  archive.add(path,arcname=path,recursive=False)
+          parent=git('rev-parse','HEAD').decode().strip()
+          tree_sha=api('/git/trees',{'base_tree':api('/git/commits/'+parent)['tree']['sha'],'tree':tree})['sha']
+          assert tree_sha==git('write-tree').decode().strip()
+          (artifact/'result.json').write_text(json.dumps({'schema':1,'tree':tree_sha,'sha256':digests,'refs_updated':False},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: verified-android-repair
+          path: ${{ runner.temp }}/android-repair/
+          retention-days: 3
