@@ -1,15 +1,12 @@
 //! Explicitly selected native tools. No inherited proxy, arbitrary shell,
 //! unknown PID cleanup, or automatic Android-acceptance claim.
-use kamfw::process::{normalize_arguments, Identity, Observation};
+use kamfw::process::{Identity, Observation};
 use kamfw::run::{execute, execute_cancelable, Spec};
 use kamfw::{Error, Result, Root};
 use magicnet_core::engine::Platform;
-use std::os::unix::{fs::MetadataExt, process::CommandExt};
+use std::os::unix::fs::MetadataExt;
 use std::{
-    fs,
-    io::Read,
     path::PathBuf,
-    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -17,6 +14,15 @@ pub struct Native {
     pub experimental: bool,
 }
 impl Native {
+    pub fn worker(root: &Root, generation: &str) -> Result<()> {
+        let mut spec =
+            Spec::new(Self::binary(root, "sing-box")?).args(Self::arguments(root, generation)?);
+        spec.directory = Some(root.path().into());
+        spec.env
+            .insert("HOME".into(), root.path().to_string_lossy().into_owned());
+        kamfw::worker::serve(root, generation, &spec)
+    }
+
     fn binary(root: &Root, name: &str) -> Result<PathBuf> {
         let path = format!("bin/{name}");
         let file = root.open_file(&path)?.ok_or_else(|| {
@@ -93,151 +99,71 @@ impl Platform for Native {
     }
     fn launch(&self, root: &Root, generation: &str) -> Result<Identity> {
         self.runtime_gate()?;
-        let binary = Self::binary(root, "sing-box")?;
-        let metadata =
-            fs::metadata(&binary).map_err(|e| Error::io("Inspect dataplane executable", e))?;
-        // This candidate adapter intentionally has no unbounded log sink.
-        // Dataplane log streaming/rotation remains a migration gate.
-        let mut command = Command::new(&binary);
-        command
-            .args(Self::arguments(root, generation)?)
-            .current_dir(root.path())
-            .env_clear()
-            .env("PATH", "/system/bin:/system/xbin:/usr/bin:/bin")
-            .env("HOME", root.path())
-            .env("LANG", "C")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        unsafe {
-            command.pre_exec(|| {
-                if libc::setsid() < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                libc::umask(0o077);
-                Ok(())
-            });
-        }
-        let mut child = command
-            .spawn()
-            .map_err(|e| Error::io("Launch owned dataplane", e))?;
-        let pid = child.id();
-        let identity = Identity::capture(pid);
-        if let Some(_status) = child
-            .try_wait()
-            .map_err(|e| Error::io("Inspect dataplane startup", e))?
-        {
-            return Err(
-                Error::new("startup_failed", "The dataplane exited during startup").changed(),
-            );
-        }
-        let identity = identity.map_err(|error| error.changed())?;
-        if identity.executable_device != metadata.dev()
-            || identity.executable_inode != metadata.ino()
-        {
-            return Err(Error::new(
-                "ownership_unknown",
-                "The spawned executable changed; recovery evidence must be retained",
-            )
-            .changed());
-        }
-        // Dropping Child neither kills nor waits. Exact generation discovery
-        // covers a crash before this identity is durably published.
-        Ok(identity)
+        let _ = Self::binary(root, "sing-box")?;
+        let executable =
+            std::env::current_exe().map_err(|e| Error::io("Locate native worker executable", e))?;
+        kamfw::worker::launch(root, generation, &executable)
     }
     fn find(&self, root: &Root, generation: &str) -> Result<Option<Identity>> {
-        let binary = Self::binary(root, "sing-box")?;
-        let metadata =
-            fs::metadata(&binary).map_err(|e| Error::io("Inspect dataplane executable", e))?;
-        let mut arguments = vec![binary.to_string_lossy().into_owned().into_bytes()];
-        arguments.extend(
-            Self::arguments(root, generation)?
-                .into_iter()
-                .map(String::into_bytes),
-        );
-        let entries = fs::read_dir("/proc").map_err(|e| Error::io("Inspect process table", e))?;
-        let mut found = None;
-        let mut count = 0;
-        for entry in entries {
-            let entry = entry.map_err(|e| Error::io("Read process table", e))?;
-            let Some(pid) = entry
-                .file_name()
-                .to_str()
-                .and_then(|s| s.parse::<u32>().ok())
-            else {
-                continue;
-            };
-            count += 1;
-            if count > 65536 {
-                return Err(Error::new(
-                    "process_limit",
-                    "Process discovery exceeded its bound",
-                ));
-            }
-            let executable = match fs::metadata(entry.path().join("exe")) {
-                Ok(value) => value,
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
-                    ) =>
-                {
-                    continue
-                }
-                Err(error) => return Err(Error::io("Inspect process executable", error)),
-            };
-            if executable.dev() != metadata.dev() || executable.ino() != metadata.ino() {
-                continue;
-            }
-            let mut raw = Vec::new();
-            let file = match fs::File::open(entry.path().join("cmdline")) {
-                Ok(file) => file,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(Error::io("Inspect matching process", error)),
-            };
-            file.take(16385)
-                .read_to_end(&mut raw)
-                .map_err(|e| Error::io("Read matching process identity", e))?;
-            if raw.len() > 16384 {
-                return Err(Error::new(
-                    "ownership_unknown",
-                    "Matching process arguments exceed the ownership bound",
-                ));
-            }
-            if normalize_arguments(&raw)? != arguments {
-                continue;
-            }
-            let identity = Identity::capture(pid)?;
-            if found.replace(identity).is_some() {
-                return Err(Error::new(
-                    "ambiguous_owner",
-                    "More than one process owns the same immutable generation",
-                ));
-            }
+        let Some(record) = kamfw::worker::record(root, generation)? else {
+            return Ok(None);
+        };
+        if kamfw::worker::observation(root, generation) == Observation::Absent {
+            Ok(None)
+        } else {
+            Ok(Some(record.supervisor))
         }
-        Ok(found)
     }
-    fn observe(&self, identity: &Identity) -> Observation {
-        identity.observe()
+    fn observe(&self, root: &Root, identity: &Identity) -> Observation {
+        kamfw::worker::generation(root, identity)
+            .map(|id| kamfw::worker::observation(root, &id))
+            .unwrap_or(Observation::Unknown)
     }
-    fn ready(&self, _root: &Root, _generation: &str, identity: &Identity) -> Result<()> {
-        let deadline = Instant::now() + Duration::from_millis(500);
+    fn ready(&self, root: &Root, generation: &str, identity: &Identity) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut alive_since = None;
         while Instant::now() < deadline {
-            if identity.observe() != Observation::Running {
-                return Err(Error::new(
-                    "startup_failed",
-                    "The dataplane did not remain alive through its startup observation",
-                )
-                .changed());
+            if let Ok(record) = kamfw::worker::inspect(root, generation) {
+                if record.supervisor != *identity {
+                    return Err(
+                        Error::new("ownership_changed", "Startup control peer changed").changed(),
+                    );
+                }
+                match record.child.as_ref().map(Identity::observe) {
+                    Some(Observation::Running) => {
+                        let since = alive_since.get_or_insert_with(Instant::now);
+                        if since.elapsed() >= Duration::from_millis(500) {
+                            return Ok(());
+                        }
+                    }
+                    Some(Observation::Absent | Observation::Foreign) => {
+                        return Err(Error::new(
+                            "startup_failed",
+                            "The owned dataplane exited during startup",
+                        )
+                        .changed())
+                    }
+                    _ => {
+                        alive_since = None;
+                    }
+                }
+            } else if self.observe(root, identity) == Observation::Absent {
+                return Err(
+                    Error::new("startup_failed", "The owned worker exited during startup")
+                        .changed(),
+                );
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        // Deliberately process-only. Status never equates this with restored
-        // Android routing, DNS capture, successful login, or app connectivity.
-        Ok(())
+        Err(Error::new(
+            "startup_timeout",
+            "The dataplane did not finish its process startup observation",
+        )
+        .changed())
     }
-    fn stop(&self, identity: &Identity) -> Result<()> {
-        identity.stop(Duration::from_secs(15))
+    fn stop(&self, root: &Root, identity: &Identity) -> Result<()> {
+        let generation = kamfw::worker::generation(root, identity)?;
+        kamfw::worker::stop(root, &generation, Duration::from_secs(15))
     }
     fn fetch(
         &self,

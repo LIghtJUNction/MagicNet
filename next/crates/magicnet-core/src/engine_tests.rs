@@ -56,7 +56,7 @@ impl Platform for Fake {
     fn find(&self, _: &Root, generation: &str) -> Result<Option<Identity>> {
         Ok(self.alive.borrow().get(generation).cloned())
     }
-    fn observe(&self, identity: &Identity) -> Observation {
+    fn observe(&self, _: &Root, identity: &Identity) -> Observation {
         if self.unknown.get() {
             return Observation::Unknown;
         }
@@ -77,7 +77,7 @@ impl Platform for Fake {
             Ok(())
         }
     }
-    fn stop(&self, identity: &Identity) -> Result<()> {
+    fn stop(&self, _: &Root, identity: &Identity) -> Result<()> {
         self.event(format!("stop:{}", identity.pid));
         if self.stop_error.get() {
             return Err(Error::new("stop_timeout", "injected cleanup timeout").changed());
@@ -436,4 +436,97 @@ fn diagnostics_do_not_expose_urls_nodes_or_credentials() {
         assert!(!output.contains(private));
     }
     assert!(output.contains("not_tested"));
+}
+
+#[test]
+fn canonical_runtime_contains_only_bounded_nonprivate_tokens() {
+    let f = Fixture::new();
+    f.ok(
+        "sources.replace",
+        json!({"text":"https://private.test/secret"}),
+    );
+    let text = String::from_utf8(f.bytes(".state/machines/runtime.state").unwrap()).unwrap();
+    assert!(text.starts_with("schema=1\n"));
+    assert!(text.contains("operation_phase=completed\n"));
+    assert!(text.contains("source_count=1\n"));
+    for line in text.lines() {
+        let (key, value) = line.split_once('=').unwrap();
+        assert!(key.len() <= 64 && value.len() <= 64);
+        assert!(key
+            .bytes()
+            .chain(value.bytes())
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+    }
+    assert!(!text.contains("private.test"));
+    assert!(!text.contains("secret"));
+}
+
+#[test]
+fn a_dead_writer_does_not_leave_the_interface_permanently_busy() {
+    let f = Fixture::new();
+    let request = f.request("sources.refresh", Value::Null);
+    let mut owner = Identity::capture(std::process::id()).unwrap();
+    owner.boot_id = "00000000-0000-0000-0000-000000000000".into();
+    let operation = Operation {
+        schema: 1,
+        id: request.id.clone(),
+        method: request.method.clone(),
+        digest: kamfw::sha256(&serde_json::to_vec(&request).unwrap()),
+        phase: "running".into(),
+        outcome: None,
+        owner: Some(owner),
+    };
+    f.engine
+        .root
+        .write_json(".state/operation.json", &operation)
+        .unwrap();
+    let receipt = format!(".state/operations/{}.json", request.id);
+    f.engine.root.write_json(&receipt, &operation).unwrap();
+    let before = f.bytes(".state/operation.json");
+    assert_eq!(
+        f.ok("status", Value::Null)["operation"]["phase"],
+        "interrupted"
+    );
+    assert_eq!(
+        f.bytes(".state/operation.json"),
+        before,
+        "inspection must remain read-only"
+    );
+    f.ok("runtime.recover", Value::Null);
+    let recovered: Operation = f.engine.root.read_json(&receipt).unwrap().unwrap();
+    assert_eq!(recovered.phase, "interrupted");
+    assert_eq!(recovered.outcome.unwrap()["error"]["code"], "interrupted");
+    assert_eq!(
+        f.ok("status", Value::Null)["operation"]["phase"],
+        "completed"
+    );
+}
+
+#[test]
+fn a_failed_operation_publishes_failure_not_an_old_running_phase() {
+    let f = Fixture::new();
+    let result = f.call("sources.replace", json!({"text":"file:///not-allowed"}));
+    assert_eq!(result["ok"], false);
+    let text = String::from_utf8(f.bytes(".state/machines/runtime.state").unwrap()).unwrap();
+    assert!(text.contains("operation_phase=failed\n"));
+    assert!(text.contains("configured=disabled\n"));
+    assert!(!text.contains("file:"));
+}
+
+#[test]
+fn repeated_configuration_generations_remain_bounded_without_deleting_the_live_one() {
+    let f = Fixture::new();
+    f.ok("service.start", Value::Null);
+    for n in 0..20 {
+        let mut settings = f.engine.settings().unwrap();
+        settings.user_agent = format!("test-{n}");
+        f.ok("settings.replace", serde_json::to_value(settings).unwrap());
+        f.ok("service.start", Value::Null);
+        let current = f.engine.runtime().unwrap().generation.unwrap();
+        assert!(f
+            .bytes(&format!(".state/generations/{current}/config.json"))
+            .is_some());
+        assert!(f.engine.root.list(".state/generations", 128).unwrap().len() <= 2);
+    }
+    assert_eq!(f.engine.platform.alive.borrow().len(), 1);
 }

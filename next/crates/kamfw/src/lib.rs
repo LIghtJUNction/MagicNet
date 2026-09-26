@@ -7,10 +7,12 @@
 
 pub mod error;
 pub mod fs;
+mod fs_socket;
 pub mod lock;
 pub mod process;
 pub mod run;
 pub mod transaction;
+pub mod worker;
 
 pub use error::{Error, Result};
 pub use fs::{random_id, sha256, Entry, EntryKind, Root, Store};

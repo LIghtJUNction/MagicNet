@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+mod bookkeeping;
+mod configuration;
+mod lifecycle;
+
 const RUNTIME: &str = ".state/runtime.json";
 const SWITCH: &str = ".state/switch.json";
 const LOCK: &str = ".state/lock";
@@ -18,9 +22,9 @@ pub trait Platform {
     fn validate(&self, root: &Root, generation: &str) -> Result<()>;
     fn launch(&self, root: &Root, generation: &str) -> Result<Identity>;
     fn find(&self, root: &Root, generation: &str) -> Result<Option<Identity>>;
-    fn observe(&self, identity: &Identity) -> Observation;
+    fn observe(&self, root: &Root, identity: &Identity) -> Observation;
     fn ready(&self, root: &Root, generation: &str, identity: &Identity) -> Result<()>;
-    fn stop(&self, identity: &Identity) -> Result<()>;
+    fn stop(&self, root: &Root, identity: &Identity) -> Result<()>;
     fn fetch(
         &self,
         root: &Root,
@@ -69,6 +73,8 @@ struct Operation {
     digest: String,
     phase: String,
     outcome: Option<Value>,
+    #[serde(default)]
+    owner: Option<Identity>,
 }
 
 pub struct Engine<P> {
@@ -136,7 +142,7 @@ impl<P: Platform> Engine<P> {
                 let observed = runtime
                     .identity
                     .as_ref()
-                    .map(|id| self.platform.observe(id))
+                    .map(|id| self.platform.observe(&self.root, id))
                     .unwrap_or(Observation::Absent);
                 let phase = match observed {
                     Observation::Running => "running",
@@ -148,16 +154,11 @@ impl<P: Platform> Engine<P> {
                     json!({"phase":phase,"configured":settings.enabled && self.root.read(STOP, 256)?.is_none(),"configured_revision":settings.revision,
                     "effective_revision":runtime.revision,"mode":settings.mode,"source_count":settings.sources.len(),
                     "pending_changes":settings.revision != runtime.revision,"recovery_pending":self.root.read(SWITCH, 65536)?.is_some() || !self.root.list(".state/transactions", 64)?.is_empty(),
-                    "operation":self.root.read_json::<Operation>(".state/operation.json")?.map(|o| json!({"id":o.id,"method":o.method,"phase":o.phase})),
+                    "operation":self.operation_view()?.as_object().map(|o| json!({"id":o["id"],"method":o["method"],"phase":o["phase"]})),
                     "observation":"process_identity_only","network_health":"unknown"}),
                 )
             }
-            "operation" => Ok(self
-                .root
-                .read_json::<Operation>(".state/operation.json")?
-                .map(serde_json::to_value)
-                .transpose()?
-                .unwrap_or(Value::Null)),
+            "operation" => self.operation_view(),
             "diagnostics" => Ok(
                 json!({"schema":1,"scope":"read_only","status":self.read("status")?,
                 "private_data":"omitted","android_app_connectivity":"not_tested","kernel_rules":"not_verified"}),
@@ -252,7 +253,22 @@ impl<P: Platform> Engine<P> {
         .ok_or_else(|| Error::new("lock_unavailable", "The runtime lock could not be opened"))?;
         guard.require_writer(&self.root)?;
 
-        if let Some(previous) = self.root.read_json::<Operation>(&record_path)? {
+        let result = self.execute_locked(request, &record_path, digest);
+        // Recovery and STOP can mutate intent before a new operation receipt
+        // exists. Publish under the same lock even on those early error paths.
+        match self.publish_canonical() {
+            Ok(()) => result,
+            Err(error) => Err(error.changed()),
+        }
+    }
+
+    fn execute_locked(
+        &self,
+        request: &Request,
+        record_path: &str,
+        digest: String,
+    ) -> Result<Value> {
+        if let Some(previous) = self.root.read_json::<Operation>(record_path)? {
             if previous.digest != digest {
                 return Err(Error::new(
                     "request_conflict",
@@ -266,9 +282,25 @@ impl<P: Platform> Engine<P> {
                 return Err(Error::new("previous_failure", "The earlier attempt failed; inspect its recorded outcome and use a new request ID"));
             }
             self.recover()?;
+            self.settle_interrupted_operation()?;
+            self.publish_canonical()?;
             return Err(Error::new("interrupted", "This request was interrupted and recovered; review state before retrying with a new ID"));
         }
-        self.recover()?;
+        if let Err(error) = self.recover() {
+            let operation = Operation {
+                schema: 1,
+                id: request.id.clone(),
+                method: request.method.clone(),
+                digest,
+                phase: "failed".into(),
+                owner: Some(Identity::capture(std::process::id())?),
+                outcome: Some(json!({"ok":false,"error":error})),
+            };
+            self.root.write_json(record_path, &operation)?;
+            self.root.write_json(".state/operation.json", &operation)?;
+            return Err(error);
+        }
+        self.settle_interrupted_operation()?;
         let mut settings = self.settings()?;
         if !matches!(request.method.as_str(), "service.stop" | "runtime.recover")
             && request.expected_revision != Some(settings.revision)
@@ -287,9 +319,11 @@ impl<P: Platform> Engine<P> {
             digest,
             phase: "running".into(),
             outcome: None,
+            owner: Some(Identity::capture(std::process::id())?),
         };
-        self.root.write_json(&record_path, &operation)?;
+        self.root.write_json(record_path, &operation)?;
         self.root.write_json(".state/operation.json", &operation)?;
+        self.publish_canonical()?;
         let result = self.mutate(request, &mut settings);
         operation.phase = if result.is_ok() {
             "completed"
@@ -302,351 +336,12 @@ impl<P: Platform> Engine<P> {
             Err(error) => json!({"ok":false,"error":error}),
         });
         self.root
-            .write_json(&record_path, &operation)
+            .write_json(record_path, &operation)
             .map_err(|e| e.changed())?;
         self.root
             .write_json(".state/operation.json", &operation)
             .map_err(|e| e.changed())?;
         result
-    }
-
-    fn mutate(&self, request: &Request, settings: &mut Settings) -> Result<Value> {
-        match request.method.as_str() {
-            "settings.replace" => {
-                let mut candidate: Settings = serde_json::from_value(request.params.clone())?;
-                candidate.validate()?;
-                if candidate.enabled != settings.enabled {
-                    return Err(Error::new(
-                        "invalid_intent",
-                        "Use service.start or service.stop to change the lifecycle intent",
-                    ));
-                }
-                candidate.revision = settings.revision + 1;
-                self.commit(&[self.change(SETTINGS, Some(serde_json::to_vec(&candidate)?))?])?;
-                Ok(json!({"revision":candidate.revision,"applied":false}))
-            }
-            "sources.replace" => {
-                let text = request
-                    .params
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        Error::new("invalid_sources", "A complete URL list is required")
-                    })?;
-                let old_ids: Vec<String> = settings.sources.iter().map(|s| s.id.clone()).collect();
-                settings.replace_sources(text)?;
-                settings.revision += 1;
-                let mut changes = vec![self.change(SETTINGS, Some(serde_json::to_vec(settings)?))?];
-                for id in old_ids {
-                    if !settings.sources.iter().any(|s| s.id == id) {
-                        changes.push(self.change(&format!(".config/nodes/{id}.json"), None)?);
-                    }
-                }
-                self.commit(&changes)?;
-                Ok(
-                    json!({"revision":settings.revision,"source_count":settings.sources.len(),"applied":false}),
-                )
-            }
-            "sources.import" => {
-                let body = request
-                    .params
-                    .get("body")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        Error::new(
-                            "invalid_subscription",
-                            "A local subscription document is required",
-                        )
-                    })?;
-                let id = "00000000000000000000000000000001";
-                let decoded = self.platform.decode(&self.root, body.as_bytes())?;
-                let parsed = subscription::parse_json(&decoded, id)?;
-                settings.revision += 1;
-                self.commit(&[
-                    self.change(
-                        ".config/nodes/local.json",
-                        Some(serde_json::to_vec(&parsed.nodes)?),
-                    )?,
-                    self.change(SETTINGS, Some(serde_json::to_vec(settings)?))?,
-                ])?;
-                Ok(
-                    json!({"revision":settings.revision,"nodes":parsed.nodes.len(),"rejected":parsed.rejected,"applied":false}),
-                )
-            }
-            "sources.refresh" => {
-                let mut changes = Vec::new();
-                let mut nodes = 0;
-                let mut rejected = 0;
-                let cancelled = || {
-                    self.root
-                        .read(".state/cancel", 64)
-                        .ok()
-                        .flatten()
-                        .is_some_and(|id| id == request.id.as_bytes())
-                };
-                for source in settings.sources.iter().filter(|source| source.enabled) {
-                    let bytes = self.platform.fetch(
-                        &self.root,
-                        &source.url,
-                        &settings.user_agent,
-                        &cancelled,
-                    )?;
-                    let decoded = self.platform.decode(&self.root, &bytes)?;
-                    let parsed = subscription::parse_json(&decoded, &source.id)?;
-                    nodes += parsed.nodes.len();
-                    rejected += parsed.rejected;
-                    changes.push(self.change(
-                        &format!(".config/nodes/{}.json", source.id),
-                        Some(serde_json::to_vec(&parsed.nodes)?),
-                    )?);
-                }
-                if changes.is_empty() {
-                    return Err(Error::new(
-                        "no_sources",
-                        "No enabled subscription sources are configured",
-                    ));
-                }
-                settings.revision += 1;
-                changes.push(self.change(SETTINGS, Some(serde_json::to_vec(settings)?))?);
-                self.commit(&changes)?;
-                Ok(
-                    json!({"revision":settings.revision,"nodes":nodes,"rejected":rejected,"applied":false}),
-                )
-            }
-            "service.start" => {
-                // A new explicit start can clear a settled stop, never an
-                // in-flight operation's cancellation marker.
-                self.root.remove(STOP)?;
-                self.activate(settings)
-            }
-            "service.stop" => {
-                self.settle_stop()?;
-                Ok(
-                    json!({"phase":"stopped","revision":self.settings()?.revision,"network_restoration":"not_verified"}),
-                )
-            }
-            "runtime.recover" => {
-                self.recover()?;
-                self.read("status")
-            }
-            _ => Err(Error::new("unsupported_command", "Unknown operation")),
-        }
-    }
-
-    fn activate(&self, settings: &mut Settings) -> Result<Value> {
-        if settings.mode == crate::model::Mode::Ebpf {
-            return Err(Error::new(
-                "acceptance_required",
-                "The rewritten eBPF adapter is not accepted yet; the mode was not changed",
-            ));
-        }
-        let previous = self.runtime()?;
-        let observed = previous
-            .identity
-            .as_ref()
-            .map(|id| self.platform.observe(id))
-            .unwrap_or(Observation::Absent);
-        if matches!(observed, Observation::Unknown | Observation::Foreign) {
-            return Err(Error::new(
-                "ownership_unknown",
-                "The existing process must be reconciled before activation",
-            ));
-        }
-        if observed == Observation::Running && previous.revision == settings.revision {
-            return self.read("status");
-        }
-        let mut sets = Vec::new();
-        for source in settings.sources.iter().filter(|source| source.enabled) {
-            let cache = self
-                .root
-                .read_json::<Value>(&format!(".config/nodes/{}.json", source.id))?
-                .ok_or_else(|| {
-                    Error::new(
-                        "source_not_ready",
-                        "A source has no validated node cache; refresh before applying",
-                    )
-                })?;
-            sets.push(cache);
-        }
-        if let Some(local) = self.root.read_json::<Value>(".config/nodes/local.json")? {
-            sets.push(local);
-        }
-        let config = subscription::attach(&settings.template, &sets)?;
-        let candidate = kamfw::random_id()?;
-        self.root.write_json(
-            &format!(".state/generations/{candidate}/config.json"),
-            &config,
-        )?;
-        self.platform.validate(&self.root, &candidate)?;
-        if self.root.read(STOP, 256)?.is_some() {
-            return Err(Error::new("cancelled", "A stop superseded this activation"));
-        }
-        let switch = Switch {
-            schema: 1,
-            previous,
-            was_running: observed == Observation::Running,
-            candidate: candidate.clone(),
-        };
-        self.root.write_json(SWITCH, &switch)?;
-        let activation = (|| {
-            if switch.was_running {
-                self.platform
-                    .stop(switch.previous.identity.as_ref().ok_or_else(|| {
-                        Error::new("invalid_runtime", "An active runtime has no owner")
-                    })?)?;
-            }
-            let identity = self.platform.launch(&self.root, &candidate)?;
-            self.root
-                .write_json(".state/pending-process.json", &identity)?;
-            self.platform.ready(&self.root, &candidate, &identity)?;
-            if self.root.read(STOP, 256)?.is_some() {
-                return Err(Error::new("cancelled", "A stop superseded this activation").changed());
-            }
-            settings.enabled = true;
-            settings.revision += 1;
-            let runtime = Runtime {
-                generation: Some(candidate.clone()),
-                identity: Some(identity),
-                revision: settings.revision,
-                phase: "running".into(),
-            };
-            self.commit(&[
-                self.change(SETTINGS, Some(serde_json::to_vec(settings)?))?,
-                self.change(RUNTIME, Some(serde_json::to_vec(&runtime)?))?,
-                self.change(".state/last-good.json", Some(serde_json::to_vec(&runtime)?))?,
-            ])?;
-            self.root.remove(SWITCH)?;
-            self.root.remove(".state/pending-process.json")?;
-            Ok(
-                json!({"phase":"running","revision":settings.revision,"network_health":"not_verified"}),
-            )
-        })();
-        if activation.is_err() && self.recover().is_err() {
-            return Err(Error::new("rollback_incomplete", "Activation failed and recovery remains incomplete; ownership evidence was retained").changed());
-        }
-        activation
-    }
-
-    /// Must be called only while holding the native exclusive lock.
-    fn recover(&self) -> Result<()> {
-        Transaction::recover(&self.root)?;
-        let stopping = self.root.read(STOP, 256)?.is_some();
-        let Some(switch) = self.root.read_json::<Switch>(SWITCH)? else {
-            if stopping {
-                self.settle_stop()?;
-            }
-            return Ok(());
-        };
-        if switch.schema != 1 || !kamfw::fs::valid_id(&switch.candidate) {
-            return Err(Error::new(
-                "invalid_recovery",
-                "The runtime recovery journal is invalid",
-            ));
-        }
-        let current = self.runtime()?;
-        if current.generation.as_deref() == Some(&switch.candidate) {
-            if stopping {
-                self.settle_stop()?;
-            }
-            self.root.remove(SWITCH)?;
-            self.root.remove(".state/pending-process.json")?;
-            return Ok(());
-        }
-        // Discovery matches the exact immutable generation path. A crash
-        // between spawn and pidfile publication cannot orphan an owned child.
-        if let Some(identity) = self.platform.find(&self.root, &switch.candidate)? {
-            self.platform.stop(&identity)?;
-        }
-        let mut restored = switch.previous.clone();
-        if switch.was_running && !stopping {
-            let identity = restored
-                .identity
-                .as_ref()
-                .ok_or_else(|| Error::new("invalid_recovery", "The rollback owner is missing"))?;
-            match self.platform.observe(identity) {
-                Observation::Running => (),
-                Observation::Absent => {
-                    let generation = restored
-                        .generation
-                        .as_deref()
-                        .filter(|s| kamfw::fs::valid_id(s))
-                        .ok_or_else(|| {
-                            Error::new("invalid_recovery", "The rollback generation is missing")
-                        })?;
-                    let identity = self
-                        .platform
-                        .find(&self.root, generation)?
-                        .map(Ok)
-                        .unwrap_or_else(|| self.platform.launch(&self.root, generation))?;
-                    self.platform.ready(&self.root, generation, &identity)?;
-                    restored.identity = Some(identity);
-                }
-                _ => {
-                    return Err(Error::new(
-                        "ownership_unknown",
-                        "The rollback process cannot be safely identified",
-                    )
-                    .changed())
-                }
-            }
-        }
-        self.root.write_json(RUNTIME, &restored)?;
-        if stopping {
-            self.settle_stop()?;
-        }
-        self.root.remove(SWITCH)?;
-        self.root.remove(".state/pending-process.json")?;
-        Ok(())
-    }
-
-    fn settle_stop(&self) -> Result<()> {
-        let runtime = self.runtime()?;
-        let mut settings = self.settings()?;
-        if settings.enabled {
-            settings.enabled = false;
-            settings.revision += 1;
-            self.commit(&[self.change(SETTINGS, Some(serde_json::to_vec(&settings)?))?])?;
-        }
-        if let Some(identity) = runtime.identity.as_ref() {
-            match self.platform.observe(identity) {
-                Observation::Running => self.platform.stop(identity)?,
-                Observation::Absent => (),
-                _ => {
-                    return Err(Error::new(
-                        "ownership_unknown",
-                        "Stop recovery retained an unverified process identity",
-                    )
-                    .changed())
-                }
-            }
-        }
-        self.root.write_json(
-            RUNTIME,
-            &Runtime {
-                revision: settings.revision,
-                phase: "stopped".into(),
-                ..Runtime::default()
-            },
-        )
-    }
-
-    fn prune_operations(&self) -> Result<()> {
-        let mut files = self.root.list(".state/operations", 256)?;
-        files.retain(|file| {
-            file.kind == kamfw::EntryKind::File
-                && file
-                    .name
-                    .strip_suffix(".json")
-                    .is_some_and(kamfw::fs::valid_id)
-        });
-        // IDs are random, not time-sorted. Retention is a bounded replay window,
-        // explicitly not an unbounded exactly-once promise.
-        while files.len() >= 128 {
-            let file = files.remove(0);
-            self.root
-                .remove(&format!(".state/operations/{}", file.name))?;
-        }
-        Ok(())
     }
 }
 

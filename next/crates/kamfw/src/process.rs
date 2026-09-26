@@ -184,7 +184,12 @@ impl Identity {
             let error = std::io::Error::last_os_error();
             match error.raw_os_error() {
                 Some(libc::ESRCH) => return Ok(()),
-                Some(libc::ENOSYS) | Some(libc::EINVAL) => None,
+                Some(libc::ENOSYS) | Some(libc::EINVAL) => {
+                    return Err(Error::new(
+                        "signal_handle_unavailable",
+                        "This kernel requires the private parent-owned worker control path",
+                    ))
+                }
                 _ => return Err(Error::io("Bind process signal handle", error)),
             }
         };
@@ -210,9 +215,10 @@ impl Identity {
                 )
             }
         } else {
-            // Pre-pidfd kernels use the checked identity and only SIGTERM;
-            // they never receive an automatic forced kill.
-            unsafe { libc::kill(self.pid as i32, libc::SIGTERM) as libc::c_long }
+            return Err(Error::new(
+                "signal_handle_unavailable",
+                "No bound process signal handle is available",
+            ));
         };
         if result != 0 {
             let error = std::io::Error::last_os_error();

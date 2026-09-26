@@ -1,5 +1,6 @@
 //! Machine-first candidate CLI. Its writable root must carry an explicit
 //! migration marker; it cannot accidentally overwrite the installed v1 module.
+mod deployment;
 mod platform;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use kamfw::{Error, Result, Root};
@@ -41,6 +42,9 @@ fn main_result() -> Result<Value> {
     let mut transport = None;
     let mut experimental = false;
     let mut initialize = false;
+    let mut worker = None;
+    let mut hook = None;
+    let mut previous = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--root" if root_path.is_none() => {
@@ -51,6 +55,22 @@ fn main_result() -> Result<Value> {
             "--request-stdin" if transport.is_none() => transport = Some(false),
             "--request-base64-stdin" if transport.is_none() => transport = Some(true),
             "--experimental-runtime" => experimental = true,
+            "--hook" if hook.is_none() => {
+                hook =
+                    Some(args.next().ok_or_else(|| {
+                        Error::new("invalid_arguments", "The hook name is missing")
+                    })?)
+            }
+            "--upgrade-from" if previous.is_none() => {
+                previous = Some(args.next().ok_or_else(|| {
+                    Error::new("invalid_arguments", "The upgrade source is missing")
+                })?)
+            }
+            "--worker" if worker.is_none() => {
+                worker = Some(args.next().ok_or_else(|| {
+                    Error::new("invalid_arguments", "The worker needs a generation")
+                })?)
+            }
             "--initialize-candidate" => initialize = true,
             "--json" => (),
             "capabilities" | "status" | "settings" | "operation" | "diagnostics"
@@ -71,7 +91,11 @@ fn main_result() -> Result<Value> {
             }
         }
     }
-    if usize::from(method.is_some()) + usize::from(transport.is_some()) + usize::from(initialize)
+    if usize::from(method.is_some())
+        + usize::from(transport.is_some())
+        + usize::from(initialize)
+        + usize::from(worker.is_some())
+        + usize::from(hook.is_some())
         != 1
     {
         return Err(Error::new(
@@ -86,6 +110,47 @@ fn main_result() -> Result<Value> {
         )
     })?;
     let root = Root::open(&path)?;
+    if let Some(hook) = hook {
+        if ![
+            "install",
+            "service",
+            "boot-completed",
+            "action",
+            "uninstall",
+        ]
+        .contains(&hook.as_str())
+        {
+            return Err(Error::new("unsupported_hook", "Unknown lifecycle hook"));
+        }
+        if root.read_json::<Value>(".magicnet-candidate.json")?
+            != Some(json!({"schema":1,"kind":"isolated-candidate","version":2}))
+        {
+            return Err(Error::new(
+                "migration_required",
+                "Lifecycle hooks require a verified candidate directory",
+            ));
+        }
+        let engine = Engine {
+            root,
+            platform: platform::Native { experimental },
+        };
+        let data = deployment::run(&engine, &hook, previous.as_deref())?;
+        if data.get("schema") == Some(&json!(1)) && data.get("ok").is_some() {
+            return Ok(data);
+        }
+        return Ok(json!({"schema":1,"ok":true,"command":format!("hook.{hook}"),"data":data}));
+    }
+    if previous.is_some() {
+        return Err(Error::new(
+            "invalid_arguments",
+            "Upgrade sources are only valid with an installation hook",
+        ));
+    }
+
+    if let Some(generation) = worker {
+        platform::Native::worker(&root, &generation)?;
+        return Ok(json!({"schema":1,"ok":true,"command":"worker","data":{"exited":true}}));
+    }
     if initialize {
         // Never bootstrap on top of installed modules or an unrecognized data
         // directory. The caller creates a new private empty directory first.
