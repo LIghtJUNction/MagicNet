@@ -1446,7 +1446,7 @@ mod process_group_tests {
                 path.is_absolute(),
                 "trusted curl must not search PATH: {path:?}"
             );
-            assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("curl"));
+            assert_eq!(\n                path.file_name().and_then(|name| name.to_str()),\n                Some("curl")\n            );
         }
         assert!(super::UNSAFE_LOADER_ENV.contains(&"LD_PRELOAD"));
         assert!(super::UNSAFE_LOADER_ENV.contains(&"BASH_ENV"));
