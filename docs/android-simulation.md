@@ -15,14 +15,23 @@ and an ordinary application-UID probe APK. The production ARM64 ZIP still goes
 through the existing package checks. KAM validation previously in `init.yml` is
 now run in this job before packaging; no KAM check was dropped.
 
-A disposable Android 15 / API 35 x86_64 AVD boots a real KernelSU kernel with KVM.
-Automatic runs give it 2 GiB RAM; manual dispatch also offers 4 GiB. The driver
-requires an explicit emulator serial, qemu identity, x86_64 ABI, SELinux Enforcing,
-a positive KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses
-KernelSU BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+A disposable Android 15 / API 35 x86_64 AVD boots with KVM and a pinned
+API35/6.6 x86_64 GKI built for Android CI build 11987101 with KernelSU v3.2.0.
+The workflow verifies the release archive SHA-256 and build metadata before
+passing its `bzImage` to the emulator. After Android userspace is fully booted,
+official x86_64 `ksud` first requires a positive KernelSU kernel interface,
+extracts its embedded BusyBox, reads the running KMI, and executes upstream
+`late-load` only for userspace and lifecycle initialization. Automatic runs
+request 2 GiB RAM; manual dispatch also offers 4 GiB, while the report records
+the guest's observed `/proc/meminfo` separately. The driver requires an explicit
+emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positive
+KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses KernelSU
+BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
 
-Only four ABI-specific executables are replaced in a **separate test ZIP**, before
-installation: CLI, sing-box, jq and yq. Other unexpected foreign-architecture ELF
+All bundled ABI-specific executables are replaced in a **separate test ZIP**, before
+installation: CLI, sing-box, jq and yq, plus eCapture/Proxylink when present.
+The extra payloads use verified release/source pins; missing replacements fail
+preparation instead of silently removing installed tools. Other unexpected foreign-architecture ELF
 files fail preparation instead of surviving until boot. Installer/lifecycle scripts
 are not rewritten. The original ZIP remains untouched. The report records its
 SHA-256, the fixture ZIP hash, the source commit and each replacement hash.
@@ -40,14 +49,14 @@ The driver checks twelve phases:
 | Phase | Required evidence |
 | --- | --- |
 | Environment | Disposable emulator identity; valid ABI-specific ZIP |
-| KernelSU bootstrap | Real userspace install, reboot, kernel version and enforcing KSU domain |
+| KernelSU bootstrap | Official v3.2.0 late-load against the running stock KMI; positive kernel interface and enforcing KSU domain |
 | Install before first boot | Actual module installer; payload hashes at its destination |
 | Cold boot | A new kernel boot ID; lifecycle-owned core in the KSU domain; process, API and TUN ready |
 | Application-UID TUN controls | Marker delivery, rejection, delivery again, and config restoration |
 | Invalid-config rollback | Malformed config rejected; active config unchanged; service still ready |
 | Stop cleanup | No core, TUN, owned DNS/firewall rules or table-2022 routes remain |
 | Restart idempotence | Two restarts, exactly one core each time, followed by app-UID controls |
-| Upgrade preservation | Real reinstall/reboot preserves a marker inside the supported `.config/magicnet` migration scope; no re-seeding to hide data loss |
+| Upgrade preservation | Real reinstall checks the staged node, marker and policy before reboot, then checks the activated result; no re-seeding to hide data loss |
 | Disable/reboot | Real KernelSU disable and reboot leave the module stopped |
 | Enable/reboot | Real enable and reboot restore readiness and app-UID controls |
 | Uninstall/reboot | Real uninstall and reboot remove active/staged module directories and owned networking |
@@ -74,11 +83,13 @@ logcat/kernel/service diagnostics. Failed and unexecuted phases are explicit
 failures, not skipped green tests. Artifact upload and emulator cleanup use
 `always()`. Missing KVM/SDK/ADB or a failed boot is a failure, not certification.
 
-Only dependencies, compiler outputs and a pristine **pre-boot** AVD are cached.
-No dirty device snapshot or device-test success is cached. Kernel archive and
-ksud hashes are checked again on cache hits; cached shell manifests are not
-executed. The real DNS NAT job in `network-regression.yml` also runs its packet
-checks each time against the current host kernel instead of reusing a pass.
+Only dependencies, compiler outputs and a pristine **pre-boot** SDK AVD are
+cached. No dirty device snapshot or device-test success is cached. The official
+KernelSU userspace and the pinned API35 KernelSU kernel archive are downloaded
+fresh and SHA-256 verified on every run; the kernel archive metadata is also
+validated before boot. The real DNS NAT job in `network-regression.yml` runs
+its packet checks each time against the current host kernel instead of reusing a
+pass.
 
 ## Workflow cleanup
 
@@ -108,10 +119,11 @@ workflow must actually complete before reporting device acceptance as passed.
 
 ## Remaining coverage limits
 
-This fixture exercises one Android release, one x86_64 KSU kernel and a standalone
-TUN configuration. It does not execute the shipped ARM64 binaries, OEM netd or
-vendor policies, GMS/Play login/download, a real subscription, eBPF forwarding or
-IPv6 packet forwarding. Existing host/network-namespace/eBPF tests are retained
+This fixture exercises one Android release, a pinned KernelSU v3.2.0
+**API35 x86_64 kernel plus userspace late-load lifecycle** path, and a standalone
+TUN configuration. It does not prove stock-kernel LKM injection, execute the
+shipped ARM64 binaries, cover OEM netd/vendor policies, GMS/Play login/download,
+a real subscription, eBPF forwarding or IPv6 packet forwarding. Existing host/network-namespace/eBPF tests are retained
 and complementary, not relabelled as Android evidence. A matrix of real ARM64/OEM
 runners is still needed for those claims. Reductions in installation-time surprises
 come from moving these explicit lifecycle checks before merge, not from treating

@@ -1,8 +1,14 @@
 # Android KernelSU network checks
 
 The manual **Android KernelSU Acceptance** workflow installs the module into a
-disposable Android 15/API 35 `google_apis` x86_64 emulator with the pinned KernelSU
-kernel. It is not a physical-phone or authenticated Google Play test.
+disposable Android 15/API 35 `google_apis` x86_64 emulator. The AVD keeps the
+SDK userspace and ramdisk, but boots a pinned API35/6.6 x86_64 GKI built against
+Android CI build 11987101 with KernelSU v3.2.0 and the required x86_64 syscall
+hardening compatibility patches. The release archive is pinned by SHA-256 before
+boot. After Android userspace starts, official `ksud` uses upstream
+`late-load` only to initialize userspace/lifecycle stages; it does not inject a
+KernelSU LKM into the stock emulator kernel. This is not a physical-phone,
+stock-kernel LKM, ARM64, or authenticated Google Play test.
 
 ## What changed after the false-positive audit
 

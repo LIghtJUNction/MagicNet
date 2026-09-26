@@ -65,24 +65,47 @@ class WorkflowTests(unittest.TestCase):
                         names.index('Install and benchmark MagicNet in KernelSU AVD'))
         self.assertIn('android-public-benchmark', benchmark['env']['MAGICNET_ANDROID_REPORT_DIR'])
 
-    def test_only_pristine_vm_is_saved_and_cached_kernel_is_reverified(self):
+    def test_only_pristine_vm_is_cached_and_runtime_inputs_are_verified_fresh(self):
         names = [s.get('name') for s in self.steps]
-        boot = names.index('Boot Android with KernelSU kernel')
+        boot = names.index('Boot pristine Android 15 AVD')
         self.assertLess(names.index('Save pristine Android AVD'), boot)
         for step in self.steps[boot + 1:]:
             self.assertNotIn('actions/cache', step.get('uses', ''))
-        verify = self.step('Verify cached KernelSU assets')['run']
-        self.assertGreaterEqual(verify.count('sha256sum --check --strict'), 2)
-        self.assertNotRegex(verify, r'(?m)^\s*(?:source|\.)\s+')
-        self.assertNotIn('if', self.step('Verify cached KernelSU assets'))
 
-    def test_exact_serial_kernel_and_enforcing_not_disabled(self):
+        userspace = self.step('Download and verify official KernelSU userspace')['run']
+        self.assertEqual(userspace.count('sha256sum --check --strict'), 1)
+        self.assertIn('github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/', userspace)
+        self.assertIn('ksud-x86_64-linux-android', userspace)
+
+        kernel = self.step('Download and verify pinned KernelSU AVD kernel')['run']
+        self.assertEqual(kernel.count('sha256sum --check --strict'), 1)
+        self.assertIn('$KSU_AVD_KERNEL_URL', kernel)
+        self.assertIn('Build ID: $KSU_AVD_KERNEL_BUILD_ID', kernel)
+        self.assertIn('x86_64 Syscall Hardening Patch Applied: true', kernel)
+        self.assertIn('x86_64 Syscall Hardening Default Off: true', kernel)
+        self.assertIn('MAGICNET_AVD_KERNEL=', kernel)
+        digest = self.flow['env']['KSU_AVD_KERNEL_SHA256']
+        self.assertEqual(len(digest), 64)
+        self.assertTrue(all(ch in '0123456789abcdef' for ch in digest))
+        self.assertIn('KernelSU-v3.2.0', self.flow['env']['KSU_AVD_KERNEL_URL'])
+
+    def test_complete_payload_preparation_cannot_be_skipped(self):
+        step = self.step('Prepare complete x86_64 installation payloads')
+        self.assertNotIn('if', step)
+        self.assertNotIn('continue-on-error', step)
+        self.assertIn('scripts/prepare-android-fixture-tools.sh', step['run'])
+        self.assertEqual(self.step('Restore pristine Android AVD')['with']['key'],
+                         self.step('Save pristine Android AVD')['with']['key'])
+
+    def test_exact_serial_pinned_kernel_and_enforcing_not_disabled(self):
         self.assertEqual(self.flow['env']['ANDROID_SERIAL'], 'emulator-5554')
-        boot = self.step('Boot Android with KernelSU kernel')['run']
+        boot = self.step('Boot pristine Android 15 AVD')['run']
         self.assertIn('-port 5554', boot)
-        self.assertIn('-kernel "$KSU_KERNEL"', boot)
+        self.assertIn('-kernel "$MAGICNET_AVD_KERNEL"', boot)
+        self.assertIn('test -s "$MAGICNET_AVD_KERNEL"', boot)
         self.assertIn('-accel on', boot)
         self.assertIn('-no-snapshot-save', boot)
+        self.assertIn('-show-kernel', boot)
         self.assertNotIn('permissive', boot)
         self.assertNotIn('setenforce', boot)
 
