@@ -1,0 +1,75 @@
+name: Source Snapshot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['rewrite/20260926']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact revision and pinned dependencies
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 1
+      - name: Archive tracked sources without checkout credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import subprocess
+          import tarfile
+
+          root = Path.cwd()
+          destination = Path(os.environ['RUNNER_TEMP']) / 'source-snapshot'
+          destination.mkdir()
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          names = subprocess.check_output(['git', 'ls-files', '--recurse-submodules', '-z']).split(b'\0')
+          archive = destination / 'source.tar.gz'
+          count = 0
+          with tarfile.open(archive, 'w:gz', dereference=False) as output:
+              for raw in sorted(filter(None, names)):
+                  name = os.fsdecode(raw)
+                  path = PurePosixPath(name)
+                  if path.is_absolute() or '..' in path.parts or '.git' in path.parts:
+                      raise SystemExit('Unsafe tracked source path')
+                  if path.name == '.env' or path.name.startswith('.env.') and path.name != '.env.example':
+                      raise SystemExit('Private environment file is tracked; refusing export')
+                  source = root / name
+                  if not source.is_file() and not source.is_symlink():
+                      raise SystemExit('Incomplete source checkout: ' + name)
+                  output.add(source, arcname=name, recursive=False)
+                  count += 1
+          manifest = {
+              'schema': 1,
+              'revision': revision,
+              'tree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+              'tracked_files': count,
+              'submodules': subprocess.check_output(['git', 'submodule', 'status', '--recursive'], text=True).splitlines(),
+              'sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
+              'scope': 'tracked source only; not a runtime or Android acceptance result',
+          }
+          (destination / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+      - name: Retain source and provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source-${{ github.sha }}
+          path: ${{ runner.temp }}/source-snapshot/
+          if-no-files-found: error
+          retention-days: 7
