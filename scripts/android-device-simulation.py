@@ -2,7 +2,7 @@
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
 This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
-four ABI-specific executables and removes the build-only download caches already
+six ABI-specific executables and removes the build-only download caches already
 excluded by the production component packager. A provenance record covers both.
 A local standalone config is seeded after installation, before the first module
 boot. No public proxy feed or subscription credential is used.
@@ -33,7 +33,10 @@ REMOTE = '/sdcard/Download/MagicNet/ci-simulation'
 KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
-PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+PAYLOADS = (
+    'bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq',
+    'bin/ecapture', 'bin/proxylink',
+)
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -84,7 +87,7 @@ def elf_x86_64(data: bytes) -> bool:
 
 def prepare_archive(source: Path, destination: Path, replacements: dict[str, Path]) -> dict:
     require(source.resolve() != destination.resolve(), 'never overwrite the production ZIP')
-    require(set(replacements) == set(PAYLOADS), 'exactly four ABI replacements are required')
+    require(set(replacements) == set(PAYLOADS), 'exact ABI replacements are required')
     for name, path in replacements.items():
         with path.open('rb') as stream:
             require(elf_x86_64(stream.read(64)), f'invalid x86_64 ELF payload: {name}')
@@ -411,7 +414,10 @@ def main() -> int:
                 keys = {'bin/magicnet-cli': 'MAGICNET_X86_CLI', 'bin/sing-box': 'MAGICNET_X86_SINGBOX'}
                 replacements = {name: Path(os.environ[key]) for name, key in keys.items()}
                 tools = Path(os.environ['MAGICNET_X86_TOOLS'])
-                replacements.update({f'bin/{name}': tools / name for name in ('jq', 'yq')})
+                replacements.update({
+                    f'bin/{name}': tools / name
+                    for name in ('jq', 'yq', 'ecapture', 'proxylink')
+                })
                 archive = work / 'MagicNet-ci-x86_64.zip'
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
