@@ -275,30 +275,33 @@ class Device:
     def late_load_kernelsu(self) -> dict:
         require(self.verified, 'device identity not verified')
         require(self.shell('getenforce').stdout.strip() == 'Enforcing',
-                'SELinux must be Enforcing before KernelSU late-load')
-        # A pristine AVD has no KernelSU BusyBox yet. Use the official embedded
-        # asset, not a host binary or fake command, before boot-info/late-load.
+                'SELinux must be Enforcing before KernelSU userspace activation')
+        # The CI AVD boots a pinned API35 x86_64 kernel with KernelSU already
+        # integrated. Do not attempt to inject an LKM into an arbitrary stock
+        # emulator kernel: current x86_64 KernelSU requires kernel-side syscall
+        # hardening compatibility patches. late-load is still useful here to
+        # install userspace and execute KernelSU lifecycle stages after each boot.
+        before = self.shell(KSUD + ' debug version', timeout=30, check=False).stdout.strip()
+        require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', before) is not None,
+                'pinned KernelSU kernel is not active before userspace late-load')
         self.shell('mkdir -p /data/adb/ksu/bin')
         self.shell(KSUD + ' debug extract-binary busybox ' + BB, timeout=30)
         self.shell(f'chmod 0755 {BB} && {BB} --install -s /data/adb/ksu/bin')
         command = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD
         current = self.shell(command + ' boot-info current-kmi', timeout=30).stdout.strip()
-        supported = self.shell(command + ' boot-info supported-kmis', timeout=30).stdout.split()
-        require(bool(current) and current in supported,
-                'official KernelSU userspace does not embed this stock AVD KMI')
-        # v3.2.0 late-load loads the KMI-matched x86_64 kernelsu.ko, installs
-        # userspace, handles modules_update, then executes service/boot stages.
+        require(bool(current), 'KernelSU could not determine the pinned AVD kernel KMI')
         self.shell(command + ' late-load', timeout=120)
         version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
         require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
-                'KernelSU late-load did not expose a positive kernel interface version')
+                'KernelSU userspace late-load lost the kernel interface')
         self.shell(f'test -x {BB}')
         require(self.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0',
-                'real KernelSU SELinux domain required after late-load')
+                'real KernelSU SELinux domain required after userspace late-load')
         require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
-                'KernelSU late-load changed SELinux enforcement')
+                'KernelSU userspace late-load changed SELinux enforcement')
         self.late_load_on_reboot = True
-        return {'mode': 'late-load-lkm', 'kmi': current, 'kernel_version': version}
+        return {'mode': 'pinned-kernel-userspace-late-load', 'kmi': current,
+                'kernel_version': version}
 
     def reboot(self):
         require(self.verified, 'device identity not verified')
@@ -368,8 +371,8 @@ class Report:
         rows = [cases.get(name, {'name': name, 'status': 'not_run', 'seconds': 0}) for name in PHASES]
         passed = all(row['status'] == 'passed' for row in rows)
         data = {'schema': 1, 'status': 'passed' if passed else 'failed',
-                'scope': 'Android-15-KernelSU-v3.2.0-late-load-x86_64-standalone-TUN-fixture',
-                'not_tested': ['KernelSU built-in/early-boot mode', 'ARM64 execution', 'OEM kernels',
+                'scope': 'Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture',
+                'not_tested': ['stock-kernel KernelSU LKM injection', 'ARM64 execution', 'OEM kernels',
                                'Play/GMS login/download', 'public proxy quality', 'eBPF dataplane',
                                'IPv6 packet forwarding', 'eCapture execution',
                                'proxylink subscription parsing'],
