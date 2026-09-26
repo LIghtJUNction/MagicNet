@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use serde_json::Value;
 
 use crate::node_delay::encode_path_segment;
@@ -299,7 +297,7 @@ fn format_close_summary(targets: usize, closed: usize, failed: usize) -> String 
 }
 
 fn curl_text(app: &App, path: &str) -> Result<String, String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",
@@ -318,7 +316,7 @@ fn curl_text(app: &App, path: &str) -> Result<String, String> {
 }
 
 fn curl_delete(app: &App, path: &str) -> Result<(), String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "-X",

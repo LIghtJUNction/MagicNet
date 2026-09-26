@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use serde_json::Value;
 
 pub(crate) fn node_delay(api: &str, name: &str) -> Result<i64, String> {
@@ -8,7 +6,7 @@ pub(crate) fn node_delay(api: &str, name: &str) -> Result<i64, String> {
         return Err("node name is empty".to_string());
     }
     let endpoint = delay_endpoint(api, clean);
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",
