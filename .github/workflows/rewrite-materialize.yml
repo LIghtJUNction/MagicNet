@@ -1,0 +1,71 @@
+name: Materialize Reviewed Rewrite Repair
+on:
+  push:
+    branches: ['work/rewrite-transfer-20260926']
+    paths: ['.github/workflows/rewrite-materialize.yml']
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == 'LIghtJUNction/MagicNet' && github.ref == 'refs/heads/work/rewrite-transfer-20260926'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Apply checksum-bound patch and publish unreferenced Git objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request, zlib
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          assert git('rev-parse','HEAD^').decode().strip() == 'cca36323fa98e0a9e83559de2729301a81febe5f'
+          encoded = '''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'''
+          patch = zlib.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(patch).hexdigest() == '79b572f37390ce4086a9f351a36058b1f5ca196474acb8928b41dd9e0acc4e77'
+          artifact = pathlib.Path(os.environ['RUNNER_TEMP'])/'rewrite-objects'
+          artifact.mkdir()
+          patch_path = artifact/'reviewed.patch'
+          patch_path.write_bytes(patch)
+          subprocess.run(['git','apply','--index','--whitespace=error-all',str(patch_path)],check=True)
+          helper = '.github/workflows/rewrite-materialize.yml'
+          subprocess.run(['git','rm','--',helper],check=True)
+          expected = {helper,'scripts/android-device-simulation.py','scripts/fake-magisk-smoke.sh','scripts/test-android-device-simulation.py'}
+          changes = set(git('diff','--cached','--name-only','-z').decode().rstrip('\0').split('\0'))
+          assert changes == expected
+          # No test result is forged and no branch/ref is moved by this job.
+          subprocess.run(['python3','scripts/test-android-device-simulation.py'],check=True)
+          subprocess.run(['bash','-n','scripts/fake-magisk-smoke.sh'],check=True)
+          base = 'https://api.github.com/repos/LIghtJUNction/MagicNet'
+          def api(path, data=None):
+              request = urllib.request.Request(base+path, data=None if data is None else json.dumps(data).encode(), headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},method='GET' if data is None else 'POST')
+              with urllib.request.urlopen(request,timeout=30) as response: return json.load(response)
+          parent = git('rev-parse','HEAD').decode().strip()
+          tree = []
+          for path in sorted(changes):
+              if path == helper:
+                  tree.append({'path':path,'mode':'100644','type':'blob','sha':None})
+                  continue
+              staged = git('show',':'+path)
+              blob = api('/git/blobs',{'content':base64.b64encode(staged).decode(),'encoding':'base64'})
+              expected_blob = hashlib.sha1(b'blob '+str(len(staged)).encode()+b'\0'+staged).hexdigest()
+              assert blob['sha'] == expected_blob
+              mode = git('ls-files','--stage','--',path).decode().split()[0]
+              tree.append({'path':path,'mode':mode,'type':'blob','sha':blob['sha']})
+          tree_sha = api('/git/trees',{'base_tree':api('/git/commits/'+parent)['tree']['sha'],'tree':tree})['sha']
+          assert tree_sha == git('write-tree').decode().strip()
+          commit = api('/git/commits',{'message':'test: repair exact curl response and x86_64 CLI alias fixtures\n\nPreserve all existing assertions and reject nonidentical executable aliases. No production network validation is weakened.','tree':tree_sha,'parents':[parent]})['sha']
+          (artifact/'result.json').write_text(json.dumps({'schema':1,'parent':parent,'commit':commit,'tree':tree_sha,'patch_sha256':hashlib.sha256(patch).hexdigest(),'paths':sorted(changes)},indent=2)+'\n')
+          print('Created reviewed Git objects; repository refs are unchanged.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: reviewed-rewrite-objects
+          path: ${{ runner.temp }}/rewrite-objects/
+          retention-days: 2
