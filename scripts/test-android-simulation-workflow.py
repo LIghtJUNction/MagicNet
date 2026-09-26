@@ -84,7 +84,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('x86_64 Syscall Hardening Patch Applied: true', kernel)
         self.assertIn('x86_64 Syscall Hardening Default Off: true', kernel)
         self.assertIn('MAGICNET_AVD_KERNEL=', kernel)
-        self.assertRegex(self.flow['env']['KSU_AVD_KERNEL_SHA256'], r'^[0-9a-f]{64}
+        digest = self.flow['env']['KSU_AVD_KERNEL_SHA256']
+        self.assertEqual(len(digest), 64)
+        self.assertTrue(all(ch in '0123456789abcdef' for ch in digest))
+        self.assertIn('KernelSU-v3.2.0', self.flow['env']['KSU_AVD_KERNEL_URL'])
+
+    def test_complete_payload_preparation_cannot_be_skipped(self):
         step = self.step('Prepare complete x86_64 installation payloads')
         self.assertNotIn('if', step)
         self.assertNotIn('continue-on-error', step)
