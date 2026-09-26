@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-          fetch-depth: 2
+          ref: a084de19bbaa3cf994408a6c8aee94d642d3e224
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: '1.26.7'
@@ -27,7 +27,7 @@ jobs:
           import base64,hashlib,json,os,pathlib,subprocess,urllib.request
           P=pathlib.Path
           def oid(data): return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()=='a084de19bbaa3cf994408a6c8aee94d642d3e224'
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='a084de19bbaa3cf994408a6c8aee94d642d3e224'
           old={'scripts/android-device-simulation.py':'12cf61f49833fdb6a70d676bfb813d0d583e5645','scripts/test-android-device-simulation.py':'c8eaa1f12cf62c1dea4352ce57b3a649aca2a966','.github/workflows/android-kernelsu-acceptance.yml':'692d2c2a21565e8949b5c9a2d1af6be882738a97','scripts/test-android-simulation-workflow.py':'bf3b6e813c76d6924306b3404bfced0ca4c7a76c'}
           for path,sha in old.items(): assert oid(P(path).read_bytes())==sha
           sources={'scripts/prepare-android-fixture-tools.py':'3b4b4f1ff41f7641e77b08d67a66484f8b4236fc','scripts/test-android-fixture-tools.py':'3c3babf140fe8db27ec8cc85cfed5522c0a8c9c3'}
@@ -47,7 +47,8 @@ jobs:
           path='.github/workflows/android-kernelsu-acceptance.yml'
           replace(path,'python3 scripts/test-android-device-simulation.py\n','python3 scripts/test-android-device-simulation.py\n          python3 scripts/test-android-fixture-tools.py\n')
           replace(path,'          chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*','          python3 scripts/prepare-android-fixture-tools.py "$RUNNER_TEMP/magicnet-x86-tools"\n          chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*')
-          replace(path,'            ${{ runner.temp }}/x86-payloads.txt','            ${{ runner.temp }}/x86-payloads.txt\n            ${{ runner.temp }}/magicnet-x86-tools/auxiliary-provenance.json')
+          token='$'+'{{ runner.temp }}'
+          replace(path,'            '+token+'/x86-payloads.txt','            '+token+'/x86-payloads.txt\n            '+token+'/magicnet-x86-tools/auxiliary-provenance.json')
           replace('scripts/test-android-device-simulation.py','    def test_only_executables_and_provenance_change(self):', '''    def test_all_packaged_auxiliary_programs_are_replaced_not_omitted(self):
                   self.assertEqual(set(SIM.PAYLOADS), {'bin/magicnet-cli', 'bin/sing-box', 'bin/jq',
                                                      'bin/yq', 'bin/proxylink', 'bin/ecapture'})
@@ -74,7 +75,6 @@ jobs:
               def test_only_pristine_vm_is_saved_and_cached_kernel_is_reverified(self):''')
           artifact=P(os.environ['RUNNER_TEMP'])/'android-repair';artifact.mkdir()
           (artifact/'allowed.json').write_text(json.dumps(list(old)+list(sources)))
-          subprocess.run(['git','rm','--','.github/workflows/rewrite-materialize.yml'],check=True)
           PY
       - name: Verify harness and actual pinned tools without write credentials
         run: |
@@ -95,16 +95,14 @@ jobs:
           artifact=pathlib.Path(os.environ['RUNNER_TEMP'])/'android-repair'
           paths=json.loads((artifact/'allowed.json').read_text())
           subprocess.run(['git','add','--',*paths],check=True)
-          helper='.github/workflows/rewrite-materialize.yml'
           changed=set(git('diff','--cached','--name-only','-z').decode().rstrip('\0').split('\0'))
-          assert changed==set(paths)|{helper}
+          assert changed==set(paths)
           subprocess.run(['git','diff','--cached','--check'],check=True)
           base='https://api.github.com/repos/LIghtJUNction/MagicNet'
           def api(path,data=None):
               request=urllib.request.Request(base+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='GET' if data is None else 'POST')
               with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
-          tree=[{'path':helper,'mode':'100644','type':'blob','sha':None}]
-          digests={}
+          tree=[];digests={}
           with tarfile.open(artifact/'verified-source.tar.gz','w:gz') as archive:
               for path in paths:
                   data=git('show',':'+path)
