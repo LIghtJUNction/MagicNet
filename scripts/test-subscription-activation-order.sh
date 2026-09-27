@@ -34,6 +34,7 @@ magicnet_singbox_owned_pids_to_file() {
   return 1
 }
 magicnet_singbox_ensure_start_owned() { :; }
+magicnet_singbox_api_listener_exists() { return 1; }
 ss() { :; }
 ip() { :; }
 magicnet_fswatch_start() { printf 'restore-lock=%s\n' "$CONFIG_LOCK_HELD" >>"$events"; }

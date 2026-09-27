@@ -82,7 +82,7 @@ fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
         return Err("unsupported API credential format".to_string());
     }
     // Keep the credential out of process arguments and shell command previews.
-    let mut child = Command::new("curl")
+    let mut child = crate::trusted_curl()
         .args([
             "-q",
             "--noproxy",
@@ -413,7 +413,7 @@ pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Resul
 }
 
 pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",
@@ -438,7 +438,7 @@ fn close_connection(app: &App, id: &str) -> Result<(), String> {
 }
 
 fn run_curl(args: &[&str]) -> Result<(), String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args(["--max-filesize", "8388608"])
         .args(args)
         .output()

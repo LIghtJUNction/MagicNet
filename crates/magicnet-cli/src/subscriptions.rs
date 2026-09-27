@@ -848,7 +848,7 @@ pub(crate) fn download_pinned_https_url(
     let max_bytes_arg = max_bytes.to_string();
     let connect_timeout = connect_timeout_secs.to_string();
     let max_time = max_time_secs.to_string();
-    let mut command = Command::new("curl");
+    let mut command = crate::trusted_curl();
     command.args([
         "-fsS",
         "--noproxy",

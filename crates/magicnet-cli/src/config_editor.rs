@@ -1069,7 +1069,7 @@ fn read_current_config(app: &App, target: &str) -> Result<Option<String>, String
 
 fn fetch_template(url: &str, expected_sha256: Option<&str>) -> Result<String, String> {
     fetch_template_with_curl(
-        Path::new("curl"),
+        &crate::process::trusted_curl_path(),
         url,
         expected_sha256,
         TEMPLATE_FETCH_TIMEOUT,
@@ -1085,6 +1085,7 @@ fn fetch_template_with_curl(
     command_timeout: Duration,
 ) -> Result<String, String> {
     let mut command = Command::new(curl_program);
+    crate::process::clear_unsafe_loader_environment(&mut command);
     command
         .arg("-fsSL")
         .arg("--proto")
