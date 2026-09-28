@@ -1,0 +1,67 @@
+name: Maintenance Review Inputs
+
+on:
+  push:
+    branches: ['maintenance/20260928-integration']
+    paths: ['.github/workflows/maintenance-snapshot.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Export public tracked source and exact PR diffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import subprocess
+
+          dest = Path(os.environ['RUNNER_TEMP']) / 'review-inputs'
+          dest.mkdir()
+          base = '1fff02713d1afe63bd57f67158dbc278817c9b75'
+          expected = {349: '198c7eab4995fb6bb8d2855fec8f0282c3da7d80', 355: '3f01e65a9aafb47e57369c501e606b8d8a907315', 357: '88691168974ca123f5f6a006c78edc5ce04b4292'}
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          git('fetch', '--depth=1', 'origin', base)
+          revisions = {'main': base}
+          for number in (349, 350, 354, 355, 356, 357):
+              git('fetch', '--depth=1', 'origin', f'refs/pull/{number}/head')
+              revision = git('rev-parse', 'FETCH_HEAD').decode().strip()
+              if number in expected and revision != expected[number]:
+                  raise SystemExit(f'PR {number} moved; re-review its new head')
+              revisions[str(number)] = revision
+          manifest = {'schema': 1, 'scope': 'source review inputs only; not test or device evidence', 'revisions': {}}
+          for name, revision in revisions.items():
+              for raw in git('ls-tree', '-r', '--name-only', '-z', revision).split(b'\0'):
+                  if not raw:
+                      continue
+                  p = PurePosixPath(os.fsdecode(raw))
+                  if p.is_absolute() or '..' in p.parts or '.git' in p.parts or p.name == '.env' or (p.name.startswith('.env.') and p.name != '.env.example'):
+                      raise SystemExit('Unsafe/private tracked source path; refusing export')
+              (dest / f'{name}.tree').write_bytes(git('ls-tree', '-r', '-z', revision))
+              manifest['revisions'][name] = {'commit': revision, 'tree': git('rev-parse', revision + '^{tree}').decode().strip()}
+              if name == 'main':
+                  (dest / 'main.tar').write_bytes(git('archive', '--format=tar', revision))
+              else:
+                  (dest / f'{name}.patch').write_bytes(git('diff', '--binary', '--full-index', base, revision))
+          manifest['files'] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(dest.iterdir())}
+          (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: maintenance-review-inputs
+          path: ${{ runner.temp }}/review-inputs/
+          if-no-files-found: error
+          retention-days: 3
