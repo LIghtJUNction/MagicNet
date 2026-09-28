@@ -50,31 +50,37 @@ jobs:
           cache-dependency-path: next/webui/package-lock.json
       - name: Rust formatting, lint, unit tests and host binary
         run: |
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo test --workspace --locked
-          cargo build --workspace --locked
+          set -euo pipefail
+          mkdir -p test-results
+          cargo fmt --all --check 2>&1 | tee test-results/rustfmt.log
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee test-results/clippy.log
+          cargo test --workspace --locked 2>&1 | tee test-results/rust-tests.log
+          cargo build --workspace --locked 2>&1 | tee test-results/build.log
       - name: Type-check both Android ABIs
         run: |
-          cargo check --workspace --locked --target aarch64-linux-android
-          cargo check --workspace --locked --target x86_64-linux-android
+          set -euo pipefail
+          cargo check --workspace --locked --target aarch64-linux-android 2>&1 | tee test-results/android-arm64-check.log
+          cargo check --workspace --locked --target x86_64-linux-android 2>&1 | tee test-results/android-x86_64-check.log
       - name: CLI process and migration-contract tests
         run: |
-          python3 -m unittest discover -s tests -p '*_test.py' -v
-          python3 tools/verify_scope.py
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p '*_test.py' -v 2>&1 | tee test-results/python-tests.log
+          python3 tools/verify_scope.py | tee test-results/cutover-scope.json
       - name: Frontend verification
         working-directory: next/webui
         run: |
+          set -euo pipefail
           npm ci
-          npm run check
+          npm run check 2>&1 | tee ../test-results/frontend-check.log
           npx playwright install --with-deps chromium
-          npm run test:ui
+          npm run test:ui 2>&1 | tee ../test-results/frontend-ui.log
       - name: Retain test evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rewrite-evidence-${{ github.sha }}
           path: |
+            next/test-results/
             next/webui/test-results/
             next/webui/dist/
           if-no-files-found: ignore
