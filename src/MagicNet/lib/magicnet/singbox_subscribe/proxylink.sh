@@ -36,9 +36,17 @@ magicnet_singbox_run_proxylink() (
     return $?
 )
 
+magicnet_singbox_proxylink_jq() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/jq" ]; then
+        printf '%s\n' "${MODDIR}/bin/jq"
+        return 0
+    fi
+    command -v jq 2>/dev/null || return 1
+}
+
 magicnet_singbox_proxylink_source_is_singbox_json() (
     _proxylink_detect_source_file="$1"
-    _proxylink_detect_jq="$(command -v jq 2>/dev/null || true)"
+    _proxylink_detect_jq="$(magicnet_singbox_proxylink_jq || true)"
     [ -n "$_proxylink_detect_jq" ] || return 1
     "$_proxylink_detect_jq" -e 'type == "object" and (((.outbounds | type == "array") or (.endpoints | type == "array")) or ((.type | type == "string" and length > 0) and (.server | type == "string" and length > 0)))' \
         "$_proxylink_detect_source_file" >/dev/null 2>&1
@@ -128,7 +136,7 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     _tmp_outbounds="${_out_file}.proxylink-outbounds.json"
     _filtered_outbounds="${_out_file}.proxylink-filtered.json"
     MAGICNET_SUB_CONVERTER_FORMAT=none
-    command -v jq >/dev/null 2>&1 || return 1
+    _proxylink_jq=$(magicnet_singbox_proxylink_jq) || return 1
     printf '[]\n' >"$_tmp_outbounds" || return 1
     _source_count=0
     while IFS= read -r _source_file || [ -n "$_source_file" ]; do
@@ -138,18 +146,18 @@ magicnet_singbox_build_outbounds_with_proxylink() {
         # only a native-parser byproduct and omits every YAML/JSON source.
         : >"$_tmp_config" || return 1
         magicnet_singbox_run_proxylink_source "$_proxylink" "$_source_file" "$_tmp_config" >/dev/null 2>&1 || return 1
-        jq -e 'type == "object" and (.outbounds | type == "array" and length > 0)' "$_tmp_config" >/dev/null 2>&1 || return 1
+        "$_proxylink_jq" -e 'type == "object" and (.outbounds | type == "array" and length > 0)' "$_tmp_config" >/dev/null 2>&1 || return 1
         # A direct-only/unsupported source must not disappear behind another
         # provider's valid nodes. Keep the active configuration on any failure.
-        jq '.outbounds' "$_tmp_config" >"${_tmp_config}.nodes" || return 1
+        "$_proxylink_jq" '.outbounds' "$_tmp_config" >"${_tmp_config}.nodes" || return 1
         _source_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "${_tmp_config}.nodes") || return 1
         [ "${_source_valid_count:-0}" -gt 0 ] || return 1
-        jq -s '.[0] + .[1].outbounds' "$_tmp_outbounds" "$_tmp_config" >"${_tmp_outbounds}.next" || return 1
+        "$_proxylink_jq" -s '.[0] + .[1].outbounds' "$_tmp_outbounds" "$_tmp_config" >"${_tmp_outbounds}.next" || return 1
         mv -f "${_tmp_outbounds}.next" "$_tmp_outbounds" || return 1
         _source_count=$((_source_count + 1))
     done <"$_sources_file"
     [ "$_source_count" -gt 0 ] || return 1
-    _raw_count=$(jq 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
+    _raw_count=$("$_proxylink_jq" 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
     [ "${_raw_count:-0}" -gt 0 ] || return 1
     _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
     if [ "${_expected_count:-0}" -gt 0 ] &&
@@ -159,7 +167,7 @@ magicnet_singbox_build_outbounds_with_proxylink() {
 
     _filter_file=$(magicnet_singbox_subscription_filter_file)
     [ -f "$_filter_file" ] || _filter_file=/dev/null
-    jq --rawfile configured_filters "$_filter_file" '
+    "$_proxylink_jq" --rawfile configured_filters "$_filter_file" '
       ($configured_filters
         | split("\n")
         | map(gsub("\r"; "") | select(length > 0) | ascii_downcase)) as $filters
@@ -179,6 +187,7 @@ magicnet_singbox_write_outbounds_from_json() {
     _nodes_json="$1"
     _out_file="$2"
     _tags_file="${_out_file}.proxylink-tags"
-    jq -r '.[].tag // empty' "$_nodes_json" >"$_tags_file" || return 1
+    _proxylink_jq=$(magicnet_singbox_proxylink_jq) || return 1
+    "$_proxylink_jq" -r '.[].tag // empty' "$_nodes_json" >"$_tags_file" || return 1
     magicnet_singbox_build_outbounds_file_with_jq "$_nodes_json" "$_tags_file" "$_out_file" || return 1
 }

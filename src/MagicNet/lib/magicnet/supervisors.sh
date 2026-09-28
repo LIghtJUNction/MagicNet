@@ -1150,6 +1150,10 @@ magicnet_subscription_refresh_start() {
         printf '%s\n' '#!/system/bin/sh'
         printf 'MODDIR=%s\n' "'$(printf '%s' "$MODDIR" | sed "s/'/'\\\\''/g")'"
         printf '%s\n' 'export MODDIR'
+        printf '%s\n' 'unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_DYNAMIC_WEAK'
+        printf '%s\n' 'unset LD_ORIGIN_PATH LD_PROFILE LD_SHOW_AUXV LD_TRACE_LOADED_OBJECTS'
+        printf '%s\n' 'unset LD_USE_LOAD_BIAS LD_VERBOSE LD_WARN'
+        printf '%s\n' 'unset ENV BASH_ENV CDPATH GCONV_PATH NLSPATH HOSTALIASES'
         printf '%s\n' 'trap "" HUP'
         printf '%s\n' "trap 'test -z \"\${_refresh_child:-}\" || kill \"\$_refresh_child\" 2>/dev/null || true; exit 0' TERM INT"
         printf 'sleep %s &\n' "$_refresh_seconds"

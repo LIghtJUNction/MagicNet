@@ -83,6 +83,9 @@ magicnet_singbox_apply_transparent_mode() {
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
     _tun_mtu="$(magicnet_tun_mtu)"
     _udp_timeout="$(magicnet_udp_timeout)"
+    _dns_capture_port="$(magicnet_dns_capture_policy_port)"
+    _tun_inet="$(magicnet_tun_inet)"
+    _tun_inet6="$(magicnet_tun_inet6)"
     _jq="${MODDIR}/bin/jq"
     [ -x "$_jq" ] || {
         magicnet_warn "packaged jq is unavailable; transparent config apply rejected"
@@ -137,19 +140,22 @@ magicnet_singbox_apply_transparent_mode() {
             --arg dns_strategy "$_dns_strategy" \
             --argjson tun_mtu "$_tun_mtu" \
             --arg udp_timeout "$_udp_timeout" \
+            --argjson dns_capture_port "$_dns_capture_port" \
+            --arg tun_inet "$_tun_inet" \
+            --arg tun_inet6 "$_tun_inet6" \
             --argjson shared_interfaces "$_interfaces_json" \
             --argjson shared_sources "$_sources_json" \
             --argjson saved_inbound "$_saved_inbound" '
         def mixed_in:
           {"type":"mixed","tag":"mixed-in","listen":"127.0.0.1","listen_port":7892};
         def dns_in:
-          {"type":"direct","tag":"magicnet-dns-in","listen":"127.0.0.1","listen_port":1053};
+          {"type":"direct","tag":"magicnet-dns-in","listen":"127.0.0.1","listen_port":$dns_capture_port};
         def dns6_in:
-          {"type":"direct","tag":"magicnet-dns6-in","listen":"::1","listen_port":1053};
+          {"type":"direct","tag":"magicnet-dns6-in","listen":"::1","listen_port":$dns_capture_port};
         def tun_in:
           ($saved_inbound * {
             "type":"tun","tag":"tun-in","interface_name":"magicnet0",
-            "address":(if $dns_strategy == "ipv4_only" then ["172.19.0.1/30"] else ["172.19.0.1/30","fdfe:dcba:9876::1/126"] end),
+            "address":(if $dns_strategy == "ipv4_only" then [$tun_inet] else [$tun_inet, $tun_inet6] end),
             "auto_route":true,"auto_redirect":true,"strict_route":true,
             "exclude_uid":[0],
             "route_exclude_address":[
@@ -228,13 +234,13 @@ magicnet_singbox_apply_transparent_mode() {
         }
     else
         rm -f "$_tmp" "$_pairs" 2>/dev/null || true
-        unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
+        unset _config _mode _dns_strategy _tun_mtu _udp_timeout _dns_capture_port _tun_inet _tun_inet6 _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
         return 1
     fi
     rm -f "$_pairs" 2>/dev/null || true
     import __singbox__
     singbox_prepare_route_config "$_config" || true
-    unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
+    unset _config _mode _dns_strategy _tun_mtu _udp_timeout _dns_capture_port _tun_inet _tun_inet6 _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
 }
 
 magicnet_transparent_capability_file() {

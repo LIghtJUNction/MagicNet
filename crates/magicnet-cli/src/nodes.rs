@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use crate::node_delay::node_delay;
 use crate::webui_api::select_proxy;
@@ -120,7 +119,7 @@ fn test_all_targets(app: &App, args: &[String]) -> Vec<String> {
 }
 
 fn read_proxy_selector(app: &App) -> Result<Value, String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl()
         .args([
             "-fsS",
             "--max-time",

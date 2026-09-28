@@ -17,6 +17,7 @@ import {
   clearTerminalHistory,
   MAX_TERMINAL_ENTRIES,
 } from "./terminalHistory";
+import { assertCliOnlyArgs, stripCliPrefix } from "./terminalGuard";
 
 type ExecutedEntry = {
   id: string;
@@ -246,17 +247,18 @@ async function submitCommand(): Promise<void> {
 
   const startTime = Date.now();
   const timeString = new Date().toLocaleTimeString();
-  const cleanArgs = commandToRun.replace(/^(?:cli|magicnet-cli)\s+/i, "");
+  const cleanArgs = stripCliPrefix(commandToRun);
 
   let outputText = "";
   let success = true;
 
   try {
-    outputText = await runCli(cleanArgs, `cli ${cleanArgs}`);
+    outputText = await runCli(assertCliOnlyArgs(cleanArgs), `cli ${cleanArgs}`);
     success = !execFailed(outputText);
   } catch (error) {
     success = false;
-    outputText = error instanceof Error ? error.message : String(error);
+    const raw = error instanceof Error ? error.message : String(error);
+    outputText = t(raw);
   } finally {
     const duration = Date.now() - startTime;
     executing.value = false;

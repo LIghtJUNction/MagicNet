@@ -50,6 +50,7 @@ check python3 scripts/test-hook-utils.py
 python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
 check bash scripts/test-repository-hygiene.sh
 check bash scripts/test-module-entrypoints.sh
+check bash scripts/test-lib-dir-override-safety.sh
 check bash scripts/test-config-template-pin.sh
 check python3 src/MagicNet/.config/sing-box/tests/test_config_routing.py
 check bash scripts/test-config-repository-migration.sh
@@ -108,6 +109,7 @@ check bash scripts/test-supervisor-start-policy.sh
 check bash scripts/test-tun-interface-safety.sh
 check bash scripts/test-singbox-dataplane-preflight.sh
 check bash scripts/test-transparent-mode-config-safety.sh
+check bash scripts/test-dataplane-policy-pins.sh
 check bash scripts/test-ebpf-transparent-mode.sh
 check bash scripts/test-config-permissions.sh
 check bash scripts/test-config-empty-recovery.sh
@@ -134,6 +136,7 @@ check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh
 check bash scripts/test-subscription-transaction-atomicity.sh
 check bash scripts/test-subscription-update-lock-safety.sh
+check bash scripts/test-subscription-input-source-safety.sh
 check bash scripts/test-subscription-transaction-journal-safety.sh
 check bash scripts/test-subscription-lifecycle.sh
 check bash scripts/test-subscription-stop-safety.sh
