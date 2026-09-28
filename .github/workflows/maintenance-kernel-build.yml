@@ -49,11 +49,12 @@ jobs:
           recipe = yaml.safe_load(data)
           names = ['Sync Kernel Source', 'Fix Less Than 6.6.50 Builds', 'Integrate KernelSU',
                    'Apply x86_64 Syscall Hardening Patches', 'Build GKI Kernel']
+          expression = '$' + '{{'
           substitutions = {
-              '${{ inputs.ksu_variant }}': 'KernelSU',
-              '${{ inputs.ksu_ref }}': 'v3.2.0',
-              '${{ steps.metadata.outputs.kernel_version }}': '6.6',
-              '${{ steps.metadata.outputs.sublevel }}': '30',
+              expression + ' inputs.ksu_variant }}': 'KernelSU',
+              expression + ' inputs.ksu_ref }}': 'v3.2.0',
+              expression + ' steps.metadata.outputs.kernel_version }}': '6.6',
+              expression + ' steps.metadata.outputs.sublevel }}': '30',
           }
           selected = {s['name']: s for s in recipe['jobs']['build']['steps'] if s.get('name') in names}
           if set(selected) != set(names):
@@ -62,7 +63,7 @@ jobs:
               script = selected[name]['run']
               for key, value in substitutions.items():
                   script = script.replace(key, value)
-              if '${{' in script:
+              if expression in script:
                   raise SystemExit('Unresolved upstream expression')
               if name == 'Build GKI Kernel':
                   script = script.replace('//common:kernel_x86_64_dist',
