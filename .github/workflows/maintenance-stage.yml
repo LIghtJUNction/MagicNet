@@ -1,0 +1,107 @@
+name: Stage Reviewed Integration
+on:
+  push:
+    branches: ['maintenance/20260928-integration']
+    paths: ['.github/workflows/maintenance-stage.yml', '.maintenance/safety.patch.gz.b64']
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Reproduce exact reviewed sources and store immutable objects only
+        env:
+          OBJECT_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, subprocess, urllib.request
+          from pathlib import Path
+          patch = gzip.decompress(base64.b64decode(Path('.maintenance/safety.patch.gz.b64').read_bytes()))
+          if hashlib.sha256(patch).hexdigest() != 'c57d2d75c71465bd65fb9644dfbf38a2cc0931faddb125dca4e46803b4e6699c':
+              raise SystemExit('Reviewed patch checksum mismatch')
+          base = '1fff02713d1afe63bd57f67158dbc278817c9b75'
+          heads = ['198c7eab4995fb6bb8d2855fec8f0282c3da7d80', 'ad002ec0a2200c6d14a99cad3702f635d96b7b01', '88691168974ca123f5f6a006c78edc5ce04b4292']
+          def git(*args, data=None):
+              return subprocess.check_output(['git', *args], input=data)
+          git('config', 'user.name', 'MagicNet integration staging')
+          git('config', 'user.email', 'ci@localhost')
+          for revision in [base, *heads]:
+              git('fetch', '--depth=1', 'origin', revision)
+          def tree(revision):
+              return git('rev-parse', revision + '^{tree}').decode().strip()
+          synthetic = [git('commit-tree', tree(rev), '-p', base, data=b'Exact reviewed source snapshot\n').decode().strip() for rev in heads]
+          git('checkout', '--detach', synthetic[0])
+          def merge(revision, ours, theirs=()):
+              result = subprocess.run(['git', 'merge', '--no-ff', '--no-commit', revision])
+              if result.returncode not in (0, 1):
+                  raise SystemExit('Merge failed before conflict resolution')
+              conflicts = set(git('diff', '--name-only', '--diff-filter=U', '-z').decode().strip('\0').split('\0')) - {''}
+              if conflicts != set(ours) | set(theirs):
+                  raise SystemExit('Conflict set changed: ' + repr(conflicts))
+              if ours: git('checkout', '--ours', '--', *ours)
+              if theirs: git('checkout', '--theirs', '--', *theirs)
+              git('add', '-A')
+              git('commit', '-m', 'Apply reviewed integration conflict resolution')
+          merge(synthetic[1], ['.github/workflows/android-kernelsu-acceptance.yml', 'docs/android-simulation.md', 'scripts/android-device-simulation.py', 'scripts/fake-magisk-smoke.sh', 'scripts/test-android-device-simulation.py', 'scripts/test-android-simulation-workflow.py', 'scripts/test-fake-magisk-curl.py'])
+          merge(synthetic[2], ['.github/workflows/android-kernelsu-acceptance.yml', 'scripts/android-device-simulation.py', 'scripts/fake-magisk-smoke.sh'], ['scripts/fixtures/fake-magisk/bin/curl', 'scripts/test-fake-magisk-curl.py'])
+          workflow = Path('.github/workflows/android-kernelsu-acceptance.yml')
+          source = workflow.read_text()
+          line = '          python3 scripts/test-android-simulation-fixes.py\n'
+          if source.count(line) != 1:
+              raise SystemExit('Android contract insertion point changed')
+          workflow.write_text(source.replace(line, line + '          python3 scripts/test-android-proxylink.py\n'))
+          git('add', str(workflow))
+          if git('write-tree').decode().strip() != '19170566941aaddd9e03143955548e911cc7c8ad':
+              raise SystemExit('Integrated source differs from the locally reviewed tree')
+          git('apply', '-p0', '--unidiff-zero', '--index', '-', data=patch)
+          expected = 'ed5d0f7f2813bd9f64729f7832f6ccf044d119b1'
+          if git('write-tree').decode().strip() != expected:
+              raise SystemExit('Patched source differs from the locally tested tree')
+          def entries(revision):
+              result = {}
+              for row in git('ls-tree', '-r', '-z', revision).split(b'\0'):
+                  if not row: continue
+                  meta, name = row.split(b'\t', 1)
+                  mode, kind, sha = meta.decode().split()
+                  result[os.fsdecode(name)] = {'path': os.fsdecode(name), 'mode': mode, 'type': kind, 'sha': sha}
+              return result
+          known = {entry['sha'] for revision in [base, *heads] for entry in entries(revision).values()}
+          before, after = entries(base), entries(expected)
+          changes = [after[name] for name in sorted(after) if before.get(name) != after[name]]
+          changes += [{'path': name, 'mode': before[name]['mode'], 'type': before[name]['type'], 'sha': None} for name in sorted(before.keys() - after.keys())]
+          # Never execute candidate source code with this token, and never move a
+          # ref or create a commit here. The authorized connector publishes only
+          # after comparing the exact tree to local test evidence.
+          def post(endpoint, payload):
+              request = urllib.request.Request('https://api.github.com/repos/LIghtJUNction/MagicNet/git/' + endpoint,
+                  data=json.dumps(payload).encode(), method='POST', headers={
+                      'Authorization': 'Bearer ' + os.environ['OBJECT_TOKEN'],
+                      'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json',
+                      'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          for entry in changes:
+              if entry['type'] != 'blob' or entry['sha'] is None or entry['sha'] in known: continue
+              raw = git('cat-file', 'blob', entry['sha'])
+              stored = post('blobs', {'encoding': 'base64', 'content': base64.b64encode(raw).decode()})
+              if stored['sha'] != entry['sha']: raise SystemExit('Stored blob hash mismatch')
+          stored = post('trees', {'base_tree': tree(base), 'tree': changes})
+          if stored['sha'] != expected: raise SystemExit('Stored tree hash mismatch')
+          destination = Path(os.environ['RUNNER_TEMP'])/'integration-evidence'
+          destination.mkdir()
+          (destination/'tree.json').write_text(json.dumps({'schema': 1, 'tree': expected, 'base': base, 'parents': heads, 'scope': 'exact reviewed sources only; not CI or Android acceptance', 'changes': changes}, indent=2)+'\n')
+          print('Stored exact reviewed integration tree: ' + expected)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: reviewed-integration-tree
+          path: ${{ runner.temp }}/integration-evidence/
+          if-no-files-found: error
+          retention-days: 7
