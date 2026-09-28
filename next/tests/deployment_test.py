@@ -87,6 +87,44 @@ class Deployment(unittest.TestCase):
         before=(self.root/'.config/settings.json').read_bytes()
         self.assertEqual(self.command('--hook','install','--upgrade-from',str(source))['error']['code'],'upgrade_conflict')
         self.assertEqual(before,(self.root/'.config/settings.json').read_bytes())
+    def test_upgrade_refuses_pending_source_transaction_without_copying_or_recovering(self):
+        source=self.previous()
+        journal=source/'.state/transactions'/secrets.token_hex(16)
+        journal.mkdir(parents=True);(journal/'journal.json').write_text('{pending-evidence}')
+        before=(source/'.config/settings.json').read_bytes()
+        reply=self.command('--hook','install','--upgrade-from',str(source))
+        self.assertEqual(reply['error']['code'],'recovery_required')
+        self.assertFalse((self.root/'.config').exists())
+        self.assertEqual(before,(source/'.config/settings.json').read_bytes())
+        self.assertEqual((journal/'journal.json').read_text(),'{pending-evidence}')
+    def test_upgrade_refuses_pending_switch_without_copying_or_deleting_evidence(self):
+        source=self.previous();switch=source/'.state/switch.json';switch.write_text('{pending-evidence}')
+        reply=self.command('--hook','install','--upgrade-from',str(source))
+        self.assertEqual(reply['error']['code'],'recovery_required')
+        self.assertFalse((self.root/'.config').exists())
+        self.assertEqual(switch.read_text(),'{pending-evidence}')
+    def test_upgrade_refuses_live_source_and_preserves_its_owner(self):
+        from worker_test import FAKE
+        source=self.previous()
+        self.configure(source,'sources.replace',{'text':''})
+        (source/'bin/sing-box').write_text(FAKE)
+        def native(method):
+            revision=self.command('settings',root=source)['data']['revision']
+            request={'schema':1,'id':secrets.token_hex(16),'method':method,'expected_revision':revision,'params':None}
+            return self.command('--experimental-runtime','--request-stdin',root=source,body=json.dumps(request).encode())
+        try:
+            self.assertTrue(native('service.start')['ok'])
+            owner=(source/'.state/runtime.json').read_bytes()
+            settings=(source/'.config/settings.json').read_bytes()
+            reply=self.command('--hook','install','--upgrade-from',str(source))
+            self.assertEqual(reply['error']['code'],'service_active')
+            self.assertFalse((self.root/'.config').exists())
+            self.assertEqual(owner,(source/'.state/runtime.json').read_bytes())
+            self.assertEqual(settings,(source/'.config/settings.json').read_bytes())
+            self.assertEqual(self.command('status',root=source)['data']['phase'],'running')
+        finally:
+            self.assertTrue(native('service.stop')['ok'])
+
     def test_profile_symlink_is_not_followed(self):
         source=self.previous();(source/'.config/linked').symlink_to('/etc/passwd')
         self.assertEqual(self.command('--hook','install','--upgrade-from',str(source))['error']['code'],'unsafe_profile')

@@ -17,9 +17,22 @@ async function cli(args: string[], body = ''): Promise<{errno:number;stdout:stri
 // The production bundle is rendered offline. A test-only KernelSU adapter
 // transports the real SDK's stdin payload into the compiled host CLI. This
 // does not claim browser CSP, Android WebView, routing or kernel acceptance.
-async function boot(page: Page, native=true) {
+type Controls = {dropMethod?:string; dropped?:boolean; receiptGate?:Promise<void>; requests:{id:string;method:string;params?:unknown}[]};
+async function boot(page: Page, native=true, controls?:Controls) {
   if (native) {
-    await page.exposeFunction('hostCli',(payload:string)=>cli(['--request-base64-stdin'],payload));
+    await page.exposeFunction('hostCli',async(payload:string)=>{
+      const input=JSON.parse(Buffer.from(payload,'base64').toString('utf8'));
+      controls?.requests.push(input);
+      if(input.method==='operation' && controls?.receiptGate) await controls.receiptGate;
+      const result=await cli(['--request-base64-stdin'],payload);
+      if(controls && !controls.dropped && input.method===controls.dropMethod) {
+        controls.dropped=true;
+        // The real CLI already performed the write. Corrupt only its reply,
+        // never substitute a fake success or a fake operation receipt.
+        return {...result,stdout:'{'};
+      }
+      return result;
+    });
   }
   let html=await readFile('dist/index.html','utf8');
   html=html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/g,'').replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,'');
@@ -96,4 +109,57 @@ test('stop is available with a draft and does not silently overwrite it',async({
   const urls=page.getByLabel('每行一个 HTTP / HTTPS 链接'); await expect(urls).toBeEnabled(); await urls.fill('https://draft.test/a');
   await page.getByRole('navigation').getByRole('button',{name:'概览',exact:true}).click(); await page.getByRole('button',{name:'停止服务',exact:true}).click();
   await expect(page.getByRole('status').filter({hasText:'操作已返回'})).toBeVisible(); await page.getByRole('navigation').getByRole('button',{name:'订阅',exact:true}).click(); await expect(urls).toHaveValue('https://draft.test/a');
+});
+
+for(const failed of [false,true]) {
+  test(`lost ${failed?'failure':'success'} reply is resolved by exact receipt without another write`,async({page},info)=>{
+    let release!:()=>void;
+    const controls:Controls={dropMethod:failed?'sources.refresh':'sources.replace',requests:[],receiptGate:new Promise<void>(resolve=>{release=resolve;})};
+    await page.setViewportSize({width:320,height:940});
+    try {
+      await boot(page,true,controls);
+      await page.getByRole('navigation').getByRole('button',{name:'订阅',exact:true}).click();
+      const urls=page.getByLabel('每行一个 HTTP / HTTPS 链接'); await expect(urls).toBeEnabled();
+      await urls.fill('https://example.test/receipt-fixture');
+      await page.getByRole('button',{name:'保存链接列表'}).click();
+      if(failed) {
+        await expect(page.getByText('1 个来源')).toBeVisible();
+        await page.getByRole('button',{name:'更新订阅'}).click();
+      }
+      await expect(page.getByText('操作结果尚未确认',{exact:true})).toBeVisible();
+      await expect(urls).toBeDisabled();
+      await expect(urls).toHaveValue('https://example.test/receipt-fixture');
+      const first=controls.requests.find(r=>r.method===controls.dropMethod)!;
+      expect(first).toBeTruthy();
+      // Verify the actual persisted result before releasing receipt delivery.
+      expect(JSON.parse((await cli(['settings'])).stdout).data.sources).toHaveLength(1);
+      expect(controls.requests.filter(r=>r.method===controls.dropMethod)).toHaveLength(1);
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+      await page.screenshot({path:info.outputPath('pending-320.png'),fullPage:true});
+      await page.getByRole('button',{name:'核对操作回执'}).click();
+      await expect.poll(()=>controls.requests.some(r=>r.method==='operation')).toBe(true);
+      release();
+      await expect(page.getByText('操作结果尚未确认',{exact:true})).toBeHidden();
+      await expect(urls).toBeEnabled();
+      if(failed) await expect(page.getByRole('alert')).toContainText('缺少所需工具');
+      else { await expect(page.getByRole('alert')).toHaveCount(0); await expect(page.getByText('1 个来源')).toBeVisible(); }
+      const lookups=controls.requests.filter(r=>r.method==='operation');
+      expect(lookups.length).toBeGreaterThan(0);
+      expect(lookups.every(r=>JSON.stringify(r.params)===JSON.stringify({id:first.id}))).toBe(true);
+      expect(controls.requests.filter(r=>r.method===controls.dropMethod)).toHaveLength(1);
+      await expect(urls).toHaveValue('https://example.test/receipt-fixture');
+    } finally { release(); }
+  });
+}
+
+test('network page reflects saved eBPF intent without enabling the unaccepted runtime',async({page})=>{
+  const settings=JSON.parse((await cli(['settings'])).stdout).data;
+  settings.mode='ebpf';
+  const response=await cli(['--request-stdin'],JSON.stringify({schema:1,id:'abcdef0123456789abcdef0123456789',method:'settings.replace',expected_revision:settings.revision,params:settings}));
+  expect(JSON.parse(response.stdout).ok).toBe(true);
+  await boot(page);
+  await expect(page.getByRole('button',{name:'应用并启用'})).toBeDisabled();
+  await page.getByRole('navigation').getByRole('button',{name:'网络',exact:true}).click();
+  await expect(page.locator('.mode-option.selected')).toContainText('eBPF');
+  await expect(page.locator('.mode-option.selected')).not.toContainText('TUN');
 });

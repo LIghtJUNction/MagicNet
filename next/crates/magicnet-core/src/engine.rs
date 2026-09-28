@@ -11,12 +11,30 @@ use std::time::Duration;
 
 mod bookkeeping;
 mod configuration;
+mod intent;
 mod lifecycle;
 
 const RUNTIME: &str = ".state/runtime.json";
 const SWITCH: &str = ".state/switch.json";
 const LOCK: &str = ".state/lock";
 const STOP: &str = ".state/stop-request.json";
+
+pub const READ_METHODS: [&str; 5] = [
+    "capabilities",
+    "status",
+    "settings",
+    "operation",
+    "diagnostics",
+];
+pub const WRITE_METHODS: [&str; 7] = [
+    "settings.replace",
+    "sources.replace",
+    "sources.import",
+    "sources.refresh",
+    "service.start",
+    "service.stop",
+    "runtime.recover",
+];
 
 pub trait Platform {
     fn validate(&self, root: &Root, generation: &str) -> Result<()>;
@@ -118,12 +136,10 @@ impl<P: Platform> Engine<P> {
     }
     pub fn read(&self, method: &str) -> Result<Value> {
         match method {
-            "capabilities" => Ok(
-                json!({"schema":1,"read":["capabilities","status","settings","operation","diagnostics"],
-                "write":["settings.replace","sources.replace","sources.import","sources.refresh","service.start","service.stop","runtime.recover"],
+            "capabilities" => Ok(json!({"schema":1,"read":READ_METHODS,
+                "write":WRITE_METHODS,"operation_lookup":"request_id",
                 "transport":"stdin-json","lifecycle":"experimental","android_acceptance":"not_verified",
-                "unported":["ebpf","tailscale_lifecycle","mcp","encrypted_backup","oem_network_policy","wifi","hotspot","legacy_migration"]}),
-            ),
+                "unported":["ebpf","tailscale_lifecycle","mcp","encrypted_backup","oem_network_policy","wifi","hotspot","legacy_migration"]})),
             "settings" => {
                 let _guard = Guard::acquire(
                     &self.root,
@@ -189,28 +205,25 @@ impl<P: Platform> Engine<P> {
                 "The request needs schema 1 and a 128-bit hexadecimal ID",
             ));
         }
-        if [
-            "capabilities",
-            "status",
-            "settings",
-            "operation",
-            "diagnostics",
-        ]
-        .contains(&request.method.as_str())
-        {
+        if READ_METHODS.contains(&request.method.as_str()) {
+            if request.method == "operation" && !request.params.is_null() {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Lookup {
+                    id: String,
+                }
+                let lookup: Lookup = serde_json::from_value(request.params.clone())?;
+                if !kamfw::fs::valid_id(&lookup.id) {
+                    return Err(Error::new(
+                        "invalid_request",
+                        "An operation lookup needs a 128-bit hexadecimal ID",
+                    ));
+                }
+                return self.operation_at(&format!(".state/operations/{}.json", lookup.id));
+            }
             return self.read(&request.method);
         }
-        if ![
-            "settings.replace",
-            "sources.replace",
-            "sources.import",
-            "sources.refresh",
-            "service.start",
-            "service.stop",
-            "runtime.recover",
-        ]
-        .contains(&request.method.as_str())
-        {
+        if !WRITE_METHODS.contains(&request.method.as_str()) {
             return Err(Error::new(
                 "unsupported_command",
                 "The requested operation is not implemented",
@@ -233,15 +246,15 @@ impl<P: Platform> Engine<P> {
                 return Err(Error::new("previous_failure", "The earlier attempt failed; inspect its recorded outcome and use a new request ID"));
             }
         }
-        // Stop may cancel a long-running fetch without unlinking its live lock.
+        // Capture the stop boundary before waiting for the long-lived writer
+        // lock. A STOP submitted later must survive even if its caller exits.
+        let stop_at_submission = if request.method == "service.start" {
+            self.stop_snapshot()?
+        } else {
+            None
+        };
         if request.method == "service.stop" {
-            self.root
-                .write_json(STOP, &json!({"schema":1,"id":request.id}))?;
-            if let Some(active) = self.root.read_json::<Operation>(".state/operation.json")? {
-                if active.phase == "running" {
-                    self.root.write(".state/cancel", active.id.as_bytes())?;
-                }
-            }
+            self.request_stop(&request.id)?;
         }
         let guard = Guard::acquire(
             &self.root,
@@ -249,11 +262,18 @@ impl<P: Platform> Engine<P> {
             LockMode::Exclusive,
             Duration::from_secs(15),
             true,
-        )?
+        )
+        .map_err(|error| {
+            if request.method == "service.stop" {
+                error.changed()
+            } else {
+                error
+            }
+        })?
         .ok_or_else(|| Error::new("lock_unavailable", "The runtime lock could not be opened"))?;
         guard.require_writer(&self.root)?;
 
-        let result = self.execute_locked(request, &record_path, digest);
+        let result = self.execute_locked(request, &record_path, digest, &stop_at_submission);
         // Recovery and STOP can mutate intent before a new operation receipt
         // exists. Publish under the same lock even on those early error paths.
         match self.publish_canonical() {
@@ -267,6 +287,7 @@ impl<P: Platform> Engine<P> {
         request: &Request,
         record_path: &str,
         digest: String,
+        stop_at_submission: &Option<Vec<u8>>,
     ) -> Result<Value> {
         if let Some(previous) = self.root.read_json::<Operation>(record_path)? {
             if previous.digest != digest {
@@ -324,7 +345,7 @@ impl<P: Platform> Engine<P> {
         self.root.write_json(record_path, &operation)?;
         self.root.write_json(".state/operation.json", &operation)?;
         self.publish_canonical()?;
-        let result = self.mutate(request, &mut settings);
+        let result = self.mutate(request, &mut settings, stop_at_submission);
         operation.phase = if result.is_ok() {
             "completed"
         } else {

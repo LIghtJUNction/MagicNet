@@ -56,6 +56,41 @@ class CliContract(unittest.TestCase):
         self.assertEqual(self.rpc(self.request('service.start.now'))['error']['code'], 'unsupported_command')
         self.assertFalse((self.root / '.state').exists())
 
+    def test_gate_failure_keeps_the_request_id_and_command(self):
+        req = self.request('sources.replace', {'text': ''})
+        reply = self.rpc(req)
+        self.assertEqual(reply['command'], req['method'])
+        self.assertEqual(reply['request_id'], req['id'])
+        self.assertFalse(reply['error']['effects_possible'])
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_exact_operation_lookup_is_read_only_and_not_the_latest_operation(self):
+        self.initialize()
+        first = self.request('sources.replace', {'text': 'https://one.test/source'})
+        self.assertTrue(self.rpc(first)['ok'])
+        second = self.request('sources.replace', {'text': 'https://two.test/source'}, revision=1)
+        self.assertTrue(self.rpc(second)['ok'])
+        before = {str(p.relative_to(self.root)): (p.stat().st_mtime_ns, p.read_bytes())
+                  for p in self.root.rglob('*') if p.is_file()}
+        reply = self.rpc(self.request('operation', {'id': first['id']}))
+        self.assertTrue(reply['ok'])
+        self.assertEqual(reply['data']['id'], first['id'])
+        self.assertEqual(reply['data']['outcome']['data']['revision'], 1)
+        self.assertEqual(self.run_cli('operation')['data']['id'], second['id'])
+        self.assertNotIn('owner', reply['data'])
+        self.assertNotIn('digest', reply['data'])
+        after = {str(p.relative_to(self.root)): (p.stat().st_mtime_ns, p.read_bytes())
+                 for p in self.root.rglob('*') if p.is_file()}
+        self.assertEqual(before, after)
+
+    def test_operation_lookup_rejects_path_aliases_and_wrong_parameter_types(self):
+        for params in ({'id': '../settings'}, {'id': 1}, {'id': 'a'*32, 'path': '/etc/passwd'}, {}):
+            self.assertFalse(self.rpc(self.request('operation', params))['ok'])
+        reply = self.rpc(self.request('operation', {'id': 'a'*32}))
+        self.assertTrue(reply['ok'])
+        self.assertIsNone(reply['data'])
+        self.assertEqual(list(self.root.iterdir()), [])
+
     def test_base64_transports_unicode_and_shell_metacharacters(self):
         self.initialize()
         body = json.dumps({'proxies': [{'type': 'trojan', 'name': '日本😀', 'server': 'example.test', 'port': 443, 'password': '$(touch /tmp/no);"\\'}]})
@@ -65,6 +100,17 @@ class CliContract(unittest.TestCase):
         self.assertTrue(reply['ok'])
         nodes = json.loads((self.root / '.config/nodes/local.json').read_text())
         self.assertEqual(nodes[0]['password'], '$(touch /tmp/no);"\\')
+
+    def test_failed_stop_receipt_read_reports_already_persisted_intent(self):
+        self.initialize()
+        state=self.root / '.state';state.mkdir()
+        receipt=state / 'operation.json';receipt.write_text('{corrupt-evidence}')
+        request=self.request('service.stop')
+        reply=self.rpc(request)
+        self.assertEqual(reply['error']['code'],'invalid_json')
+        self.assertTrue(reply['error']['effects_possible'])
+        self.assertEqual(json.loads((state / 'stop-request.json').read_text())['id'],request['id'])
+        self.assertEqual(receipt.read_text(),'{corrupt-evidence}')
 
     def test_default_native_activation_is_gated(self):
         self.initialize()

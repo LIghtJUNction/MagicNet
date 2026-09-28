@@ -154,6 +154,23 @@ class ArchiveTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'unexpected link target'):
                         self.build()
 
+    def test_script_cli_wrapper_is_preserved_byte_for_byte(self):
+        wrapper = b'#!/system/bin/sh\nexec "${0%/*}/bin/magicnet-cli" "$@"\n'
+        self.archive(self.entries | {'cli': wrapper})
+        manifest = self.build()
+        self.assertEqual(manifest['replaced_aliases'], {})
+        with zipfile.ZipFile(self.output) as output:
+            self.assertEqual(output.read('cli'), wrapper)
+
+
+    def test_unknown_runtime_helper_is_not_discarded_to_hide_an_abi_mismatch(self):
+        name = 'bin/unexpected-helper'
+        self.archive(self.entries | {name: elf(183)})
+        with self.assertRaisesRegex(RuntimeError, f'unreplaced foreign ELF: {name}'):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+
     def test_path_traversal_and_ambiguous_members_rejected(self):
         for name in ('../outside', '/absolute', 'bin/../outside', 'bin\\outside',
                      'bin//outside', 'bin/./outside', 'C:/outside'):

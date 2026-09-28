@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {request, encode, decode, settings, status, RpcError} from '../src/protocol.ts';
+import {request, encode, decode, settings, status, capabilities, RpcError} from '../src/protocol.ts';
 const success = (r, data) => JSON.stringify({schema:1, ok:true, command:r.method, request_id:r.id, data});
 test('Unicode and shell syntax stay inside the encoded stdin payload', () => {
   const r = request('sources.import',{body:'日本😀\n$(touch /tmp/do-not-execute); "\\'},3);
@@ -36,4 +36,34 @@ test('status is not inferred from truthy values or a core process alone',()=>{
 test('oversized requests and responses are bounded before native dispatch',()=>{
   assert.throws(()=>encode(request('sources.import',{body:'x'.repeat(4*1024*1024)})),RpcError);
   assert.throws(()=>decode('x'.repeat(8*1024*1024+1),0,request('status')),RpcError);
+});
+
+test('all uncorrelated write replies preserve uncertainty instead of authorizing a retry',()=>{
+  const r=request('sources.replace',{text:'https://fixture.test/private'},0);
+  const reply=JSON.parse(success(r,{}));
+  for(const [body,errno] of [['{',0],['null',0],[JSON.stringify({...reply,request_id:'0'.repeat(32)}),0],[JSON.stringify({...reply,command:'status'}),0],[success(r,{}),1]]) {
+    assert.throws(()=>decode(body,errno,r),e=>e.code==='invalid_response' && e.outcomeUnknown && e.effectsPossible);
+  }
+  assert.throws(()=>decode('{',0,request('status')),e=>!e.outcomeUnknown && !e.effectsPossible);
+});
+test('correlated server rejection is known even if partial effects need recovery',()=>{
+  const r=request('service.stop');
+  const body=JSON.stringify({schema:1,ok:false,request_id:r.id,command:r.method,error:{code:'stop_timeout',effects_possible:true}});
+  assert.throws(()=>decode(body,1,r),e=>e.code==='stop_timeout' && e.effectsPossible && !e.outcomeUnknown);
+});
+test('status scalar fields cannot be arrays, negative counts, or unsafe integers',()=>{
+  const value={phase:'stopped',configured:false,configured_revision:0,effective_revision:0,pending_changes:false,recovery_pending:false,mode:'tun',source_count:0,network_health:'unknown',observation:'process_identity_only',operation:null};
+  assert.deepEqual(status(value),value);
+  for(const patch of [{phase:['running']},{configured_revision:-1},{effective_revision:Number.MAX_SAFE_INTEGER+1},{source_count:-1},{source_count:33},{mode:['tun']},{operation:{id:'bad',method:'service.stop',phase:'running'}}]) assert.throws(()=>status({...value,...patch}),RpcError);
+});
+test('settings require unique source identities and real scalar values',()=>{
+  const source={id:'a'.repeat(32),url:'https://a.test/sub',enabled:true};
+  const value={schema:1,revision:0,enabled:false,mode:'tun',user_agent:'MagicNet',sources:[source],template:{}};
+  assert.deepEqual(settings(value),value);
+  for(const patch of [{mode:['tun']},{user_agent:'bad\nheader'},{sources:[source,{...source,url:'https://b.test/sub'}]},{sources:[source,{...source,id:'b'.repeat(32)}]}]) assert.throws(()=>settings({...value,...patch}),RpcError);
+});
+test('capabilities reject transport text and malformed operation lists',()=>{
+  const value={schema:1,read:['status'],write:['service.stop'],unported:['tailscale'],lifecycle:'experimental',android_acceptance:'not_verified'};
+  assert.deepEqual(capabilities(value),value);
+  for(const patch of [{lifecycle:['accepted']},{write:['service.stop;echo']},{read:'status'},{android_acceptance:''}]) assert.throws(()=>capabilities({...value,...patch}),RpcError);
 });

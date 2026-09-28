@@ -1,8 +1,9 @@
 //! KernelSU hooks are thin process boundaries. Installation validates a
 //! bounded manifest and copies only intent under a shared source lock. PIDs,
 //! operation receipts, live locks and recovery journals are never transplanted.
+use kamfw::process::Observation;
 use kamfw::{Change, Error, Guard, LockMode, Result, Root, Store, Transaction};
-use magicnet_core::engine::{Engine, Platform, Request};
+use magicnet_core::engine::{Engine, Platform, Request, Runtime};
 use magicnet_core::model::{Settings, SETTINGS};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -197,6 +198,58 @@ fn collect(
     Ok(())
 }
 
+fn require_quiescent_source<P: Platform>(engine: &Engine<P>, source: &Root) -> Result<()> {
+    if source.open_file(".state/switch.json")?.is_some()
+        || !source.list(".state/transactions", 64)?.is_empty()
+    {
+        return Err(Error::new(
+            "recovery_required",
+            "Recover the source before upgrading; its evidence was not changed",
+        ));
+    }
+    if let Some(runtime) = source.read_json::<Runtime>(".state/runtime.json")? {
+        if runtime.generation.is_some() != runtime.identity.is_some()
+            || runtime
+                .generation
+                .as_ref()
+                .is_some_and(|id| !kamfw::fs::valid_id(id))
+        {
+            return Err(Error::new(
+                "invalid_profile",
+                "The source process identity is incomplete",
+            ));
+        }
+        if runtime
+            .identity
+            .as_ref()
+            .is_some_and(|id| engine.platform.observe(source, id) != Observation::Absent)
+        {
+            return Err(Error::new("service_active", "Stop the source successfully before upgrading; live ownership cannot be transplanted"));
+        }
+    }
+    for entry in source.list(".state/workers", 128)? {
+        let id = entry
+            .name
+            .strip_suffix(".json")
+            .filter(|id| kamfw::fs::valid_id(id));
+        let Some(id) = id else {
+            return Err(Error::new(
+                "invalid_profile",
+                "An unrecognized worker record was retained",
+            ));
+        };
+        if entry.kind != kamfw::EntryKind::File
+            || kamfw::worker::observation(source, id) != Observation::Absent
+        {
+            return Err(Error::new(
+                "service_active",
+                "A source worker is active or unverified; upgrade was not started",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn install<P: Platform>(engine: &Engine<P>, previous: Option<&str>) -> Result<Value> {
     verify(&engine.root)?;
     let marker: Value = engine
@@ -231,6 +284,10 @@ fn install<P: Platform>(engine: &Engine<P>, previous: Option<&str>) -> Result<Va
             Duration::from_secs(2),
             false,
         )?;
+        // A shared lock excludes writers but cannot turn an interrupted
+        // multi-file transaction into a consistent profile. Never transplant
+        // partially published intent or discard live ownership evidence.
+        require_quiescent_source(engine, &source)?;
         collect(&source, ".config", 0, &mut files, &mut 0)?;
         let settings: Settings = serde_json::from_slice(files.get(SETTINGS).ok_or_else(|| {
             Error::new("invalid_profile", "The previous intent document is missing")
@@ -297,13 +354,13 @@ pub fn run<P: Platform>(engine: &Engine<P>, hook: &str, previous: Option<&str>) 
             "Only installation accepts an upgrade source",
         ));
     }
+    let disabled =
+        engine.root.read("disable", 1)?.is_some() || engine.root.read("remove", 1)?.is_some();
     let method = match hook {
+        "service" | "boot-completed" | "action" if disabled => "service.stop",
         "service" => "runtime.recover",
         "boot-completed" => {
-            if engine.root.read("disable", 1)?.is_some() || engine.root.read("remove", 1)?.is_some()
-            {
-                "service.stop"
-            } else if engine.settings()?.enabled {
+            if engine.settings()?.enabled {
                 "service.start"
             } else {
                 "runtime.recover"

@@ -133,7 +133,9 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     # Some ZIP producers dereference cli -> bin/magicnet-cli.
                     # Only a byte-identical alias of the original CLI can be
                     # rebound; a different ELF is not an alias and must fail.
-                    require(not stat.S_ISLNK(mode), 'CLI alias must not disguise an ELF as a link')
+                    require(stat.S_IFMT(mode) in (0, stat.S_IFREG)
+                            and stat.S_IFMT(original.getinfo('bin/magicnet-cli').external_attr >> 16)
+                            in (0, stat.S_IFREG), 'CLI alias and canonical payload must be regular files')
                     require(data == original.read('bin/magicnet-cli'),
                             'CLI alias differs from canonical payload')
                     manifest['replaced_aliases']['cli'] = {

@@ -2,7 +2,12 @@
 use super::*;
 
 impl<P: Platform> Engine<P> {
-    pub(super) fn mutate(&self, request: &Request, settings: &mut Settings) -> Result<Value> {
+    pub(super) fn mutate(
+        &self,
+        request: &Request,
+        settings: &mut Settings,
+        stop_at_submission: &Option<Vec<u8>>,
+    ) -> Result<Value> {
         match request.method.as_str() {
             "settings.replace" => {
                 let mut candidate: Settings = serde_json::from_value(request.params.clone())?;
@@ -137,9 +142,7 @@ impl<P: Platform> Engine<P> {
                 )
             }
             "service.start" => {
-                // A new explicit start can clear a settled stop, never an
-                // in-flight operation's cancellation marker.
-                self.root.remove(STOP)?;
+                self.authorize_start(&request.id, stop_at_submission)?;
                 self.activate(settings)
             }
             "service.stop" => {

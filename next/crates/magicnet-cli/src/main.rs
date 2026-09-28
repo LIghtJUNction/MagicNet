@@ -4,7 +4,7 @@ mod deployment;
 mod platform;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use kamfw::{Error, Result, Root};
-use magicnet_core::engine::{Engine, Request};
+use magicnet_core::engine::{Engine, Request, READ_METHODS};
 use serde_json::{json, Value};
 use std::{
     io::{self, Read, Write},
@@ -188,26 +188,27 @@ fn main_result() -> Result<Value> {
             "Request identity or method is invalid",
         ));
     }
-    let read_only = [
-        "capabilities",
-        "status",
-        "settings",
-        "operation",
-        "diagnostics",
-    ]
-    .contains(&request.method.as_str());
-    if !read_only {
-        let marker: Value = root.read_json(".magicnet-candidate.json")?.ok_or_else(|| {
-            Error::new(
-                "migration_required",
-                "Writes require an explicitly initialized isolated candidate directory",
-            )
-        })?;
-        if marker != json!({"schema":1,"kind":"isolated-candidate","version":2}) {
-            return Err(Error::new(
-                "invalid_root",
-                "The candidate root marker is invalid",
-            ));
+    if !READ_METHODS.contains(&request.method.as_str()) {
+        let gate = (|| -> Result<()> {
+            let marker: Value = root.read_json(".magicnet-candidate.json")?.ok_or_else(|| {
+                Error::new(
+                    "migration_required",
+                    "Writes require an explicitly initialized isolated candidate directory",
+                )
+            })?;
+            if marker != json!({"schema":1,"kind":"isolated-candidate","version":2}) {
+                return Err(Error::new(
+                    "invalid_root",
+                    "The candidate root marker is invalid",
+                ));
+            }
+            Ok(())
+        })();
+        if let Err(error) = gate {
+            // The request has already been decoded. Preserve correlation even
+            // when it is refused before any durable operation record exists.
+            return Ok(json!({"schema":1,"ok":false,"command":request.method,
+                "request_id":request.id,"error":error}));
         }
     }
     Ok(Engine {

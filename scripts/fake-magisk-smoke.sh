@@ -424,23 +424,27 @@ exit 0
 write_mock curl '
 out=""
 url=""
-headers=""
 write_out=""
+headers=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -o)
+        -o|--output)
             out="${2:-}"
             shift 2
             ;;
         -D|--dump-header)
-            headers="${2:-}"
+            headers="${2:?header path required}"
+            shift 2
+            ;;
+        --url)
+            url="${2:?URL required}"
             shift 2
             ;;
         -w|--write-out)
             write_out="${2:-}"
             shift 2
             ;;
-        -x|--max-time|--connect-timeout|-H|--data|--data-binary|--noproxy|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|--user-agent)
+        -x|--proxy|--max-time|--connect-timeout|-H|--header|--data|--data-binary|--noproxy|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|-A|--user-agent|-X|--request)
             shift 2
             ;;
         --*)
@@ -470,18 +474,24 @@ render_http_metrics() {
     rendered="${rendered//\%\{time_connect\}/$connect}"
     rendered="${rendered//\%\{time_starttransfer\}/$start}"
     rendered="${rendered//\%\{time_total\}/$total}"
+    # Unknown metrics are fixture drift, never a valid simulated response.
+    if [[ "$rendered" == *"%{"* ]]; then
+        echo "unsupported fake curl write-out variable" >&2
+        return 2
+    fi
     printf "%b" "$rendered"
+}
+emit_headers() {
+    [[ -z "$headers" ]] || printf "HTTP/1.1 %s Fixture\r\nContent-Type: application/yaml\r\n\r\n" "$1" >"$headers"
 }
 if [[ -n "${MAGICNET_FAKE_CURL_FAIL_URL:-}" && "$url" == "$MAGICNET_FAKE_CURL_FAIL_URL" ]]; then
     [[ -z "$write_out" ]] || render_http_metrics 000 0.000 0.000 0.000
     exit 7
 fi
 if [[ -n "${MAGICNET_FAKE_CURL_HTTP_CODE_URL:-}" && "$url" == "$MAGICNET_FAKE_CURL_HTTP_CODE_URL" ]]; then
+    emit_headers "${MAGICNET_FAKE_CURL_HTTP_CODE:-429}"
     [[ -z "$write_out" ]] || render_http_metrics "${MAGICNET_FAKE_CURL_HTTP_CODE:-429}" 0.010 0.020 0.030
     exit 0
-fi
-if [[ -n "$headers" ]]; then
-    printf "HTTP/1.1 200 OK\r\nContent-Type: application/yaml\r\n\r\n" >"$headers"
 fi
 case "$url" in
     http://127.0.0.1:9090/version)
@@ -519,6 +529,7 @@ YAML
     printf "%b" "    tls: true\n    servername: \"edge.example\r.test\"\n"
 }
 if [[ -n "$out" ]]; then
+    emit_headers 200
     if [[ "$out" == "-" ]]; then
         emit_subscription_fixture
     else

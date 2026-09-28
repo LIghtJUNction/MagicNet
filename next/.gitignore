@@ -5,3 +5,4 @@
 /webui/playwright-report/
 __pycache__/
 *.pyc
+/test-results/

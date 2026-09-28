@@ -13,7 +13,10 @@
       "id": "runtime_ownership",
       "requirement": "fork/exec 窗口、代际租约、真实进程竞争与所有权证明",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "host_evidence_only": [
+        "tests/worker_test.py: queued start/STOP, disable/remove, supervised graceful cleanup; host fake dataplane only"
+      ]
     },
     {
       "id": "kernel_cleanup",
@@ -55,19 +58,28 @@
       "id": "native_contract",
       "requirement": "原 schema=1 机器接口、状态文件和完整 CLI 兼容性",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "host_evidence_only": [
+        "tests/cli_test.py: exact per-ID read-only receipts and correlated preflight failures; legacy command parity remains incomplete"
+      ]
     },
     {
       "id": "hooks_installer",
       "requirement": "实际 KernelSU hooks、安装、升级、重启、卸载和回退",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "host_evidence_only": [
+        "tests/deployment_test.py: active and interrupted source upgrades rejected without modifying source; no Android installation acceptance"
+      ]
     },
     {
       "id": "rooted_android",
       "requirement": "固定 ABI/内核的 rooted Android 全流程验收",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "host_evidence_only": [
+        "../scripts/test-android-device-simulation.py: six known x86_64 runtime payloads and verified CLI aliases are accepted; unknown foreign ELF remains rejected; no new local AVD execution"
+      ]
     },
     {
       "id": "physical_device",

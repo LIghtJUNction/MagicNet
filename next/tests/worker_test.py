@@ -1,6 +1,7 @@
 """Exercise the real Rust supervisor with a harmless, local fake dataplane.
 No network interface or routing command is executed by these tests.
 """
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -143,6 +144,75 @@ class NativeWorker(unittest.TestCase):
         self.assertEqual(restored['generation'],original['generation'])
         self.assertNotEqual(restored['identity'],original['identity'])
         self.assertEqual(self.rpc_raw(['status'])['data']['phase'],'running')
+
+    def test_queued_start_cannot_erase_a_later_stop_after_stop_caller_exits(self):
+        state=self.root/'.state';state.mkdir(exist_ok=True)
+        lock=state/'lock'
+        def request(method):
+            return {'schema':1,'id':secrets.token_hex(16),'method':method,
+                    'expected_revision':0,'params':None}
+        def spawn(req):
+            proc=subprocess.Popen([str(BINARY),'--root',str(self.root),
+                                   '--experimental-runtime','--request-stdin'],
+                                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            proc.stdin.write(json.dumps(req).encode());proc.stdin.close();proc.stdin=None
+            return proc
+        def wait_for_file_lock(proc):
+            # Opening the runtime lock is after request registration. Observe
+            # the real fd instead of relying on scheduler-sensitive sleeps.
+            deadline=time.monotonic()+3
+            while time.monotonic()<deadline:
+                if proc.poll() is not None: self.fail('writer exited before waiting for lock')
+                for fd in Path(f'/proc/{proc.pid}/fd').iterdir():
+                    try:
+                        if os.readlink(fd)==str(lock): return
+                    except FileNotFoundError: pass
+                time.sleep(.01)
+            self.fail('writer never reached the held runtime lock')
+        start=stop=None
+        try:
+            with lock.open('w') as held:
+                fcntl.flock(held,fcntl.LOCK_EX)
+                start=spawn(request('service.start'));wait_for_file_lock(start)
+                stop_request=request('service.stop')
+                stop=spawn(stop_request);wait_for_file_lock(stop)
+                self.assertEqual(json.loads((state/'stop-request.json').read_text())['id'],stop_request['id'])
+                stop.terminate();stop.communicate(timeout=3)
+            stdout,stderr=start.communicate(timeout=8)
+            reply=json.loads(stdout)
+            self.assertFalse(reply['ok'],reply)
+            self.assertEqual(reply['error']['code'],'cancelled')
+            self.assertEqual(json.loads((state/'stop-request.json').read_text())['id'],stop_request['id'])
+            self.assertFalse((self.root/'child-ready').exists())
+            self.assertFalse(self.rpc_raw(['status'])['data']['configured'])
+        finally:
+            for proc in (start,stop):
+                if proc is not None and proc.poll() is None:
+                    proc.terminate();proc.communicate(timeout=3)
+
+    def test_disabled_service_hook_does_not_restore_an_interrupted_generation(self):
+        self.start(stop_delay=.05)
+        original=self.owner.copy()
+        os.kill(original['identity']['pid'],signal.SIGKILL)
+        deadline=time.monotonic()+3
+        while not (self.root/'cleanup-complete').exists() and time.monotonic()<deadline:
+            time.sleep(.02)
+        self.assertTrue((self.root/'cleanup-complete').exists())
+        child_before=(self.root/'child-ready').read_text()
+        (self.root/'.state/switch.json').write_text(json.dumps({
+            'schema':1,'previous':original,'was_running':True,'candidate':secrets.token_hex(16)}))
+        (self.root/'disable').touch()
+        reply=self.rpc_raw(['--experimental-runtime','--hook','service'])
+        self.assertTrue(reply['ok'],reply)
+        self.assertEqual((self.root/'child-ready').read_text(),child_before)
+        self.assertEqual(self.rpc_raw(['status'])['data']['phase'],'stopped')
+
+    def test_action_never_starts_a_module_marked_for_removal(self):
+        (self.root/'remove').touch()
+        reply=self.rpc_raw(['--experimental-runtime','--hook','action'])
+        self.assertTrue(reply['ok'],reply)
+        self.assertFalse((self.root/'child-ready').exists())
+        self.assertFalse(self.rpc_raw(['status'])['data']['configured'])
 
     def test_unpublished_worker_gate_cannot_start_a_child(self):
         generation=secrets.token_hex(16)

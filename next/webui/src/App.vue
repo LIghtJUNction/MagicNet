@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue';
 import { send, nativeAvailable } from './bridge';
+import { track, restore, persist, settled, type Pending } from './pending';
 import { request, status as parseStatus, settings as parseSettings, capabilities as parseCapabilities, RpcError, type Settings, type Status, type Capabilities } from './protocol';
 
 type Page = 'overview' | 'sources' | 'network' | 'maintenance';
@@ -8,17 +9,26 @@ const pages: { id: Page; title: string; icon: string }[] = [{id:'overview',title
 const page = ref<Page>('overview');
 const current = ref<Status | null>(null), saved = ref<Settings | null>(null), caps = ref<Capabilities | null>(null);
 const urls = ref(''), local = ref(''), agent = ref(''), template = ref('');
-const busy = ref(false), error = ref(''), note = ref(''), stale = ref(false), diagnostics = ref('');
+const loading = ref(false), sending = ref(0), needsReload = ref(false);
+const busy = computed(() => loading.value || sending.value > 0);
+let initialPending: Pending[] = [];
+try { initialPending = restore(sessionStorage); } catch { /* Storage access may be denied. */ }
+const pending = ref<Pending[]>(initialPending);
+const inFlight = new Set<string>();
+watch(pending, rows => { try { persist(sessionStorage, rows); } catch { /* Storage access may be denied. */ } }, {deep:true});
+const stopPending = computed(() => pending.value.some(v => v.method === 'service.stop'));
+const error = ref(''), note = ref(''), stale = ref(false), diagnostics = ref('');
 const showAdvanced = ref(false), confirmReload = ref(false), modal = ref<HTMLElement | null>(null);
 let previousFocus: HTMLElement | null = null;
 watch(confirmReload, async open => { if (open) { previousFocus = document.activeElement as HTMLElement; await nextTick(); modal.value?.querySelector<HTMLButtonElement>('button')?.focus(); } else previousFocus?.focus(); });
 function modalKey(event: KeyboardEvent) { if (event.key === 'Escape') { confirmReload.value = false; event.preventDefault(); } if (event.key === 'Tab') { const buttons = modal.value?.querySelectorAll<HTMLButtonElement>('button'); if (!buttons?.length) return; const first = buttons[0]!, last = buttons[buttons.length-1]!; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }
 const dirty = computed(() => !!saved.value && (urls.value !== saved.value.sources.map(s => s.url).join('\n') || agent.value !== saved.value.user_agent || template.value !== JSON.stringify(saved.value.template,null,2)));
-const activeOperation = computed(() => current.value?.operation?.phase === 'running');
-const editable = computed(() => nativeAvailable() && saved.value !== null && caps.value !== null && !busy.value && !activeOperation.value && !stale.value);
+const activeOperation = computed(() => ['running','unknown'].includes(current.value?.operation?.phase ?? ''));
+const editable = computed(() => nativeAvailable() && saved.value !== null && caps.value !== null && !busy.value && !activeOperation.value && !stale.value && !needsReload.value && pending.value.length === 0);
 const phase = computed(() => stale.value ? '状态已过期' : ({running:'进程正在运行',stopped:'已停止',ownership_changed:'进程身份已变化',unknown:'状态待确认'}[current.value?.phase ?? 'unknown']));
 const revision = computed(() => current.value ? `${current.value.configured_revision} / ${current.value.effective_revision}` : '— / —');
 const messages: Record<string,string> = {
+  bridge_failure:'设备接口连接中断，请核对操作回执，不要重复提交。', module_disabled:'模块已被停用或标记卸载，请先在管理器中启用。', interrupted:'上次操作被中断，恢复记录已保留，请核对配置。',
   bridge_unavailable:'请从 KernelSU 打开模块界面。浏览器不会模拟运行状态。', invalid_response:'模块返回的数据无效，没有将它当作操作成功。',
   revision_conflict:'配置已经被其他操作修改。你的输入仍然保留，请先重新加载再比较。', busy:'另一项操作正在进行；没有强行删除它的锁。',
   acceptance_required:'重写版尚未完成 Android 验收，启用入口仍被保护。', migration_required:'当前目录尚未完成迁移，不会覆盖旧模块。',
@@ -44,29 +54,64 @@ async function observe() {
   finally { polling = false; }
 }
 async function load(force = false) {
-  if (dirty.value && !force) { confirmReload.value = true; return; }
-  confirmReload.value = false; busy.value = true; error.value = '';
+  if ((dirty.value || pending.value.length) && !force) { confirmReload.value = true; return; }
+  confirmReload.value = false; loading.value = true; error.value = '';
   try {
     caps.value = parseCapabilities(await send(request('capabilities')));
     syncDraft(parseSettings(await send(request('settings'))));
+    needsReload.value = false;
     await observe();
-  } catch (e) { failure(e); } finally { busy.value = false; }
+    await reconcilePending();
+    if (force && pending.value.length && !stale.value && !activeOperation.value && !current.value?.recovery_pending) {
+      pending.value = [];
+      note.value = '已重新读取配置并结束本页等待；没有重发请求，也未将未知结果标为成功。';
+    }
+  } catch (e) { failure(e); } finally { loading.value = false; }
+}
+function forget(id: string) { pending.value = pending.value.filter(v => v.id !== id); }
+async function acknowledge(item: Pending) {
+  forget(item.id);
+  // Keep the old base revision for unrelated drafts instead of silently
+  // rebasing them across a stop or external configuration update.
+  if (!dirty.value || item.method === 'settings.replace' || item.method === 'sources.replace') {
+    needsReload.value = true;
+    syncDraft(parseSettings(await send(request('settings'))));
+    needsReload.value = false;
+  }
+  if (item.method === 'sources.import') local.value = '';
+  error.value = '';
+  note.value = item.method.startsWith('sources.') || item.method === 'settings.replace' ? '已保存，尚未应用到运行配置。' : '操作已返回，请以当前状态为准。';
+}
+let reconciling = false;
+async function reconcilePending() {
+  if (reconciling || !nativeAvailable()) return;
+  reconciling = true;
+  try {
+    for (const item of [...pending.value]) {
+      if (inFlight.has(item.id)) continue;
+      const outcome = settled(item, await send(request('operation', {id:item.id})));
+      if (!outcome) continue;
+      if (outcome.ok) await acknowledge(item);
+      else { forget(item.id); failure(new RpcError(outcome.error.code, outcome.error.effects_possible)); }
+    }
+  } catch (e) { failure(e); } finally { reconciling = false; }
 }
 async function mutate(method: string, params: unknown = null) {
-  if ((!editable.value && method !== 'service.stop') || !saved.value) return;
+  const recovery = method === 'runtime.recover';
+  const stop = method === 'service.stop';
+  if ((!editable.value && !stop && !recovery) || !saved.value) return;
+  if ((stop && stopPending.value) || (recovery && (busy.value || pending.value.some(v => v.method === method)))) return;
   if ((method === 'settings.replace' && urls.value !== saved.value.sources.map(s=>s.url).join('\n')) || (method === 'sources.replace' && (agent.value !== saved.value.user_agent || template.value !== JSON.stringify(saved.value.template,null,2)))) { error.value = '请先保存另一页面的修改，避免丢失尚未提交的草稿。'; return; }
   if (!caps.value?.write.includes(method)) { failure(new RpcError('unsupported_command')); return; }
-  busy.value = true; error.value = ''; note.value = '';
-  try {
-    await send(request(method, params, saved.value.revision));
-    // Lifecycle recovery can run while a user has an unrelated draft. Keep
-    // its original base revision so a later save conflicts rather than
-    // silently rebasing and overwriting concurrent configuration changes.
-    if (!dirty.value || method === 'settings.replace' || method === 'sources.replace') syncDraft(parseSettings(await send(request('settings'))));
-    if (method === 'sources.import') local.value = '';
-    note.value = method.startsWith('sources.') || method === 'settings.replace' ? '已保存，尚未应用到运行配置。' : '操作已返回，请以当前状态为准。';
-  } catch (e) { failure(e); }
-  finally { await observe(); busy.value = false; }
+  const input = request(method, params, saved.value.revision);
+  const item = track(input);
+  inFlight.add(item.id); pending.value = [...pending.value, item]; sending.value += 1;
+  error.value = ''; note.value = '';
+  try { await send(input); await acknowledge(item); }
+  catch (e) {
+    if (!(e instanceof RpcError) || !e.outcomeUnknown) forget(item.id);
+    failure(e);
+  } finally { inFlight.delete(item.id); sending.value -= 1; await observe(); }
 }
 function saveNetwork() {
   if (!saved.value) return;
@@ -77,10 +122,10 @@ async function diagnose() {
   try { diagnostics.value = JSON.stringify(await send(request('diagnostics')), null, 2); error.value = ''; }
   catch (e) { failure(e); }
 }
-function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value || local.value) event.preventDefault(); }
+function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value || local.value || pending.value.length) event.preventDefault(); }
 onMounted(() => {
   if (nativeAvailable()) void load();
-  const poll = async () => { if (disposed) return; if (!document.hidden) await observe(); if (!disposed) timer = setTimeout(poll, 2000); };
+  const poll = async () => { if (disposed) return; if (!document.hidden) { await observe(); await reconcilePending(); } if (!disposed) timer = setTimeout(poll, 2000); };
   timer = setTimeout(poll, 2000); window.addEventListener('beforeunload', beforeUnload);
 });
 onBeforeUnmount(() => { disposed = true; if (timer) clearTimeout(timer); window.removeEventListener('beforeunload', beforeUnload); });
@@ -95,10 +140,12 @@ onBeforeUnmount(() => { disposed = true; if (timer) clearTimeout(timer); window.
       <aside class="candidate-note"><strong>独立重写候选版</strong><span>尚未替换旧模块。Android 验收、迁移和部分功能仍待完成。</span></aside>
       <div v-if="!nativeAvailable()" class="notice">当前仅展示界面结构。没有伪造节点、登录结果或联网状态。</div>
       <div v-if="error" role="alert" class="notice error">{{error}}</div><div v-if="note" role="status" class="notice success">{{note}}</div>
+      <div v-if="pending.length && !busy" role="status" class="notice pending-notice"><strong>操作结果尚未确认</strong><p>正在按请求标识核对 {{pending.length}} 项回执，不会自动重发。你的输入仍然保留。</p><button @click="reconcilePending">核对操作回执</button></div>
+      <div v-if="needsReload" role="alert" class="notice">操作已返回，但最新配置未能读回。请重新读取，避免使用过期草稿继续修改。</div>
       <div v-if="activeOperation || busy" role="status" class="activity"><span class="spinner" aria-hidden="true"></span>{{activeOperation?'模块正在执行操作':'正在读取或保存'}}<code v-if="activeOperation">{{current?.operation?.method}}</code></div>
 
       <section v-if="page==='overview'" aria-label="运行概览" class="grid">
-        <article class="card hero"><div class="card-top"><span class="eyebrow">运行状态</span><span class="pill">{{current?.mode?.toUpperCase() ?? '—'}}</span></div><h2 class="state-title">{{phase}}</h2><p>进程存活不等于网络正常。DNS、路由和应用联网需要分别验收。</p><div class="actions"><button class="primary" :disabled="!editable || caps?.lifecycle==='experimental'" @click="mutate('service.start')">应用并启用</button><button :disabled="!nativeAvailable() || !saved" @click="mutate('service.stop')">停止服务</button></div><p class="hint">候选运行时尚未通过验收，启用按钮暂不开放。</p></article>
+        <article class="card hero"><div class="card-top"><span class="eyebrow">运行状态</span><span class="pill">{{current?.mode?.toUpperCase() ?? '—'}}</span></div><h2 class="state-title">{{phase}}</h2><p>进程存活不等于网络正常。DNS、路由和应用联网需要分别验收。</p><div class="actions"><button class="primary" :disabled="!editable || caps?.lifecycle!=='accepted' || caps?.android_acceptance!=='verified'" @click="mutate('service.start')">应用并启用</button><button :disabled="!nativeAvailable() || !saved || stopPending" @click="mutate('service.stop')">停止服务</button></div><p class="hint">候选运行时尚未通过验收，启用按钮暂不开放。</p></article>
         <article class="card"><h2>配置与实际状态</h2><dl><div><dt>配置意图</dt><dd>{{current ? current.configured?'启用':'停用' : '未读取'}}</dd></div><div><dt>保存 / 运行版本</dt><dd>{{revision}}</dd></div><div><dt>尚未应用</dt><dd>{{current ? current.pending_changes?'有修改':'无' : '未知'}}</dd></div><div><dt>恢复记录</dt><dd>{{current ? current.recovery_pending?'待处理':'无' : '未知'}}</dd></div></dl></article>
         <article class="card wide compact"><div><h2>订阅来源</h2><p>每行一个链接，保存后整份替换。删除链接会移除它对应的缓存节点。</p></div><button @click="page='sources'">管理订阅 <span aria-hidden="true">↗</span></button></article>
       </section>
@@ -109,17 +156,17 @@ onBeforeUnmount(() => { disposed = true; if (timer) clearTimeout(timer); window.
       </section>
 
       <section v-if="page==='network'" aria-label="网络配置" class="stack">
-        <article class="card"><h2>连接方式</h2><div class="mode-options"><div class="mode-option selected"><strong>TUN</strong><span>默认模式，接口 magicnet0</span></div><div class="mode-option"><strong>eBPF <span class="pill">待迁移</span></strong><span>未通过新运行时验收，不自动切换或降级。</span></div></div><label for="agent">订阅 User-Agent</label><input id="agent" v-model="agent" :disabled="!editable" maxlength="256" autocomplete="off"><p class="hint">订阅请求不使用用户配置的 HTTP 代理。内核透明路由能否直连需要设备验证。</p><div class="actions"><button :disabled="!editable" @click="saveNetwork">保存网络配置</button><button class="quiet" :aria-expanded="showAdvanced" @click="showAdvanced=!showAdvanced">{{showAdvanced?'收起':'查看'}}原生配置</button></div><div v-if="showAdvanced" class="advanced"><label for="template">原生 sing-box 模板</label><textarea id="template" v-model="template" :disabled="!editable" rows="14" spellcheck="false"></textarea><p class="hint">保存仅修改意图；应用之前必须通过安装内核的校验。</p></div></article>
+        <article class="card"><h2>连接方式</h2><div class="mode-options"><div class="mode-option" :class="{selected:saved?.mode==='tun'}"><strong>TUN</strong><span>默认模式，接口 magicnet0</span></div><div class="mode-option" :class="{selected:saved?.mode==='ebpf'}"><strong>eBPF <span class="pill">待迁移</span></strong><span>未通过新运行时验收，不自动切换或降级。</span></div></div><label for="agent">订阅 User-Agent</label><input id="agent" v-model="agent" :disabled="!editable" maxlength="256" autocomplete="off"><p class="hint">订阅请求不使用用户配置的 HTTP 代理。内核透明路由能否直连需要设备验证。</p><div class="actions"><button :disabled="!editable" @click="saveNetwork">保存网络配置</button><button class="quiet" :aria-expanded="showAdvanced" @click="showAdvanced=!showAdvanced">{{showAdvanced?'收起':'查看'}}原生配置</button></div><div v-if="showAdvanced" class="advanced"><label for="template">原生 sing-box 模板</label><textarea id="template" v-model="template" :disabled="!editable" rows="14" spellcheck="false"></textarea><p class="hint">保存仅修改意图；应用之前必须通过安装内核的校验。</p></div></article>
         <article class="card compact"><div><h2>Tailscale</h2><p>禁用、退出登录和路由回收尚未迁移。此候选版不会读取或清除旧模块的登录状态。</p></div><span class="pill">未接入</span></article>
       </section>
 
       <section v-if="page==='maintenance'" aria-label="维护与诊断" class="stack">
-        <article class="card"><h2>事务恢复</h2><p>先核对进程归属，再处理未完成事务。不会删掉其他模块的规则，也不会通过强制杀死内核来伪装停止成功。</p><dl><div><dt>最近操作</dt><dd>{{current?.operation?.method ?? '未读取'}}</dd></div><div><dt>操作状态</dt><dd>{{current?.operation?.phase ?? '未知'}}</dd></div></dl><button :disabled="!editable" @click="mutate('runtime.recover')">核对并恢复事务</button></article>
+        <article class="card"><h2>事务恢复</h2><p>先核对进程归属，再处理未完成事务。不会删掉其他模块的规则，也不会通过强制杀死内核来伪装停止成功。</p><dl><div><dt>最近操作</dt><dd>{{current?.operation?.method ?? '未读取'}}</dd></div><div><dt>操作状态</dt><dd>{{current?.operation?.phase ?? '未知'}}</dd></div></dl><button :disabled="!nativeAvailable() || !saved || busy || activeOperation" @click="mutate('runtime.recover')">核对并恢复事务</button></article>
         <article class="card"><h2>只读诊断</h2><p>不包含订阅链接、节点凭据和完整配置。不会为了生成报告而自动修复或改变网络。</p><button :disabled="!nativeAvailable()" @click="diagnose">读取诊断</button><pre v-if="diagnostics" tabindex="0" aria-label="诊断结果">{{diagnostics}}</pre></article>
         <article class="card"><h2>迁移边界</h2><p>旧版仍保留在归档分支。MCP、加密备份、热点、Wi-Fi 策略和完整 Android 生命周期尚未迁移，不能把这份候选代码当作安装包。</p></article>
       </section>
       <footer><span>MagicNet · 独立候选目录</span><span>只展示已验证的状态</span></footer>
     </main>
-    <div v-if="confirmReload" class="modal-backdrop" @click.self="confirmReload=false"><section ref="modal" role="dialog" aria-modal="true" @keydown="modalKey" aria-labelledby="reload-title" class="modal"><h2 id="reload-title">丢弃尚未保存的修改？</h2><p>重新读取会替换订阅链接和网络配置草稿。</p><div class="actions"><button @click="confirmReload=false">保留输入</button><button class="danger" @click="load(true)">丢弃并重新读取</button></div></section></div>
+    <div v-if="confirmReload" class="modal-backdrop" @click.self="confirmReload=false"><section ref="modal" role="dialog" aria-modal="true" @keydown="modalKey" aria-labelledby="reload-title" class="modal"><h2 id="reload-title">{{pending.length ? '核对配置并结束等待？' : '丢弃尚未保存的修改？'}}</h2><p>重新读取会替换订阅链接和网络配置草稿。<span v-if="pending.length">确认后，仅在没有正在执行或待恢复的操作时结束等待，不会重发未知请求。</span></p><div class="actions"><button @click="confirmReload=false">保留输入</button><button class="danger" @click="load(true)">丢弃并重新读取</button></div></section></div>
   </div>
 </template>

@@ -71,7 +71,11 @@ impl<P: Platform> Engine<P> {
     }
 
     pub(super) fn operation_view(&self) -> Result<Value> {
-        let Some(operation) = self.root.read_json::<Operation>(".state/operation.json")? else {
+        self.operation_at(".state/operation.json")
+    }
+
+    pub(super) fn operation_at(&self, path: &str) -> Result<Value> {
+        let Some(operation) = self.root.read_json::<Operation>(path)? else {
             return Ok(Value::Null);
         };
         let phase = if operation.phase == "running" {
