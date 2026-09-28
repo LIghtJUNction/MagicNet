@@ -86,6 +86,7 @@ jobs:
         run: |
           python3 scripts/test-android-device-simulation.py
           python3 scripts/test-android-simulation-fixes.py
+          python3 scripts/test-android-proxylink.py
           python3 scripts/test-android-simulation-workflow.py
           python3 scripts/test-android-acceptance-contract.py
           python3 scripts/test-android-avd-storage.py

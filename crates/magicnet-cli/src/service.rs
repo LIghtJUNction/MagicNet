@@ -490,6 +490,11 @@ fn restart_with_options_unlocked(
     run_magicnet_function(app, restart_command(target.as_str()))
 }
 
+/// Caller holds the lifecycle lock; preserve the pre-operation core intent.
+pub(crate) fn start_after_tailscale_change(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, restart_command("sing-box"))
+}
+
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {
@@ -499,7 +504,7 @@ fn restart_command(target: &str) -> &'static str {
     }
 }
 
-fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
+pub(crate) fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
     // Discovery is a fail-closed gate. A temporary pidof/proc-reader failure
     // must leave the old core, supervisors, TUN, and DNS policy untouched.
     let owned_singbox = owned_singbox_pids(app)?;

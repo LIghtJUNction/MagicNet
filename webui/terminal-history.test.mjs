@@ -7,17 +7,20 @@ import { MODULE_DIR, OUTPUT_RENDER_LIMIT } from "./src/constants.ts";
 
 // Run shipped functions with native/browser I/O replaced, not copied algorithms.
 const historySource = readFileSync(new URL("./src/components/pages/terminalHistory.ts", import.meta.url), "utf8");
+const guardSource = readFileSync(new URL("./src/components/pages/terminalGuard.ts", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("./src/components/pages/TerminalPage.vue", import.meta.url), "utf8");
 const utilities = ts.createSourceFile("utils.ts", readFileSync(new URL("./src/utils.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
 const utilityNames = ["execFailed", "shellQuote", "compactOutput", "compactCommand"];
 const utilsCode = utilities.statements.filter(n => ts.isFunctionDeclaration(n) && utilityNames.includes(n.name?.text)).map(n => n.getText(utilities).replace(/^export /, "")).join("\n");
 const helpers = ts.createSourceFile("terminalHistory.ts", historySource, ts.ScriptTarget.Latest, true);
 const helpersCode = helpers.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(helpers).replace(/^export /, "")).join("\n");
+const guards = ts.createSourceFile("terminalGuard.ts", guardSource, ts.ScriptTarget.Latest, true);
+const guardCode = guards.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(guards).replace(/^export /, "")).join("\n");
 const page = ts.createSourceFile("TerminalPage.ts", pageSource.split('<script setup lang="ts">')[1].split("</script>")[0], ts.ScriptTarget.Latest, true);
 const pageNames = ["submitCommand", "runCommandDirect", "resetSession", "handleClearHistory"];
 const functions = page.statements.filter(n => ts.isFunctionDeclaration(n) && pageNames.includes(n.name?.text));
 assert.equal(functions.length, pageNames.length);
-const code = ts.transpileModule(`${utilsCode}\n${helpersCode}\n${functions.map(n => n.getText(page)).join("\n")}\nglobalThis.historyLimit = MAX_HISTORY_LENGTH; globalThis.commandLimit = MAX_HISTORY_COMMAND_LENGTH; globalThis.entryLimit = MAX_TERMINAL_ENTRIES;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+const code = ts.transpileModule(`${utilsCode}\n${helpersCode}\n${guardCode}\n${functions.map(n => n.getText(page)).join("\n")}\nglobalThis.historyLimit = MAX_HISTORY_LENGTH; globalThis.commandLimit = MAX_HISTORY_COMMAND_LENGTH; globalThis.entryLimit = MAX_TERMINAL_ENTRIES;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function fixture(options = {}) {
   const storageCalls = [], shellCalls = [], cliCalls = [];
@@ -107,6 +110,12 @@ test("native failures and diagnostic-looking successful output remain distinct",
   const { context: c } = fixture({ runCli: async () => { throw new Error("rejected"); } });
   c.inputCommand.value = "health"; await c.submitCommand();
   assert.equal(c.executedList.value[0].ok, false); assert.equal(c.executing.value, false);
+  const { context: blocked, cliCalls } = fixture();
+  blocked.inputCommand.value = "health; id";
+  await blocked.submitCommand();
+  assert.equal(cliCalls.length, 0);
+  assert.equal(blocked.executedList.value[0].ok, false);
+  assert.match(blocked.executedList.value[0].output, /shell 元字符/);
 });
 
 test("previews and retained output have independent size/count bounds", async () => {

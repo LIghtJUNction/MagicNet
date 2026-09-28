@@ -82,7 +82,7 @@ fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
         return Err("unsupported API credential format".to_string());
     }
     // Keep the credential out of process arguments and shell command previews.
-    let mut child = Command::new("curl")
+    let mut child = crate::trusted_curl(app)
         .args([
             "-q",
             "--noproxy",
@@ -272,48 +272,60 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn curl(app: &App, path: &str) -> Result<(), String> {
-    run_curl(&["-fsS", "--max-time", "4", &format!("{}{}", app.api, path)])
+    run_curl(
+        app,
+        &["-fsS", "--max-time", "4", &format!("{}{}", app.api, path)],
+    )
 }
 
 fn curl_delete(app: &App, path: &str) -> Result<(), String> {
-    run_curl(&[
-        "-fsS",
-        "-X",
-        "DELETE",
-        "--max-time",
-        "4",
-        &format!("{}{}", app.api, path),
-    ])
+    run_curl(
+        app,
+        &[
+            "-fsS",
+            "-X",
+            "DELETE",
+            "--max-time",
+            "4",
+            &format!("{}{}", app.api, path),
+        ],
+    )
 }
 
 fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
-    run_curl(&[
-        "-fsS",
-        "-X",
-        "PUT",
-        "-H",
-        "Content-Type: application/json",
-        "--data",
-        payload,
-        "--max-time",
-        "5",
-        &format!("{}{}", app.api, path),
-    ])
+    run_curl(
+        app,
+        &[
+            "-fsS",
+            "-X",
+            "PUT",
+            "-H",
+            "Content-Type: application/json",
+            "--data",
+            payload,
+            "--max-time",
+            "5",
+            &format!("{}{}", app.api, path),
+        ],
+    )
 }
 
 fn curl_patch_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
-    run_curl(&[
-        "-fsS",
-        "-X",
-        "PATCH",
-        "-H",
-        "Content-Type: application/json",
-        "--data",
-        payload,
-        "--max-time",
-        "5",
-        &format!("{}{}", app.api, path),
-    ])
+    run_curl(
+        app,
+        &[
+            "-fsS",
+            "-X",
+            "PATCH",
+            "-H",
+            "Content-Type: application/json",
+            "--data",
+            payload,
+            "--max-time",
+            "5",
+            &format!("{}{}", app.api, path),
+        ],
+    )
 }
 
 pub(crate) fn clash_mode_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -413,7 +425,7 @@ pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Resul
 }
 
 pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl(app)
         .args([
             "-fsS",
             "--max-time",
@@ -437,8 +449,8 @@ fn close_connection(app: &App, id: &str) -> Result<(), String> {
     curl_delete(app, &format!("/connections/{}", encode_path_segment(id)))
 }
 
-fn run_curl(args: &[&str]) -> Result<(), String> {
-    let output = Command::new("curl")
+fn run_curl(app: &App, args: &[&str]) -> Result<(), String> {
+    let output = crate::trusted_curl(app)
         .args(["--max-filesize", "8388608"])
         .args(args)
         .output()
@@ -540,7 +552,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     validate_panel_download_url(url)?;
     let expected_sha256 = args.get(2).map(String::as_str).unwrap_or_default();
     validate_sha256(expected_sha256)?;
-    let name = args.get(3).map(String::as_str).unwrap_or("zashboard");
+    let name = validate_panel_name(args.get(3).map(String::as_str).unwrap_or("zashboard"))?;
     let tmp = app.moddir.join(".tmp/webui-panel.zip");
     let staging = app.moddir.join(".tmp/webui-panel-stage");
     let target = app.moddir.join(".config/sing-box/zashboard");
@@ -548,7 +560,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
     }
     clean_panel_staging(&tmp, &staging);
-    download_panel_zip(url, &tmp)?;
+    download_panel_zip(app, url, &tmp)?;
     if let Err(err) = verify_panel_archive(&tmp, expected_sha256)
         .and_then(|_| validate_panel_archive_entries(&tmp))
         .and_then(|_| unpack_panel_archive(&tmp, &staging))
@@ -589,8 +601,8 @@ fn validate_panel_download_url(url: &str) -> Result<(), String> {
     })
 }
 
-fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
-    if let Err(err) = curl_download(url, tmp) {
+fn download_panel_zip(app: &App, url: &str, tmp: &std::path::Path) -> Result<(), String> {
+    if let Err(err) = curl_download(app, url, tmp) {
         let _ = fs::remove_file(tmp);
         return Err(err);
     }
@@ -599,17 +611,29 @@ fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
 
 const PANEL_MAX_BYTES: usize = 32 * 1024 * 1024;
 
-fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
+fn curl_download(app: &App, url: &str, tmp: &std::path::Path) -> Result<(), String> {
     // Panel archives unpack as root. Reuse the subscription pinned-HTTPS
     // downloader so redirects and private targets cannot re-aim the request.
     let result = (|| {
-        let body = download_pinned_https_url(url, PANEL_MAX_BYTES, 15, 90)?;
+        let body = download_pinned_https_url(app, url, PANEL_MAX_BYTES, 15, 90)?;
         fs::write(tmp, body).map_err(|err| format!("stage downloaded panel: {err}"))
     })();
     if result.is_err() {
         let _ = fs::remove_file(tmp);
     }
     result
+}
+
+fn validate_panel_name(name: &str) -> Result<&str, String> {
+    if (1..=64).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        Ok(name)
+    } else {
+        Err("invalid local panel name".to_string())
+    }
 }
 
 fn validate_sha256(expected: &str) -> Result<(), String> {
@@ -892,6 +916,15 @@ mod tests {
         assert!(validate_sha256("not-a-digest").is_err());
         assert!(validate_sha256(&"a".repeat(63)).is_err());
         assert!(validate_sha256(&"A".repeat(64)).is_ok());
+    }
+
+    #[test]
+    fn install_local_rejects_control_characters_in_panel_name() {
+        assert!(validate_panel_name("zashboard").is_ok());
+        assert!(validate_panel_name("panel_v1.2").is_ok());
+        assert!(validate_panel_name("bad name").is_err());
+        assert!(validate_panel_name("panel\nextra").is_err());
+        assert!(validate_panel_name("../escape").is_err());
     }
 
     #[test]

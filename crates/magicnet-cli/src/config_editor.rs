@@ -134,6 +134,7 @@ fn commit_standalone_config(
     path: &Path,
     text: &str,
 ) -> Result<(), String> {
+    let _lifecycle = crate::service::config_apply_lock(app)?;
     let protected = protect_tailscale_auth_keys(app, text)?;
     commit_config_text(
         app,
@@ -1041,10 +1042,13 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let path = config_path(app, target)?;
     let repository = read_repository_config(app)?.0;
     let url = repository_file_url(&repository)?;
-    let template = fetch_template(&url, repository.sha256.as_deref())?;
-    let current = read_current_config(app, target)?.unwrap_or_default();
-    let merged = prepare_template(target, &template, &current)?;
-    commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
+    let template = fetch_template(app, &url, repository.sha256.as_deref())?;
+    {
+        let _lifecycle = crate::service::config_apply_lock(app)?;
+        let current = read_current_config(app, target)?.unwrap_or_default();
+        let merged = prepare_template(target, &template, &current)?;
+        commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
+    }
     apply_config(app)?;
     println!(
         "[info] Synced {target} template from configured Git repository\n[info] Preserved subscription-facing config and re-applied runtime rules."
@@ -1067,9 +1071,9 @@ fn read_current_config(app: &App, target: &str) -> Result<Option<String>, String
     Ok(Some(text))
 }
 
-fn fetch_template(url: &str, expected_sha256: Option<&str>) -> Result<String, String> {
+fn fetch_template(app: &App, url: &str, expected_sha256: Option<&str>) -> Result<String, String> {
     fetch_template_with_curl(
-        Path::new("curl"),
+        &crate::process::trusted_curl_path(app),
         url,
         expected_sha256,
         TEMPLATE_FETCH_TIMEOUT,
@@ -1085,6 +1089,7 @@ fn fetch_template_with_curl(
     command_timeout: Duration,
 ) -> Result<String, String> {
     let mut command = Command::new(curl_program);
+    crate::process::clear_unsafe_loader_environment(&mut command);
     command
         .arg("-fsSL")
         .arg("--proto")

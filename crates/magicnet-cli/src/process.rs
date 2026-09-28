@@ -9,7 +9,7 @@ use std::io::{self, Write};
 use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -575,6 +575,67 @@ fn clear_unsafe_subscription_environment(command: &mut Command) {
     }
 }
 
+const UNSAFE_LOADER_ENV: &[&str] = &[
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_DYNAMIC_WEAK",
+    "LD_ORIGIN_PATH",
+    "LD_PROFILE",
+    "LD_SHOW_AUXV",
+    "LD_TRACE_LOADED_OBJECTS",
+    "LD_USE_LOAD_BIAS",
+    "LD_VERBOSE",
+    "LD_WARN",
+    "ENV",
+    "BASH_ENV",
+    "CDPATH",
+    "GCONV_PATH",
+    "NLSPATH",
+    "HOSTALIASES",
+];
+
+pub(crate) fn clear_unsafe_loader_environment(command: &mut Command) {
+    for key in UNSAFE_LOADER_ENV {
+        command.env_remove(key);
+    }
+}
+
+pub(crate) fn trusted_curl(app: &App) -> Command {
+    let mut command = Command::new(trusted_curl_path(app));
+    clear_unsafe_loader_environment(&mut command);
+    command
+}
+
+pub(crate) fn trusted_curl_path(app: &App) -> PathBuf {
+    // App has already resolved the privileged module root. Reading MODDIR
+    // again here would bypass App::from_env's Android executable boundary.
+    let mut candidates = vec![
+        app.moddir.join("bin/curl"),
+        app.moddir.join("system/bin/curl"),
+    ];
+    if cfg!(target_os = "android") {
+        candidates.push(PathBuf::from("/system/bin/curl"));
+        candidates.push(PathBuf::from("/system/xbin/curl"));
+        candidates.push(PathBuf::from("/vendor/bin/curl"));
+    } else {
+        candidates.push(PathBuf::from("/usr/bin/curl"));
+        candidates.push(PathBuf::from("/bin/curl"));
+        candidates.push(PathBuf::from("/usr/local/bin/curl"));
+    }
+    for path in &candidates {
+        if path.is_absolute() && path.is_file() {
+            return path.clone();
+        }
+    }
+    if cfg!(target_os = "android") {
+        PathBuf::from("/system/bin/curl")
+    } else {
+        PathBuf::from("/usr/bin/curl")
+    }
+}
+
 fn trusted_shell() -> &'static str {
     if cfg!(target_os = "android") {
         "/system/bin/sh"
@@ -691,6 +752,7 @@ fn run_magicnet_shell(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
+    clear_unsafe_loader_environment(&mut command);
     clear_unsafe_subscription_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
@@ -1374,6 +1436,57 @@ mod process_group_tests {
         assert!(!super::watchdog_worker_is_live(child.id() as libc::pid_t));
         let _ = child.wait();
         Ok(())
+    }
+
+    #[test]
+    fn trusted_curl_prefers_an_absolute_host_binary() {
+        let app = crate::test_support::temp_app();
+        let path = super::trusted_curl_path(&app);
+        assert!(
+            path.is_absolute(),
+            "trusted curl must not search PATH: {path:?}"
+        );
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("curl")
+        );
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"LD_PRELOAD"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"BASH_ENV"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"ENV"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"CDPATH"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"GCONV_PATH"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"NLSPATH"));
+        assert!(super::UNSAFE_LOADER_ENV.contains(&"HOSTALIASES"));
+    }
+
+    #[test]
+    fn trusted_curl_uses_validated_root_despite_inherited_moddir() {
+        use std::os::unix::fs::PermissionsExt;
+        const CHILD_ROOT: &str = "MAGICNET_TEST_TRUSTED_CURL_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let app = App::for_test(root.into());
+            assert_eq!(super::trusted_curl_path(&app), app.moddir.join("bin/curl"));
+            let command = super::trusted_curl(&app);
+            assert_eq!(command.get_program(), app.moddir.join("bin/curl"));
+            assert!(command
+                .get_envs()
+                .any(|(key, value)| key == "LD_PRELOAD" && value.is_none()));
+            return;
+        }
+        let app = crate::test_support::temp_app();
+        let decoy = crate::test_support::temp_app();
+        for root in [&app.moddir, &decoy.moddir] {
+            fs::create_dir_all(root.join("bin")).unwrap();
+            fs::write(root.join("bin/curl"), "#!/bin/sh\nexit 91\n").unwrap();
+            fs::set_permissions(root.join("bin/curl"), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        // Isolate the inherited environment without mutating this test process.
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "process::process_group_tests::trusted_curl_uses_validated_root_despite_inherited_moddir", "--nocapture"])
+            .env(CHILD_ROOT, &app.moddir)
+            .env("MODDIR", &decoy.moddir)
+            .status().unwrap();
+        assert!(status.success());
     }
 
     #[test]

@@ -163,15 +163,28 @@ fn parse_pcap_args(args: &[String]) -> Result<PcapArgs, String> {
             .ok_or(usage)?;
         return Ok(PcapArgs {
             seconds: seconds.clamp(1, MAX_CAPTURE_SECONDS),
-            ifname: ifname.to_string(),
+            ifname: validate_ifname(ifname)?.to_string(),
             filter: args.iter().skip(2).cloned().collect(),
         });
     }
     Ok(PcapArgs {
         seconds: DEFAULT_CAPTURE_SECONDS,
-        ifname: first.to_string(),
+        ifname: validate_ifname(first)?.to_string(),
         filter: args.iter().skip(1).cloned().collect(),
     })
+}
+
+fn validate_ifname(ifname: &str) -> Result<&str, String> {
+    if (1..=32).contains(&ifname.len())
+        && !ifname.starts_with('-')
+        && ifname
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        Ok(ifname)
+    } else {
+        Err("invalid capture interface name".to_string())
+    }
 }
 
 fn finish_capture(outcome: RunOutcome) -> Result<(), String> {
@@ -235,6 +248,17 @@ mod tests {
     fn pcap_requires_interface_after_explicit_duration() {
         let err = parse_pcap_args(&strings(&["30"])).unwrap_err();
         assert!(err.contains("Usage: cli ecapture pcap"));
+    }
+
+    #[test]
+    fn pcap_rejects_flag_like_or_metacharacter_interface_names() {
+        assert!(parse_pcap_args(&strings(&["-i"]))
+            .unwrap_err()
+            .contains("invalid capture interface"));
+        assert!(parse_pcap_args(&strings(&["wlan0;id"]))
+            .unwrap_err()
+            .contains("invalid capture interface"));
+        assert!(parse_pcap_args(&strings(&["30", "rmnet_data0"])).is_ok());
     }
 }
 

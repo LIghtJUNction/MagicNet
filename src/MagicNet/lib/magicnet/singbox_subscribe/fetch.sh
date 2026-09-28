@@ -372,6 +372,31 @@ magicnet_singbox_fetch_clock() {
     printf '%s\n' "${_fetch_uptime%%.*}"
 }
 
+# Prefer the packaged curl, then Android system curl. Host fixtures may still
+# supply a PATH curl. Loader and shell-hook variables must not reach the child.
+magicnet_singbox_trusted_curl() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/bin/curl"
+        return 0
+    fi
+    if [ -x /system/bin/curl ]; then
+        printf '%s\n' /system/bin/curl
+        return 0
+    fi
+    command -v curl 2>/dev/null || return 1
+}
+
+magicnet_singbox_fetch_curl_env() {
+    env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
+        -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+        -u LD_PRELOAD -u LD_LIBRARY_PATH -u LD_AUDIT -u LD_DEBUG \
+        -u LD_DYNAMIC_WEAK -u LD_ORIGIN_PATH -u LD_PROFILE \
+        -u LD_SHOW_AUXV -u LD_TRACE_LOADED_OBJECTS \
+        -u LD_USE_LOAD_BIAS -u LD_VERBOSE -u LD_WARN \
+        -u ENV -u BASH_ENV -u CDPATH -u GCONV_PATH -u NLSPATH -u HOSTALIASES \
+        "$@"
+}
+
 # One pinned HTTPS hop. The caller owns the small, private .response sidecar;
 # raw headers are streamed only into the numeric usage parser, never persisted.
 magicnet_singbox_fetch_response() (
@@ -393,7 +418,7 @@ magicnet_singbox_fetch_response() (
         [ -z "$_headers_pid" ] || { kill "$_headers_pid" 2>/dev/null || true; wait "$_headers_pid" 2>/dev/null || true; }
         rm -f "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
     ' EXIT
-    command -v curl >/dev/null 2>&1 || return 127
+    _curl_bin=$(magicnet_singbox_trusted_curl) || return 127
     rm -f "$_download_file" "${_download_file}.usage.json" "${_download_file}.response" "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
     magicnet_singbox_subscription_parse_authority "$_url" || return 3
     [ "$_max_time" -ge "$MAGICNET_SUB_RESOLVE_TIMEOUT" ] || MAGICNET_SUB_RESOLVE_TIMEOUT=$_max_time
@@ -433,8 +458,8 @@ magicnet_singbox_fetch_response() (
         --write-out '%{http_code}\n%{redirect_url}\n' -o "$_stream_fifo" "$_url"
     # FD 8 is a write-only body guard. Even failures before curl opens -o close
     # this descriptor and deliver EOF to head; an oversized body still gets EPIPE.
-    env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-        timeout "$_max_time" curl "$@" >"${_download_file}.response" 8>"$_stream_fifo" 9>&- &
+    magicnet_singbox_fetch_curl_env \
+        timeout "$_max_time" "$_curl_bin" "$@" >"${_download_file}.response" 8>"$_stream_fifo" 9>&- &
     _curl_pid=$!
     _stream_result=0
     head -c "$((MAGICNET_SUB_MAX_RESPONSE_BYTES + 1))" <"$_stream_fifo" >"$_download_file" || _stream_result=$?
