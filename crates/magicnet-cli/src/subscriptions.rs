@@ -7,7 +7,7 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
