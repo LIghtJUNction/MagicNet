@@ -50,7 +50,7 @@ jobs:
               git('add', '-A')
               git('commit', '-m', 'Apply reviewed integration conflict resolution')
           merge(synthetic[1], ['.github/workflows/android-kernelsu-acceptance.yml', 'docs/android-simulation.md', 'scripts/android-device-simulation.py', 'scripts/fake-magisk-smoke.sh', 'scripts/test-android-device-simulation.py', 'scripts/test-android-simulation-workflow.py', 'scripts/test-fake-magisk-curl.py'])
-          merge(synthetic[2], ['.github/workflows/android-kernelsu-acceptance.yml', 'scripts/android-device-simulation.py', 'scripts/fake-magisk-smoke.sh'], ['scripts/fixtures/fake-magisk/bin/curl', 'scripts/test-fake-magisk-curl.py'])
+          merge(synthetic[2], ['.github/workflows/android-kernelsu-acceptance.yml', 'scripts/android-device-simulation.py', 'scripts/fake-magisk-smoke.sh'], ['scripts/fixtures/fake-magisk-curl.sh', 'scripts/test-fake-magisk-curl.py'])
           workflow = Path('.github/workflows/android-kernelsu-acceptance.yml')
           source = workflow.read_text()
           line = '          python3 scripts/test-android-simulation-fixes.py\n'
@@ -76,9 +76,8 @@ jobs:
           before, after = entries(base), entries(expected)
           changes = [after[name] for name in sorted(after) if before.get(name) != after[name]]
           changes += [{'path': name, 'mode': before[name]['mode'], 'type': before[name]['type'], 'sha': None} for name in sorted(before.keys() - after.keys())]
-          # Never execute candidate source code with this token, and never move a
-          # ref or create a commit here. The authorized connector publishes only
-          # after comparing the exact tree to local test evidence.
+          # Store only immutable source objects. Do not execute candidate code,
+          # create commits, or update refs with this workflow credential.
           def post(endpoint, payload):
               request = urllib.request.Request('https://api.github.com/repos/LIghtJUNction/MagicNet/git/' + endpoint,
                   data=json.dumps(payload).encode(), method='POST', headers={
