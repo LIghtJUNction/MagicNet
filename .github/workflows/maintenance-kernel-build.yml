@@ -1,0 +1,148 @@
+name: Maintenance Virtual Device Kernel
+on:
+  push:
+    branches: ['fix/android-kernel-12525588']
+    paths: ['.github/workflows/maintenance-kernel-build.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Install build orchestration dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y repo python3-yaml
+          git config --global user.name 'MagicNet CI'
+          git config --global user.email 'ci@localhost'
+          df -h .
+      - name: Rebuild pinned integration with the AVD target
+        env:
+          BUILD_ID: '12525588'
+          TARGET_ID: a15-api35-6.6
+          TARGET_ARCH: x86_64
+          TARGET_ANDROID_VERSION: android15
+          KSU_REF: v3.2.0
+          DIST_NAME: magicnet-virtual-device-dist
+          KSU_HAS_INDIRECT_SAFE_CHECK: 'false'
+          KSU_X86_SYSCALL_HARDENING_PATCHED: 'false'
+          KSU_X86_SYSCALL_HARDENING_DEFAULT_OFF: 'false'
+          KSU_X86_SYSCALL_CHECK_BYPASSED: 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/magicnet-kernel-review"
+          cd "$RUNNER_TEMP/magicnet-kernel-review"
+          curl --fail --location --retry 3 --max-time 120 \
+            https://raw.githubusercontent.com/leemikepop/avd-kernelsu-x86_64/b3d3fe7d29fed146aaf7b23b5e3b49a63d647822/.github/workflows/_build-gki-core.yml \
+            -o upstream.yml
+          python3 - <<'PY'
+          import hashlib, os, re, shutil, subprocess
+          from pathlib import Path
+          import yaml
+          data = Path('upstream.yml').read_bytes()
+          # Pin reviewed source bytes, not the mutable branch or an unreviewed action.
+          blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          if blob != '5176f71f7c9ca7461b04df6aae141103ea99d43d':
+              raise SystemExit('Upstream build recipe changed; review required')
+          recipe = yaml.safe_load(data)
+          names = ['Sync Kernel Source', 'Fix Less Than 6.6.50 Builds', 'Integrate KernelSU',
+                   'Apply x86_64 Syscall Hardening Patches', 'Build GKI Kernel']
+          expression = '$' + '{{'
+          substitutions = {
+              expression + ' inputs.ksu_variant }}': 'KernelSU',
+              expression + ' inputs.ksu_ref }}': 'v3.2.0',
+              expression + ' steps.metadata.outputs.kernel_version }}': '6.6',
+              expression + ' steps.metadata.outputs.sublevel }}': '50',
+          }
+          selected = {s['name']: s for s in recipe['jobs']['build']['steps'] if s.get('name') in names}
+          if set(selected) != set(names):
+              raise SystemExit('Unexpected upstream recipe shape')
+          for name in names:
+              script = selected[name]['run']
+              for key, value in substitutions.items():
+                  script = script.replace(key, value)
+              if expression in script:
+                  raise SystemExit('Unresolved upstream expression')
+              if name == 'Build GKI Kernel':
+                  script = script.replace('//common:kernel_x86_64_dist',
+                                          '//common-modules/virtual-device:virtual_device_x86_64_dist')
+              print('::group::' + name, flush=True)
+              subprocess.run(['bash', '-euo', 'pipefail', '-c', script], check=True, timeout=5400)
+              print('::endgroup::', flush=True)
+              for line in Path(os.environ['GITHUB_ENV']).read_text().splitlines():
+                  key, sep, value = line.partition('=')
+                  if sep and re.fullmatch(r'KSU_[A-Z0-9_]+', key):
+                      os.environ[key] = value
+              if name == 'Sync Kernel Source':
+                  import xml.etree.ElementTree as ET
+                  manifest = Path('kernel/.repo/manifests/manifest_12525588.xml')
+                  root = ET.fromstring(manifest.read_bytes())
+                  if root.find('include') is not None or not root.findall('project'):
+                      raise SystemExit('Kernel manifest is not a complete pinned snapshot')
+                  for project in root.findall('project'):
+                      if not re.fullmatch('[0-9a-f]{40}', project.get('revision', '')):
+                          raise SystemExit('Unpinned kernel dependency')
+                  common = subprocess.check_output(['git', '-C', 'kernel/common', 'rev-parse', 'HEAD'], text=True).strip()
+                  if common != '8adecb593e9b745427da9d61c3cc8bc4857de209':
+                      raise SystemExit('Unexpected API35 kernel source')
+              if name == 'Integrate KernelSU':
+                  head = subprocess.check_output(['git', '-C', 'kernel/KernelSU', 'rev-parse', 'HEAD'], text=True).strip()
+                  if head != '5f9cada650f1171807c0d702b6cfbf510a2ec175':
+                      raise SystemExit('KernelSU v3.2.0 moved')
+                  if os.environ.get('KSU_X86_SYSCALL_CHECK_BYPASSED') != 'false':
+                      raise SystemExit('KernelSU capability check must not be bypassed')
+          out = Path('evidence'); out.mkdir()
+          dist = Path('kernel/magicnet-virtual-device-dist')
+          for source in [Path('upstream.yml'), Path('kernel/.repo/manifests/manifest_12525588.xml')]:
+              shutil.copy2(source, out/source.name)
+          for name in ('bzImage', 'Image', 'Module.symvers', 'vmlinux.symvers', 'modules.builtin', 'modules.builtin.modinfo', 'modules.order', 'initramfs.img', 'vendor_boot.img'):
+              source = dist/name
+              if source.is_file(): shutil.copy2(source, out/name)
+          subprocess.run(['tar', '-czf', str(out/'virtual-device-dist.tar.gz'), '-C', str(dist), '.'], check=True)
+          if not (out/'bzImage').is_file(): raise SystemExit('Virtual-device kernel missing')
+          import json
+          evidence = {'schema': 1, 'scope': 'kernel candidate; inspect boot evidence separately',
+                      'build_target': '//common-modules/virtual-device:virtual_device_x86_64_dist',
+                      'build_id': '12525588', 'ksu_commit': '5f9cada650f1171807c0d702b6cfbf510a2ec175',
+                      'upstream_recipe_blob': blob, 'syscall_check_bypassed': False,
+                      'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())}}
+          (out/'manifest.json').write_text(json.dumps(evidence, indent=2)+'\n')
+          PY
+      - name: Boot matched Android 15 image with candidate
+        timeout-minutes: 15
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          evidence="$RUNNER_TEMP/magicnet-kernel-review/evidence"
+          sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator' > "$evidence/sdk-install.log" 2>&1
+          image="$ANDROID_SDK_ROOT/system-images/android-35/google_apis/x86_64"
+          cp "$image/source.properties" "$evidence/system-image.properties"
+          sha256sum "$image/kernel-ranchu" "$image/ramdisk.img" > "$evidence/stock-boot-sha256.txt"
+          avdmanager create avd --force --name MagicNet_Kernel_12525588 --package 'system-images;android-35;google_apis;x86_64' <<<no
+          sudo chmod 0666 /dev/kvm
+          nohup emulator @MagicNet_Kernel_12525588 -kernel "$evidence/bzImage" -port 5554 -accel on -no-window -noaudio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -show-kernel > "$evidence/emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          booted=0
+          for attempt in $(seq 1 120); do
+            if [ "$(timeout 5 adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then booted=1; break; fi
+            if grep -q 'disagrees about version of symbol module_layout' "$evidence/emulator.log"; then break; fi
+            sleep 2
+          done
+          test "$booted" = 1
+          adb -s emulator-5554 shell 'uname -a; getenforce; getprop ro.build.fingerprint' > "$evidence/boot-identity.txt"
+          grep -Fxq Enforcing "$evidence/boot-identity.txt"
+          echo boot_completed > "$evidence/boot-result.txt"
+      - name: Retain candidate and exact provenance
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: virtual-device-kernel-candidate
+          path: ${{ runner.temp }}/magicnet-kernel-review/evidence/
+          if-no-files-found: warn
+          retention-days: 7
