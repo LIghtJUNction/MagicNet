@@ -339,6 +339,38 @@ class DeviceTests(unittest.TestCase):
              patch.object(SIM.time, 'sleep'), self.assertRaisesRegex(RuntimeError, 'boot deadline'):
             device.wait_boot(previous=BOOT, timeout=1)
 
+    def test_abi_failure_stops_before_adb_deadline(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            device.boot_log.write_text('virtio_blk: disagrees about version of symbol module_layout\n'
+                                       "init: Failed to insmod '/lib/modules/virtio_blk.ko'\n")
+            with patch.object(device, 'shell') as shell, \
+                 self.assertRaisesRegex(RuntimeError, 'kernel_module_abi_mismatch'):
+                device.wait_boot()
+            shell.assert_not_called()
+
+    def test_boot_log_is_bounded_and_requires_failure_evidence(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            self.assertIsNone(device.boot_failure())
+            device.boot_log.write_bytes(b'init: InitFatalReboot: signal 6\n' * 2)
+            self.assertEqual(device.boot_failure(), 'early_init_reboot_loop')
+            with device.boot_log.open('ab') as stream:
+                stream.write(b'x' * 262144)
+            self.assertIsNone(device.boot_failure())
+            device.boot_log.write_text('init: InitFatalReboot: signal 6\n')
+            self.assertIsNone(device.boot_failure())
+
+    def test_previous_boot_failures_do_not_poison_reboot(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            device.boot_log.write_text('init: InitFatalReboot: signal 6\n' * 2)
+            with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)):
+                device.wait_boot(previous='different', timeout=1)
+
     def test_new_boot_identity_completes_reboot(self):
         device = self.device()
         with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)), \

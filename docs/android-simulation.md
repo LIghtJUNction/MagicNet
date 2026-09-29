@@ -15,7 +15,7 @@ and an ordinary application-UID probe APK. The production ARM64 ZIP still goes
 through the existing package checks. KAM validation previously in `init.yml` is
 now run in this job before packaging; no KAM check was dropped.
 
-A disposable Android 15 / API 35 x86_64 AVD boots with KVM and a pinned
+A disposable Android 15 / API 35 x86_64 AVD is configured to boot with KVM and a pinned
 API35/6.6 x86_64 GKI built for Android CI build 11987101 with KernelSU v3.2.0.
 The workflow verifies the release archive SHA-256 and build metadata before
 passing its `bzImage` to the emulator. After Android userspace is fully booted,
@@ -27,6 +27,15 @@ the guest's observed `/proc/meminfo` separately. The driver requires an explicit
 emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positive
 KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses KernelSU
 BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+
+The current kernel/image pair is **not boot-validated**: run
+[36429640352](https://github.com/LIghtJUNction/MagicNet/actions/runs/36429640352)
+fails before module installation with `virtio_blk`'s `module_layout` ABI mismatch
+and repeated first-stage init reboots (issue #309). A matching kernel, modules
+and system image are still required; neither the fixture repair nor host tests
+resolve that acceptance blocker. The harness reads a bounded tail of the emulator
+log and reports `kernel_module_abi_mismatch` or `early_init_reboot_loop` without
+waiting for the generic ADB boot deadline. Unrecognized failures retain the deadline.
 
 All bundled ABI-specific executables are replaced in a **separate test ZIP**, before
 installation: CLI, sing-box, jq and yq, plus eCapture/Proxylink when present.

@@ -268,7 +268,9 @@ magicnet_hotspot_ipv6_exempt() (
     if ! magicnet_cmd_exists ip6tables; then
         return 0
     fi
-    if [ "$_mode" != cleanup ] && command -v magicnet_xtables_table_probe >/dev/null 2>&1; then
+    # Cleanup must share the capability check: an absent table cannot contain
+    # our exemption, and probing its rules would turn a safe skip into failure.
+    if command -v magicnet_xtables_table_probe >/dev/null 2>&1; then
         _probe_rc=0
         magicnet_xtables_table_probe ip6tables mangle || _probe_rc=$?
         case "$_probe_rc" in

@@ -215,6 +215,23 @@ class Device:
         require(re.fullmatch(r'emulator-[0-9]+', self.serial) is not None, 'explicit emulator serial required')
         self.verified = False
         self.late_load_on_reboot = False
+        self.boot_log = ROOT / 'artifacts/android-kernelsu/emulator.log'
+
+    def boot_failure(self, offset: int = 0) -> str | None:
+        # Read bounded host-side evidence even when early init cannot expose ADB.
+        try:
+            with self.boot_log.open('rb') as stream:
+                size = stream.seek(0, 2)
+                stream.seek(max(offset if offset <= size else 0, size - 262144))
+                log = stream.read(262144)
+        except OSError:
+            return None
+        if (b'disagrees about version of symbol module_layout' in log
+                and b'Failed to insmod' in log):
+            return 'kernel_module_abi_mismatch'
+        if log.count(b'init: InitFatalReboot:') >= 2:
+            return 'early_init_reboot_loop'
+        return None
 
     def run(self, *args: str, timeout: float = 30, check: bool = True,
             input_text: str | None = None) -> subprocess.CompletedProcess:
@@ -243,8 +260,16 @@ class Device:
                         check=check, input_text=script)
 
     def wait_boot(self, previous: str | None = None, timeout: float = 300):
+        # Earlier lifecycle boots must not poison the observation of this reboot.
+        try:
+            offset = self.boot_log.stat().st_size if previous is not None else 0
+        except OSError:
+            offset = 0
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            failure = self.boot_failure(offset)
+            if failure:
+                raise RuntimeError(f'Android boot failed: {failure}')
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break

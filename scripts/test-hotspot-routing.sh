@@ -361,9 +361,23 @@ assert_hotspot_ipv6_skipped_when_mangle_unsupported() (
   }
   magicnet_hotspot_ipv6_exempt ensure wlan2
   magicnet_hotspot_ipv6_exempt status wlan2
+  magicnet_hotspot_forward_access cleanup wlan2
 )
 
 assert_hotspot_ipv6_skipped_when_mangle_unsupported
+
+assert_hotspot_ipv6_probe_failure_is_not_skipped() (
+  magicnet_cmd_exists() { return 0; }
+  magicnet_xtables_table_probe() { return 1; }
+  for mode in ensure status cleanup; do
+    if magicnet_hotspot_ipv6_exempt "$mode" wlan2; then
+      printf 'IPv6 %s ignored a failed capability query\n' "$mode" >&2
+      exit 1
+    fi
+  done
+)
+
+assert_hotspot_ipv6_probe_failure_is_not_skipped
 
 # The hotspot route reconciler is TUN-only. In explicit eBPF mode the shared
 # path owns downstream interception, so no table-2022 rule may be installed and
