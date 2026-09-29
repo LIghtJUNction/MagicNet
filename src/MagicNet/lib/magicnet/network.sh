@@ -217,6 +217,22 @@ magicnet_iptables_ensure() {
 
 magicnet_ip6tables_ensure() {
     magicnet_cmd_exists ip6tables || return 1
+    if [ "$1" = "-t" ]; then
+        _table="$2"
+        shift 2
+        case "$_table" in
+        filter | mangle | raw | security | nat) ;;
+        *)
+            unset _table
+            return 1
+            ;;
+        esac
+        # Insert at the head so an exemption can win over later TPROXY rules.
+        magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I "$_table" "$@"
+        _ensure_result=$?
+        unset _table
+        return "$_ensure_result"
+    fi
     magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I "" "$@"
 }
 
