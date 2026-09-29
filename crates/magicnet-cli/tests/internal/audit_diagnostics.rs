@@ -1,6 +1,30 @@
-use super::{read_only_command_result_with_timeout, running};
+use super::{api_probe, read_only_command_result_with_timeout, running};
 use crate::test_support::temp_app;
 use std::time::{Duration, Instant};
+
+#[test]
+fn api_health_requires_a_successful_version_response() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    let app = temp_app();
+    fs::create_dir_all(app.moddir.join("bin")).unwrap();
+    let curl = app.moddir.join("bin/curl");
+    for (body, status, expected) in [
+        ("{\"version\":\"sing-box fixture\"}", 0, true),
+        ("{\"version\":\"\"}", 0, false),
+        ("{\"mode\":\"Rule\"}", 0, false),
+        ("not JSON version", 0, false),
+        ("{\"version\":\"sing-box fixture\"}", 7, false),
+    ] {
+        fs::write(
+            &curl,
+            format!("#!/bin/sh\nprintf '%s' '{body}'\nexit {status}\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&curl, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(api_probe(&app).0, expected);
+    }
+}
 
 #[test]
 fn diagnostic_capture_drains_after_its_retention_limit() {

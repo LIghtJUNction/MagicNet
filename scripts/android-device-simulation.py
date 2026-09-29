@@ -578,6 +578,9 @@ def diagnostics(device: Device, out: Path):
     # Diagnostics must not turn a failing test green or exhaust the job timeout.
     deadline = time.monotonic() + 25
     commands = {'kam.log': 'tail -n 300 /data/adb/cache/MagicNet/kam.log',
+                'api-probe.txt': f'{MOD}/cli mode; '
+                                 f'ls -l {MOD}/bin/curl {MOD}/system/bin/curl '
+                                 '/system/bin/curl /system/xbin/curl /vendor/bin/curl 2>/dev/null',
                 'config-check.txt': f'{MOD}/bin/sing-box check -c '
                                     f'{MOD}/.config/sing-box/config.json -D {MOD}/.config/sing-box',
                 'startup-state.txt': f'ls -l {MOD}/.state/machines; '
@@ -615,6 +618,9 @@ def main() -> int:
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
                 report.provenance['device'] = device_resources(device)
+                report.provenance['system_curl_available'] = device.shell(
+                    'test -f /system/bin/curl || test -f /system/xbin/curl || '
+                    'test -f /vendor/bin/curl', check=False).returncode == 0
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
