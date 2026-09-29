@@ -459,6 +459,8 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(report['mode'], 'pinned-kernel-userspace-late-load')
         self.assertEqual(report['kmi'], 'android15-6.6')
         self.assertIn('PATH=/data/adb/ksu/bin:', calls[load])
+        self.assertIn(SIM.KSUD_LAUNCH + ' late-load', calls[load])
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
         self.assertFalse(any('supported-kmis' in call for call in calls))
 
     def test_bootstrap_preconditions_and_real_kernel_gate_still_fail(self):

@@ -77,6 +77,8 @@ adb push "$KSUD_HOST" "$REMOTE_DIR/ksud" >/dev/null
 adb shell "cp '$REMOTE_DIR/ksud' /data/adb/ksud && chmod 0755 /data/adb/ksud"
 adb shell "rm -f '$REMOTE_DIR/ksud'" || true
 KSU_BIN=/data/adb/ksud
+# v3.2.0 install() copies the running executable onto /data/adb/ksud.
+KSU_LAUNCH=/data/adb/ksu/ci-ksud
 
 late_load_ksu() {
     local current supported version
@@ -85,7 +87,8 @@ late_load_ksu() {
     printf '%s\n' "$current" >"$OUT/kernelsu-kmi.txt"
     printf '%s\n' "$supported" >>"$OUT/kernelsu-kmi.txt"
     grep -Fqx "$current" <<<"$supported" || fail "KernelSU does not embed stock KMI: $current"
-    MAGICNET_ADB_CALL_TIMEOUT=120 adb shell "$KSU_BIN late-load" >"$OUT/kernelsu-late-load.txt" 2>&1 ||
+    adb shell "mkdir -p /data/adb/ksu && cp '$KSU_BIN' '$KSU_LAUNCH' && chmod 0755 '$KSU_LAUNCH'"
+    MAGICNET_ADB_CALL_TIMEOUT=120 adb shell "PATH=/data/adb/ksu/bin:/system/bin:/system/xbin '$KSU_LAUNCH' late-load" >"$OUT/kernelsu-late-load.txt" 2>&1 ||
         fail 'KernelSU late-load failed'
     version="$(adb shell "$KSU_BIN debug version" | tr -d '\r')"
     grep -Eq '^Kernel Version: [1-9][0-9]*$' <<<"$version" ||

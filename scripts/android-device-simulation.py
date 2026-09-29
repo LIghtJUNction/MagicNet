@@ -32,6 +32,9 @@ MOD = '/data/adb/modules/MagicNet'
 STAGED = '/data/adb/modules_update/MagicNet'
 REMOTE = '/sdcard/Download/MagicNet/ci-simulation'
 KSUD = '/data/adb/ksud'
+# Upstream late-load always copies current_exe onto KSUD. Running that path
+# returns ETXTBSY, so lifecycle activation must start from a different file.
+KSUD_LAUNCH = '/data/adb/ksu/ci-ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
@@ -315,7 +318,9 @@ class Device:
         command = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD
         current = self.shell(command + ' boot-info current-kmi', timeout=30).stdout.strip()
         require(bool(current), 'KernelSU could not determine the pinned AVD kernel KMI')
-        self.shell(command + ' late-load', timeout=120)
+        self.shell(f'cp {KSUD} {KSUD_LAUNCH} && chmod 0755 {KSUD_LAUNCH}')
+        launch = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD_LAUNCH
+        self.shell(launch + ' late-load', timeout=120)
         version = self.shell(KSUD + ' debug version', timeout=30).stdout.strip()
         require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
                 'KernelSU userspace late-load lost the kernel interface')

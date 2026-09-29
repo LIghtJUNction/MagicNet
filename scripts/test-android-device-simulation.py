@@ -270,7 +270,8 @@ class DeviceTests(unittest.TestCase):
                 f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
                 'getenforce': 'Enforcing\n',
                 SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
-                SIM.KSUD + ' late-load': '',
+                f'cp {SIM.KSUD} {SIM.KSUD_LAUNCH} && chmod 0755 {SIM.KSUD_LAUNCH}': '',
+                SIM.KSUD_LAUNCH + ' late-load': '',
                 SIM.KSUD + ' debug version': 'Kernel Version: 32389\n',
                 f'test -x {SIM.BB}': '',
             }
@@ -288,7 +289,8 @@ class DeviceTests(unittest.TestCase):
             'kernel_version': 'Kernel Version: 32389',
         })
         self.assertTrue(device.late_load_on_reboot)
-        self.assertIn(SIM.KSUD + ' late-load', calls)
+        self.assertIn(SIM.KSUD_LAUNCH + ' late-load', calls)
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
         self.assertNotIn(SIM.KSUD + ' boot-info supported-kmis', calls)
 
     def test_userspace_late_load_rejects_missing_kernel_interface_before_activation(self):
