@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use crate::service::restart_current_core;
 use crate::{run_magicnet_function, write_text_file, App};
@@ -15,7 +14,10 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "set" => dns_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
-        "test" => dns_test(args.get(1).map(String::as_str).unwrap_or("www.gstatic.com")),
+        "test" => dns_test(
+            app,
+            args.get(1).map(String::as_str).unwrap_or("www.gstatic.com"),
+        ),
         "apply" => {
             run_magicnet_function(app, "magicnet_dns_apply")?;
             restart_current_core(app)
@@ -24,10 +26,10 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn dns_test(domain: &str) -> Result<(), String> {
+fn dns_test(app: &App, domain: &str) -> Result<(), String> {
     let domain = normalize_test_domain(domain)?;
     let url = format!("https://{domain}/");
-    let output = Command::new("curl")
+    let output = crate::trusted_curl(app)
         // The CLI runs as uid 0, which is intentionally excluded from
         // magicnet0 to prevent proxy loops.  Force this diagnostic through
         // the local mixed inbound so it measures the running sing-box path

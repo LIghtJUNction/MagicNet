@@ -256,12 +256,122 @@ class DeviceTests(unittest.TestCase):
         self.assertIn('ASH_STANDALONE=1', run.call_args.kwargs['input_text'])
         self.assertIn("exec /data/adb/ksu/bin/busybox sh -c 'exit 17'", run.call_args.kwargs['input_text'])
 
+    def test_pinned_kernel_userspace_late_load_requires_active_kernel_and_real_ksu_domain(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+
+        def shell(command, **_):
+            command = command.removeprefix('PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ')
+            calls.append(command)
+            values = {
+                'mkdir -p /data/adb/ksu/bin': '',
+                SIM.KSUD + ' debug extract-binary busybox ' + SIM.BB: '',
+                f'chmod 0755 {SIM.BB} && {SIM.BB} --install -s /data/adb/ksu/bin': '',
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' boot-info current-kmi': 'android15-6.6\n',
+                f'cp {SIM.KSUD} {SIM.KSUD_LAUNCH} && chmod 0755 {SIM.KSUD_LAUNCH}': '',
+                SIM.KSUD_LAUNCH + ' late-load': '',
+                SIM.KSUD + ' debug version': 'Kernel Version: 32389\n',
+                f'test -x {SIM.BB}': '',
+            }
+            return cp(values[command])
+
+        def kshell(command, **_):
+            return cp(SIM.KSU_DOMAIN + '\n' if command == 'id -Z' else 'Enforcing\n')
+
+        with patch.object(device, 'shell', side_effect=shell), \
+             patch.object(device, 'kshell', side_effect=kshell):
+            evidence = device.late_load_kernelsu()
+        self.assertEqual(evidence, {
+            'mode': 'pinned-kernel-userspace-late-load',
+            'kmi': 'android15-6.6',
+            'kernel_version': 'Kernel Version: 32389',
+        })
+        self.assertTrue(device.late_load_on_reboot)
+        self.assertIn(SIM.KSUD_LAUNCH + ' late-load', calls)
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
+        self.assertNotIn(SIM.KSUD + ' boot-info supported-kmis', calls)
+
+    def test_userspace_late_load_rejects_missing_kernel_interface_before_activation(self):
+        device = self.device()
+        device.verified = True
+        calls = []
+
+        def shell(command, **_):
+            calls.append(command)
+            values = {
+                'getenforce': 'Enforcing\n',
+                SIM.KSUD + ' debug version': 'Kernel Version: 0\n',
+            }
+            return cp(values[command])
+
+        with patch.object(device, 'shell', side_effect=shell), \
+             self.assertRaisesRegex(RuntimeError, 'pinned KernelSU kernel is not active'):
+            device.late_load_kernelsu()
+        self.assertNotIn(SIM.KSUD + ' late-load', calls)
+        self.assertFalse(device.late_load_on_reboot)
+
+    def test_reboot_reactivates_late_load_only_after_android_boot(self):
+        device = self.device()
+        device.verified = True
+        device.late_load_on_reboot = True
+        order = []
+        def shell(command, **_):
+            if command == 'cat /proc/sys/kernel/random/boot_id':
+                return cp(BOOT)
+            if command == 'getenforce':
+                return cp('Enforcing\n')
+            raise AssertionError(command)
+        with patch.object(device, 'shell', side_effect=shell), \
+             patch.object(device, 'run', return_value=cp()) as run, \
+             patch.object(device, 'wait_boot', side_effect=lambda **_: order.append('boot')), \
+             patch.object(device, 'root', side_effect=lambda: order.append('root')), \
+             patch.object(device, 'late_load_kernelsu',
+                          side_effect=lambda: order.append('late-load') or {}) as late:
+            device.reboot()
+        self.assertEqual(order, ['boot', 'root', 'late-load'])
+        self.assertEqual(run.call_args.args, ('reboot',))
+        late.assert_called_once_with()
+
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()
         with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)), \
              patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 1, 1]), \
              patch.object(SIM.time, 'sleep'), self.assertRaisesRegex(RuntimeError, 'boot deadline'):
             device.wait_boot(previous=BOOT, timeout=1)
+
+    def test_abi_failure_stops_before_adb_deadline(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            device.boot_log.write_text('virtio_blk: disagrees about version of symbol module_layout\n'
+                                       "init: Failed to insmod '/lib/modules/virtio_blk.ko'\n")
+            with patch.object(device, 'shell') as shell, \
+                 self.assertRaisesRegex(RuntimeError, 'kernel_module_abi_mismatch'):
+                device.wait_boot()
+            shell.assert_not_called()
+
+    def test_boot_log_is_bounded_and_requires_failure_evidence(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            self.assertIsNone(device.boot_failure())
+            device.boot_log.write_bytes(b'init: InitFatalReboot: signal 6\n' * 2)
+            self.assertEqual(device.boot_failure(), 'early_init_reboot_loop')
+            with device.boot_log.open('ab') as stream:
+                stream.write(b'x' * 262144)
+            self.assertIsNone(device.boot_failure())
+            device.boot_log.write_text('init: InitFatalReboot: signal 6\n')
+            self.assertIsNone(device.boot_failure())
+
+    def test_previous_boot_failures_do_not_poison_reboot(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp:
+            device.boot_log = Path(tmp) / 'emulator.log'
+            device.boot_log.write_text('init: InitFatalReboot: signal 6\n' * 2)
+            with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)):
+                device.wait_boot(previous='different', timeout=1)
 
     def test_new_boot_identity_completes_reboot(self):
         device = self.device()

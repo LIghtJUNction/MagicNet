@@ -26,7 +26,10 @@ the WebUI. Only official `https://login.tailscale.com/a/...` links are opened.
 Hotspot discovery supports `ap0`/bridged AP names and Android's per-interface
 routing tables. TUN interception installs narrow IPv4 FORWARD rules from the
 confirmed downstream interface to `magicnet0`, and permits established return
-traffic. Cleanup removes only the rules owned by MagicNet.
+traffic. When `ip6tables` mangle is available, the same interface also gets an
+ingress ACCEPT exemption so sing-box's global IPv6 TPROXY cannot half-hijack
+hotspot clients. That exemption is not a TPROXY, Redirect, or netd
+`ALLOW_MULTI` path. Cleanup removes only the rules owned by MagicNet.
 
 The WebUI distinguishes configured, waiting-for-hotspot and degraded states.
 TUN readiness requires routing and forwarding rules for every detected interface.

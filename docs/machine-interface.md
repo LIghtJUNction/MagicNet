@@ -240,3 +240,11 @@ application DNS success, actual packet filtering, or website usability.
 Both commands are read-only. `repair_supported=false`; machine mutations are
 rejected before the human dispatcher. Automatic repair, rollback and prevention
 of policy reapplication are tracked in [issue #329](https://github.com/LIghtJUNction/MagicNet/issues/329).
+
+## Tailscale lifecycle observation
+
+`cli --json tailscale status` reports configured `enabled`, `resumable`,
+`logout_pending`, nullable `local_identity`, an optimistic `revision`, and observed
+`core`. It is read-only and does not imply online authorization. See
+[tailscale.md](tailscale.md#disable-resume-and-sign-out) for the separate human CLI
+mutations and their concurrency, rollback, and local-logout contract.

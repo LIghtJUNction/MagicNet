@@ -7,7 +7,7 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -109,13 +109,13 @@ pub fn sub_clear(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-struct SubscriptionSourceGuard {
+pub(crate) struct SubscriptionSourceGuard {
     directory: PathBuf,
     owner: String,
 }
 
 impl SubscriptionSourceGuard {
-    fn acquire(app: &App) -> Result<Self, String> {
+    pub(crate) fn acquire(app: &App) -> Result<Self, String> {
         // The bounded reader forks: /proc/self would describe its worker,
         // not the caller whose PID owns this source-edit lock.
         let stat_path = PathBuf::from(format!("/proc/{}/stat", std::process::id()));
@@ -818,6 +818,7 @@ pub(crate) fn subscription_display_hostname(url: &str) -> Option<String> {
 /// subscription fetches: resolve first, reject private targets, pin curl with
 /// `--resolve`, and refuse redirects that could re-target the request.
 pub(crate) fn download_pinned_https_url(
+    app: &App,
     url: &str,
     max_bytes: usize,
     connect_timeout_secs: u64,
@@ -848,7 +849,7 @@ pub(crate) fn download_pinned_https_url(
     let max_bytes_arg = max_bytes.to_string();
     let connect_timeout = connect_timeout_secs.to_string();
     let max_time = max_time_secs.to_string();
-    let mut command = Command::new("curl");
+    let mut command = crate::trusted_curl(app);
     command.args([
         "-fsS",
         "--noproxy",

@@ -25,7 +25,7 @@ def execute(name, env, timeout=10):
 class AvdStorageTests(unittest.TestCase):
     def test_storage_is_pinned_before_cache_create_and_boot(self):
         names = [step.get('name') for step in steps()]
-        for name in ('Restore pristine Android AVD', 'Create pristine Android 15 AVD', 'Boot Android with KernelSU kernel'):
+        for name in ('Restore pristine Android AVD', 'Create pristine Android 15 AVD', 'Boot pristine Android 15 AVD'):
             self.assertLess(names.index('Pin Android AVD storage'), names.index(name))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); home = root/'runner home'; envfile = root/'env'

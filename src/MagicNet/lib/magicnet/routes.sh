@@ -256,6 +256,68 @@ magicnet_hotspot_delete_rule() (
     [ "$_present_rc" -eq 1 ]
 )
 
+# sing-box auto_redirect installs a global IPv6 TPROXY in mangle PREROUTING.
+# Hotspot clients arrive on PREROUTING of the tether iface, not local OUTPUT.
+# Insert an interface-scoped ACCEPT so downstream IPv6 is forwarded natively
+# instead of being half-hijacked into the core. This is an exemption only;
+# it does not install TPROXY, Redirect, or netd ALLOW_MULTI rules.
+magicnet_hotspot_ipv6_exempt() (
+    _mode=$1
+    _iface=$2
+    magicnet_hotspot_interface_allowed "$_iface" || return 1
+    if ! magicnet_cmd_exists ip6tables; then
+        return 0
+    fi
+    # Cleanup must share the capability check: an absent table cannot contain
+    # our exemption, and probing its rules would turn a safe skip into failure.
+    if command -v magicnet_xtables_table_probe >/dev/null 2>&1; then
+        _probe_rc=0
+        magicnet_xtables_table_probe ip6tables mangle || _probe_rc=$?
+        case "$_probe_rc" in
+        0) ;;
+        2) return 0 ;;
+        *) return "$_probe_rc" ;;
+        esac
+    fi
+    if ! command -v magicnet_ip6tables_cmd >/dev/null 2>&1; then
+        return 2
+    fi
+    set -- PREROUTING -i "$_iface" -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT
+    case "$_mode" in
+    ensure)
+        if command -v magicnet_ip6tables_ensure >/dev/null 2>&1; then
+            magicnet_ip6tables_ensure -t mangle "$@" || {
+                magicnet_hotspot_ipv6_exempt cleanup "$_iface" || true
+                return 1
+            }
+        else
+            _rc=0
+            magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
+            case "$_rc" in
+            0) ;;
+            1) magicnet_ip6tables_cmd -t mangle -I "$@" || return 1 ;;
+            *) return "$_rc" ;;
+            esac
+        fi
+        ;;
+    status)
+        _rc=0
+        magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
+        case "$_rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac ;;
+    cleanup)
+        _attempt=0
+        while :; do
+            _rc=0
+            magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
+            case "$_rc" in 0) ;; 1) break ;; *) return 2 ;; esac
+            [ "$_attempt" -lt 8 ] || return 1
+            magicnet_ip6tables_cmd -t mangle -D "$@" >/dev/null 2>&1 || return 1
+            _attempt=$((_attempt + 1))
+        done ;;
+    *) return 1 ;;
+    esac
+)
+
 magicnet_hotspot_forward_access() (
     _mode=$1
     _iface=$2
@@ -289,6 +351,12 @@ magicnet_hotspot_forward_access() (
         *) return 1 ;;
         esac
     done
+    magicnet_hotspot_ipv6_exempt "$_mode" "$_iface" || {
+        if [ "$_mode" = ensure ]; then
+            magicnet_hotspot_forward_access cleanup "$_iface" || true
+        fi
+        return 1
+    }
 )
 
 # Private write-ahead journal: publication of tun-rules.list alone is the

@@ -217,6 +217,22 @@ magicnet_iptables_ensure() {
 
 magicnet_ip6tables_ensure() {
     magicnet_cmd_exists ip6tables || return 1
+    if [ "$1" = "-t" ]; then
+        _table="$2"
+        shift 2
+        case "$_table" in
+        filter | mangle | raw | security | nat) ;;
+        *)
+            unset _table
+            return 1
+            ;;
+        esac
+        # Insert at the head so an exemption can win over later TPROXY rules.
+        magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I "$_table" "$@"
+        _ensure_result=$?
+        unset _table
+        return "$_ensure_result"
+    fi
     magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I "" "$@"
 }
 
@@ -230,7 +246,13 @@ magicnet_dns_capture_enabled() {
 }
 
 magicnet_dns_capture_port() {
-    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-1053}"
+    if command -v magicnet_dns_capture_policy_port >/dev/null 2>&1; then
+        magicnet_dns_capture_policy_port
+        return
+    fi
+    # network.sh is also sourced directly by host regression tests. Preserve a
+    # self-contained env/default fallback when the policy helper is not loaded.
+    _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-${MAGICNET_DNS_CAPTURE_PORT:-1053}}"
     case "$_dns_capture_port" in
     '' | *[!0-9]*) _dns_capture_port=1053 ;;
     *)
@@ -273,14 +295,6 @@ magicnet_dns_capture_singbox_udp_marked() {
     _dns_marked_rc=$?
     unset _dns_marked_config _dns_marked_jq
     return "$_dns_marked_rc"
-}
-
-# Only new connections traverse nat. Keep ordinary TCP/UDP connections from
-# scanning every app-bypass UID; RETURN resumes the caller's remaining rules,
-# not ACCEPT. DNS still reaches the existing mark/owner checks and redirect.
-magicnet_dns_capture_fast_path() {
-    magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p tcp ! --dport 53 -j RETURN &&
-        magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p udp ! --dport 53 -j RETURN
 }
 
 # A successful -C only proves membership, not priority. sing-box can prepend

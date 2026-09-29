@@ -262,6 +262,123 @@ jq -e '
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
 
+assert_hotspot_ipv6_exempt_is_installed_and_removed() (
+  ipv6_rules="$WORK/ipv6-mangle-rules"
+  : >"$ipv6_rules"
+  mkdir -p "$MODDIR/.config/magicnet"
+  rm -f "$MODDIR/.config/magicnet/transparent-mode.conf"
+  printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
+  magicnet_cmd_exists() {
+    case "$1" in
+    dumpsys | ip | ip6tables) return 0 ;;
+    *) return 1 ;;
+    esac
+  }
+  magicnet_xtables_table_probe() {
+    [ "$1" = ip6tables ] && [ "$2" = mangle ]
+  }
+  magicnet_ip6tables_cmd() {
+    table=
+    if [ "$1" = -t ]; then
+      table=$2
+      shift 2
+    fi
+    [ "$table" = mangle ] || return 2
+    action=$1
+    shift
+    case "$action" in
+    -C) grep -Fqx -- "$*" "$ipv6_rules" ;;
+    -I) printf '%s\n' "$*" >>"$ipv6_rules" ;;
+    -D)
+      awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
+      mv "$ipv6_rules.new" "$ipv6_rules"
+      ;;
+    *) return 2 ;;
+    esac
+  }
+  magicnet_ip6tables_ensure() {
+    if [ "$1" = -t ]; then
+      table=$2
+      shift 2
+      magicnet_ip6tables_cmd -t "$table" -C "$@" || magicnet_ip6tables_cmd -t "$table" -I "$@"
+      return $?
+    fi
+    magicnet_ip6tables_cmd -C "$@" || magicnet_ip6tables_cmd -I "$@"
+  }
+
+  magicnet_hotspot_reconcile
+  grep -Fqx 'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' "$ipv6_rules"
+  magicnet_hotspot_forward_access status wlan2
+  if magicnet_hotspot_ipv6_exempt ensure 'wlan2;id'; then
+    printf '%s\n' 'IPv6 exemption accepted a metacharacter interface name' >&2
+    exit 1
+  fi
+  if magicnet_hotspot_ipv6_exempt ensure eth0; then
+    printf '%s\n' 'IPv6 exemption accepted a non-hotspot interface' >&2
+    exit 1
+  fi
+
+  printf '1\n' >"$WORK/offload"
+  magicnet_hotspot_offload_restore
+  [ ! -s "$ipv6_rules" ]
+  [ ! -s "$WORK/forward-rules" ]
+  [ ! -e "$MODDIR/.state/hotspot/tun-rules.list" ]
+)
+
+assert_hotspot_ipv6_exempt_is_installed_and_removed
+
+assert_hotspot_ipv6_skipped_when_ip6tables_absent() (
+  magicnet_cmd_exists() {
+    case "$1" in
+    dumpsys | ip) return 0 ;;
+    *) return 1 ;;
+    esac
+  }
+  magicnet_ip6tables_cmd() {
+    printf '%s\n' 'ip6tables should not be invoked when the binary is absent' >&2
+    return 2
+  }
+  magicnet_hotspot_forward_access ensure wlan2
+  magicnet_hotspot_forward_access status wlan2
+  magicnet_hotspot_forward_access cleanup wlan2
+)
+
+assert_hotspot_ipv6_skipped_when_ip6tables_absent
+
+assert_hotspot_ipv6_skipped_when_mangle_unsupported() (
+  magicnet_cmd_exists() {
+    case "$1" in
+    dumpsys | ip | ip6tables) return 0 ;;
+    *) return 1 ;;
+    esac
+  }
+  magicnet_xtables_table_probe() {
+    return 2
+  }
+  magicnet_ip6tables_cmd() {
+    printf '%s\n' 'ip6tables should not be invoked when mangle is unsupported' >&2
+    return 2
+  }
+  magicnet_hotspot_ipv6_exempt ensure wlan2
+  magicnet_hotspot_ipv6_exempt status wlan2
+  magicnet_hotspot_forward_access cleanup wlan2
+)
+
+assert_hotspot_ipv6_skipped_when_mangle_unsupported
+
+assert_hotspot_ipv6_probe_failure_is_not_skipped() (
+  magicnet_cmd_exists() { return 0; }
+  magicnet_xtables_table_probe() { return 1; }
+  for mode in ensure status cleanup; do
+    if magicnet_hotspot_ipv6_exempt "$mode" wlan2; then
+      printf 'IPv6 %s ignored a failed capability query\n' "$mode" >&2
+      exit 1
+    fi
+  done
+)
+
+assert_hotspot_ipv6_probe_failure_is_not_skipped
+
 # The hotspot route reconciler is TUN-only. In explicit eBPF mode the shared
 # path owns downstream interception, so no table-2022 rule may be installed and
 # no conventional wlan0 name may be guessed.

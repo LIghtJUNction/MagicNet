@@ -171,7 +171,7 @@ fn block_update(app: &App) -> Result<(), String> {
         .unwrap_or(default_block_url());
     validate_subscription_url(url)?;
 
-    let (text, source) = match download_blocklist(url) {
+    let (text, source) = match download_blocklist(app, url) {
         Ok(text) => (text, "remote".to_string()),
         Err(err) => {
             let fallback = app.moddir.join(".config/magicnet/community-ban.yaml");
@@ -220,8 +220,8 @@ fn block_update(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-fn download_blocklist(url: &str) -> Result<String, String> {
-    let bytes = download_pinned_https_url(url, MAX_COMMUNITY_BLOCKLIST_BYTES, 8, 30)?;
+fn download_blocklist(app: &App, url: &str) -> Result<String, String> {
+    let bytes = download_pinned_https_url(app, url, MAX_COMMUNITY_BLOCKLIST_BYTES, 8, 30)?;
     String::from_utf8(bytes).map_err(|_| "community blocklist is not UTF-8".to_string())
 }
 

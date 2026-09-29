@@ -5,7 +5,7 @@ async function mount(page, failure = "") {
   await page.addInitScript(({ failure, authKey }) => {
     localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
     const config = { outbounds: [{ type: "direct", tag: "direct" }], route: { final: "direct" } };
-    window.__tailscale = { config, payload: "", saves: 0, restarts: 0, removals: 0, failure, loginState: failure === "browser" ? "NeedsLogin" : "Running", loginOpened: false };
+    window.__tailscale = { paused: [], identity: false, core: "running", lifecycleCalls: 0, revision: 0, config, payload: "", saves: 0, restarts: 0, removals: 0, failure, loginState: failure === "browser" ? "NeedsLogin" : "Running", loginOpened: false };
     window.ksu = {
       spawn(command, _args, _options, callbackName) {
         setTimeout(() => {
@@ -14,6 +14,28 @@ async function mount(page, failure = "") {
           let output = "";
           let errno = 0;
           if (command.includes("config-editor get sing-box")) output = JSON.stringify(fixture.config);
+          else if (command.includes("--json tailscale status")) output = JSON.stringify({schema:1,ok:true,command:"tailscale.status",data:{enabled:fixture.config.endpoints?.some(e=>e.type==='tailscale') || false,resumable:fixture.paused.length>0,logout_pending:false,local_identity:fixture.identity,core:fixture.core,revision:fixture.revision.toString(16).padStart(64,'0')}});
+          else if (/tailscale (disable|enable|logout) /.test(command)) {
+            const action=command.match(/tailscale (disable|enable|logout) /)[1];
+            fixture.lifecycleCalls++;
+            if (fixture.failure === 'lifecycle') { errno=1; }
+            else {
+              const active=(fixture.config.endpoints||[]).filter(e=>e.type==='tailscale');
+              const tags=active.map(e=>e.tag);
+              if(action==='enable') fixture.config.endpoints=[...(fixture.config.endpoints||[]),...fixture.paused];
+              else {
+                fixture.config.endpoints=(fixture.config.endpoints||[]).filter(e=>e.type!=='tailscale');
+                if(fixture.config.route?.rules) fixture.config.route.rules=fixture.config.route.rules.filter(r=>!tags.includes(r.outbound));
+                const dnsTags=(fixture.config.dns?.servers||[]).filter(s=>tags.includes(s.endpoint)).map(s=>s.tag);
+                if(fixture.config.dns?.servers) fixture.config.dns.servers=fixture.config.dns.servers.filter(s=>!dnsTags.includes(s.tag));
+                if(fixture.config.dns?.rules) fixture.config.dns.rules=fixture.config.dns.rules.filter(r=>!dnsTags.includes(r.server));
+              }
+              fixture.paused=action==='disable'?active:[];
+              if(action==='logout') { fixture.identity=false;fixture.loginState='NeedsLogin'; }
+              if(fixture.core==='running') fixture.restarts++;
+              fixture.revision++;
+            }
+          }
           else if (command.includes("api tailscale-status")) output = JSON.stringify({state:fixture.loginState,online:fixture.loginState === "Running",auth_url:fixture.loginState === "Running" ? "" : "https://login.tailscale.com/a/fixtureAuth"});
           else if (command.includes("am start") && command.includes("login.tailscale.com/a/fixtureAuth")) fixture.loginOpened = true;
           else if (command.includes("webui payload create tmp")) {
@@ -29,6 +51,7 @@ async function mount(page, failure = "") {
             if (fixture.failure === "validation") { errno = 1; output = `private validator detail ${authKey}`; }
             else {
               fixture.config = JSON.parse(fixture.payload);
+              fixture.identity = true; fixture.revision++;
               fixture.config.endpoints.forEach((endpoint) => { delete endpoint.auth_key; });
               output = "[info] Saved and validated sing-box config";
             }
@@ -38,7 +61,7 @@ async function mount(page, failure = "") {
           }
           if (output) callback.stdout.emit("data", output);
           callback.emit("exit", errno);
-        }, command.includes("config-editor save-file") ? 120 : 0);
+        }, command.includes("config-editor save-file") || /tailscale (disable|enable|logout) /.test(command) ? 120 : 0);
       },
     };
   }, { failure, authKey });
@@ -141,22 +164,49 @@ test('resuming configured browser login does not restart the network again', asy
   await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
   expect(await page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
 });
-test('removal requires confirmation and handles runtime-created references', async ({page})=>{
+test('disable, resume and confirmed logout are separate reversible actions', async ({page})=>{
   await mount(page);
   await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
   await page.evaluate(()=>{
     const config=window.__tailscale.config,tag=config.endpoints[0].tag;
     config.dns={servers:[{type:'tailscale',tag:tag+'-dns',endpoint:tag}],rules:[{domain_suffix:['ts.net'],server:tag+'-dns'}]};
-    config.route.rules=[{domain_suffix:['ts.net'],outbound:tag},{ip_cidr:['100.64.0.0/10','fd7a:115c:a1e0::/48'],preferred_by:['tailscale'],outbound:tag}];
+    config.route.rules=[{domain_suffix:['ts.net'],action:'route',outbound:tag},{ip_cidr:['100.64.0.0/10','fd7a:115c:a1e0::/48'],preferred_by:[tag],action:'route',outbound:tag}];
   });
-  await page.getByRole('button',{name:'断开并移除节点',exact:true}).click();
-  expect(await page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
-  await page.getByRole('button',{name:'确认移除',exact:true}).click();
-  await expect.poll(()=>page.evaluate(()=>window.__tailscale.restarts)).toBe(2);
+  await page.getByRole('button',{name:'禁用 Tailscale',exact:true}).click();
+  await expect(page.getByRole('button',{name:'恢复连接',exact:true})).toBeEnabled();
   expect(await page.evaluate(()=>window.__tailscale.config.endpoints)).toEqual([]);
   expect(await page.evaluate(()=>window.__tailscale.config.dns.servers)).toEqual([]);
-  expect(await page.evaluate(()=>window.__tailscale.config.route.rules)).toEqual([]);
+  expect(await page.evaluate(()=>window.__tailscale.identity)).toBe(true);
+  await expect(page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'恢复连接',exact:true}).click();
+  await expect(page.getByRole('button',{name:'禁用 Tailscale',exact:true})).toBeEnabled();
+  const before=await page.evaluate(()=>window.__tailscale.lifecycleCalls);
+  await page.getByRole('button',{name:'登出此设备',exact:true}).click();
+  expect(await page.evaluate(()=>window.__tailscale.lifecycleCalls)).toBe(before);
+  await page.getByRole('button',{name:'确认登出',exact:true}).click();
+  await expect(page.getByText('已登出此设备。再次连接需要重新授权。',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>window.__tailscale.identity)).toBe(false);
+  await expect(page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true})).toBeEnabled();
+});
+test('disabling while the core is stopped leaves it stopped and renders a narrow paused card',async({page},testInfo)=>{
+  await mount(page); await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect(page.getByRole('button',{name:'禁用 Tailscale',exact:true})).toBeEnabled();
+  await page.evaluate(()=>{window.__tailscale.core='stopped';});
+  const before=await page.evaluate(()=>window.__tailscale.restarts);
+  await page.getByRole('button',{name:'禁用 Tailscale',exact:true}).click();
+  await expect(page.getByRole('button',{name:'恢复连接',exact:true})).toBeEnabled();
+  expect(await page.evaluate(()=>window.__tailscale.restarts)).toBe(before);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth+1)).toBe(false);
+  await page.screenshot({path:testInfo.outputPath('tailscale-paused.png'),fullPage:true});
+});
+test('a failed disable is visible and does not pretend to be disconnected',async({page})=>{
+  await mount(page); await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect(page.getByRole('button',{name:'禁用 Tailscale',exact:true})).toBeEnabled();
+  await page.evaluate(()=>{window.__tailscale.failure='lifecycle';});
+  await page.getByRole('button',{name:'禁用 Tailscale',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'操作未完整完成'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'恢复连接',exact:true})).toHaveCount(0);
 });
 test('Tailscale layout evidence at phone width', async ({page},testInfo)=>{
   await mount(page);

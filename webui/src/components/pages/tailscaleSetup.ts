@@ -151,6 +151,9 @@ function removeManagedTailscaleRoutes(config: JsonObject, tag: string): void {
   if (Array.isArray(route?.rules)) {
     route.rules = route.rules.filter((rule: unknown) =>
       !exact(rule, { domain_suffix: ["ts.net"], outbound: tag })
+      && !exact(rule, { domain_suffix: ["ts.net"], action: "route", outbound: tag })
+      && !exact(rule, { ip_cidr: ["100.64.0.0/10", "fd7a:115c:a1e0::/48"], preferred_by: [tag], action: "route", outbound: tag })
+      && !exact(rule, { ip_cidr: ["100.64.0.0/10", "fd7a:115c:a1e0::/48"], preferred_by: [tag], outbound: tag })
       && !exact(rule, { ip_cidr: ["100.64.0.0/10", "fd7a:115c:a1e0::/48"], preferred_by: ["tailscale"], outbound: tag }));
   }
   const references = (value: unknown): boolean => {

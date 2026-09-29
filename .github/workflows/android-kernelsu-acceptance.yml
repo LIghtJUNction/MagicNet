@@ -35,7 +35,7 @@ on:
         type: boolean
         default: false
       memory_mb:
-        description: AVD RAM; automatic checks use 2 GiB to exercise a constrained device
+        description: Requested AVD RAM; actual guest MemTotal is recorded separately
         required: true
         type: choice
         options: ["2048", "4096"]
@@ -56,11 +56,12 @@ env:
   AVD_NAME: MagicNet_API_35
   AVD_MEMORY: ${{ inputs.memory_mb || '2048' }}
   SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
-  KSU_CACHE: ${{ github.workspace }}/.cache/kernelsu-avd
+  SYSTEM_IMAGE_KERNEL_SHA256: 987818a35792fb62f6ea6aa604d5fa476e1e85c84fc1cbac3979e1ae26965f46
+  SYSTEM_IMAGE_RAMDISK_SHA256: ed02243242916aaa878b880f3eaa7ace1b44406747cdfecd585ad14ea0464fd5
+  KSU_RUNTIME: ${{ github.workspace }}/.ci/kernelsu-runtime
   KSU_RELEASE: v3.2.0
-  KSU_AVD_ARCHIVE: dist-A15-API35-6.6-x86_64-11987101-v320.zip
-  KSU_AVD_SHA256: ab52c00733ff08ee20a5822db68891a6bd0b43e5ee675dd4ffd8fe640ad1ccef
   KSUD_SHA256: db96b07ef42f6b9a84b5914d19c2f01608b1e10816fc28c0e84f07417d9bc062
+  KSU_AVD_KERNEL_BUILD_ID: "12525588"
   CARGO_NDK_VERSION: "4.1.2"
 
 jobs:
@@ -82,7 +83,10 @@ jobs:
       # No cached passes: validate failure propagation before any expensive SDK work.
       - name: Test simulation safety and workflow wiring
         run: |
+          python3 scripts/test-android-kernel.py
           python3 scripts/test-android-device-simulation.py
+          python3 scripts/test-android-simulation-fixes.py
+          python3 scripts/test-android-proxylink.py
           python3 scripts/test-android-simulation-workflow.py
           python3 scripts/test-android-acceptance-contract.py
           python3 scripts/test-android-avd-storage.py
@@ -228,7 +232,9 @@ jobs:
           printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
 
       - name: Validate offline config against the exact core
-        run: python3 scripts/test-android-device-simulation.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
+        run: |
+          python3 scripts/test-android-device-simulation.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
+          python3 scripts/test-android-simulation-fixes.py --check-core "$RUNNER_TEMP/magicnet-host/sing-box"
 
       - name: Build current MagicNet module
         env:
@@ -280,50 +286,64 @@ jobs:
           set -euo pipefail
           scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
-      - name: Restore KernelSU AVD assets
-        id: ksu-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+      - name: Prepare complete x86_64 installation payloads
+        shell: bash
+        run: bash scripts/prepare-android-fixture-tools.sh "$RUNNER_TEMP/magicnet-x86-tools"
 
-      - name: Download and verify KernelSU AVD assets
-        if: steps.ksu-cache.outputs.cache-hit != 'true'
+      - name: Download and verify official KernelSU userspace
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$KSU_CACHE"
-          mkdir -p "$KSU_CACHE"
-          curl --fail --location --retry 4 --retry-all-errors --max-time 300 \
-            "https://github.com/leemikepop/avd-kernelsu-x86_64/releases/download/KernelSU-v3.2.0/$KSU_AVD_ARCHIVE" \
-            -o "$KSU_CACHE/$KSU_AVD_ARCHIVE"
-          printf '%s  %s\n' "$KSU_AVD_SHA256" "$KSU_CACHE/$KSU_AVD_ARCHIVE" | sha256sum --check --strict
+          rm -rf "$KSU_RUNTIME"
+          mkdir -p "$KSU_RUNTIME"
           curl --fail --location --retry 4 --retry-all-errors --max-time 180 \
             "https://github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/ksud-x86_64-linux-android" \
-            -o "$KSU_CACHE/ksud-x86_64-linux-android"
-          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
+            -o "$KSU_RUNTIME/ksud-x86_64-linux-android"
+          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_RUNTIME/ksud-x86_64-linux-android" | sha256sum --check --strict
+          file "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -q 'x86-64'
+          # ksud is an Android userspace binary. Executing it on the Ubuntu
+          # runner fails because its PT_INTERP is /system/bin/linker64; verify
+          # the target interpreter statically and execute it only inside the AVD.
+          readelf -l "$KSU_RUNTIME/ksud-x86_64-linux-android" | grep -Fq '/system/bin/linker64'
+          chmod 0755 "$KSU_RUNTIME/ksud-x86_64-linux-android"
 
-      - name: Save KernelSU AVD assets
-        if: steps.ksu-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Restore matching KernelSU kernel
+        id: kernel-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+          path: ${{ env.KSU_RUNTIME }}/avd-kernel
+          key: android-kernel-12525588-ksu320-${{ hashFiles('scripts/build-android-kernel.py') }}
 
-      - name: Verify cached KernelSU assets
+      - name: Build and verify pinned KernelSU AVD kernel
         shell: bash
         run: |
           set -euo pipefail
-          # Verify bytes on cache hits too; never source an executable cache manifest.
-          printf '%s  %s\n' "$KSU_AVD_SHA256" "$KSU_CACHE/$KSU_AVD_ARCHIVE" | sha256sum --check --strict
-          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
-          kernel_dir="$RUNNER_TEMP/kernelsu-verified"
-          mkdir -p "$kernel_dir"
-          unzip -q "$KSU_CACHE/$KSU_AVD_ARCHIVE" -d "$kernel_dir"
-          kernel="$(find "$kernel_dir" -type f \( -name bzImage -o -name Image \) -print -quit)"
-          test -n "$kernel" && test -s "$kernel"
-          chmod 0755 "$KSU_CACHE/ksud-x86_64-linux-android"
-          printf 'KSU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
+          kernel_dir="$KSU_RUNTIME/avd-kernel"
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-yaml
+          fi
+          if [ '${{ steps.kernel-cache.outputs.cache-hit }}' != true ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y repo
+            git config --global user.name 'MagicNet CI'
+            git config --global user.email 'ci@localhost'
+            python3 scripts/build-android-kernel.py --output "$kernel_dir" --work "$RUNNER_TEMP/magicnet-kernel-build"
+          fi
+          python3 scripts/build-android-kernel.py --verify --output "$kernel_dir"
+          grep -Fqx "Build ID: $KSU_AVD_KERNEL_BUILD_ID" "$kernel_dir/build-info.txt"
+          mkdir -p artifacts/android-kernelsu
+          cp "$kernel_dir/build-info.txt" artifacts/android-kernelsu/kernel-build-info.txt
+          cp "$kernel_dir/provenance.json" artifacts/android-kernelsu/kernel-provenance.json
+          sha256sum "$kernel_dir/bzImage" > artifacts/android-kernelsu/kernel-bzimage.sha256
+          printf 'MAGICNET_AVD_KERNEL=%s\n' "$kernel_dir/bzImage" >> "$GITHUB_ENV"
+
+      - name: Save verified KernelSU kernel
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.KSU_RUNTIME }}/avd-kernel
+          key: android-kernel-12525588-ksu320-${{ hashFiles('scripts/build-android-kernel.py') }}
 
       - name: Pin Android AVD storage
         shell: bash
@@ -342,7 +362,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v3-api35-google-apis-x86_64
+          key: android-avd-v6-api35-r9-kernel12525588
 
       - name: Create pristine Android 15 AVD
         if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
@@ -365,6 +385,18 @@ jobs:
           showDeviceFrame=no
           EOF
 
+      - name: Verify pinned Android system image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$ANDROID_SDK_ROOT/system-images/android-35/google_apis/x86_64"
+          grep -Eq '^Pkg.Revision[[:space:]]*=[[:space:]]*9[[:space:]]*$' "$image/source.properties"
+          grep -Eq '^AndroidVersion.ApiLevel[[:space:]]*=[[:space:]]*35[[:space:]]*$' "$image/source.properties"
+          mkdir -p artifacts/android-kernelsu
+          printf '%s  %s\n' "$SYSTEM_IMAGE_KERNEL_SHA256" "$image/kernel-ranchu" "$SYSTEM_IMAGE_RAMDISK_SHA256" "$image/ramdisk.img" | sha256sum --check --strict
+          cp "$image/source.properties" artifacts/android-kernelsu/system-image.properties
+          sha256sum "$image/kernel-ranchu" "$image/ramdisk.img" > artifacts/android-kernelsu/stock-boot-sha256.txt
+
       - name: Save pristine Android AVD
         if: inputs.fresh_avd != true && steps.avd-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -373,7 +405,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v3-api35-google-apis-x86_64
+          key: android-avd-v6-api35-r9-kernel12525588
 
       - name: Enable KVM
         shell: bash
@@ -386,14 +418,18 @@ jobs:
             exit 1
           fi
 
-      - name: Boot Android with KernelSU kernel
+      - name: Boot pristine Android 15 AVD
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/android-kernelsu
+          # Keep the stock AVD userspace/ramdisk, but boot the pinned API35 GKI
+          # built from the matching 12525588 manifest with KernelSU v3.2.0 and the required
+          # x86_64 syscall-hardening compatibility patches.
+          test -s "$MAGICNET_AVD_KERNEL"
           nohup emulator "@$AVD_NAME" \
+            -kernel "$MAGICNET_AVD_KERNEL" \
             -port 5554 \
-            -kernel "$KSU_KERNEL" \
             -accel on \
             -no-window \
             -noaudio \
@@ -410,7 +446,7 @@ jobs:
         timeout-minutes: 25
         env:
           MAGICNET_DISPOSABLE_AVD: "1"
-          MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
+          MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
           MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools
@@ -423,7 +459,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
         timeout-minutes: 20
         env:
-          MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
+          MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
           MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools

@@ -74,5 +74,9 @@ export default {
   "历史记录": [
     "history",
     "история"
+  ],
+  "终端只接受 magicnet-cli 参数，不能包含 shell 元字符。": [
+    "The terminal accepts magicnet-cli arguments only and rejects shell metacharacters.",
+    "Терминал принимает только аргументы magicnet-cli и отклоняет метасимволы оболочки."
   ]
 } satisfies Record<string, readonly string[]>;

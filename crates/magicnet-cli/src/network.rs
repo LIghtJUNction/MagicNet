@@ -98,15 +98,31 @@ impl NetworkPolicy {
     }
 
     fn write(&self, app: &App) -> Result<(), String> {
-        write_kv(
-            app,
-            Path::new(NETWORK_POLICY_CONF),
-            &[
-                ("MAGICNET_IPV6_MODE", self.ipv6_mode.to_string()),
-                ("MAGICNET_TUN_MTU", self.mtu.to_string()),
-                ("MAGICNET_UDP_TIMEOUT", self.udp_timeout.to_string()),
-            ],
-        )
+        let existing = read_kv(app.moddir.join(NETWORK_POLICY_CONF));
+        let mut values = vec![
+            ("MAGICNET_IPV6_MODE", self.ipv6_mode.to_string()),
+            ("MAGICNET_TUN_MTU", self.mtu.to_string()),
+            ("MAGICNET_UDP_TIMEOUT", self.udp_timeout.to_string()),
+        ];
+        if let Some(port) = existing
+            .get("MAGICNET_DNS_CAPTURE_PORT")
+            .filter(|value| normalize_dns_capture_port(value).is_some())
+        {
+            values.push(("MAGICNET_DNS_CAPTURE_PORT", port.clone()));
+        }
+        if let Some(inet) = existing
+            .get("MAGICNET_TUN_INET")
+            .filter(|value| ipv4_tun_cidr_valid(value))
+        {
+            values.push(("MAGICNET_TUN_INET", inet.clone()));
+        }
+        if let Some(inet6) = existing
+            .get("MAGICNET_TUN_INET6")
+            .filter(|value| ipv6_tun_cidr_valid(value))
+        {
+            values.push(("MAGICNET_TUN_INET6", inet6.clone()));
+        }
+        write_kv(app, Path::new(NETWORK_POLICY_CONF), &values)
     }
 }
 
@@ -124,6 +140,51 @@ fn normalize_mtu(value: &str) -> Option<u16> {
         .parse::<u16>()
         .ok()
         .filter(|value| (1280..=1500).contains(value))
+}
+
+fn canonical_u16(value: &str) -> Option<u16> {
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|number| number.to_string() == value)
+}
+
+pub(crate) fn normalize_dns_capture_port(value: &str) -> Option<u16> {
+    canonical_u16(value).filter(|port| *port >= 1)
+}
+
+pub(crate) fn ipv4_tun_cidr_valid(value: &str) -> bool {
+    let Some((address, prefix)) = value.split_once('/') else {
+        return false;
+    };
+    let Some(prefix) = canonical_u16(prefix) else {
+        return false;
+    };
+    let Ok(address) = address.parse::<std::net::Ipv4Addr>() else {
+        return false;
+    };
+    (8..=30).contains(&prefix) && !matches!(address.octets()[0], 0 | 127 | 224..=255)
+}
+
+pub(crate) fn ipv6_tun_cidr_valid(value: &str) -> bool {
+    let Some((address, prefix)) = value.split_once('/') else {
+        return false;
+    };
+    let Some(prefix) = canonical_u16(prefix) else {
+        return false;
+    };
+    // Match the shell contract: pure hexadecimal IPv6, no zone or dotted tail.
+    if !address
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit() || byte == b':')
+    {
+        return false;
+    }
+    let Ok(address) = address.parse::<std::net::Ipv6Addr>() else {
+        return false;
+    };
+    // A textual fc/fd prefix is not enough: fc::1 actually starts with 00fc.
+    (64..=126).contains(&prefix) && address.segments()[0] & 0xfe00 == 0xfc00
 }
 
 fn normalize_udp_timeout(value: &str) -> Option<&'static str> {
@@ -190,6 +251,8 @@ fn network_usage() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::temp_app;
+    use std::fs;
 
     #[test]
     fn aliases_normalize_to_canonical_ipv6_modes() {
@@ -214,5 +277,87 @@ mod tests {
         assert_eq!(normalize_udp_timeout("30m"), Some("30m"));
         assert_eq!(normalize_udp_timeout("0m"), None);
         assert_eq!(normalize_udp_timeout("1h"), None);
+    }
+
+    #[test]
+    fn dns_capture_port_rejects_zero_and_non_numeric() {
+        assert_eq!(normalize_dns_capture_port("1053"), Some(1053));
+        assert_eq!(normalize_dns_capture_port("15353"), Some(15353));
+        assert_eq!(normalize_dns_capture_port("0"), None);
+        assert_eq!(normalize_dns_capture_port("dns"), None);
+    }
+
+    #[test]
+    fn tun_inet_rejects_loopback_and_overwide_prefixes() {
+        assert!(ipv4_tun_cidr_valid("172.19.0.1/30"));
+        assert!(ipv4_tun_cidr_valid("172.20.0.1/30"));
+        assert!(!ipv4_tun_cidr_valid("127.0.0.1/30"));
+        assert!(!ipv4_tun_cidr_valid("172.19.0.1/31"));
+        assert!(!ipv4_tun_cidr_valid("172.019.0.1/30"));
+        assert!(ipv6_tun_cidr_valid("fdfe:dcba:9876::1/126"));
+        assert!(!ipv6_tun_cidr_valid("fe80::1/64"));
+        assert!(!ipv6_tun_cidr_valid("2001:db8::1/64"));
+        assert!(!ipv6_tun_cidr_valid("fdfe:dcba:9876::1/127"));
+    }
+
+    #[test]
+    fn dataplane_pins_reject_ambiguous_or_non_ula_values() {
+        for value in ["+53", "00053", "65536", "18446744073709551616", "53\n53"] {
+            assert_eq!(normalize_dns_capture_port(value), None, "{value:?}");
+        }
+        for value in [
+            "172.20.0.1/+30",
+            "172.20.0.1/030",
+            "+172.20.0.1/30",
+            "172.20.0.1/30\n172.20.0.1/30",
+        ] {
+            assert!(!ipv4_tun_cidr_valid(value), "{value:?}");
+        }
+        for value in [
+            "fc::1/64",
+            "fd::1/64",
+            "fcd::1/64",
+            "fd12::1/+64",
+            "fd12::1/064",
+            "fd12::1/64\nfd12::1/64",
+        ] {
+            assert!(!ipv6_tun_cidr_valid(value), "{value:?}");
+        }
+        for value in ["fc00::1/64", "FDFF::1/126", "fd12:3456:789a:1:2:3:4:5/64"] {
+            assert!(ipv6_tun_cidr_valid(value), "{value:?}");
+        }
+    }
+
+    #[test]
+    fn write_preserves_validated_dataplane_pins() {
+        let app = temp_app();
+        let path = app.moddir.join(NETWORK_POLICY_CONF);
+        fs::create_dir_all(path.parent().expect("network policy parent")).unwrap();
+        fs::write(
+            &path,
+            concat!(
+                "MAGICNET_IPV6_MODE=prefer_ipv4\n",
+                "MAGICNET_TUN_MTU=1400\n",
+                "MAGICNET_UDP_TIMEOUT=5m\n",
+                "MAGICNET_DNS_CAPTURE_PORT=15353\n",
+                "MAGICNET_TUN_INET=172.20.0.1/30\n",
+                "MAGICNET_TUN_INET6=fdfe:dcba:9876::1/126\n"
+            ),
+        )
+        .unwrap();
+        NetworkPolicy {
+            ipv6_mode: "ipv4_only",
+            mtu: 1280,
+            udp_timeout: "10m",
+        }
+        .write(&app)
+        .unwrap();
+        let text = fs::read_to_string(path).unwrap();
+        assert!(text.contains("MAGICNET_IPV6_MODE=ipv4_only"));
+        assert!(text.contains("MAGICNET_TUN_MTU=1280"));
+        assert!(text.contains("MAGICNET_UDP_TIMEOUT=10m"));
+        assert!(text.contains("MAGICNET_DNS_CAPTURE_PORT=15353"));
+        assert!(text.contains("MAGICNET_TUN_INET=172.20.0.1/30"));
+        assert!(text.contains("MAGICNET_TUN_INET6=fdfe:dcba:9876::1/126"));
     }
 }

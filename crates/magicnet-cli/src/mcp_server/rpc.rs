@@ -516,7 +516,19 @@ fn cli_args(server: &Server, args: &Value) -> String {
     if out.is_empty() {
         return "missing args\nrc=-1".to_string();
     }
+    if cli_args_reveal_secret(&out) {
+        return "refusing to reveal MCP secret over MCP\nrc=-1".to_string();
+    }
     run_cli_owned(server, out)
+}
+
+fn cli_args_reveal_secret(args: &[String]) -> bool {
+    let command = args
+        .iter()
+        .map(String::as_str)
+        .filter(|item| *item != "--json")
+        .collect::<Vec<_>>();
+    matches!(command.as_slice(), ["mcp", "secret", ..])
 }
 
 fn service_control(server: &Server, args: &Value) -> String {
@@ -696,6 +708,18 @@ mod tests {
             "--json service status\n\nrc=0"
         );
         assert!(response["result"].get("isError").is_none());
+    }
+
+    #[test]
+    fn magicnet_cli_refuses_to_print_the_mcp_secret() {
+        let response = call_echo_tool("magicnet_cli", json!({"args": ["mcp", "secret"]}));
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("refusing to reveal MCP secret over MCP"),
+            "{text}"
+        );
+        assert!(text.contains("rc=-1"), "{text}");
+        assert_ne!(text, "mcp secret\n\nrc=0");
     }
 
     #[test]

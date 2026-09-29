@@ -824,6 +824,8 @@ unset missing_cmdline_proc
   test "$(cat "$race_proc_start_count_file")" -ge 2
   race_pid="$(sed -n '1p' "$(magicnet_subscription_refresh_pid_file)")"
   test -n "$race_pid"
+  grep -Fq 'unset LD_PRELOAD LD_LIBRARY_PATH' "$(magicnet_subscription_refresh_loop_file)"
+  grep -Fq 'unset ENV BASH_ENV CDPATH GCONV_PATH NLSPATH HOSTALIASES' "$(magicnet_subscription_refresh_loop_file)"
   printf 'off\n' >"$(magicnet_subscription_schedule_file)"
   rm -f \
     "$(magicnet_subscription_refresh_owner_file)" \

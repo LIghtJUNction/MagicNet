@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use crate::node_delay::node_delay;
 use crate::webui_api::select_proxy;
@@ -71,7 +70,7 @@ fn node_test(app: &App, name: &str) -> Result<(), String> {
     if clean.is_empty() {
         return Err("Usage: cli node test <name>".to_string());
     }
-    let delay = node_delay(&app.api, clean).map_err(|err| format!("test node failed: {err}"))?;
+    let delay = node_delay(app, clean).map_err(|err| format!("test node failed: {err}"))?;
     println!("{clean}={delay}ms");
     Ok(())
 }
@@ -84,7 +83,7 @@ fn node_test_all(app: &App, args: &[String]) -> Result<(), String> {
     let total = nodes.len();
     let mut failed = 0usize;
     for node in nodes {
-        match node_delay(&app.api, &node) {
+        match node_delay(app, &node) {
             Ok(delay) => println!("{node}={delay}ms"),
             Err(err) => {
                 failed += 1;
@@ -120,7 +119,7 @@ fn test_all_targets(app: &App, args: &[String]) -> Vec<String> {
 }
 
 fn read_proxy_selector(app: &App) -> Result<Value, String> {
-    let output = Command::new("curl")
+    let output = crate::trusted_curl(app)
         .args([
             "-fsS",
             "--max-time",

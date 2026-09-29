@@ -28,6 +28,7 @@ mkdir -p "$MODDIR"
 cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
 printf 'env=%s/%s/%s/%s\n' "${http_proxy-}" "${HTTP_PROXY-}" "${all_proxy-}" "${ALL_PROXY-}" >>"$MAGICNET_FETCH_TEST_LOG"
+printf 'loader=%s/%s\n' "${LD_PRELOAD-}" "${LD_LIBRARY_PATH-}" >>"$MAGICNET_FETCH_TEST_LOG"
 printf 'curl %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
 case " $* " in
   *' http://127.0.0.1:19090/version '*)
@@ -133,8 +134,10 @@ for invalid_url in \
   fi
 done
 http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http://bad \
+  LD_PRELOAD=/tmp/evil.so LD_LIBRARY_PATH=/tmp/evil \
   PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/direct" 2 7
 grep -q '^env=///$' "$tmp/log"
+grep -q '^loader=/$' "$tmp/log"
 grep -q 'curl .*--noproxy \*' "$tmp/log"
 grep -q 'curl .*--resolve example.invalid:443:1.1.1.1' "$tmp/log"
 grep -Fq -- '--resolve example.invalid:443:1.1.1.1,[2606:4700:4700::1111]' "$tmp/log"
