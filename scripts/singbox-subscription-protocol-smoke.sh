@@ -22,10 +22,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# shellcheck disable=SC2034
-MODDIR="$MODULE_ROOT"
+# A built module contains Android helpers. The host regression must exercise
+# its shell libraries with host jq, without modifying the release payload.
+MODDIR="$tmp_dir/module"
+mkdir -p "$MODDIR"
+ln -s "$MODULE_ROOT/lib" "$MODDIR/lib"
+cp -R "$MODULE_ROOT/.config" "$MODDIR/.config"
 # shellcheck disable=SC1090
-. "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
+. "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 
 magicnet_singbox_tag_is_reserved hotspot \
     || fail "jq-free reserved-tag fallback does not protect the hotspot selector"
