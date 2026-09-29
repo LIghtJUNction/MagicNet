@@ -16,9 +16,11 @@ through the existing package checks. KAM validation previously in `init.yml` is
 now run in this job before packaging; no KAM check was dropped.
 
 A disposable Android 15 / API 35 x86_64 AVD is configured to boot with KVM and a pinned
-API35/6.6 x86_64 GKI built for Android CI build 11987101 with KernelSU v3.2.0.
-The workflow verifies the release archive SHA-256 and build metadata before
-passing its `bzImage` to the emulator. After Android userspace is fully booted,
+API35/6.6 x86_64 kernel built from Android CI build 12525588 with KernelSU v3.2.0.
+The workflow builds the complete virtual-device target from a fixed source manifest
+and build recipe, verifies source identity and cached output hashes on every run,
+and passes the resulting `bzImage` to the emulator. The SDK image must be API35
+google_apis x86_64 revision 9; its properties and stock boot-file hashes are recorded. After Android userspace is fully booted,
 official x86_64 `ksud` first requires a positive KernelSU kernel interface,
 extracts its embedded BusyBox, reads the running KMI, and executes upstream
 `late-load` only for userspace and lifecycle initialization. Automatic runs
@@ -28,14 +30,13 @@ emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positiv
 KernelSU kernel version, and the real `u:r:ksu:s0` domain. It uses KernelSU
 BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
 
-The current kernel/image pair is **not boot-validated**: run
-[36429640352](https://github.com/LIghtJUNction/MagicNet/actions/runs/36429640352)
-fails before module installation with `virtio_blk`'s `module_layout` ABI mismatch
-and repeated first-stage init reboots (issue #309). A matching kernel, modules
-and system image are still required; neither the fixture repair nor host tests
-resolve that acceptance blocker. The harness reads a bounded tail of the emulator
-log and reports `kernel_module_abi_mismatch` or `early_init_reboot_loop` without
-waiting for the generic ADB boot deadline. Unrecognized failures retain the deadline.
+The older build 11987101 kernel failed before installation with a `module_layout`
+ABI mismatch. The matching 12525588 candidate reached Android `sys.boot_completed`
+with SELinux Enforcing in [run 36558888264](https://github.com/LIghtJUNction/MagicNet/actions/runs/36558888264).
+This establishes boot compatibility; the complete KernelSU/MagicNet lifecycle is
+still required in the automatic acceptance workflow. The harness reports recognized
+ABI failures and repeated early-init reboots from bounded emulator-log evidence;
+unrecognized boot failures retain the existing deadline.
 
 All bundled ABI-specific executables are replaced in a **separate test ZIP**, before
 installation: CLI, sing-box, jq and yq, plus eCapture/Proxylink when present.
@@ -94,9 +95,10 @@ failures, not skipped green tests. Artifact upload and emulator cleanup use
 
 Only dependencies, compiler outputs and a pristine **pre-boot** SDK AVD are
 cached. No dirty device snapshot or device-test success is cached. The official
-KernelSU userspace and the pinned API35 KernelSU kernel archive are downloaded
-fresh and SHA-256 verified on every run; the kernel archive metadata is also
-validated before boot. The real DNS NAT job in `network-regression.yml` runs
+KernelSU userspace is downloaded fresh and SHA-256 verified on every run.
+The API35 kernel is built from pinned sources on cache misses; cache hits must
+match the same source identity and output SHA-256 hashes. SDK image revision,
+stock kernel and ramdisk hashes are checked on both AVD cache hits and misses. The real DNS NAT job in `network-regression.yml` runs
 its packet checks each time against the current host kernel instead of reusing a
 pass.
 

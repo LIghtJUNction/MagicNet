@@ -77,17 +77,26 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/', userspace)
         self.assertIn('ksud-x86_64-linux-android', userspace)
 
-        kernel = self.step('Download and verify pinned KernelSU AVD kernel')['run']
-        self.assertEqual(kernel.count('sha256sum --check --strict'), 1)
-        self.assertIn('$KSU_AVD_KERNEL_URL', kernel)
+        kernel = self.step('Build and verify pinned KernelSU AVD kernel')['run']
+        self.assertIn('build-android-kernel.py --verify', kernel)
         self.assertIn('Build ID: $KSU_AVD_KERNEL_BUILD_ID', kernel)
-        self.assertIn('x86_64 Syscall Hardening Patch Applied: true', kernel)
-        self.assertIn('x86_64 Syscall Hardening Default Off: true', kernel)
         self.assertIn('MAGICNET_AVD_KERNEL=', kernel)
-        digest = self.flow['env']['KSU_AVD_KERNEL_SHA256']
-        self.assertEqual(len(digest), 64)
-        self.assertTrue(all(ch in '0123456789abcdef' for ch in digest))
-        self.assertIn('KernelSU-v3.2.0', self.flow['env']['KSU_AVD_KERNEL_URL'])
+        self.assertEqual(self.flow['env']['KSU_AVD_KERNEL_BUILD_ID'], '12525588')
+        self.assertNotIn('KSU_AVD_KERNEL_URL', self.flow['env'])
+        restore = self.step('Restore matching KernelSU kernel')
+        save = self.step('Save verified KernelSU kernel')
+        self.assertEqual(restore['with']['key'], save['with']['key'])
+        self.assertIn("hashFiles('scripts/build-android-kernel.py')", restore['with']['key'])
+        self.assertLess(names.index('Build and verify pinned KernelSU AVD kernel'),
+                        names.index('Save verified KernelSU kernel'))
+        image = self.step('Verify pinned Android system image')
+        self.assertNotIn('if', image)
+        self.assertIn('Pkg.Revision', image['run'])
+        self.assertIn('stock-boot-sha256.txt', image['run'])
+        self.assertIn('sha256sum --check --strict', image['run'])
+        for key in ('SYSTEM_IMAGE_KERNEL_SHA256', 'SYSTEM_IMAGE_RAMDISK_SHA256'):
+            self.assertRegex(self.flow['env'][key], r'^[0-9a-f]{64}$')
+            self.assertIn('$' + key, image['run'])
 
     def test_complete_payload_preparation_cannot_be_skipped(self):
         step = self.step('Prepare complete x86_64 installation payloads')

@@ -3,9 +3,9 @@
 The manual **Android KernelSU Acceptance** workflow installs the module into a
 disposable Android 15/API 35 `google_apis` x86_64 emulator. The AVD keeps the
 SDK userspace and ramdisk, but boots a pinned API35/6.6 x86_64 GKI built against
-Android CI build 11987101 with KernelSU v3.2.0 and the required x86_64 syscall
-hardening compatibility patches. The release archive is pinned by SHA-256 before
-boot. After Android userspace starts, official `ksud` uses upstream
+Android CI build 12525588 with KernelSU v3.2.0 and the required x86_64 syscall
+hardening compatibility patches. The source manifest and build recipe are pinned;
+cached build outputs are verified before boot. The SDK image is revision 9. After Android userspace starts, official `ksud` uses upstream
 `late-load` only to initialize userspace/lifecycle stages; it does not inject a
 KernelSU LKM into the stock emulator kernel. This is not a physical-phone,
 stock-kernel LKM, ARM64, or authenticated Google Play test.
@@ -55,10 +55,10 @@ cannot close the real-device Play/GMS issue.
 
 ## Installation, deadlines and reports
 
-The full arm64 module is installed through KernelSU first; the AVD then receives
-x86_64 CLI, core, jq and yq payloads. Each replacement utility is executed to detect
-ABI/interpreter mistakes. The production arm64 artifacts are not modified by this
-fixture. `ksud` is staged under `/sdcard/Download/MagicNet`, then copied to its
+A separate test ZIP replaces ABI-specific payloads before the real KernelSU
+installation. CLI, core, jq and yq are required, with eCapture/Proxylink replaced
+when bundled. The production ARM64 archive remains unchanged; fixture preparation
+and lifecycle checks reject missing or incompatible runtime payloads. `ksud` is staged under `/sdcard/Download/MagicNet`, then copied to its
 actual executable userspace destination; `/sdcard` is not used as executable storage.
 
 All ADB calls, including `wait-for-device`, have deadlines. Exit diagnostics have

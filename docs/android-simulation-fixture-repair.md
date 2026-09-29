@@ -64,14 +64,15 @@ mismatch. Replacing that with a stock-kernel LKM late-load also proved invalid:
 KernelSU v3.2.0 x86_64 requires kernel-side syscall-hardening compatibility
 patches, so an arbitrary stock AVD kernel is not a valid late-load target.
 
-The fixture now downloads the API35/6.6 x86_64 KernelSU v3.2.0 kernel built for
-Android CI build 11987101, verifies the release archive SHA-256 and its
-`build-info.txt`, then boots the emulator with that pinned `bzImage`. Official
+The fixture now builds the API35/6.6 x86_64 KernelSU v3.2.0 virtual-device target
+from Android CI manifest 12525588, verifies source identity and cached output
+hashes, then boots revision 9 of the SDK image with that `bzImage`. Stock kernel
+and ramdisk hashes are pinned to the boot-verified tuple. Official
 `ksud` verifies that a positive KernelSU kernel interface already exists before
 running upstream `late-load` to initialize userspace, `modules_update`, SELinux
 policy, service and boot-completed stages. Every reboot repeats only this
 userspace lifecycle activation; the harness never injects an LKM into the stock
 kernel or manually substitutes `service.sh` for KernelSU lifecycle ownership.
 
-This proves the pinned API35 x86_64 KernelSU-kernel path. Stock-kernel LKM
+A passing full lifecycle run establishes the pinned API35 x86_64 KernelSU-kernel path. Stock-kernel LKM
 injection, ARM64 and OEM kernels remain explicit coverage gaps.
