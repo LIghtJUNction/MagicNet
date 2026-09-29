@@ -162,12 +162,27 @@ class TunProofTests(unittest.TestCase):
         self.assertEqual(report['status'], 'not_verified')
         self.assertTrue(report['restored'])
         self.assertEqual(len(saves), 2)
+        self.assertEqual(report['failure_control'], 'positive')
+        self.assertEqual(report['failure_operation'], 'config_save')
+        self.assertEqual(report['failure_exit_code'], 1)
 
     def test_failed_restore_cannot_report_verified(self):
         report, _ = self.transaction(failed_restore=True)
         self.assertEqual(report['status'], 'not_verified')
         self.assertFalse(report['restored'])
         self.assertEqual(report['reason'], 'config_restore_failed_discard_avd')
+        self.assertEqual(report['failure_control'], 'restore')
+        self.assertEqual(report['failure_operation'], 'core_restart')
+        self.assertEqual(report['failure_exit_code'], 1)
+
+    def test_first_operation_failure_survives_failed_restoration(self):
+        report, _ = self.transaction(failed_save=True, failed_restore=True)
+        self.assertEqual(report['failure_control'], 'positive')
+        self.assertEqual(report['failure_operation'], 'config_save')
+        self.assertEqual(report['failure_exit_code'], 1)
+        self.assertNotIn('argv', report)
+        self.assertNotIn('stdout', report)
+        self.assertNotIn('stderr', report)
 
     def test_failed_reverse_cleanup_cannot_report_verified(self):
         report, _ = self.transaction(failed_reverse_cleanup=True)

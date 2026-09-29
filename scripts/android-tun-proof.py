@@ -85,9 +85,16 @@ def verify(adb, instrument, component) -> dict:
     except (ValueError, TypeError):
         return report | {'reason': 'invalid_config_snapshot'}
 
-    def command(text, timeout=30):
+    control = 'prepare'
+
+    def command(text, timeout=30, *, operation='device_operation'):
         cp = adb(text, timeout=timeout)
         if cp.returncode:
+            # Keep the first failure even if restoration also fails. Never
+            # retain argv, payloads or raw output from a user configuration.
+            report.setdefault('failure_control', control)
+            report.setdefault('failure_operation', operation)
+            report.setdefault('failure_exit_code', cp.returncode)
             raise RuntimeError('device_operation_failed')
         return cp.stdout
 
@@ -99,17 +106,22 @@ def verify(adb, instrument, component) -> dict:
         encoded = base64.b64encode(json.dumps(value, ensure_ascii=False).encode()).decode()
         created = False
         try:
-            actual = command(CLI + ' webui payload create tmp ' + name).strip()
+            actual = command(CLI + ' webui payload create tmp ' + name,
+                             operation='payload_create').strip()
             created = True
             if actual != path:
                 raise RuntimeError('unexpected_payload_path')
             for offset in range(0, len(encoded), 32768):
-                command(CLI + ' webui payload append tmp ' + name + ' ' + shlex.quote(encoded[offset:offset + 32768]))
-            command(CLI + ' config-editor save-file sing-box ' + path)
-            command(CLI + ' service restart sing-box', timeout=90)
+                command(CLI + ' webui payload append tmp ' + name + ' ' + shlex.quote(encoded[offset:offset + 32768]),
+                        operation='payload_append')
+            command(CLI + ' config-editor save-file sing-box ' + path,
+                    operation='config_save')
+            command(CLI + ' service restart sing-box', timeout=90,
+                    operation='core_restart')
         finally:
             if created:
-                command(CLI + ' webui payload remove tmp ' + name)
+                command(CLI + ' webui payload remove tmp ' + name,
+                        operation='payload_remove')
 
     marker_bytes = secrets.token_hex(16)
     counts = {'accepted': 0}
@@ -135,6 +147,7 @@ def verify(adb, instrument, component) -> dict:
                        check=True, capture_output=True, timeout=10)
         reverse = True
         for key, candidate in (('positive', positive), ('reject', blocked), ('positive_after', positive)):
+            control = key
             changed = True  # A failed save/restart may already have changed the active file.
             install_config(candidate)
             with lock:
@@ -154,6 +167,7 @@ def verify(adb, instrument, component) -> dict:
         report['reason'] = 'sentinel_not_proven'
     finally:
         if changed:
+            control = 'restore'
             try:
                 install_config(original)
                 if marker.stdout.strip() == 'absent':
