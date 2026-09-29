@@ -46,6 +46,9 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 
 ## Unreleased
 
+- Exempt hotspot-downstream IPv6 from sing-box's global mangle TPROXY so
+  tethered clients can reach IPv6-first sites without restoring TPROXY,
+  Redirect, or netd `ALLOW_MULTI` (#335).
 - Visualize Proxy, Direct, and Bypass app traffic paths in the WebUI, including
   DNS boundaries, before/after confirmation details, automatic activation, and
   an advanced action to re-resolve Android UIDs after package or user changes.

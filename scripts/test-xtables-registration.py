@@ -110,6 +110,26 @@ magicnet_xtables_table_probe ip6tables nat
                 cp, _ = self.probe(shell, table_rc=rc, error=error)
                 self.assertEqual(cp.returncode, expected, cp.stderr)
 
+    def test_ip6tables_ensure_inserts_allowlisted_tables_and_rejects_others(self):
+        for shell in SHELLS:
+            with tempfile.TemporaryDirectory() as td:
+                calls = Path(td) / 'calls'
+                calls.touch()
+                cp = self.run_shell(shell, r'''
+magicnet_cmd_exists() { return 0; }
+magicnet_xtables_ensure_rule() {
+    printf '%s\n' "$*" >> "$CALLS"
+    return 0
+}
+magicnet_ip6tables_ensure -t mangle PREROUTING -i wlan2 -j ACCEPT || exit 10
+magicnet_ip6tables_ensure -t bogus PREROUTING -i wlan2 -j ACCEPT
+exit $?
+''', CALLS=str(calls))
+                self.assertEqual(cp.returncode, 1, cp.stderr)
+                self.assertEqual(calls.read_text().splitlines(), [
+                    'magicnet_ip6tables_cmd -I mangle PREROUTING -i wlan2 -j ACCEPT',
+                ])
+
 
 if __name__ == '__main__':
     unittest.main()
