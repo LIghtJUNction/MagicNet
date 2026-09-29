@@ -278,7 +278,7 @@ class DeviceTests(unittest.TestCase):
             return cp(values[command])
 
         def kshell(command, **_):
-            return cp('u:r:ksu:s0\n' if command == 'id -Z' else 'Enforcing\n')
+            return cp(SIM.KSU_DOMAIN + '\n' if command == 'id -Z' else 'Enforcing\n')
 
         with patch.object(device, 'shell', side_effect=shell), \
              patch.object(device, 'kshell', side_effect=kshell):

@@ -35,6 +35,9 @@ KSUD = '/data/adb/ksud'
 # Upstream late-load always copies current_exe onto KSUD. Running that path
 # returns ETXTBSY, so lifecycle activation must start from a different file.
 KSUD_LAUNCH = '/data/adb/ksu/ci-ksud'
+# Pinned KernelSU v3.2.0 sets KERNEL_SU_DOMAIN to "su", so granted tasks
+# run as u:r:su:s0. The older u:r:ksu:s0 type is not created by this kernel.
+KSU_DOMAIN = 'u:r:su:s0'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
@@ -325,7 +328,7 @@ class Device:
         require(re.fullmatch(r'Kernel Version: [1-9][0-9]*', version) is not None,
                 'KernelSU userspace late-load lost the kernel interface')
         self.shell(f'test -x {BB}')
-        require(self.kshell('id -Z').stdout.strip() == 'u:r:ksu:s0',
+        require(self.kshell('id -Z').stdout.strip() == KSU_DOMAIN,
                 'real KernelSU SELinux domain required after userspace late-load')
         require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
                 'KernelSU userspace late-load changed SELinux enforcement')
@@ -634,7 +637,7 @@ def main() -> int:
                 device.reboot()
                 device.ready()
                 device.kshell(f'p=$({BB} pidof sing-box) && test -n "$p" && '
-                              'for n in $p; do test "$(cat /proc/$n/attr/current)" = u:r:ksu:s0 || exit 1; done')
+                              f'for n in $p; do test "$(cat /proc/$n/attr/current)" = {KSU_DOMAIN} || exit 1; done')
             with report.phase('app-uid-tun-controls'):
                 tun_controls(device, out, 'app-uid-tun-controls')
             with report.phase('invalid-config-rollback'):

@@ -437,7 +437,7 @@ class BootstrapTests(unittest.TestCase):
 
             def kshell(self, command, **kwargs):
                 if command == 'id -Z':
-                    return result('u:r:shell:s0' if fault == 'wrong-domain' else 'u:r:ksu:s0')
+                    return result('u:r:shell:s0' if fault == 'wrong-domain' else SIM.KSU_DOMAIN)
                 if command == 'getenforce':
                     return result('Permissive' if fault == 'permissive' else 'Enforcing')
                 raise AssertionError(command)
