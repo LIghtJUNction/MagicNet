@@ -22,6 +22,8 @@ HOTSPOT_IFACE_MISSING=0
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "outbounds": [
+    {"type": "direct", "tag": "direct"},
+    {"type": "selector", "tag": "proxy", "outbounds": ["direct"], "default": "direct"},
     {"type": "selector", "tag": "hotspot", "outbounds": ["direct", "proxy"], "default": "direct"}
   ],
   "route": {
@@ -485,6 +487,33 @@ assert_hotspot_probe_errors_preserve_config
   magicnet_hotspot_proxy_enabled() { return 0; }
   magicnet_hotspot_tun_route_table_ready() { echo 'TUN probe is invalid for eBPF' >&2; exit 99; }
   [ "$(magicnet_hotspot_route_status)" = 'route_status=shared-tc-unverified' ]
+)
+
+# Standalone configs are valid without the template proxy/direct names. Use
+# the real renderer and reject every dangling member, including stale hotspot.
+(
+  magicnet_hotspot_source_cidrs_json() { printf '%s\n' '[]'; }
+  for tag in direct custom; do
+    jq -n --arg tag "$tag" '{outbounds:[{type:"direct",tag:$tag}],route:{final:$tag,rules:[]}}' >"$WORK/standalone.json"
+    magicnet_singbox_render_hotspot_policy "$WORK/standalone.json" "$WORK/standalone-rendered.json"
+    jq -e --arg tag "$tag" '
+      [.outbounds[].tag] as $tags
+      | (.outbounds[] | select(.tag == "hotspot")) as $hotspot
+      | $hotspot.outbounds == [$tag] and $hotspot.default == $tag
+        and ($hotspot.outbounds | all(. as $member | $tags | index($member) != null))
+    ' "$WORK/standalone-rendered.json" >/dev/null
+    magicnet_singbox_render_hotspot_policy "$WORK/standalone-rendered.json" "$WORK/standalone-twice.json"
+    cmp -s "$WORK/standalone-rendered.json" "$WORK/standalone-twice.json"
+  done
+  printf '%s\n' '{"outbounds":[{"type":"direct","tag":"first"},{"type":"direct","tag":"final"}],"route":{"final":"final"}}' >"$WORK/standalone.json"
+  magicnet_singbox_render_hotspot_policy "$WORK/standalone.json" "$WORK/standalone-rendered.json"
+  jq -e '.outbounds[] | select(.tag == "hotspot") | .outbounds == ["final"] and .default == "final"' "$WORK/standalone-rendered.json" >/dev/null
+  printf '%s\n' '{"outbounds":[],"route":{}}' >"$WORK/standalone.json"
+  if magicnet_singbox_render_hotspot_policy "$WORK/standalone.json" "$WORK/standalone-rendered.json"; then
+    printf '%s\n' 'empty standalone config unexpectedly gained a usable hotspot selector' >&2
+    exit 1
+  fi
+  [ ! -e "$WORK/standalone-rendered.json" ]
 )
 
 printf '%s\n' 'hotspot routing test passed'

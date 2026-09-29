@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Host regressions for #344. These results are NOT Android device acceptance.
 
---check-core PATH validates both initial and migration configs with a real core.
+--check-core PATH validates initial, migration and rendered hotspot configs with a real core.
 No SDK, root, network or third-party Python module is needed by the default suite.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import stat
 import struct
 import subprocess
@@ -486,11 +487,25 @@ class FailureGateTests(unittest.TestCase):
 def check_core(binary):
     core = str(Path(binary).resolve())
     with tempfile.TemporaryDirectory() as tmp:
+        module = Path(tmp) / 'module'
+        (module / 'bin').mkdir(parents=True)
+        jq = shutil.which('jq')
+        if jq is None:
+            raise RuntimeError('host jq is required for the real hotspot renderer')
+        (module / 'bin/jq').symlink_to(jq)
         for name, value in (('initial', SIM.fixture_config()),
                             ('upgrade', SIM.upgrade_candidate(SIM.fixture_config()))):
             config = Path(tmp) / (name + '.json')
             config.write_text(json.dumps(value))
             subprocess.run([core, 'check', '-c', str(config)], check=True, timeout=30, cwd=tmp)
+            rendered = Path(tmp) / (name + '-hotspot.json')
+            subprocess.run(['sh', '-c',
+                            '. "$1"; magicnet_hotspot_source_cidrs_json() { printf "[]\\n"; }; '
+                            'magicnet_singbox_render_hotspot_policy "$2" "$3"',
+                            'hotspot-core-check', str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'),
+                            str(config), str(rendered)],
+                           env=dict(os.environ, MODDIR=str(module)), check=True, timeout=30)
+            subprocess.run([core, 'check', '-c', str(rendered)], check=True, timeout=30, cwd=tmp)
 
 
 if __name__ == '__main__':
