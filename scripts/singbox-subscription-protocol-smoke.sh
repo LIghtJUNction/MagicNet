@@ -27,7 +27,11 @@ trap cleanup EXIT
 MODDIR="$tmp_dir/module"
 mkdir -p "$MODDIR"
 ln -s "$MODULE_ROOT/lib" "$MODDIR/lib"
-cp -R "$MODULE_ROOT/.config" "$MODDIR/.config"
+# Package validation extracts only the subscription libraries, which do not
+# need a config tree. Full source fixtures retain their bundled defaults.
+if [[ -d "$MODULE_ROOT/.config" ]]; then
+    cp -R "$MODULE_ROOT/.config" "$MODDIR/.config"
+fi
 # shellcheck disable=SC1090
 . "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 

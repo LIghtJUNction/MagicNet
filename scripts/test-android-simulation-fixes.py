@@ -493,6 +493,7 @@ def check_core(binary):
         if jq is None:
             raise RuntimeError('host jq is required for the real hotspot renderer')
         (module / 'bin/jq').symlink_to(jq)
+        (module / 'lib').symlink_to(ROOT / 'src/MagicNet/lib', target_is_directory=True)
         for name, value in (('initial', SIM.fixture_config()),
                             ('upgrade', SIM.upgrade_candidate(SIM.fixture_config()))):
             config = Path(tmp) / (name + '.json')
@@ -500,12 +501,37 @@ def check_core(binary):
             subprocess.run([core, 'check', '-c', str(config)], check=True, timeout=30, cwd=tmp)
             rendered = Path(tmp) / (name + '-hotspot.json')
             subprocess.run(['sh', '-c',
+                            'import() { :; }; . "$MODDIR/lib/magicnet/common.sh"; '
                             '. "$1"; magicnet_hotspot_source_cidrs_json() { printf "[]\\n"; }; '
                             'magicnet_singbox_render_hotspot_policy "$2" "$3"',
                             'hotspot-core-check', str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'),
                             str(config), str(rendered)],
                            env=dict(os.environ, MODDIR=str(module)), check=True, timeout=30)
             subprocess.run([core, 'check', '-c', str(rendered)], check=True, timeout=30, cwd=tmp)
+
+
+class CoreCheckHarnessTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('jq'), 'host jq is required')
+    def test_real_renderer_is_loaded_and_both_candidates_reach_core_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / 'checked-configs.jsonl'
+            core = Path(tmp) / 'core-check-fixture'
+            core.write_text('#!' + sys.executable + '\n'
+                            'import json, os, pathlib, sys\n'
+                            'config = json.loads(pathlib.Path(sys.argv[3]).read_text())\n'
+                            'with open(os.environ["CORE_CHECK_LOG"], "a") as log:\n'
+                            '    log.write(json.dumps(config) + "\\n")\n')
+            core.chmod(0o755)
+            with patch.dict(os.environ, {'CORE_CHECK_LOG': str(log)}):
+                check_core(core)
+            configs = [json.loads(line) for line in log.read_text().splitlines()]
+            self.assertEqual(len(configs), 4)
+            for index in (1, 3):
+                hotspot = [out for out in configs[index]['outbounds'] if out['tag'] == 'hotspot']
+                self.assertEqual(len(hotspot), 1)
+                self.assertEqual(hotspot[0]['outbounds'], ['direct'])
+                self.assertEqual(hotspot[0]['default'], 'direct')
+            SIM.verify_migrated_node(configs[3])
 
 
 if __name__ == '__main__':
