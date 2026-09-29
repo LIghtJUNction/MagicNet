@@ -418,6 +418,26 @@ class DeviceTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, (live, pid_rc))
 
 
+class TunControlTests(unittest.TestCase):
+    def test_failed_device_commands_reach_proof_without_raising(self):
+        device = Mock()
+        device.kshell.return_value = cp(rc=1)
+        def verify(adb, *_):
+            self.assertEqual(adb('fixture-command', timeout=15).returncode, 1)
+            device.kshell.assert_called_once_with('fixture-command', timeout=15, check=False)
+            return {'status': 'not_verified', 'failure_operation': 'config_save',
+                    'failure_exit_code': 1}
+        proof = Mock(verify=verify)
+        benchmark = Mock()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+                SIM, 'load_script', side_effect=[proof, benchmark]):
+            with self.assertRaisesRegex(RuntimeError, 'app-UID TUN controls failed'):
+                SIM.tun_controls(device, Path(tmp), 'upgrade-preservation')
+            report = json.loads((Path(tmp) / 'tun-controls-upgrade-preservation.json').read_text())
+            self.assertEqual(report['failure_operation'], 'config_save')
+            self.assertEqual(report['failure_exit_code'], 1)
+
+
 class InvalidConfigTests(unittest.TestCase):
     def device(self, reject_rc=1, changed=False, deny_valid=False):
         calls = []

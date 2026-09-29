@@ -95,6 +95,18 @@ def verify(adb, instrument, component) -> dict:
             report.setdefault('failure_control', control)
             report.setdefault('failure_operation', operation)
             report.setdefault('failure_exit_code', cp.returncode)
+            output = cp.stdout + (cp.stderr or '')
+            kind = 'command_failed'
+            for message, label in (
+                    ('config apply is still busy', 'config_apply_busy'),
+                    ('config validation failed', 'config_validation'),
+                    ('No sing-box nodes found', 'nodes_unavailable'),
+                    ('No subscription source is configured', 'source_unavailable'),
+                    ('ADB deadline exceeded', 'adb_deadline')):
+                if message in output:
+                    kind = label
+                    break
+            report.setdefault('failure_kind', kind)
             raise RuntimeError('device_operation_failed')
         return cp.stdout
 

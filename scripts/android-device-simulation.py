@@ -438,7 +438,11 @@ def load_script(name: str):
 def tun_controls(device: Device, out: Path, phase: str):
     proof = load_script('android-tun-proof')
     benchmark = load_script('android-network-benchmark')
-    result = proof.verify(device.kshell, benchmark.instrument, benchmark.COMPONENT)
+    # The proof owns failure accounting and restoration. Return failed commands
+    # to it instead of raising before it can record the operation and exit code.
+    def probe_command(command, timeout=30):
+        return device.kshell(command, timeout=timeout, check=False)
+    result = proof.verify(probe_command, benchmark.instrument, benchmark.COMPONENT)
     (out / ('tun-controls-' + phase + '.json')).write_text(json.dumps(result, indent=2) + '\n')
     require(result.get('status') == 'verified' and all(result.get(k) is True for k in
             ('positive', 'reject', 'positive_after', 'restored')), 'app-UID TUN controls failed')
