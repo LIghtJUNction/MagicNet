@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -63,8 +64,14 @@ class SubscriptionTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix='magicnet-clash-')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        # Release checks run after Android tools have populated the source bin
+        # directory. Keep host conversion checks on host jq and real libraries.
+        module = self.root / 'module'
+        module.mkdir()
+        (module / 'lib').symlink_to(ROOT / 'src/MagicNet/lib', target_is_directory=True)
+        shutil.copytree(ROOT / 'src/MagicNet/.config', module / '.config')
         self.prefix = f'''set -eu
-MODDIR={shlex.quote(str(ROOT / 'src/MagicNet'))}
+MODDIR={shlex.quote(str(module))}
 . "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 magicnet_singbox_subscription_filter_file() {{ printf '/dev/null\\n'; }}
 '''

@@ -121,6 +121,38 @@ jq -e '
   exit 1
 }
 
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{"dns":{"servers":[{"type":"hosts","tag":"offline","predefined":{"magicnet.test":["198.18.0.42"]}}],
+"final":"offline","rules":[{"domain":"magicnet.test","server":"offline"}]},"route":{}}
+EOF
+printf 'validated\n' >"$MODDIR/.config/sing-box/standalone-config"
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+jq -e '
+  .dns.servers == [{"type":"hosts","tag":"offline","predefined":{"magicnet.test":["198.18.0.42"]}}]
+    and .dns.final == "offline"
+    and .dns.rules == [{"domain":"magicnet.test","server":"offline"}]
+    and .route.default_domain_resolver == "offline"
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'standalone DNS graph and explicit 1.14 resolver were not preserved\n' >&2
+  exit 1
+}
+cp "$MODDIR/.config/sing-box/config.json" "$WORK/standalone-dns.json"
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+cmp "$WORK/standalone-dns.json" "$MODDIR/.config/sing-box/config.json"
+jq '.route.default_domain_resolver={"server":"offline","strategy":"ipv4_only","timeout":"3s"}' \
+  "$MODDIR/.config/sing-box/config.json" >"$WORK/explicit-resolver.json"
+cp "$WORK/explicit-resolver.json" "$MODDIR/.config/sing-box/config.json"
+MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e '
+  .route.default_domain_resolver == {"server":"offline","strategy":"ipv4_only","timeout":"3s"}
+    and .dns.final == "cloudflare-profile-dns"
+    and ([.dns.servers[] | select(.tag == "offline")] | length) == 1
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'explicit resolver or selected standalone DNS profile was overwritten\n' >&2
+  exit 1
+}
+rm -f "$MODDIR/.config/sing-box/standalone-config"
+
 if [ "$with_routing_assets" -eq 1 ]; then
   command -v sing-box >/dev/null 2>&1 || {
     printf 'prepared DNS checks require sing-box and rule-set assets\n' >&2

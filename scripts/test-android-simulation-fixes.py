@@ -493,7 +493,9 @@ def check_core(binary):
         if jq is None:
             raise RuntimeError('host jq is required for the real hotspot renderer')
         (module / 'bin/jq').symlink_to(jq)
+        (module / 'bin/sing-box').symlink_to(core)
         (module / 'lib').symlink_to(ROOT / 'src/MagicNet/lib', target_is_directory=True)
+        shutil.copytree(ROOT / 'src/MagicNet/.config', module / '.config')
         for name, value in (('initial', SIM.fixture_config()),
                             ('upgrade', SIM.upgrade_candidate(SIM.fixture_config()))):
             config = Path(tmp) / (name + '.json')
@@ -508,6 +510,39 @@ def check_core(binary):
                             str(config), str(rendered)],
                            env=dict(os.environ, MODDIR=str(module)), check=True, timeout=30)
             subprocess.run([core, 'check', '-c', str(rendered)], check=True, timeout=30, cwd=tmp)
+            active = module / '.config/sing-box/config.json'
+            active.write_text(config.read_text())
+            (active.parent / 'standalone-config').write_text('validated\n')
+            # Only platform observations and logging are fixtures. Execute the
+            # real startup candidate pipeline, including its final core check.
+            startup = '''
+import() {
+    if [ "$1" = __singbox__ ] && [ "${core_helpers_loaded:-0}" != 1 ]; then
+        . "$MODDIR/lib/kamfw/__singbox__.sh"
+        core_helpers_loaded=1
+    fi
+}
+set_i18n() { :; }
+i18n() { printf '%s\\n' "$1"; }
+info() { printf '%s\\n' "$*" >&2; }
+warn() { printf '%s\\n' "$*" >&2; }
+error() { printf '%s\\n' "$*" >&2; }
+success() { :; }
+config() { :; }
+ip() { return 0; }
+. "$MODDIR/lib/magicnet.sh"
+import __singbox__
+is_singbox_running() { return 1; }
+magicnet_prepare_singbox_candidate_unlocked
+'''
+            try:
+                subprocess.run(['bash', '-c', startup],
+                               env=dict(os.environ, MODDIR=str(module), MAGIC_SINGBOX='1'),
+                               check=True, timeout=30, cwd=tmp)
+            except subprocess.CalledProcessError:
+                subprocess.run([core, 'check', '-c', str(active), '-D', str(active.parent)],
+                               timeout=30, cwd=tmp)
+                raise
 
 
 class CoreCheckHarnessTests(unittest.TestCase):
@@ -525,13 +560,17 @@ class CoreCheckHarnessTests(unittest.TestCase):
             with patch.dict(os.environ, {'CORE_CHECK_LOG': str(log)}):
                 check_core(core)
             configs = [json.loads(line) for line in log.read_text().splitlines()]
-            self.assertEqual(len(configs), 4)
-            for index in (1, 3):
+            self.assertEqual(len(configs), 6)
+            for index in (1, 2, 4, 5):
                 hotspot = [out for out in configs[index]['outbounds'] if out['tag'] == 'hotspot']
                 self.assertEqual(len(hotspot), 1)
                 self.assertEqual(hotspot[0]['outbounds'], ['direct'])
                 self.assertEqual(hotspot[0]['default'], 'direct')
-            SIM.verify_migrated_node(configs[3])
+            for index in (2, 5):
+                self.assertEqual(configs[index]['dns']['final'], 'fixture-dns')
+                self.assertEqual(configs[index]['dns']['servers'], SIM.fixture_config()['dns']['servers'])
+                self.assertEqual(configs[index]['route']['default_domain_resolver'], 'fixture-dns')
+            SIM.verify_migrated_node(configs[5])
 
 
 if __name__ == '__main__':
