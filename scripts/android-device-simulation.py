@@ -577,7 +577,10 @@ def diagnostics(device: Device, out: Path):
         return
     # Diagnostics must not turn a failing test green or exhaust the job timeout.
     deadline = time.monotonic() + 25
-    commands = {'logcat.txt': 'logcat -d -t 600', 'dmesg.txt': 'dmesg | tail -n 400',
+    commands = {'kam.log': 'tail -n 300 /data/adb/cache/MagicNet/kam.log',
+                'startup-state.txt': f'ls -l {MOD}/.state/machines; '
+                                     f'cat {MOD}/.state/machines/*.state',
+                'logcat.txt': 'logcat -d -t 1200', 'dmesg.txt': 'dmesg | tail -n 400',
                 'service-status.json': MOD + '/cli --json service status',
                 'service.log': f'tail -n 300 {MOD}/.log/service.log',
                 'sing-box.log': f'tail -n 300 {MOD}/.log/sing-box.log'}
