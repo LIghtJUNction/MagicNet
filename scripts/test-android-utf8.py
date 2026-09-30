@@ -43,12 +43,17 @@ class Utf8ParserTests(unittest.TestCase):
             (module / 'lib/magicnet').symlink_to(SOURCE)
             (module / '.config/sing-box').mkdir(parents=True)
             (module / 'values').write_text(' \n# 注释\n  # 中文\n 测试 \n测试\n 测试 \n')
+            (module / 'escape-input').write_text('测"试\\🌍\n\r\t\x01\x7f' + '长' * 3000)
+            (module / 'escape-expected').write_text('测\\"试\\\\🌍   ' + '长' * 3000)
             (module / '.config/sing-box/standalone-config').touch()
             script = r'''
 set -eu
 import() { :; }
 . "$MODDIR/lib/magicnet/common.sh"
 . "$MODDIR/lib/magicnet/apps.sh"
+for attempt in 1 2 3 4 5; do
+    test "$(magicnet_json_escape "$(cat "$MODDIR/escape-input")")" = "$(cat "$MODDIR/escape-expected")"
+done
 test "$(magicnet_app_proxy_packages "$MODDIR/values")" = '测试'
 test "$(magicnet_list_file_values "$MODDIR/values")" = ' 测试 
 测试'
