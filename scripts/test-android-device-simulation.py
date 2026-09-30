@@ -510,9 +510,11 @@ class BusyboxPreflightTests(unittest.TestCase):
     def test_regex_cases_match_existing_startup_patterns_and_host_tools(self):
         bootstrap = (SIM.ROOT / 'src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh').read_text()
         common = (SIM.ROOT / 'src/MagicNet/lib/magicnet/common.sh').read_text()
-        self.assertIn(SIM.NODE_PATTERN, bootstrap)
-        for name in ('inbounds', 'outbounds'):
-            self.assertIn(SIM.CONFIG_PATTERNS[name], common)
+        self.assertIn('any(.outbounds[]?', bootstrap)
+        self.assertIn('magicnet_singbox_config_shape_valid "$_config"', common)
+        apps = (SIM.ROOT / 'src/MagicNet/lib/magicnet/apps.sh').read_text()
+        self.assertIn('index($0, "UserInfo{")', apps)
+        self.assertNotIn('gsub(/^[[:space:]]+', apps)
         for name, args, sample, rc, output in SIM.busybox_regex_cases():
             with self.subTest(case=name):
                 result = subprocess.run(args, input=sample, text=True, capture_output=True, timeout=3)

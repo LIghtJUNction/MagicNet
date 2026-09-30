@@ -171,9 +171,9 @@ magicnet_singbox_api_has_nodes() {
 magicnet_singbox_standalone_config_ready() {
     _config="$(magicnet_singbox_config_file)"
     _marker="${MODDIR}/.config/sing-box/standalone-config"
-    [ -f "$_marker" ] && [ -s "$_config" ] &&
-        grep -Eq '"inbounds"[[:space:]]*:' "$_config" &&
-        grep -Eq '"outbounds"[[:space:]]*:' "$_config"
+    # BusyBox's regex engine can crash on compact JSON with long UTF-8 lines.
+    # Inspect the document shape through the shipped parser instead of grep.
+    [ -f "$_marker" ] && magicnet_singbox_config_shape_valid "$_config"
     _rc=$?
     unset _config _marker
     return "$_rc"

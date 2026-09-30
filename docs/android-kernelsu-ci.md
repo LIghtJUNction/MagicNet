@@ -79,11 +79,21 @@ physical device and a known-working proxy path.
 ## BusyBox runtime preflight
 
 Before userspace activation and again inside the KernelSU domain, the offline
-lifecycle harness checks the extracted BusyBox with synthetic grep/sed inputs.
-Every reboot repeats these checks through the existing late-load path. Matching,
-nonmatching, whitespace and UTF-8 cases exercise startup's regex operations;
+lifecycle harness checks BusyBox grep, byte-based awk trimming/user-ID extraction,
+and system sed on ASCII module metadata. JSON/Unicode tags use packaged jq, not
+the former sed tag extractor. Every reboot repeats the preflight through the
+existing late-load path. Matching, nonmatching, whitespace and UTF-8 cases
+exercise the supported product operations;
 a missing runtime identity, wrong result, crash or timeout fails acceptance.
 There is no alternate binary, skipped TUN control or relaxed restoration rule.
+
+The original UTF-8 sed/awk character-set probes reproduced SIGSEGV in both the
+manager binary and system Bionic regex implementation. Replacing sed with regex
+gsub was insufficient. The product list parsers now trim by byte membership and
+extract user IDs before checking ASCII digits. `test-android-utf8.py` executes
+these real functions, plus long Unicode JSON and malformed-config controls,
+against the unmodified KernelSU binary verified by SHA-256. This is a host
+parser regression, not Android networking acceptance or a general Bionic fix.
 
 `simulation.json` retains `provenance.busybox_checks`: SHA-256, the numeric
 BusyBox version, stage, per-case exit codes and output-match booleans. Each probe

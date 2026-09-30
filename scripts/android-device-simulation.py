@@ -228,25 +228,37 @@ def busybox_regex_cases():
     cases.extend([
         ('nodes_absent', ['grep', '-Eq', NODE_PATTERN], '{"type":"direct"}\n', 1, ''),
         ('awk_trimmed_lines', ['awk',
-         '{ line=$0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", line); '
+         '{ line=$0; ws=" \\t\\r\\n\\v\\f"; '
+         'while (length(line) && index(ws, substr(line, 1, 1))) line=substr(line, 2); '
+         'while (length(line) && index(ws, substr(line, length(line), 1))) line=substr(line, 1, length(line)-1); '
          'if (line == "" || substr(line, 1, 1) == "#") next; '
          'if (!seen[line]++) print line }'],
          ' \n# comment\n  # comment\n 测试 \n测试\n', 0, '测试\n'),
         ('awk_preserved_lines', ['awk',
-         '{ trimmed=$0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed); '
+         '{ trimmed=$0; ws=" \\t\\r\\n\\v\\f"; '
+         'while (length(trimmed) && index(ws, substr(trimmed, 1, 1))) trimmed=substr(trimmed, 2); '
+         'while (length(trimmed) && index(ws, substr(trimmed, length(trimmed), 1))) trimmed=substr(trimmed, 1, length(trimmed)-1); '
          'if (trimmed == "" || substr(trimmed, 1, 1) == "#") next; '
          'if (!seen[$0]++) print }'],
          ' \n# comment\n  # comment\n 测试 \n测试\n 测试 \n', 0, ' 测试 \n测试\n'),
+        ('awk_user_ids', ['awk',
+         'index($0, "UserInfo{") { value=substr($0, index($0, "UserInfo{")+9); '
+         'colon=index(value, ":"); if (colon) { value=substr(value, 1, colon-1); '
+         'if (value ~ /^[0-9]+$/) print value } }'],
+         'Users:\n UserInfo{0:测试:13}\n UserInfo{10:工作:30}\n', 0, '0\n10\n'),
     ])
     return cases
 
 
 def system_sed_cases():
+    # Only ASCII module metadata uses sed in this pre-install check. UTF-8
+    # lists/user names use the actual awk operations above; JSON uses jq and
+    # is checked on the installed module, not with a regex tag extractor.
     return [
         ('sed_lines', ['/^[[:space:]]*$/d; /^[[:space:]]*#/d'],
-         ' \n# comment\n  # comment\n测试\n', 0, '测试\n'),
-        ('sed_capture', ['-n', r's/.*"tag":"\([^"]*\)".*/\1/p'],
-         '{"tag":"测试"}\n', 0, '测试\n'),
+         ' \n# comment\n  # comment\nversion=v1.5.18\n', 0, 'version=v1.5.18\n'),
+        ('sed_capture', ['-n', 's/^version=//p'],
+         'id=MagicNet\nversion=v1.5.18\n', 0, 'v1.5.18\n'),
     ]
 
 

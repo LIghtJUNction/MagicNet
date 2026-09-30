@@ -75,6 +75,27 @@ CORE
 chmod +x "$MODDIR/bin/sing-box"
 magicnet_singbox_build_outbounds_file_with_jq "$fixture/nodes" /dev/null "$fixture/outbounds"
 magicnet_singbox_update_config_with_nodes "$fixture/outbounds"
+# Config-editor saves compact UTF-8 JSON. Long lines must remain valid for both
+# standalone startup and cached node detection, without using a regex reader.
+cp "$active" "$fixture/short-config"
+jq -c '{padding: ("中国公司网络" * 10000)} + .' "$active" >"$active.new"
+mv "$active.new" "$active"
+printf 'validated\n' >"${active%/*}/standalone-config"
+(
+    # Model the failing platform reader; the JSON predicates must not call it.
+    grep() { return 139; }
+    magicnet_singbox_standalone_config_ready
+    magicnet_singbox_config_has_nodes
+)
+for invalid in '{"inbounds":[],"outbounds":[{}]}' \
+    '{"inbounds":[{}],"outbounds":null}' '{"inbounds":{},"outbounds":[{}]}'; do
+    printf '%s\n' "$invalid" >"$active"
+    if magicnet_singbox_standalone_config_ready; then
+        echo 'accepted invalid standalone config shape' >&2; exit 1
+    fi
+done
+rm "${active%/*}/standalone-config"
+cp "$fixture/short-config" "$active"
 # Do not retain the one-use Tailscale login key in the recovery envelope.
 jq '.endpoints=[{type:"tailscale",tag:"test-tail",auth_key:"fixture-only"}]' "$active" >"$active.new"
 mv "$active.new" "$active"

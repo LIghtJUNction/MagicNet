@@ -381,8 +381,14 @@ jobs:
           diff -u "$RUNNER_TEMP/build-submodules.txt" "$RUNNER_TEMP/quality-submodules.txt"
           python3 scripts/prepare-release.py --verify-build
 
+      - name: Require Android acceptance of the release commit
+        id: android_acceptance
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        timeout-minutes: 90
+        run: python3 scripts/require-android-acceptance.py
+
       - name: Create GitHub release
-        if: ${{ env.RELEASE_REQUESTED == '1' && steps.release_quality.outcome == 'success' }}
+        if: ${{ env.RELEASE_REQUESTED == '1' && steps.release_quality.outcome == 'success' && steps.android_acceptance.outcome == 'success' }}
         shell: bash
         env:
           PRERELEASE_REQUESTED: ${{ env.RELEASE_PRERELEASE }}

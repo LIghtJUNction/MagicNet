@@ -26,59 +26,73 @@ magicnet_app_policy_mode() {
 # TUN boundary with include_uid/exclude_uid instead.
 MAGICNET_APP_UID_SENTINEL=4294967294
 
-magicnet_app_proxy_packages() {
-    _proxy_packages_file="$1"
-    if [ ! -f "$_proxy_packages_file" ]; then
-        unset _proxy_packages_file
-        return 0
-    fi
-    # KernelSU v3.2.0's x86_64 BusyBox sed crashes on the former
-    # two-address blank/comment filter. Do the complete operation in one awk
-    # process while preserving the trimmed package-list contract.
-    awk '{
+magicnet_app_proxy_packages() (
+    # Missing optional lists are empty; unreadable or invalid existing paths
+    # are not. Keep parser failures from publishing partial package lists.
+    [ -e "$1" ] || [ -L "$1" ] || return 0
+    [ -f "$1" ] && [ -r "$1" ] || return 1
+    # Bionic's x86 regex character sets can index a signed UTF-8 byte. awk
+    # gsub has the same defect as sed; trim ASCII whitespace without regex.
+    _packages=$(awk '{
         line=$0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        ws=" \t\r\n\v\f"
+        while (length(line) && index(ws, substr(line, 1, 1))) line=substr(line, 2)
+        while (length(line) && index(ws, substr(line, length(line), 1))) line=substr(line, 1, length(line)-1)
         if (line == "" || substr(line, 1, 1) == "#") next
         if (!seen[line]++) print line
-    }' "$_proxy_packages_file" 2>/dev/null
-    unset _proxy_packages_file
-}
-
-magicnet_android_user_ids() {
-    if command -v cmd >/dev/null 2>&1; then
-        cmd user list 2>/dev/null |
-            sed -n 's/.*UserInfo{\([0-9][0-9]*\):.*/\1/p'
+    }' "$1" 2>/dev/null) || return "$?"
+    if [ -n "$_packages" ]; then
+        printf '%s\n' "$_packages"
     fi
-}
+)
 
-magicnet_package_uids() {
-    _uid_packages_file="$1"
+magicnet_android_user_ids() (
+    # Capture each producer before filtering: POSIX pipelines only expose
+    # the final command's status, hiding a crashed or unavailable service.
+    _users=$(cmd user list 2>/dev/null) || return "$?"
+    _user_ids=$(printf '%s\n' "$_users" | awk '
+        index($0, "UserInfo{") {
+            value=substr($0, index($0, "UserInfo{")+9)
+            colon=index(value, ":")
+            if (colon) {
+                value=substr(value, 1, colon-1)
+                if (value ~ /^[0-9]+$/) print value
+            }
+        }
+    ') || return "$?"
+    if [ -n "$_user_ids" ]; then
+        printf '%s\n' "$_user_ids"
+    fi
+)
+
+magicnet_package_uids() (
+    _uid_packages=$(magicnet_app_proxy_packages "$1") || return "$?"
+    [ -n "$_uid_packages" ] || return 0
     if command -v cmd >/dev/null 2>&1; then
-        _uid_users="$(magicnet_android_user_ids | awk '/^[0-9]+$/ && !seen[$0]++')"
-        [ -n "$_uid_users" ] || _uid_users=0
-        magicnet_app_proxy_packages "$_uid_packages_file" |
-            while IFS= read -r _uid_package; do
-                [ -n "$_uid_package" ] || continue
-                for _uid_user in $_uid_users; do
-                    cmd package list packages --user "$_uid_user" -U "$_uid_package" 2>/dev/null |
-                        awk -v expected="package:${_uid_package}" '
-                            $1 == expected {
-                                for (field = 2; field <= NF; field++) {
-                                    if ($field ~ /^uid:[0-9]+$/) {
-                                        sub(/^uid:/, "", $field)
-                                        print $field
-                                    }
-                                }
-                            }
-                        '
-                done
-            done |
-            awk '/^[0-9]+$/ && !seen[$0]++'
+        _uid_user_list=$(magicnet_android_user_ids) || return "$?"
+        _uid_users=$(printf '%s\n' "$_uid_user_list" |
+            awk '/^[0-9]+$/ && !seen[$0]++') || return "$?"
+        # Unknown users are not evidence that only Android user 0 exists.
+        [ -n "$_uid_users" ] || return 1
+        _uid_backend=cmd
     elif command -v pm >/dev/null 2>&1; then
-        magicnet_app_proxy_packages "$_uid_packages_file" |
-            while IFS= read -r _uid_package; do
-                [ -n "$_uid_package" ] || continue
-                pm list packages -U "$_uid_package" 2>/dev/null |
+        _uid_backend=pm
+        _uid_users=0
+    else
+        return 1
+    fi
+    # Buffer the complete observation so a later user's failure cannot leave
+    # a partial UID list that callers could mistake for a successful result.
+    _uid_all=$(
+        while IFS= read -r _uid_package; do
+            [ -n "$_uid_package" ] || continue
+            for _uid_user in $_uid_users; do
+                if [ "$_uid_backend" = cmd ]; then
+                    _uid_query=$(cmd package list packages --user "$_uid_user" -U "$_uid_package" 2>/dev/null) || exit "$?"
+                else
+                    _uid_query=$(pm list packages -U "$_uid_package" 2>/dev/null) || exit "$?"
+                fi
+                printf '%s\n' "$_uid_query" |
                     awk -v expected="package:${_uid_package}" '
                         $1 == expected {
                             for (field = 2; field <= NF; field++) {
@@ -88,12 +102,18 @@ magicnet_package_uids() {
                                 }
                             }
                         }
-                    '
-            done |
-            awk '/^[0-9]+$/ && !seen[$0]++'
+                    ' || exit "$?"
+            done
+        done <<EOF_PACKAGES
+$_uid_packages
+EOF_PACKAGES
+    ) || return "$?"
+    _uid_unique=$(printf '%s\n' "$_uid_all" |
+        awk '/^[0-9]+$/ && !seen[$0]++') || return "$?"
+    if [ -n "$_uid_unique" ]; then
+        printf '%s\n' "$_uid_unique"
     fi
-    unset _uid_packages_file _uid_users _uid_package _uid_user
-}
+)
 
 magicnet_app_uid_state_commit() {
     _uid_state_dir="$1"
@@ -117,7 +137,7 @@ magicnet_app_uid_state_commit() {
 # may still be used for explicit business features below, but DNS resolution
 # must remain destination/policy based so stale app catalogs cannot force a
 # different resolver after an upgrade.
-magicnet_singbox_apply_app_policy() {
+magicnet_singbox_apply_app_policy() (
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _jq="${MODDIR}/bin/jq"
@@ -138,47 +158,40 @@ magicnet_singbox_apply_app_policy() {
     _uid_state_dir="${MODDIR}/.state/app-policy"
     _old_include_uids="${_uid_state_dir}/include-uids.list"
     _old_exclude_uids="${_uid_state_dir}/exclude-uids.list"
+    _tmp="${_config}.app-policy.new"
+    # All resolution and parsing must succeed before replacing config/state.
+    # Scope cleanup to this invocation, including early returns and signals.
+    umask 077
+    trap 'rm -f "$_tmp" "$_include_packages_tmp" "$_include_uids_tmp" \
+        "$_exclude_uids_tmp" "${_exclude_uids_tmp}.new" 2>/dev/null || true' 0
+    trap 'exit 1' HUP INT TERM
     mkdir -p "$_uid_state_dir" || return 1
-    : >"$_include_uids_tmp"
-    : >"$_exclude_uids_tmp"
+    : >"$_include_uids_tmp" || return 1
+    : >"$_exclude_uids_tmp" || return 1
     if [ "$_mode" = "whitelist" ]; then
         {
-            magicnet_app_proxy_packages "$_direct_file"
-            magicnet_app_proxy_packages "$_proxy_file"
-        } | awk 'NF && !seen[$0]++' >"$_include_packages_tmp"
-        magicnet_package_uids "$_include_packages_tmp" >"$_include_uids_tmp"
-        awk '/^[0-9]+$/ && !seen[$0]++ { print }' "$_include_uids_tmp" >"${_include_uids_tmp}.new"
-        # An empty include list means “unrestricted” in sing-box.  Keep
-        # whitelist mode fail-closed when no selected package resolves.
-        [ -s "${_include_uids_tmp}.new" ] || printf '%s\n' "$MAGICNET_APP_UID_SENTINEL" >"${_include_uids_tmp}.new"
-        if ! mv -f "${_include_uids_tmp}.new" "$_include_uids_tmp"; then
-            rm -f "${_include_uids_tmp}.new" 2>/dev/null || true
-            return 1
-        fi
-    else
-        rm -f "$_include_packages_tmp" 2>/dev/null || true
-        : >"$_include_uids_tmp"
+            magicnet_app_proxy_packages "$_direct_file" &&
+                magicnet_app_proxy_packages "$_proxy_file"
+        } >"$_include_packages_tmp" || return 1
+        # The resolver already validates and deduplicates packages and UIDs.
+        magicnet_package_uids "$_include_packages_tmp" >"$_include_uids_tmp" || return 1
+        # An empty include list means “unrestricted” in sing-box. Only a
+        # successful empty observation may become the fail-closed sentinel.
+        [ -s "$_include_uids_tmp" ] ||
+            printf '%s\n' "$MAGICNET_APP_UID_SENTINEL" >"$_include_uids_tmp" || return 1
     fi
-    # Resolve explicit bypass packages in both app modes. Their concrete UIDs
-    # may bypass the local dataplane, but Android netd commonly emits DNS as
-    # UID 0; local DNS must stay hijacked or one bypass app would leak DNS for
-    # every application on the device.
-    magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp"
+    # Android netd commonly emits DNS as UID 0. Keep that explicit exclusion
+    # while resolving app bypass UIDs; a query error must preserve old policy.
+    magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp" || return 1
     awk 'BEGIN { print 0 } /^[0-9]+$/ && !seen[$0]++ { print }' \
-        "$_exclude_uids_tmp" >"${_exclude_uids_tmp}.new"
-    if ! mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp"; then
-        rm -f "${_exclude_uids_tmp}.new" 2>/dev/null || true
-        return 1
-    fi
+        "$_exclude_uids_tmp" >"${_exclude_uids_tmp}.new" || return 1
+    mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp" || return 1
 
-    _tmp="${_config}.app-policy.new"
-    [ -f "$_old_include_uids" ] || : >"$_old_include_uids"
-    [ -f "$_old_exclude_uids" ] || : >"$_old_exclude_uids"
-    [ -f "$_proxy_file" ] || : >"$_proxy_file"
-    [ -f "$_direct_file" ] || : >"$_direct_file"
-    [ -f "$_bypass_file" ] || : >"$_bypass_file"
-    [ -f "$_include_uids_tmp" ] || : >"$_include_uids_tmp"
-    [ -f "$_exclude_uids_tmp" ] || : >"$_exclude_uids_tmp"
+    [ -f "$_old_include_uids" ] || : >"$_old_include_uids" || return 1
+    [ -f "$_old_exclude_uids" ] || : >"$_old_exclude_uids" || return 1
+    [ -f "$_proxy_file" ] || : >"$_proxy_file" || return 1
+    [ -f "$_direct_file" ] || : >"$_direct_file" || return 1
+    [ -f "$_bypass_file" ] || : >"$_bypass_file" || return 1
     if (
         umask 077
         "$_jq" --arg mode "$_mode" --argjson uid_sentinel "$MAGICNET_APP_UID_SENTINEL" \
@@ -270,20 +283,10 @@ magicnet_singbox_apply_app_policy() {
     ' "$_config" >"$_tmp"
     ) && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" &&
         magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
-        rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" 2>/dev/null || true
-        unset _config _dir _mode _proxy_file _direct_file _bypass_file
-        unset _include_packages_tmp _include_uids_tmp _exclude_uids_tmp _uid_state_dir
-        unset _old_include_uids _old_exclude_uids _tmp
-        unset _jq
         return 0
     fi
-    rm -f "$_tmp" "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" 2>/dev/null || true
-    unset _config _dir _mode _proxy_file _direct_file _bypass_file
-    unset _include_packages_tmp _include_uids_tmp _exclude_uids_tmp _uid_state_dir
-    unset _old_include_uids _old_exclude_uids _tmp
-    unset _jq
     return 1
-}
+)
 
 magicnet_app_policy_apply_unlocked() {
     _app_rc=0

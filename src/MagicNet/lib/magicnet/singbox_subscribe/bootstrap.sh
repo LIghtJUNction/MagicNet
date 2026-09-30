@@ -22,10 +22,19 @@ magicnet_singbox_config_has_nodes() {
     }
     type magicnet_singbox_ai_selectors_canonical >/dev/null 2>&1 ||
         . "${MODDIR}/lib/magicnet/singbox_subscribe/common.sh"
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
+    _node_jq="$(magicnet_jq)" || {
+        unset _config _node_jq
+        return 1
+    }
+    # Parse outbound objects, not an arbitrary occurrence in a long JSON line.
+    # KernelSU's BusyBox grep can fault before reaching a late node tag.
+    "$_node_jq" -e 'any(.outbounds[]?;
+      .type == "vless" or .type == "hysteria2" or .type == "trojan"
+      or .type == "vmess" or .type == "shadowsocks" or .type == "wireguard"
+      or .type == "tuic" or .type == "anytls" or .type == "socks")' "$_config" >/dev/null 2>&1 &&
         magicnet_singbox_ai_selectors_canonical "$_config"
     _rc=$?
-    unset _config
+    unset _config _node_jq
     return "$_rc"
 }
 
@@ -166,11 +175,13 @@ magicnet_singbox_restore_last_good() (
 magicnet_list_file_values() {
     _file="$1"
     [ -f "$_file" ] || return 0
-    # Preserve non-comment values byte-for-byte while avoiding the BusyBox sed
-    # expression that is known to SIGSEGV in the pinned x86_64 KernelSU AVD.
+    # Preserve values byte-for-byte; regex whitespace trimming also crashes
+    # in the pinned x86_64 BusyBox awk when a value contains UTF-8 bytes.
     awk '{
         trimmed=$0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
+        ws=" \t\r\n\v\f"
+        while (length(trimmed) && index(ws, substr(trimmed, 1, 1))) trimmed=substr(trimmed, 2)
+        while (length(trimmed) && index(ws, substr(trimmed, length(trimmed), 1))) trimmed=substr(trimmed, 1, length(trimmed)-1)
         if (trimmed == "" || substr(trimmed, 1, 1) == "#") next
         if (!seen[$0]++) print
     }' "$_file" 2>/dev/null
