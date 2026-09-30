@@ -424,6 +424,11 @@ class BootstrapTests(unittest.TestCase):
             verified = True
             late_load_on_reboot = False
 
+            def check_busybox(self, stage, *, activated):
+                calls.append('busybox-preflight-' + stage)
+                if fault == 'busybox-' + stage:
+                    raise RuntimeError('BusyBox regex preflight failed')
+
             def shell(self, command, **kwargs):
                 calls.append(command)
                 if command == 'getenforce':
@@ -454,6 +459,9 @@ class BootstrapTests(unittest.TestCase):
         kmi = next(i for i, c in enumerate(calls) if 'current-kmi' in c)
         load = next(i for i, c in enumerate(calls) if c.endswith(' late-load'))
         self.assertLess(probe, extract)
+        self.assertLess(extract, calls.index('busybox-preflight-extracted'))
+        self.assertLess(calls.index('busybox-preflight-extracted'), kmi)
+        self.assertLess(load, calls.index('busybox-preflight-activated'))
         self.assertLess(extract, kmi)
         self.assertLess(kmi, load)
         self.assertTrue(device.late_load_on_reboot)
@@ -465,7 +473,8 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(any('supported-kmis' in call for call in calls))
 
     def test_bootstrap_preconditions_and_real_kernel_gate_still_fail(self):
-        for fault in ('extract-failed', 'no-kernel', 'missing-kmi', 'wrong-domain', 'permissive'):
+        for fault in ('extract-failed', 'no-kernel', 'missing-kmi', 'wrong-domain', 'permissive',
+                      'busybox-extracted', 'busybox-activated'):
             with self.subTest(fault=fault), self.assertRaises(RuntimeError):
                 self.bootstrap(fault)
 
