@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Host regressions for #344. These results are NOT Android device acceptance.
 
---check-core PATH validates both initial and migration configs with a real core.
+--check-core PATH validates initial, migration and rendered hotspot configs with a real core.
 No SDK, root, network or third-party Python module is needed by the default suite.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import stat
 import struct
 import subprocess
@@ -423,6 +424,11 @@ class BootstrapTests(unittest.TestCase):
             verified = True
             late_load_on_reboot = False
 
+            def check_busybox(self, stage, *, activated):
+                calls.append('busybox-preflight-' + stage)
+                if fault == 'busybox-' + stage:
+                    raise RuntimeError('BusyBox regex preflight failed')
+
             def shell(self, command, **kwargs):
                 calls.append(command)
                 if command == 'getenforce':
@@ -453,6 +459,9 @@ class BootstrapTests(unittest.TestCase):
         kmi = next(i for i, c in enumerate(calls) if 'current-kmi' in c)
         load = next(i for i, c in enumerate(calls) if c.endswith(' late-load'))
         self.assertLess(probe, extract)
+        self.assertLess(extract, calls.index('busybox-preflight-extracted'))
+        self.assertLess(calls.index('busybox-preflight-extracted'), kmi)
+        self.assertLess(load, calls.index('busybox-preflight-activated'))
         self.assertLess(extract, kmi)
         self.assertLess(kmi, load)
         self.assertTrue(device.late_load_on_reboot)
@@ -464,7 +473,8 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(any('supported-kmis' in call for call in calls))
 
     def test_bootstrap_preconditions_and_real_kernel_gate_still_fail(self):
-        for fault in ('extract-failed', 'no-kernel', 'missing-kmi', 'wrong-domain', 'permissive'):
+        for fault in ('extract-failed', 'no-kernel', 'missing-kmi', 'wrong-domain', 'permissive',
+                      'busybox-extracted', 'busybox-activated'):
             with self.subTest(fault=fault), self.assertRaises(RuntimeError):
                 self.bootstrap(fault)
 
@@ -486,11 +496,90 @@ class FailureGateTests(unittest.TestCase):
 def check_core(binary):
     core = str(Path(binary).resolve())
     with tempfile.TemporaryDirectory() as tmp:
+        module = Path(tmp) / 'module'
+        (module / 'bin').mkdir(parents=True)
+        jq = shutil.which('jq')
+        if jq is None:
+            raise RuntimeError('host jq is required for the real hotspot renderer')
+        (module / 'bin/jq').symlink_to(jq)
+        (module / 'bin/sing-box').symlink_to(core)
+        (module / 'lib').symlink_to(ROOT / 'src/MagicNet/lib', target_is_directory=True)
+        shutil.copytree(ROOT / 'src/MagicNet/.config', module / '.config')
         for name, value in (('initial', SIM.fixture_config()),
                             ('upgrade', SIM.upgrade_candidate(SIM.fixture_config()))):
             config = Path(tmp) / (name + '.json')
             config.write_text(json.dumps(value))
             subprocess.run([core, 'check', '-c', str(config)], check=True, timeout=30, cwd=tmp)
+            rendered = Path(tmp) / (name + '-hotspot.json')
+            subprocess.run(['sh', '-c',
+                            'import() { :; }; . "$MODDIR/lib/magicnet/common.sh"; '
+                            '. "$1"; magicnet_hotspot_source_cidrs_json() { printf "[]\\n"; }; '
+                            'magicnet_singbox_render_hotspot_policy "$2" "$3"',
+                            'hotspot-core-check', str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'),
+                            str(config), str(rendered)],
+                           env=dict(os.environ, MODDIR=str(module)), check=True, timeout=30)
+            subprocess.run([core, 'check', '-c', str(rendered)], check=True, timeout=30, cwd=tmp)
+            active = module / '.config/sing-box/config.json'
+            active.write_text(config.read_text())
+            (active.parent / 'standalone-config').write_text('validated\n')
+            # Only platform observations and logging are fixtures. Execute the
+            # real startup candidate pipeline, including its final core check.
+            startup = '''
+import() {
+    if [ "$1" = __singbox__ ] && [ "${core_helpers_loaded:-0}" != 1 ]; then
+        . "$MODDIR/lib/kamfw/__singbox__.sh"
+        core_helpers_loaded=1
+    fi
+}
+set_i18n() { :; }
+i18n() { printf '%s\\n' "$1"; }
+info() { printf '%s\\n' "$*" >&2; }
+warn() { printf '%s\\n' "$*" >&2; }
+error() { printf '%s\\n' "$*" >&2; }
+success() { :; }
+config() { :; }
+ip() { return 0; }
+. "$MODDIR/lib/magicnet.sh"
+import __singbox__
+is_singbox_running() { return 1; }
+magicnet_prepare_singbox_candidate_unlocked
+'''
+            try:
+                subprocess.run(['bash', '-c', startup],
+                               env=dict(os.environ, MODDIR=str(module), MAGIC_SINGBOX='1'),
+                               check=True, timeout=30, cwd=tmp)
+            except subprocess.CalledProcessError:
+                subprocess.run([core, 'check', '-c', str(active), '-D', str(active.parent)],
+                               timeout=30, cwd=tmp)
+                raise
+
+
+class CoreCheckHarnessTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('jq'), 'host jq is required')
+    def test_real_renderer_is_loaded_and_both_candidates_reach_core_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / 'checked-configs.jsonl'
+            core = Path(tmp) / 'core-check-fixture'
+            core.write_text('#!' + sys.executable + '\n'
+                            'import json, os, pathlib, sys\n'
+                            'config = json.loads(pathlib.Path(sys.argv[3]).read_text())\n'
+                            'with open(os.environ["CORE_CHECK_LOG"], "a") as log:\n'
+                            '    log.write(json.dumps(config) + "\\n")\n')
+            core.chmod(0o755)
+            with patch.dict(os.environ, {'CORE_CHECK_LOG': str(log)}):
+                check_core(core)
+            configs = [json.loads(line) for line in log.read_text().splitlines()]
+            self.assertEqual(len(configs), 6)
+            for index in (1, 2, 4, 5):
+                hotspot = [out for out in configs[index]['outbounds'] if out['tag'] == 'hotspot']
+                self.assertEqual(len(hotspot), 1)
+                self.assertEqual(hotspot[0]['outbounds'], ['direct'])
+                self.assertEqual(hotspot[0]['default'], 'direct')
+            for index in (2, 5):
+                self.assertEqual(configs[index]['dns']['final'], 'fixture-dns')
+                self.assertEqual(configs[index]['dns']['servers'], SIM.fixture_config()['dns']['servers'])
+                self.assertEqual(configs[index]['route']['default_domain_resolver'], 'fixture-dns')
+            SIM.verify_migrated_node(configs[5])
 
 
 if __name__ == '__main__':

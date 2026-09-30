@@ -8,28 +8,42 @@ magicnet_singbox_extract_clash_nodes() (
     _start_index=$(find "$_nodes_dir" -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) | wc -l)
     # This is only a node boundary/count extractor for the native fallback;
     # the complete document, including anchors, goes to the pinned converter.
-    sed "1s/^$(printf '\357\273\277')//" "$_source_file" | awk -v outdir="$_nodes_dir" -v start_index="$_start_index" '
-        BEGIN { inside = 0; idx = 0; file = ""; item_indent = -1 }
-        { sub(/\r$/, ""); indent = match($0, /[^ ]/) - 1 }
-        /^[[:space:]]*proxies:[[:space:]]*(#.*)?$/ {
-            inside = 1; key_indent = indent; next
+    LC_ALL=C awk -v outdir="$_nodes_dir" -v start_index="$_start_index" '
+        function ltrim(value) {
+            while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
+            return value
         }
-        inside && /^[[:space:]]*($|#)/ { next }
-        inside && indent <= key_indent && $0 !~ /^[[:space:]]*-/ { inside = 0 }
-        inside && /^[[:space:]]*-[[:space:]]*/ {
+        BEGIN {
+            inside = 0; idx = 0; file = ""; item_indent = -1
+            ws = " \t\r\n\v\f"; bom = sprintf("%c%c%c", 239, 187, 191)
+        }
+        {
+            line = $0
+            if (NR == 1 && substr(line, 1, 3) == bom) line = substr(line, 4)
+            if (substr(line, length(line), 1) == "\r") line = substr(line, 1, length(line) - 1)
+            indent = 0
+            while (substr(line, indent + 1, 1) == " ") indent++
+            trimmed = ltrim(line)
+            suffix = ltrim(substr(trimmed, 9))
+            if (substr(trimmed, 1, 8) == "proxies:" && (suffix == "" || substr(suffix, 1, 1) == "#")) {
+                inside = 1; key_indent = indent; next
+            }
+            if (inside && (trimmed == "" || substr(trimmed, 1, 1) == "#")) next
+            if (inside && indent <= key_indent && substr(trimmed, 1, 1) != "-") inside = 0
+            if (inside && substr(trimmed, 1, 1) == "-") {
             if (item_indent < 0) item_indent = indent
             if (indent == item_indent) {
                 if (file != "") close(file)
                 idx++; file = outdir "/node-" (start_index + idx) ".yaml"
-                line = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", line)
-                print line > file; next
+                print ltrim(substr(trimmed, 2)) > file; next
+            }
+            }
+            if (inside && file != "" && indent > item_indent) {
+                print substr(line, item_indent + 3) >> file
             }
         }
-        inside && file != "" && indent > item_indent {
-            print substr($0, item_indent + 3) >> file
-        }
         END { print idx }
-    '
+    ' "$_source_file"
 )
 
 magicnet_singbox_extract_share_links() {

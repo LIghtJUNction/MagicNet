@@ -281,13 +281,17 @@ class DeviceTests(unittest.TestCase):
             return cp(SIM.KSU_DOMAIN + '\n' if command == 'id -Z' else 'Enforcing\n')
 
         with patch.object(device, 'shell', side_effect=shell), \
-             patch.object(device, 'kshell', side_effect=kshell):
+             patch.object(device, 'kshell', side_effect=kshell), \
+             patch.object(device, 'check_busybox') as preflight:
             evidence = device.late_load_kernelsu()
         self.assertEqual(evidence, {
             'mode': 'pinned-kernel-userspace-late-load',
             'kmi': 'android15-6.6',
             'kernel_version': 'Kernel Version: 32389',
         })
+        self.assertEqual([call.args for call in preflight.call_args_list], [('extracted',), ('activated',)])
+        self.assertEqual([call.kwargs for call in preflight.call_args_list],
+                         [{'activated': False}, {'activated': True}])
         self.assertTrue(device.late_load_on_reboot)
         self.assertIn(SIM.KSUD_LAUNCH + ' late-load', calls)
         self.assertNotIn(SIM.KSUD + ' late-load', calls)
@@ -333,6 +337,34 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(order, ['boot', 'root', 'late-load'])
         self.assertEqual(run.call_args.args, ('reboot',))
         late.assert_called_once_with()
+
+    def test_root_waits_for_restarted_adbd_and_checks_real_uid(self):
+        device = self.device()
+        # A stale wait-for-device succeeds before the old adbd disconnects.
+        # Neither an offline read nor a still-unprivileged daemon is root.
+        with patch.object(device, 'run', return_value=cp()) as run, \
+             patch.object(device, 'shell', side_effect=[cp('', 1), cp('2000\n'), cp('0\n')]) as shell, \
+             patch.object(SIM.time, 'monotonic', return_value=0), \
+             patch.object(SIM.time, 'sleep'):
+            device.root()
+        self.assertEqual([call.args for call in run.call_args_list].count(('root',)), 1)
+        self.assertEqual(shell.call_count, 3)
+        self.assertTrue(all(call.args == ('id -u',) and call.kwargs['check'] is False
+                            and call.kwargs['timeout'] <= 5 for call in shell.call_args_list))
+
+    def test_root_reconnect_timeout_or_root_request_failure_stays_failed(self):
+        device = self.device()
+        with patch.object(device, 'run', return_value=cp()), \
+             patch.object(device, 'shell', return_value=cp('2000\n')), \
+             patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 0, 30, 30]), \
+             patch.object(SIM.time, 'sleep'), \
+             self.assertRaisesRegex(RuntimeError, 'reconnect before deadline'):
+            device.root()
+        with patch.object(device, 'run', side_effect=RuntimeError('root denied')), \
+             patch.object(device, 'shell') as shell, \
+             self.assertRaisesRegex(RuntimeError, 'root denied'):
+            device.root()
+        shell.assert_not_called()
 
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()
@@ -416,6 +448,155 @@ class DeviceTests(unittest.TestCase):
                 bb.chmod(0o755)
                 result = subprocess.run(['sh', '-c', command], timeout=2)
                 self.assertEqual(result.returncode, expected, (live, pid_rc))
+
+
+class BusyboxPreflightTests(unittest.TestCase):
+    def device(self):
+        with patch.dict(os.environ, ENV):
+            device = SIM.Device()
+        device.verified = True
+        return device
+
+    def results(self):
+        return [cp('a' * 64 + '  ' + SIM.BB + '\n'),
+                subprocess.CompletedProcess([], 0, '', 'BusyBox v1.36.1.1 topjohnwu multi-call binary.\n')] + [
+                    cp(expected, rc) for _, _, _, rc, expected
+                    in SIM.busybox_regex_cases() + SIM.system_sed_cases()]
+
+    def test_valid_runtime_records_only_bounded_identity_and_statuses(self):
+        for activated in (False, True):
+            device = self.device()
+            answers = iter(self.results())
+            with patch.object(device, 'shell', side_effect=lambda *a, **k: next(answers)) as shell, \
+                 patch.object(device, 'kshell', side_effect=lambda *a, **k: next(answers)) as kshell:
+                device.check_busybox('activated' if activated else 'extracted', activated=activated)
+            record = device.busybox_checks[0]
+            self.assertEqual(record['status'], 'passed')
+            self.assertEqual(record['sha256'], 'a' * 64)
+            self.assertEqual(record['version'], '1.36.1.1')
+            self.assertEqual(record['sed_provider'], '/system/bin/sed')
+            self.assertEqual(record['checks']['nodes_absent']['exit_code'], 1)
+            self.assertEqual(record['checks']['nodes']['provider'], 'kernelsu_busybox')
+            self.assertEqual(record['checks']['sed_lines']['provider'], 'android_system_sed')
+            calls = shell.call_args_list + kshell.call_args_list
+            case_count = len(SIM.busybox_regex_cases()) + len(SIM.system_sed_cases())
+            self.assertEqual(len(calls), 2 + case_count)
+            for call in calls:
+                self.assertFalse(call.kwargs['check'])
+                self.assertGreater(call.kwargs['timeout'], 0)
+                self.assertLessEqual(call.kwargs['timeout'], 3)
+            self.assertEqual(kshell.call_count, 1 + case_count if activated else 0)
+            self.assertNotIn('测试', json.dumps(record, ensure_ascii=False))
+            self.assertNotIn('multi-call', json.dumps(record))
+
+    def test_crash_nomatch_timeout_and_wrong_output_fail_closed(self):
+        for failure in (cp(rc=139), cp(rc=-11), cp(rc=1), cp(rc=124), cp('private config')):
+            device = self.device()
+            answers = self.results()
+            answers[2] = failure
+            with patch.object(device, 'shell', side_effect=answers), \
+                 self.assertRaisesRegex(RuntimeError, 'Module shell tool preflight failed'):
+                device.check_busybox('extracted', activated=False)
+            record = device.busybox_checks[0]
+            self.assertEqual(record['status'], 'failed')
+            self.assertEqual(record['checks']['nodes']['exit_code'], failure.returncode)
+            self.assertNotIn('private config', json.dumps(record))
+
+    def test_missing_identity_and_false_negative_control_fail_closed(self):
+        for index, replacement in ((0, cp('bad hash')), (1, cp('not BusyBox')),
+                                   (1, cp('BusyBox v1.36.1 ', rc=139)), (5, cp(rc=0))):
+            device = self.device()
+            answers = self.results()
+            answers[index] = replacement
+            with patch.object(device, 'shell', side_effect=answers), self.assertRaises(RuntimeError):
+                device.check_busybox('extracted', activated=False)
+            self.assertEqual(device.busybox_checks[0]['status'], 'failed')
+
+    def test_total_deadline_prevents_further_adb_calls(self):
+        device = self.device()
+        case_count = len(SIM.busybox_regex_cases()) + len(SIM.system_sed_cases())
+        with patch.object(SIM.time, 'monotonic',
+                          side_effect=[0] + [21] * (2 + case_count)), \
+             patch.object(device, 'shell') as shell, self.assertRaises(RuntimeError):
+            device.check_busybox('extracted', activated=False)
+        shell.assert_not_called()
+        self.assertTrue(all(item['exit_code'] == 124
+                            for item in device.busybox_checks[0]['checks'].values()))
+
+    def test_unverified_device_and_excess_history_are_rejected(self):
+        device = self.device()
+        device.verified = False
+        with patch.object(device, 'shell') as shell, self.assertRaises(RuntimeError):
+            device.check_busybox('extracted', activated=False)
+        shell.assert_not_called()
+        device.verified = True
+        device.busybox_checks = [{}] * 16
+        with patch.object(device, 'shell') as shell, self.assertRaises(RuntimeError):
+            device.check_busybox('extracted', activated=False)
+        shell.assert_not_called()
+
+    def test_regex_cases_match_existing_startup_patterns_and_host_tools(self):
+        bootstrap = (SIM.ROOT / 'src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh').read_text()
+        common = (SIM.ROOT / 'src/MagicNet/lib/magicnet/common.sh').read_text()
+        self.assertIn('any(.outbounds[]?', bootstrap)
+        self.assertIn('magicnet_singbox_config_shape_valid "$_config"', common)
+        apps = (SIM.ROOT / 'src/MagicNet/lib/magicnet/apps.sh').read_text()
+        self.assertIn('index($0, "UserInfo{")', apps)
+        self.assertNotIn('gsub(/^[[:space:]]+', apps)
+        for name, args, sample, rc, output in SIM.busybox_regex_cases():
+            with self.subTest(case=name):
+                result = subprocess.run(args, input=sample, text=True, capture_output=True, timeout=3)
+                self.assertEqual(result.returncode, rc)
+                self.assertEqual(result.stdout, output)
+        for name, args, sample, rc, output in SIM.system_sed_cases():
+            with self.subTest(case=name):
+                result = subprocess.run(['sed', *args], input=sample, text=True,
+                                        capture_output=True, timeout=3)
+                self.assertEqual(result.returncode, rc)
+                self.assertEqual(result.stdout, output)
+        envrc = (SIM.ROOT / 'src/MagicNet/.config/kamfw/.envrc').read_text()
+        runtime = (SIM.ROOT / 'src/MagicNet/lib/magicnet.sh').read_text()
+        for source in (envrc, runtime):
+            self.assertIn('sed() { /system/bin/sed "$@"; }', source)
+
+    def test_config_diagnostics_retain_exit_codes_not_output(self):
+        device = self.device()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(device, 'kshell', return_value=cp('private config', 139)) as run, \
+             patch.object(device, 'shell', return_value=cp()):
+            SIM.diagnostics(device, Path(tmp))
+            result = (Path(tmp) / 'config-regex-exit-codes.json').read_text()
+        self.assertEqual(json.loads(result), dict.fromkeys(SIM.CONFIG_PATTERNS, 139))
+        self.assertNotIn('private', result)
+        for call in run.call_args_list:
+            self.assertIn('>/dev/null 2>&1', call.args[0])
+            self.assertLessEqual(call.kwargs['timeout'], 3)
+
+    def test_exit_codes_are_bounded_and_preserve_signal_forms(self):
+        for code in (0, 1, 2, 124, 127, 139, -11):
+            self.assertEqual(SIM.bounded_exit_code(code), code)
+        for code in (True, 'secret', 99999, -256):
+            self.assertIsNone(SIM.bounded_exit_code(code))
+
+
+class TunControlTests(unittest.TestCase):
+    def test_failed_device_commands_reach_proof_without_raising(self):
+        device = Mock()
+        device.kshell.return_value = cp(rc=1)
+        def verify(adb, *_):
+            self.assertEqual(adb('fixture-command', timeout=15).returncode, 1)
+            device.kshell.assert_called_once_with('fixture-command', timeout=15, check=False)
+            return {'status': 'not_verified', 'failure_operation': 'config_save',
+                    'failure_exit_code': 1}
+        proof = Mock(verify=verify)
+        benchmark = Mock()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+                SIM, 'load_script', side_effect=[proof, benchmark]):
+            with self.assertRaisesRegex(RuntimeError, 'app-UID TUN controls failed'):
+                SIM.tun_controls(device, Path(tmp), 'upgrade-preservation')
+            report = json.loads((Path(tmp) / 'tun-controls-upgrade-preservation.json').read_text())
+            self.assertEqual(report['failure_operation'], 'config_save')
+            self.assertEqual(report['failure_exit_code'], 1)
 
 
 class InvalidConfigTests(unittest.TestCase):

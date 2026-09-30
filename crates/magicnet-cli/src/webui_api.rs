@@ -272,6 +272,9 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn curl(app: &App, path: &str) -> Result<(), String> {
+    if !crate::process::trusted_curl_path(app).is_file() {
+        return print_local_response(app, "GET", path, "");
+    }
     run_curl(
         app,
         &["-fsS", "--max-time", "4", &format!("{}{}", app.api, path)],
@@ -279,6 +282,9 @@ fn curl(app: &App, path: &str) -> Result<(), String> {
 }
 
 fn curl_delete(app: &App, path: &str) -> Result<(), String> {
+    if !crate::process::trusted_curl_path(app).is_file() {
+        return print_local_response(app, "DELETE", path, "");
+    }
     run_curl(
         app,
         &[
@@ -293,6 +299,9 @@ fn curl_delete(app: &App, path: &str) -> Result<(), String> {
 }
 
 fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
+    if !crate::process::trusted_curl_path(app).is_file() {
+        return print_local_response(app, "PUT", path, payload);
+    }
     run_curl(
         app,
         &[
@@ -311,6 +320,9 @@ fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
 }
 
 fn curl_patch_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
+    if !crate::process::trusted_curl_path(app).is_file() {
+        return print_local_response(app, "PATCH", path, payload);
+    }
     run_curl(
         app,
         &[
@@ -425,6 +437,10 @@ pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Resul
 }
 
 pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, String> {
+    if !crate::process::trusted_curl_path(app).is_file() {
+        let body = crate::local_http::request(&app.api, "GET", path, "")?;
+        return serde_json::from_slice(&body).map_err(|err| format!("parse API response: {err}"));
+    }
     let output = crate::trusted_curl(app)
         .args([
             "-fsS",
@@ -461,6 +477,12 @@ fn run_curl(app: &App, args: &[&str]) -> Result<(), String> {
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
+}
+
+fn print_local_response(app: &App, method: &str, path: &str, payload: &str) -> Result<(), String> {
+    let body = crate::local_http::request(&app.api, method, path, payload)?;
+    print!("{}", String::from_utf8_lossy(&body));
+    Ok(())
 }
 
 #[cfg(test)]

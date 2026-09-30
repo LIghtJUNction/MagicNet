@@ -75,3 +75,37 @@ The pristine AVD cache is saved before installation and never after mutation.
 The workflow always stops/discards the emulator. Google Play search, images,
 actual downloads, GMS and Wi-Fi/mobile transitions still require the affected
 physical device and a known-working proxy path.
+
+## BusyBox runtime preflight
+
+Before userspace activation and again inside the KernelSU domain, the offline
+lifecycle harness checks BusyBox grep, byte-based awk trimming/user-ID extraction,
+and system sed on ASCII module metadata. JSON/Unicode tags use packaged jq, not
+the former sed tag extractor. Every reboot repeats the preflight through the
+existing late-load path. Matching, nonmatching, whitespace and UTF-8 cases
+exercise the supported product operations;
+a missing runtime identity, wrong result, crash or timeout fails acceptance.
+There is no alternate binary, skipped TUN control or relaxed restoration rule.
+
+The original UTF-8 sed/awk character-set probes reproduced SIGSEGV in both the
+manager binary and system Bionic regex implementation. Replacing sed with regex
+gsub was insufficient. The product list parsers now trim by byte membership and
+extract user IDs before checking ASCII digits. `test-android-utf8.py` executes
+these real functions, plus long Unicode JSON and malformed-config controls,
+against the unmodified KernelSU binary verified by SHA-256. This is a host
+parser regression, not Android networking acceptance or a general Bionic fix.
+
+`simulation.json` retains `provenance.busybox_checks`: SHA-256, the numeric
+BusyBox version, stage, per-case exit codes and output-match booleans. Each probe
+batch has a 20-second total budget and each command a maximum of three seconds;
+partial failure evidence survives in the final report. Raw input/output is not
+retained by these new probes.
+
+Exit diagnostics also write `config-regex-exit-codes.json`, repeating only the
+three startup grep predicates on the current configuration, suppressing their
+output. Exit 1 means no match; 2 indicates an error, and 139 commonly indicates
+SIGSEGV through a shell. These are post-failure observations, not proof of which
+command failed earlier; node validity and selector consistency still require
+the existing product checks. Diagnostics share the existing 25-second budget
+and cannot change the acceptance result. A passing preflight is not proof that
+BusyBox cannot fail later or on another input.

@@ -755,11 +755,21 @@ magicnet_singbox_render_hotspot_policy() {
         umask 077
         "$_jq" --argjson hotspot_sources "$_hotspot_sources_json" '
         def hotspot_selector:
+          # Standalone configs need not contain the managed proxy/direct tags.
+          # Never publish a selector member that the core cannot resolve.
+          ([.outbounds[]? | .tag | select(type == "string" and . != "hotspot")]) as $tags
+          | (["direct", "proxy"] | map(select(. as $tag | $tags | index($tag) != null))) as $managed
+          | (if ($managed | length) > 0 then $managed
+             elif (.route.final as $final | $tags | index($final)) != null then [.route.final]
+             elif ($tags | length) > 0 then [$tags[0]]
+             else error("hotspot selector requires an existing outbound")
+             end) as $members
+          |
           {
             "type": "selector",
             "tag": "hotspot",
-            "outbounds": ["direct", "proxy"],
-            "default": "direct",
+            "outbounds": $members,
+            "default": $members[0],
             "interrupt_exist_connections": true
           };
         def hotspot_rule:

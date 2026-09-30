@@ -66,7 +66,14 @@ magicnet_dns_apply_singbox() {
         return 1
     }
     _tmp="${_config}.magicnet-dns.new"
+    # A validated standalone config owns its resolver graph. The default
+    # profile must not replace an offline/custom final resolver with AliDNS.
+    _standalone_dns=0
+    if [ "$_profile" = default ] && [ -f "${_config%/*}/standalone-config" ]; then
+        _standalone_dns=1
+    fi
     magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" \
+        --argjson standalone_dns "$_standalone_dns" \
         --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" -e '
       def cf_udp($tag; $server):
         {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
@@ -81,6 +88,13 @@ magicnet_dns_apply_singbox() {
         elif $profile == "cloudflare-dot" then cf_tls($tag; $server)
         else cf_https($tag; $server)
         end;
+      # An absent/empty standalone resolver graph is intentional. Do not
+      # iterate null, invent resolvers, or enable a DNS cache for that config.
+      # Reject malformed fields instead of silently treating false as null.
+      if .dns != null and (.dns | type) != "object" then error("invalid DNS object")
+      elif .dns.servers != null and (.dns.servers | type) != "array" then error("invalid DNS server list")
+      elif $standalone_dns == 1 and ((.dns.servers // []) == []) then . else
+      (if $standalone_dns == 1 then . else
       .dns.servers = (
         (.dns.servers // [])
         | map(select((.tag // "") as $tag |
@@ -93,15 +107,6 @@ magicnet_dns_apply_singbox() {
                  server_for($profile; "cloudflare-backup-dns"; "1.0.0.1")]
            end) + .
       )
-      # Direct UDP DNS servers are contacted by sing-box itself. Mark those
-      # sockets so the kernel DNS redirect can exempt them without exempting
-      # every UID-0 Android resolver query.
-      | .dns.servers |= map(
-          if (.type == "udp" and (.detour // "") == "") then
-            .routing_mark = $dns_capture_singbox_mark
-          else .
-          end
-        )
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
         else .dns.final = "cloudflare-profile-dns"
         end
@@ -113,6 +118,22 @@ magicnet_dns_apply_singbox() {
            (.action == "respond" and .match_response == "magicnet-final-dns")) | not)))
           + [{"action":"evaluate","server":.dns.final,"tag":"magicnet-final-dns"},
              {"match_response":"magicnet-final-dns","action":"respond"}])
+      end)
+      # Direct UDP DNS servers are contacted by sing-box itself. Mark those
+      # sockets so the kernel DNS redirect can exempt them without exempting
+      # every UID-0 Android resolver query.
+      | .dns.servers |= map(
+          if (.type == "udp" and (.detour // "") == "") then
+            .routing_mark = $dns_capture_singbox_mark
+          else .
+          end
+        )
+      # sing-box 1.14 requires an explicit outbound domain resolver once there
+      # are multiple DNS servers. Keep a configured resolver; otherwise use
+      # the final resolver selected above, which belongs to this config.
+      | if ((.route.default_domain_resolver // "") == "" and (.dns.final // "") != "") then
+          .route.default_domain_resolver = .dns.final
+        else . end
       # sing-box 1.14 adds per-query timeout, optimistic DNS caching and DNS
       # cache persistence. Apply conservative defaults only when the user has
       # not made an explicit choice. A disabled cache remains disabled.
@@ -129,9 +150,10 @@ magicnet_dns_apply_singbox() {
                .experimental.cache_file.store_dns = true
              else . end)
         else . end
+      end
     ' "$_config"
     _rc=$?
-    unset _profile _bootstrap_server _config _jq _tmp
+    unset _profile _bootstrap_server _config _jq _tmp _standalone_dns
     return "$_rc"
 }
 

@@ -8,9 +8,14 @@ fail() { printf 'pinned AI routing test failed: %s\n' "$*" >&2; exit 1; }
 write_outbounds_config() {
   jq -n --slurpfile generated_outbounds "$1" '{outbounds: $generated_outbounds[0]}' >"$2"
 }
-# shellcheck disable=SC2034
-MODDIR="$MODULE_ROOT"
-. "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
+# The release gate runs after packaging has populated MODULE_ROOT/bin with
+# Android executables. Keep the host fixture separate so production helpers
+# resolve host jq without executing or replacing a packaged ARM64 binary.
+MODDIR="$tmp_dir/module"
+mkdir -p "$MODDIR"
+ln -s "$MODULE_ROOT/lib" "$MODDIR/lib"
+cp -R "$MODULE_ROOT/.config" "$MODDIR/.config"
+. "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 selector_tags_json=$(magicnet_selector_tags_json \
   "$(printf '%s\n%s\n%s\n' 'node "one"' direct 'node "one"')" 'fallback\path')
 [[ "$selector_tags_json" == '["node \"one\"", "direct", "fallback\\path", "block"]' ]] ||

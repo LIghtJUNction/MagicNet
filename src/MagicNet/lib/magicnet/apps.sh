@@ -31,12 +31,13 @@ magicnet_app_proxy_packages() (
     # are not. Keep parser failures from publishing partial package lists.
     [ -e "$1" ] || [ -L "$1" ] || return 0
     [ -f "$1" ] && [ -r "$1" ] || return 1
-    # KernelSU v3.2.0's x86_64 BusyBox sed crashes on the former
-    # two-address blank/comment filter. Do the complete operation in one awk
-    # process while preserving the trimmed package-list contract.
+    # Bionic's x86 regex character sets can index a signed UTF-8 byte. awk
+    # gsub has the same defect as sed; trim ASCII whitespace without regex.
     _packages=$(awk '{
         line=$0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        ws=" \t\r\n\v\f"
+        while (length(line) && index(ws, substr(line, 1, 1))) line=substr(line, 2)
+        while (length(line) && index(ws, substr(line, length(line), 1))) line=substr(line, 1, length(line)-1)
         if (line == "" || substr(line, 1, 1) == "#") next
         if (!seen[line]++) print line
     }' "$1" 2>/dev/null) || return "$?"
@@ -49,8 +50,16 @@ magicnet_android_user_ids() (
     # Capture each producer before filtering: POSIX pipelines only expose
     # the final command's status, hiding a crashed or unavailable service.
     _users=$(cmd user list 2>/dev/null) || return "$?"
-    _user_ids=$(printf '%s\n' "$_users" |
-        sed -n 's/.*UserInfo{\([0-9][0-9]*\):.*/\1/p') || return "$?"
+    _user_ids=$(printf '%s\n' "$_users" | awk '
+        index($0, "UserInfo{") {
+            value=substr($0, index($0, "UserInfo{")+9)
+            colon=index(value, ":")
+            if (colon) {
+                value=substr(value, 1, colon-1)
+                if (value ~ /^[0-9]+$/) print value
+            }
+        }
+    ') || return "$?"
     if [ -n "$_user_ids" ]; then
         printf '%s\n' "$_user_ids"
     fi

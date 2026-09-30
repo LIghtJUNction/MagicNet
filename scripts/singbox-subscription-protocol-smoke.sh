@@ -22,10 +22,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# shellcheck disable=SC2034
-MODDIR="$MODULE_ROOT"
+# A built module contains Android helpers. The host regression must exercise
+# its shell libraries with host jq, without modifying the release payload.
+MODDIR="$tmp_dir/module"
+mkdir -p "$MODDIR"
+ln -s "$MODULE_ROOT/lib" "$MODDIR/lib"
+# Package validation extracts only the subscription libraries, which do not
+# need a config tree. Full source fixtures retain their bundled defaults.
+if [[ -d "$MODULE_ROOT/.config" ]]; then
+    cp -R "$MODULE_ROOT/.config" "$MODDIR/.config"
+fi
 # shellcheck disable=SC1090
-. "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
+. "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 
 magicnet_singbox_tag_is_reserved hotspot \
     || fail "jq-free reserved-tag fallback does not protect the hotspot selector"

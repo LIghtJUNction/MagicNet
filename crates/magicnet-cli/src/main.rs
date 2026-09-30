@@ -41,6 +41,7 @@ mod diagnostics_routing;
 mod dns;
 mod ebpf_runtime;
 mod ecapture;
+mod local_http;
 mod machine;
 mod mcp;
 mod mcp_server;

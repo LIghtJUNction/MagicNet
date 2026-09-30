@@ -81,6 +81,7 @@ CI_TEST_FORCE=1 check python3 scripts/test-android-acceptance-contract.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-network-benchmark.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-tun-proof.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-adb.py
+CI_TEST_FORCE=1 check python3 scripts/test-android-utf8.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-probe.py
 check bash scripts/test-tailscale-login.sh
 check python3 scripts/test-tailscale-route-order.py

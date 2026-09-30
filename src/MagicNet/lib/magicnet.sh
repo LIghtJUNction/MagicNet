@@ -4,12 +4,16 @@
 
 export PATH="${MODDIR}/bin:${PATH}"
 
-# Root managers run boot hooks in BusyBox ash standalone mode, where the ip
-# applet wins over PATH and cannot handle all Android iproute2 operations.
-# Shell functions take precedence over applets. Bind only ip, without disabling
-# standalone mode for the other tools or changing host-side PATH/test doubles.
+# Root managers run boot hooks in BusyBox ash standalone mode, where applets
+# win over PATH. Android iproute2 is required for numeric route tables, and the
+# pinned KernelSU x86_64 BusyBox sed applet segfaults on valid UTF-8 regex input.
+# Shell functions take precedence over applets, so bind only the affected tools
+# without disabling standalone mode or changing host-side PATH/test doubles.
 if [ -x /system/bin/ip ]; then
     ip() { /system/bin/ip "$@"; }
+fi
+if [ -x /system/bin/sed ]; then
+    sed() { /system/bin/sed "$@"; }
 fi
 
 _magicnet_lib_dir="${MODDIR}/lib/magicnet"

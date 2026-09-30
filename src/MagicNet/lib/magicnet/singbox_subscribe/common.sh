@@ -378,25 +378,47 @@ magicnet_singbox_tag_matches_filter() {
     return 1
 }
 
-magicnet_yaml_value() {
-    _key="$1"
+magicnet_yaml_value() (
     # This parser is called only from magicnet_singbox_emit_node_json, whose
     # dynamically scoped _node_file is the current isolated node fixture.
     # shellcheck disable=SC2154
-    _value=$(
-        sed -n "s/^[[:space:]]*${_key}:[[:space:]]*//p" "$_node_file" | tail -n 1
-    )
-    if [ -z "$_value" ]; then
-        _value=$(
-            sed -n "s/.*[{,][[:space:]]*${_key}:[[:space:]]*\\([^,}]*\\).*/\\1/p" "$_node_file" |
-                tail -n 1
-        )
-    fi
-    printf '%s\n' "$_value" |
-        tr -d '\r' |
-        sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//; s/^'\''//; s/'\''$//'
-    unset _value
-}
+    LC_ALL=C awk -v key="$1:" '
+        function ltrim(value) {
+            while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
+            return value
+        }
+        function rtrim(value) {
+            while (length(value) && index(ws, substr(value, length(value), 1))) value = substr(value, 1, length(value) - 1)
+            return value
+        }
+        BEGIN { ws = " \t\r\n\v\f"; quote = sprintf("%c", 39) }
+        {
+            line = ltrim($0)
+            if (substr(line, 1, length(key)) == key) block = ltrim(substr(line, length(key) + 1))
+            for (n = 1; n <= length($0); n++) {
+                c = substr($0, n, 1)
+                if (c != "{" && c != ",") continue
+                field = ltrim(substr($0, n + 1))
+                if (substr(field, 1, length(key)) != key) continue
+                value = ltrim(substr(field, length(key) + 1))
+                comma = index(value, ","); brace = index(value, "}")
+                end = comma && brace ? (comma < brace ? comma : brace) : comma + brace
+                flow = end ? substr(value, 1, end - 1) : value
+            }
+        }
+        END {
+            value = block != "" ? block : flow
+            comment = index(value, "#")
+            if (comment) value = substr(value, 1, comment - 1)
+            value = rtrim(ltrim(value))
+            if (substr(value, 1, 1) == "\"") value = substr(value, 2)
+            if (substr(value, length(value), 1) == "\"") value = substr(value, 1, length(value) - 1)
+            if (substr(value, 1, 1) == quote) value = substr(value, 2)
+            if (substr(value, length(value), 1) == quote) value = substr(value, 1, length(value) - 1)
+            printf "%s\n", value
+        }
+    ' "$_node_file"
+)
 
 magicnet_truthy() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -439,5 +461,17 @@ magicnet_singbox_subscription_fingerprint() {
 }
 
 magicnet_singbox_source_is_clash() {
-    sed "1s/^$(printf '\357\273\277')//" "$1" | grep -Eq '^[[:space:]]*proxies:[[:space:]]*($|#|\[)'
+    LC_ALL=C awk '
+        BEGIN { ws = " \t\r\n\v\f"; bom = sprintf("%c%c%c", 239, 187, 191) }
+        {
+            line = $0
+            if (NR == 1 && substr(line, 1, 3) == bom) line = substr(line, 4)
+            while (length(line) && index(ws, substr(line, 1, 1))) line = substr(line, 2)
+            if (substr(line, 1, 8) != "proxies:") next
+            line = substr(line, 9)
+            while (length(line) && index(ws, substr(line, 1, 1))) line = substr(line, 2)
+            if (line == "" || substr(line, 1, 1) == "#" || substr(line, 1, 1) == "[") { found = 1; exit }
+        }
+        END { exit !found }
+    ' "$1"
 }

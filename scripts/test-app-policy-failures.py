@@ -45,6 +45,8 @@ awk() {
         fi ;;
     uid-parser)
         if [ "${1:-}" = -v ]; then printf '10042\n'; return 139; fi ;;
+    user-filter)
+        case "$1" in *'UserInfo{'*) printf '0\n'; return 139 ;; esac ;;
     exclude-sort)
         case "$1" in 'BEGIN { print 0 }'*) printf '0\n'; return 139 ;; esac ;;
     esac

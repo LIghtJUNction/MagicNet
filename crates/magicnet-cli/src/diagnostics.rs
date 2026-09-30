@@ -39,7 +39,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let (routing_ok, routing_detail) = routing_policy_check(app);
     let (tailscale_ok, tailscale_detail) = tailscale_check(app, &mode);
     let (loop_guard_ok, loop_guard_detail) = traffic_loop_guard_check(app);
-    let (api_ok, api_detail) = api_probe(&app.api);
+    let (api_ok, api_detail) = api_probe(app);
     let (mcp_ok, mcp_detail) = mcp::health_status(app);
     vec![
         ("Core", running(&singbox), format!("sing-box={singbox}")),
@@ -284,7 +284,7 @@ fn support_bundle(app: &App) -> String {
         &proxy_chain_evidence(app),
     );
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, mode_label);
-    let (api_ok, api_detail) = api_probe(&app.api);
+    let (api_ok, api_detail) = api_probe(app);
     let (mcp_enabled, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
     append_support_section(
         &mut output,
@@ -1621,15 +1621,16 @@ fn is_managed_ipv6_guard(rule: &Value) -> bool {
             && rule.get("no_drop").and_then(Value::as_bool) == Some(true))
 }
 
-fn api_probe(api: &str) -> (bool, String) {
-    let base = api.trim_end_matches('/');
+fn api_probe(app: &App) -> (bool, String) {
+    let base = app.api.trim_end_matches('/');
     let endpoint = format!("{base}/version");
-    let text = command_text_timeout(
-        "curl",
-        &["-fsS", "--max-time", "2", &endpoint],
-        crate::SHORT_TIMEOUT,
-    );
-    let ok = text.contains('{') || text.contains("version");
+    let ok = crate::webui_api::curl_get_json(app, "/version")
+        .ok()
+        .is_some_and(|value| {
+            value["version"]
+                .as_str()
+                .is_some_and(|version| !version.is_empty())
+        });
     (ok, endpoint)
 }
 

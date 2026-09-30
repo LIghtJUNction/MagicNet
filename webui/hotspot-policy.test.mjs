@@ -52,7 +52,7 @@ assert.match(routes, /magicnet_hotspot_source_cidrs_json/);
 assert.match(routes, /magicnet_hotspot_active_networks/);
 assert.doesNotMatch(routes, /\["10\.0\.0\.0\/8", "172\.16\.0\.0\/12", "192\.168\.0\.0\/16"\]/);
 assert.match(routes, /"outbound": "hotspot"/);
-assert.match(routes, /"outbounds": \["direct", "proxy"\]/);
+assert.match(routes, /\["direct", "proxy"\] \| map\(select/);
 assert.match(routes, /ip rule add priority/);
 assert.match(routes, /lookup 2022/);
 assert.match(routes, /magicnet_hotspot_discover_interfaces/);

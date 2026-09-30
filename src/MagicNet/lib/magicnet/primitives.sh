@@ -55,7 +55,20 @@ magicnet_jq_ai_tags_lib() {
 magicnet_json_escape() {
     LC_ALL=C printf '%s' "$1" |
         tr '\r\n\t' '   ' |
-        sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
+        LC_ALL=C awk '
+            BEGIN {
+                for (n = 1; n < 32; n++) controls = controls sprintf("%c", n)
+                controls = controls sprintf("%c", 127)
+            }
+            {
+                for (n = 1; n <= length($0); n++) {
+                    c = substr($0, n, 1)
+                    if (index(controls, c)) continue
+                    if (c == "\\" || c == "\"") printf "%s", "\\"
+                    printf "%s", c
+                }
+            }
+        '
 }
 
 # Host-only compatibility for Bash test fixtures. Android always uses the Rust

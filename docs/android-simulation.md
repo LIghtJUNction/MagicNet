@@ -3,9 +3,9 @@
 The automatic `Android KernelSU Acceptance` workflow runs on pull requests,
 merge groups and pushes to `main`. It has no path exclusions. `Android Simulation
 Gate` fails if the harness or emulator job fails, is cancelled, or is skipped.
-This adds a check; it does **not** silently change GitHub branch protection or the
-signed-release workflow. Require this check in the repository's merge rules before
-calling it a mandatory merge/release policy. Keep the existing CI Quality Gate.
+GitHub branch protection remains a repository setting. Signed publication also
+requires a successful push-triggered Android run and all three required jobs on
+the exact main release commit; old commits and PR-only results are rejected.
 
 ## What runs
 
@@ -27,8 +27,16 @@ extracts its embedded BusyBox, reads the running KMI, and executes upstream
 request 2 GiB RAM; manual dispatch also offers 4 GiB, while the report records
 the guest's observed `/proc/meminfo` separately. The driver requires an explicit
 emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positive
-KernelSU kernel version, and the real `u:r:su:s0` domain from pinned KernelSU v3.2.0. It uses KernelSU
-BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+KernelSU kernel version, and the real `u:r:su:s0` domain from pinned KernelSU v3.2.0. It keeps
+KernelSU BusyBox `ASH_STANDALONE=1` semantics for normal applets, verifies the
+BusyBox grep operations and byte-based awk list/user parsers, and separately
+verifies `/system/bin/sed` on ASCII module metadata. Both BusyBox and system sed
+can fault on UTF-8 character-set regexes in this x86 environment; selecting a
+different executable alone does not fix that defect. Startup config shape/node
+checks now use packaged jq, and list trimming/user-ID extraction avoids applying
+those regexes to Unicode text. The harness also runs the real product parsers
+against the unchanged, hash-verified KernelSU BusyBox on the host. It never
+enables permissive mode or substitutes another root-manager binary.
 
 The older build 11987101 kernel failed before installation with a `module_layout`
 ABI mismatch. The matching 12525588 candidate reached Android `sys.boot_completed`

@@ -214,6 +214,59 @@ def has_owned_network(text: str) -> bool:
     return bool(re.search(r'magicnet|sing-box|(?:lookup|table)\s+2022\b', text, re.I))
 
 
+# Exercise the same regex operations as startup using public, synthetic input.
+# A crash is a broken runtime, never a legitimate "no nodes" result.
+NODE_PATTERN = r'"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"'
+CONFIG_PATTERNS = {'nodes': NODE_PATTERN, 'inbounds': r'"inbounds"[[:space:]]*:',
+                   'outbounds': r'"outbounds"[[:space:]]*:'}
+
+
+def busybox_regex_cases():
+    sample = '{"inbounds": [], "outbounds": [{"type": "socks", "tag": "测试"}]}\n'
+    cases = [(name, ['grep', '-Eq', pattern], sample, 0, '')
+             for name, pattern in CONFIG_PATTERNS.items()]
+    cases.extend([
+        ('nodes_absent', ['grep', '-Eq', NODE_PATTERN], '{"type":"direct"}\n', 1, ''),
+        ('awk_trimmed_lines', ['awk',
+         '{ line=$0; ws=" \\t\\r\\n\\v\\f"; '
+         'while (length(line) && index(ws, substr(line, 1, 1))) line=substr(line, 2); '
+         'while (length(line) && index(ws, substr(line, length(line), 1))) line=substr(line, 1, length(line)-1); '
+         'if (line == "" || substr(line, 1, 1) == "#") next; '
+         'if (!seen[line]++) print line }'],
+         ' \n# comment\n  # comment\n 测试 \n测试\n', 0, '测试\n'),
+        ('awk_preserved_lines', ['awk',
+         '{ trimmed=$0; ws=" \\t\\r\\n\\v\\f"; '
+         'while (length(trimmed) && index(ws, substr(trimmed, 1, 1))) trimmed=substr(trimmed, 2); '
+         'while (length(trimmed) && index(ws, substr(trimmed, length(trimmed), 1))) trimmed=substr(trimmed, 1, length(trimmed)-1); '
+         'if (trimmed == "" || substr(trimmed, 1, 1) == "#") next; '
+         'if (!seen[$0]++) print }'],
+         ' \n# comment\n  # comment\n 测试 \n测试\n 测试 \n', 0, ' 测试 \n测试\n'),
+        ('awk_user_ids', ['awk',
+         'index($0, "UserInfo{") { value=substr($0, index($0, "UserInfo{")+9); '
+         'colon=index(value, ":"); if (colon) { value=substr(value, 1, colon-1); '
+         'if (value ~ /^[0-9]+$/) print value } }'],
+         'Users:\n UserInfo{0:测试:13}\n UserInfo{10:工作:30}\n', 0, '0\n10\n'),
+    ])
+    return cases
+
+
+def system_sed_cases():
+    # Only ASCII module metadata uses sed in this pre-install check. UTF-8
+    # lists/user names use the actual awk operations above; JSON uses jq and
+    # is checked on the installed module, not with a regex tag extractor.
+    return [
+        ('sed_lines', ['/^[[:space:]]*$/d; /^[[:space:]]*#/d'],
+         ' \n# comment\n  # comment\nversion=v1.5.18\n', 0, 'version=v1.5.18\n'),
+        ('sed_capture', ['-n', 's/^version=//p'],
+         'id=MagicNet\nversion=v1.5.18\n', 0, 'v1.5.18\n'),
+    ]
+
+
+def bounded_exit_code(value):
+    # subprocess uses negative signal numbers; Android shells commonly use 128+signal.
+    return value if type(value) is int and -255 <= value <= 255 else None
+
+
 class Device:
     def __init__(self):
         require(os.environ.get('MAGICNET_DISPOSABLE_AVD') == '1', 'explicit disposable AVD opt-in required')
@@ -221,6 +274,7 @@ class Device:
         require(re.fullmatch(r'emulator-[0-9]+', self.serial) is not None, 'explicit emulator serial required')
         self.verified = False
         self.late_load_on_reboot = False
+        self.busybox_checks = []
         self.boot_log = ROOT / 'artifacts/android-kernelsu/emulator.log'
 
     def boot_failure(self, offset: int = 0) -> str | None:
@@ -250,7 +304,8 @@ class Device:
         except OSError:
             cp = subprocess.CompletedProcess(argv, 127, '', 'ADB unavailable')
         if check:
-            require(cp.returncode == 0, f'ADB operation failed (exit {cp.returncode})')
+            operation = args[0] if args and args[0] in ('shell', 'root', 'reboot', 'wait-for-device', 'push', 'install') else 'operation'
+            require(cp.returncode == 0, f'ADB {operation} failed (exit {cp.returncode})')
         return cp
 
     def shell(self, command: str, timeout: float = 30, check: bool = True):
@@ -290,8 +345,24 @@ class Device:
 
     def root(self):
         self.run('root')
-        self.run('wait-for-device', timeout=30)
-        require(self.shell('id -u').stdout.strip() == '0', 'debuggable/rootable Android image required')
+        # wait-for-device can observe the old transport before adb root exits
+        # and restarts adbd. Verify the new connection with a read-only probe;
+        # lifecycle mutations must never be replayed to conceal this race.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            connected = self.run('wait-for-device', timeout=min(5, remaining), check=False)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if connected.returncode == 0:
+                identity = self.shell('id -u', timeout=min(5, remaining), check=False)
+                if identity.returncode == 0 and identity.stdout.strip() == '0':
+                    return
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        raise RuntimeError('debuggable/rootable Android image did not reconnect before deadline')
 
     def identify(self):
         self.wait_boot()
@@ -302,6 +373,63 @@ class Device:
         self.verified = True
         self.root()
         self.shell(f'test ! -e {MOD} && test ! -e {STAGED}')
+
+    def check_busybox(self, stage: str, *, activated: bool):
+        require(self.verified, 'device identity not verified')
+        require(stage in ('extracted', 'activated'), 'invalid BusyBox probe stage')
+        require(len(self.busybox_checks) < 16, 'BusyBox probe history budget exceeded')
+        evidence = {'stage': stage, 'status': 'failed', 'sha256': None,
+                    'version': None, 'checks': {}}
+        self.busybox_checks.append(evidence)  # Keep partial evidence on failure.
+        deadline = time.monotonic() + 20
+
+        def run(command, *, runtime=False):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return subprocess.CompletedProcess([], 124, '', '')
+            if runtime and activated:
+                return self.kshell(command, timeout=min(3, remaining), check=False)
+            if runtime:
+                command = 'ASH_STANDALONE=1 ' + BB + ' sh -c ' + shlex.quote(command)
+            return self.shell(command, timeout=min(3, remaining), check=False)
+
+        hashed = run('/system/bin/sha256sum ' + BB)
+        evidence['hash_exit_code'] = bounded_exit_code(hashed.returncode)
+        fields = hashed.stdout.split()
+        if hashed.returncode == 0 and len(fields) == 2 and fields[1] == BB and re.fullmatch(r'[0-9a-f]{64}', fields[0]):
+            evidence['sha256'] = fields[0]
+        version = run(BB + ' --help', runtime=True)
+        evidence['version_exit_code'] = bounded_exit_code(version.returncode)
+        match = re.match(r'BusyBox v([0-9]+(?:\.[0-9]+){2,3})(?:\s|[-(])', (version.stdout[:128] + version.stderr[:128]))
+        if version.returncode == 0 and match:
+            evidence['version'] = match[1]
+        for name, args, sample, expected_exit, expected_output in busybox_regex_cases():
+            command = ('printf %s ' + shlex.quote(sample) + ' | ' + BB + ' '
+                       + ' '.join(shlex.quote(arg) for arg in args))
+            result = run(command, runtime=True)
+            evidence['checks'][name] = {
+                'exit_code': bounded_exit_code(result.returncode),
+                'expected_exit_code': expected_exit,
+                'output_matches': result.stdout == expected_output,
+                'provider': 'kernelsu_busybox',
+            }
+        evidence['sed_provider'] = '/system/bin/sed'
+        for name, args, sample, expected_exit, expected_output in system_sed_cases():
+            command = ('test -x /system/bin/sed && printf %s ' + shlex.quote(sample)
+                       + ' | /system/bin/sed ' + ' '.join(shlex.quote(arg) for arg in args))
+            result = run(command, runtime=True)
+            evidence['checks'][name] = {
+                'exit_code': bounded_exit_code(result.returncode),
+                'expected_exit_code': expected_exit,
+                'output_matches': result.stdout == expected_output,
+                'provider': 'android_system_sed',
+            }
+        valid = (evidence['sha256'] is not None and evidence['version'] is not None
+                 and all(item['exit_code'] == item['expected_exit_code'] and item['output_matches']
+                         for item in evidence['checks'].values()))
+        if valid:
+            evidence['status'] = 'passed'
+        require(valid, 'Module shell tool preflight failed; see busybox_checks evidence')
 
     def late_load_kernelsu(self) -> dict:
         require(self.verified, 'device identity not verified')
@@ -318,6 +446,7 @@ class Device:
         self.shell('mkdir -p /data/adb/ksu/bin')
         self.shell(KSUD + ' debug extract-binary busybox ' + BB, timeout=30)
         self.shell(f'chmod 0755 {BB} && {BB} --install -s /data/adb/ksu/bin')
+        self.check_busybox('extracted', activated=False)
         command = 'PATH=/data/adb/ksu/bin:/system/bin:/system/xbin ' + KSUD
         current = self.shell(command + ' boot-info current-kmi', timeout=30).stdout.strip()
         require(bool(current), 'KernelSU could not determine the pinned AVD kernel KMI')
@@ -332,6 +461,7 @@ class Device:
                 'real KernelSU SELinux domain required after userspace late-load')
         require(self.kshell('getenforce').stdout.strip() == 'Enforcing',
                 'KernelSU userspace late-load changed SELinux enforcement')
+        self.check_busybox('activated', activated=True)
         self.late_load_on_reboot = True
         return {'mode': 'pinned-kernel-userspace-late-load', 'kmi': current,
                 'kernel_version': version}
@@ -438,7 +568,11 @@ def load_script(name: str):
 def tun_controls(device: Device, out: Path, phase: str):
     proof = load_script('android-tun-proof')
     benchmark = load_script('android-network-benchmark')
-    result = proof.verify(device.kshell, benchmark.instrument, benchmark.COMPONENT)
+    # The proof owns failure accounting and restoration. Return failed commands
+    # to it instead of raising before it can record the operation and exit code.
+    def probe_command(command, timeout=30):
+        return device.kshell(command, timeout=timeout, check=False)
+    result = proof.verify(probe_command, benchmark.instrument, benchmark.COMPONENT)
     (out / ('tun-controls-' + phase + '.json')).write_text(json.dumps(result, indent=2) + '\n')
     require(result.get('status') == 'verified' and all(result.get(k) is True for k in
             ('positive', 'reject', 'positive_after', 'restored')), 'app-UID TUN controls failed')
@@ -577,7 +711,26 @@ def diagnostics(device: Device, out: Path):
         return
     # Diagnostics must not turn a failing test green or exhaust the job timeout.
     deadline = time.monotonic() + 25
-    commands = {'logcat.txt': 'logcat -d -t 600', 'dmesg.txt': 'dmesg | tail -n 400',
+    # Only statuses leave the device; no configuration or command output is retained.
+    predicates = {}
+    for name, pattern in CONFIG_PATTERNS.items():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        result = device.kshell(BB + ' grep -Eq ' + shlex.quote(pattern) + ' '
+                               + MOD + '/.config/sing-box/config.json >/dev/null 2>&1',
+                               timeout=min(3, remaining), check=False)
+        predicates[name] = bounded_exit_code(result.returncode)
+    (out / 'config-regex-exit-codes.json').write_text(json.dumps(predicates, indent=2) + '\n')
+    commands = {'kam.log': 'tail -n 300 /data/adb/cache/MagicNet/kam.log',
+                'api-probe.txt': f'{MOD}/cli mode; '
+                                 f'ls -l {MOD}/bin/curl {MOD}/system/bin/curl '
+                                 '/system/bin/curl /system/xbin/curl /vendor/bin/curl 2>/dev/null',
+                'config-check.txt': f'{MOD}/bin/sing-box check -c '
+                                    f'{MOD}/.config/sing-box/config.json -D {MOD}/.config/sing-box',
+                'startup-state.txt': f'ls -l {MOD}/.state/machines; '
+                                     f'cat {MOD}/.state/machines/*.state',
+                'logcat.txt': 'logcat -d -t 1200', 'dmesg.txt': 'dmesg | tail -n 400',
                 'service-status.json': MOD + '/cli --json service status',
                 'service.log': f'tail -n 300 {MOD}/.log/service.log',
                 'sing-box.log': f'tail -n 300 {MOD}/.log/sing-box.log'}
@@ -610,6 +763,9 @@ def main() -> int:
                 report.provenance = prepare_archive(source, archive, replacements)
                 device.identify()
                 report.provenance['device'] = device_resources(device)
+                report.provenance['system_curl_available'] = device.shell(
+                    'test -f /system/bin/curl || test -f /system/xbin/curl || '
+                    'test -f /vendor/bin/curl', check=False).returncode == 0
             with report.phase('kernelsu-bootstrap'):
                 device.shell(f'mkdir -p {REMOTE} /data/adb')
                 device.run('push', os.environ['MAGICNET_KSUD_HOST'], REMOTE + '/ksud')
@@ -678,6 +834,8 @@ def main() -> int:
         print('[device-simulation] FAILED: ' + type(error).__name__ + ': ' + str(error)[:256], flush=True)
         return 1
     finally:
+        if device is not None:
+            report.provenance['busybox_checks'] = device.busybox_checks
         report.write()
         if device is not None:
             try:

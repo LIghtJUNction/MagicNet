@@ -78,6 +78,7 @@ jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.rules[] | select(.tag == "magicnet-final-dns")] ==
       [{"action":"evaluate","server":"bootstrap-local-dns","tag":"magicnet-final-dns"}])
+    and .dns.rules[-1] == {"match_response":"magicnet-final-dns","action":"respond"}
     and (.dns.rules | length) == 2
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
@@ -120,6 +121,73 @@ jq -e '
   printf 'explicit DNS cache and timeout preferences must be preserved\n' >&2
   exit 1
 }
+
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{"dns":{"servers":[{"type":"hosts","tag":"offline","predefined":{"magicnet.test":["198.18.0.42"]}}],
+"final":"offline","rules":[{"domain":"magicnet.test","server":"offline"}]},"route":{}}
+EOF
+printf 'validated\n' >"$MODDIR/.config/sing-box/standalone-config"
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+jq -e '
+  .dns.servers == [{"type":"hosts","tag":"offline","predefined":{"magicnet.test":["198.18.0.42"]}}]
+    and .dns.final == "offline"
+    and .dns.rules == [{"domain":"magicnet.test","server":"offline"}]
+    and .route.default_domain_resolver == "offline"
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'standalone DNS graph and explicit 1.14 resolver were not preserved\n' >&2
+  exit 1
+}
+cp "$MODDIR/.config/sing-box/config.json" "$WORK/standalone-dns.json"
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+cmp "$WORK/standalone-dns.json" "$MODDIR/.config/sing-box/config.json"
+jq '.route.default_domain_resolver={"server":"offline","strategy":"ipv4_only","timeout":"3s"}' \
+  "$MODDIR/.config/sing-box/config.json" >"$WORK/explicit-resolver.json"
+cp "$WORK/explicit-resolver.json" "$MODDIR/.config/sing-box/config.json"
+MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e '
+  .route.default_domain_resolver == {"server":"offline","strategy":"ipv4_only","timeout":"3s"}
+    and .dns.final == "cloudflare-profile-dns"
+    and ([.dns.servers[] | select(.tag == "offline")] | length) == 1
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'explicit resolver or selected standalone DNS profile was overwritten\n' >&2
+  exit 1
+}
+
+# A standalone config may leave resolution entirely to the system. The
+# default profile must preserve the absence of a managed DNS server graph.
+for dns in '"omitted"' null '{}' '{"servers":null}' '{"servers":[]}' '{"disable_cache":true}'; do
+  jq -n --argjson dns "$dns" '
+    {inbounds:[{type:"mixed",listen:"127.0.0.1",listen_port:2080}],
+     outbounds:[{type:"direct",tag:"direct"}],route:{final:"direct"}}
+    + (if $dns == "omitted" then {} else {dns:$dns} end)
+  ' >"$WORK/no-dns-original.json"
+  cp "$WORK/no-dns-original.json" "$MODDIR/.config/sing-box/config.json"
+  MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+  jq -s -e 'length == 2 and .[0] == .[1]' \
+    "$WORK/no-dns-original.json" "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+    printf 'standalone config without DNS servers was changed: %s\n' "$dns" >&2
+    exit 1
+  }
+  cp "$MODDIR/.config/sing-box/config.json" "$WORK/no-dns-once.json"
+  MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+  cmp "$WORK/no-dns-once.json" "$MODDIR/.config/sing-box/config.json"
+done
+
+# An invalid DNS field is not the same as an omitted graph. Failure must not
+# overwrite the original file or leave a partially rendered candidate.
+for dns in '"invalid"' false '[]' '{"servers":"invalid"}' '{"servers":false}' '{"servers":{}}'; do
+  jq -n --argjson dns "$dns" '{dns:$dns,outbounds:[{type:"direct",tag:"direct"}]}' \
+    >"$WORK/invalid-dns.json"
+  cp "$WORK/invalid-dns.json" "$MODDIR/.config/sing-box/config.json"
+  if MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox 2>"$WORK/invalid-dns.log"; then
+    printf 'malformed standalone DNS was accepted: %s\n' "$dns" >&2
+    exit 1
+  fi
+  cmp "$WORK/invalid-dns.json" "$MODDIR/.config/sing-box/config.json"
+  [ ! -e "$MODDIR/.config/sing-box/config.json.magicnet-dns.new" ]
+done
+
+rm -f "$MODDIR/.config/sing-box/standalone-config"
 
 if [ "$with_routing_assets" -eq 1 ]; then
   command -v sing-box >/dev/null 2>&1 || {

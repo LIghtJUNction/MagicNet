@@ -94,6 +94,18 @@ jobs:
           python3 scripts/test-android-tun-proof.py
           python3 scripts/test-android-network-benchmark.py
 
+      - name: Test UTF-8 parsers with the unmodified KernelSU BusyBox
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 60 \
+            https://raw.githubusercontent.com/tiann/KernelSU/5f9cada650f1171807c0d702b6cfbf510a2ec175/userspace/ksud/bin/x86_64/busybox \
+            -o "$RUNNER_TEMP/ksu-busybox"
+          printf '%s  %s\n' 060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900 \
+            "$RUNNER_TEMP/ksu-busybox" | sha256sum --check --strict
+          chmod 0755 "$RUNNER_TEMP/ksu-busybox"
+          MAGICNET_KSU_BUSYBOX="$RUNNER_TEMP/ksu-busybox" python3 scripts/test-android-utf8.py
+
   android-kernelsu:
     name: Android 15 / KernelSU / x86_64
     needs: harness

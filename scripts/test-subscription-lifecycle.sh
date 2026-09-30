@@ -115,13 +115,14 @@ assert_file() {
 
 assert_issue_93_local_startup_sources() {
   local issue_moddir="$fixture/issue-93-module"
-  mkdir -p "$issue_moddir/.config/sing-box"
+  mkdir -p "$issue_moddir/bin" "$issue_moddir/.config/sing-box"
+  ln -s "$(command -v jq)" "$issue_moddir/bin/jq"
 
   printf 'proxies:\n  - local-fixture\n' >"$issue_moddir/.config/sing-box/subscription.local"
   MODDIR="$issue_moddir" magicnet_require_subscription_or_stop
 
   rm -f "$issue_moddir/.config/sing-box/subscription.local"
-  printf '%s\n' '{"inbounds":[],"outbounds":[]}' >"$issue_moddir/.config/sing-box/config.json"
+  printf '%s\n' '{"inbounds":[{"type":"mixed","listen":"127.0.0.1","listen_port":7892}],"outbounds":[{"type":"direct","tag":"direct"}]}' >"$issue_moddir/.config/sing-box/config.json"
   printf '%s\n' validated >"$issue_moddir/.config/sing-box/standalone-config"
   MODDIR="$issue_moddir" magicnet_require_subscription_or_stop
 }

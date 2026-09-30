@@ -35,7 +35,8 @@ import() { :; }
 
 export MODDIR="$fixture/module"
 export KAM_HOME="$MODDIR"
-mkdir -p "$MODDIR/.state/watchdog" "$MODDIR/.state/fswatch"
+mkdir -p "$MODDIR/bin" "$MODDIR/.state/watchdog" "$MODDIR/.state/fswatch"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 # shellcheck disable=SC1090
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 # shellcheck disable=SC1090
@@ -311,7 +312,7 @@ rm -f "$(magicnet_wifi_policy_pid_file)"
 # metadata left by a killed owner must be reclaimed only after the exact scan
 # proves that no loop is alive.
 mkdir -p "$MODDIR/.config/sing-box"
-printf '%s\n' '{"inbounds":[],"outbounds":[]}' >"$MODDIR/.config/sing-box/config.json"
+printf '%s\n' '{"inbounds":[{"type":"mixed","listen":"127.0.0.1","listen_port":7892}],"outbounds":[{"type":"direct","tag":"direct"}]}' >"$MODDIR/.config/sing-box/config.json"
 printf '%s\n' 'standalone' >"$MODDIR/.config/sing-box/standalone-config"
 printf '%s\n' '12' >"$MODDIR/.config/magicnet/subscription-refresh-hours"
 printf '%s\n' '999999:1:subscription-refresh-v1' >"$(magicnet_subscription_refresh_owner_file)"
