@@ -90,6 +90,9 @@ magicnet_singbox_config_has_nodes
 '''
             for shell in shells:
                 with self.subTest(shell=shlex.join(shell)):
+                    # Every interpreter must generate its own outputs.
+                    for directory in ('yaml-nodes', 'link-nodes'):
+                        shutil.rmtree(module / directory, ignore_errors=True)
                     env = dict(os.environ, MODDIR=str(module), ASH_STANDALONE='1')
                     result = subprocess.run([*shell, '-c', script], env=env,
                                             text=True, capture_output=True, timeout=15)

@@ -8,7 +8,7 @@ magicnet_singbox_extract_clash_nodes() (
     _start_index=$(find "$_nodes_dir" -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) | wc -l)
     # This is only a node boundary/count extractor for the native fallback;
     # the complete document, including anchors, goes to the pinned converter.
-    awk -v outdir="$_nodes_dir" -v start_index="$_start_index" '
+    LC_ALL=C awk -v outdir="$_nodes_dir" -v start_index="$_start_index" '
         function ltrim(value) {
             while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
             return value

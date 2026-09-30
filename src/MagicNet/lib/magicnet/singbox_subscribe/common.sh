@@ -382,7 +382,7 @@ magicnet_yaml_value() (
     # This parser is called only from magicnet_singbox_emit_node_json, whose
     # dynamically scoped _node_file is the current isolated node fixture.
     # shellcheck disable=SC2154
-    awk -v key="$1:" '
+    LC_ALL=C awk -v key="$1:" '
         function ltrim(value) {
             while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
             return value
@@ -461,7 +461,7 @@ magicnet_singbox_subscription_fingerprint() {
 }
 
 magicnet_singbox_source_is_clash() {
-    awk '
+    LC_ALL=C awk '
         BEGIN { ws = " \t\r\n\v\f"; bom = sprintf("%c%c%c", 239, 187, 191) }
         {
             line = $0
