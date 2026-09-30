@@ -32,8 +32,15 @@ magicnet_app_proxy_packages() {
         unset _proxy_packages_file
         return 0
     fi
-    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_proxy_packages_file" 2>/dev/null |
-        awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if (!seen[$0]++) print }'
+    # KernelSU v3.2.0's x86_64 BusyBox sed crashes on the former
+    # two-address blank/comment filter. Do the complete operation in one awk
+    # process while preserving the trimmed package-list contract.
+    awk '{
+        line=$0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line == "" || substr(line, 1, 1) == "#") next
+        if (!seen[line]++) print line
+    }' "$_proxy_packages_file" 2>/dev/null
     unset _proxy_packages_file
 }
 

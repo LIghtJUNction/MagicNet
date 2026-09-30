@@ -227,8 +227,16 @@ def busybox_regex_cases():
              for name, pattern in CONFIG_PATTERNS.items()]
     cases.extend([
         ('nodes_absent', ['grep', '-Eq', NODE_PATTERN], '{"type":"direct"}\n', 1, ''),
-        ('sed_lines', ['sed', '/^[[:space:]]*$/d; /^[[:space:]]*#/d'],
-         ' \n# comment\n  # comment\n测试\n', 0, '测试\n'),
+        ('awk_trimmed_lines', ['awk',
+         '{ line=$0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", line); '
+         'if (line == "" || substr(line, 1, 1) == "#") next; '
+         'if (!seen[line]++) print line }'],
+         ' \n# comment\n  # comment\n 测试 \n测试\n', 0, '测试\n'),
+        ('awk_preserved_lines', ['awk',
+         '{ trimmed=$0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed); '
+         'if (trimmed == "" || substr(trimmed, 1, 1) == "#") next; '
+         'if (!seen[$0]++) print }'],
+         ' \n# comment\n  # comment\n 测试 \n测试\n 测试 \n', 0, ' 测试 \n测试\n'),
         ('sed_capture', ['sed', '-n', r's/.*"tag":"\([^"]*\)".*/\1/p'],
          '{"tag":"测试"}\n', 0, '测试\n'),
     ])

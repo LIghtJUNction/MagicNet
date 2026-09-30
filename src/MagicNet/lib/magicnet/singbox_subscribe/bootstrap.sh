@@ -166,5 +166,12 @@ magicnet_singbox_restore_last_good() (
 magicnet_list_file_values() {
     _file="$1"
     [ -f "$_file" ] || return 0
-    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+    # Preserve non-comment values byte-for-byte while avoiding the BusyBox sed
+    # expression that is known to SIGSEGV in the pinned x86_64 KernelSU AVD.
+    awk '{
+        trimmed=$0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
+        if (trimmed == "" || substr(trimmed, 1, 1) == "#") next
+        if (!seen[$0]++) print
+    }' "$_file" 2>/dev/null
 }
