@@ -43,7 +43,8 @@ class SanityExecutionTests(unittest.TestCase):
         # Model an exact successful cache hit. Cheap repository checks must run
         # even if the cache says all previously checked inputs are unchanged.
         self.write('scripts/ci-test-cache.py', 'raise SystemExit(0)\n')
-        for name in ('test-lint-source.py', 'test-ci-test-cache.py', 'test-ci-quality.py'):
+        for name in ('test-lint-source.py', 'test-app-policy-failures.py',
+                     'test-ci-test-cache.py', 'test-ci-quality.py'):
             self.write('scripts/' + name,
                        'import os\nraise SystemExit(27 if os.environ.get("FAIL_CHECK") == '
                        + repr(name) + ' else 0)\n')
@@ -92,7 +93,8 @@ class SanityExecutionTests(unittest.TestCase):
         self.assertIn('duplicate JSON key', result.stderr)
 
     def test_each_cheap_check_failure_stops_host_tests(self):
-        for name in ('test-lint-source.py', 'lint-source.py', 'lint-shell.sh'):
+        for name in ('test-lint-source.py', 'lint-source.py', 'lint-shell.sh',
+                     'test-app-policy-failures.py'):
             with self.subTest(check=name):
                 if name == 'lint-source.py':
                     self.write('scripts/lint-source.py', 'raise SystemExit(27)\n')

@@ -35,6 +35,7 @@ check_group() {
         python3 scripts/test-lint-source.py
         python3 scripts/lint-source.py
         bash scripts/lint-shell.sh
+        python3 scripts/test-app-policy-failures.py
         bash scripts/test-host.sh
         ;;
     components)
