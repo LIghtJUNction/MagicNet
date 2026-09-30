@@ -45,6 +45,12 @@ class Utf8ParserTests(unittest.TestCase):
             (module / 'values').write_text(' \n# 注释\n  # 中文\n 测试 \n测试\n 测试 \n')
             (module / 'escape-input').write_text('测"试\\🌍\n\r\t\x01\x7f' + '长' * 3000)
             (module / 'escape-expected').write_text('测\\"试\\\\🌍   ' + '长' * 3000)
+            (module / 'source.yaml').write_bytes(('\ufeffproxies: # 中文\r\n'
+                '  # 注释\r\n  - name: "测试🌍"\r\n    type: trojan\r\n'
+                '    server: example.invalid\r\n    port: 443\r\n'
+                '    password: fixture\r\nproxy-groups:\r\n'
+                '  - name: 不是节点\r\n').encode())
+            (module / 'share-links').write_text('  trojan://fixture@example.invalid:443#测试🌍\n')
             (module / '.config/sing-box/standalone-config').touch()
             script = r'''
 set -eu
@@ -54,6 +60,15 @@ import() { :; }
 for attempt in 1 2 3 4 5; do
     test "$(magicnet_json_escape "$(cat "$MODDIR/escape-input")")" = "$(cat "$MODDIR/escape-expected")"
 done
+. "$MODDIR/lib/magicnet/singbox_subscribe/common.sh"
+. "$MODDIR/lib/magicnet/singbox_subscribe/parse.sh"
+magicnet_singbox_source_is_clash "$MODDIR/source.yaml"
+test "$(magicnet_singbox_extract_clash_nodes "$MODDIR/source.yaml" "$MODDIR/yaml-nodes")" = 1
+magicnet_singbox_emit_node_json "$MODDIR/yaml-nodes/node-1.yaml" >"$MODDIR/yaml-node.json"
+"$MODDIR/bin/jq" -e '.tag == "测试🌍" and .server_port == 443 and .password == "fixture"' "$MODDIR/yaml-node.json" >/dev/null
+test "$(magicnet_singbox_extract_share_links "$MODDIR/share-links" "$MODDIR/link-nodes")" = 1
+magicnet_singbox_emit_share_link_json "$MODDIR/link-nodes/node-1.link" >"$MODDIR/link-node.json"
+"$MODDIR/bin/jq" -e '.tag == "测试🌍" and .server_port == 443' "$MODDIR/link-node.json" >/dev/null
 test "$(magicnet_app_proxy_packages "$MODDIR/values")" = '测试'
 test "$(magicnet_list_file_values "$MODDIR/values")" = ' 测试 
 测试'
