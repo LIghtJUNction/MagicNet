@@ -237,10 +237,17 @@ def busybox_regex_cases():
          'if (trimmed == "" || substr(trimmed, 1, 1) == "#") next; '
          'if (!seen[$0]++) print }'],
          ' \n# comment\n  # comment\n 测试 \n测试\n 测试 \n', 0, ' 测试 \n测试\n'),
-        ('sed_capture', ['sed', '-n', r's/.*"tag":"\([^"]*\)".*/\1/p'],
-         '{"tag":"测试"}\n', 0, '测试\n'),
     ])
     return cases
+
+
+def system_sed_cases():
+    return [
+        ('sed_lines', ['/^[[:space:]]*$/d; /^[[:space:]]*#/d'],
+         ' \n# comment\n  # comment\n测试\n', 0, '测试\n'),
+        ('sed_capture', ['-n', r's/.*"tag":"\([^"]*\)".*/\1/p'],
+         '{"tag":"测试"}\n', 0, '测试\n'),
+    ]
 
 
 def bounded_exit_code(value):
@@ -375,13 +382,25 @@ class Device:
                 'exit_code': bounded_exit_code(result.returncode),
                 'expected_exit_code': expected_exit,
                 'output_matches': result.stdout == expected_output,
+                'provider': 'kernelsu_busybox',
+            }
+        evidence['sed_provider'] = '/system/bin/sed'
+        for name, args, sample, expected_exit, expected_output in system_sed_cases():
+            command = ('test -x /system/bin/sed && printf %s ' + shlex.quote(sample)
+                       + ' | /system/bin/sed ' + ' '.join(shlex.quote(arg) for arg in args))
+            result = run(command, runtime=True)
+            evidence['checks'][name] = {
+                'exit_code': bounded_exit_code(result.returncode),
+                'expected_exit_code': expected_exit,
+                'output_matches': result.stdout == expected_output,
+                'provider': 'android_system_sed',
             }
         valid = (evidence['sha256'] is not None and evidence['version'] is not None
                  and all(item['exit_code'] == item['expected_exit_code'] and item['output_matches']
                          for item in evidence['checks'].values()))
         if valid:
             evidence['status'] = 'passed'
-        require(valid, 'BusyBox regex preflight failed; see busybox_checks evidence')
+        require(valid, 'Module shell tool preflight failed; see busybox_checks evidence')
 
     def late_load_kernelsu(self) -> dict:
         require(self.verified, 'device identity not verified')

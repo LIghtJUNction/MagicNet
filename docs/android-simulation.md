@@ -27,8 +27,12 @@ extracts its embedded BusyBox, reads the running KMI, and executes upstream
 request 2 GiB RAM; manual dispatch also offers 4 GiB, while the report records
 the guest's observed `/proc/meminfo` separately. The driver requires an explicit
 emulator serial, qemu identity, x86_64 ABI, API 35, SELinux Enforcing, a positive
-KernelSU kernel version, and the real `u:r:su:s0` domain from pinned KernelSU v3.2.0. It uses KernelSU
-BusyBox with `ASH_STANDALONE=1`. It never enables permissive mode.
+KernelSU kernel version, and the real `u:r:su:s0` domain from pinned KernelSU v3.2.0. It keeps
+KernelSU BusyBox `ASH_STANDALONE=1` semantics for normal applets, verifies the
+BusyBox grep/awk operations MagicNet uses, and separately verifies Android's
+explicit `/system/bin/sed` for sed regexes. MagicNet binds `sed` to that
+system executable because the pinned x86_64 KernelSU BusyBox sed applet can
+segfault on valid UTF-8 input. It never enables permissive mode.
 
 The older build 11987101 kernel failed before installation with a `module_layout`
 ABI mismatch. The matching 12525588 candidate reached Android `sys.boot_completed`

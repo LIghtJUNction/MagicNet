@@ -432,7 +432,8 @@ class BusyboxPreflightTests(unittest.TestCase):
     def results(self):
         return [cp('a' * 64 + '  ' + SIM.BB + '\n'),
                 subprocess.CompletedProcess([], 0, '', 'BusyBox v1.36.1.1 topjohnwu multi-call binary.\n')] + [
-                    cp(expected, rc) for _, _, _, rc, expected in SIM.busybox_regex_cases()]
+                    cp(expected, rc) for _, _, _, rc, expected
+                    in SIM.busybox_regex_cases() + SIM.system_sed_cases()]
 
     def test_valid_runtime_records_only_bounded_identity_and_statuses(self):
         for activated in (False, True):
@@ -445,14 +446,18 @@ class BusyboxPreflightTests(unittest.TestCase):
             self.assertEqual(record['status'], 'passed')
             self.assertEqual(record['sha256'], 'a' * 64)
             self.assertEqual(record['version'], '1.36.1.1')
+            self.assertEqual(record['sed_provider'], '/system/bin/sed')
             self.assertEqual(record['checks']['nodes_absent']['exit_code'], 1)
+            self.assertEqual(record['checks']['nodes']['provider'], 'kernelsu_busybox')
+            self.assertEqual(record['checks']['sed_lines']['provider'], 'android_system_sed')
             calls = shell.call_args_list + kshell.call_args_list
-            self.assertEqual(len(calls), 8)
+            case_count = len(SIM.busybox_regex_cases()) + len(SIM.system_sed_cases())
+            self.assertEqual(len(calls), 2 + case_count)
             for call in calls:
                 self.assertFalse(call.kwargs['check'])
                 self.assertGreater(call.kwargs['timeout'], 0)
                 self.assertLessEqual(call.kwargs['timeout'], 3)
-            self.assertEqual(kshell.call_count, 7 if activated else 0)
+            self.assertEqual(kshell.call_count, 1 + case_count if activated else 0)
             self.assertNotIn('测试', json.dumps(record, ensure_ascii=False))
             self.assertNotIn('multi-call', json.dumps(record))
 
@@ -462,7 +467,7 @@ class BusyboxPreflightTests(unittest.TestCase):
             answers = self.results()
             answers[2] = failure
             with patch.object(device, 'shell', side_effect=answers), \
-                 self.assertRaisesRegex(RuntimeError, 'BusyBox regex preflight failed'):
+                 self.assertRaisesRegex(RuntimeError, 'Module shell tool preflight failed'):
                 device.check_busybox('extracted', activated=False)
             record = device.busybox_checks[0]
             self.assertEqual(record['status'], 'failed')
@@ -481,7 +486,9 @@ class BusyboxPreflightTests(unittest.TestCase):
 
     def test_total_deadline_prevents_further_adb_calls(self):
         device = self.device()
-        with patch.object(SIM.time, 'monotonic', side_effect=[0] + [21] * 8), \
+        case_count = len(SIM.busybox_regex_cases()) + len(SIM.system_sed_cases())
+        with patch.object(SIM.time, 'monotonic',
+                          side_effect=[0] + [21] * (2 + case_count)), \
              patch.object(device, 'shell') as shell, self.assertRaises(RuntimeError):
             device.check_busybox('extracted', activated=False)
         shell.assert_not_called()
@@ -511,6 +518,16 @@ class BusyboxPreflightTests(unittest.TestCase):
                 result = subprocess.run(args, input=sample, text=True, capture_output=True, timeout=3)
                 self.assertEqual(result.returncode, rc)
                 self.assertEqual(result.stdout, output)
+        for name, args, sample, rc, output in SIM.system_sed_cases():
+            with self.subTest(case=name):
+                result = subprocess.run(['sed', *args], input=sample, text=True,
+                                        capture_output=True, timeout=3)
+                self.assertEqual(result.returncode, rc)
+                self.assertEqual(result.stdout, output)
+        envrc = (SIM.ROOT / 'src/MagicNet/.config/kamfw/.envrc').read_text()
+        runtime = (SIM.ROOT / 'src/MagicNet/lib/magicnet.sh').read_text()
+        for source in (envrc, runtime):
+            self.assertIn('sed() { /system/bin/sed "$@"; }', source)
 
     def test_config_diagnostics_retain_exit_codes_not_output(self):
         device = self.device()
