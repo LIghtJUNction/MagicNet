@@ -14,6 +14,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE = Path(os.environ.get('MAGICNET_UTF8_SOURCE', ROOT / 'src/MagicNet/lib/magicnet')).resolve()
 KSU_SHA256 = '060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900'
 
 
@@ -24,17 +25,22 @@ class Utf8ParserTests(unittest.TestCase):
         if native:
             binary = Path(native).resolve()
             self.assertEqual(hashlib.sha256(binary.read_bytes()).hexdigest(), KSU_SHA256)
-            shells.append([str(binary), 'sh'])
         elif shutil.which('busybox'):
             shells.append(['busybox', 'ash'])
         jq = shutil.which('jq')
         self.assertIsNotNone(jq, 'jq is required; do not skip parser validation')
         with tempfile.TemporaryDirectory() as tmp:
             module = Path(tmp)
+            if native:
+                # This multicall binary dispatches argv[0]. A downloaded name
+                # such as ksu-busybox is not an applet; preserve its bytes and
+                # invoke it through the same busybox basename used on Android.
+                (module / 'busybox').symlink_to(binary)
+                shells.append([str(module / 'busybox'), 'sh'])
             (module / 'bin').mkdir()
             (module / 'bin/jq').symlink_to(jq)
             (module / 'lib').mkdir()
-            (module / 'lib/magicnet').symlink_to(ROOT / 'src/MagicNet/lib/magicnet')
+            (module / 'lib/magicnet').symlink_to(SOURCE)
             (module / '.config/sing-box').mkdir(parents=True)
             (module / 'values').write_text(' \n# 注释\n  # 中文\n 测试 \n测试\n 测试 \n')
             (module / '.config/sing-box/standalone-config').touch()
