@@ -88,6 +88,12 @@ magicnet_dns_apply_singbox() {
         elif $profile == "cloudflare-dot" then cf_tls($tag; $server)
         else cf_https($tag; $server)
         end;
+      # An absent/empty standalone resolver graph is intentional. Do not
+      # iterate null, invent resolvers, or enable a DNS cache for that config.
+      # Reject malformed fields instead of silently treating false as null.
+      if .dns != null and (.dns | type) != "object" then error("invalid DNS object")
+      elif .dns.servers != null and (.dns.servers | type) != "array" then error("invalid DNS server list")
+      elif $standalone_dns == 1 and ((.dns.servers // []) == []) then . else
       (if $standalone_dns == 1 then . else
       .dns.servers = (
         (.dns.servers // [])
@@ -144,6 +150,7 @@ magicnet_dns_apply_singbox() {
                .experimental.cache_file.store_dns = true
              else . end)
         else . end
+      end
     ' "$_config"
     _rc=$?
     unset _profile _bootstrap_server _config _jq _tmp _standalone_dns
