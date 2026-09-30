@@ -28,13 +28,21 @@
 
 ## 已有证据及其边界
 
-旧 Android 验收 [36726242388](https://github.com/LIghtJUNction/MagicNet/actions/runs/36726242388) 记录了 awk 和系统 sed 的 UTF-8 崩溃。使用 KernelSU v3.2.0 的原始 x86_64 BusyBox（SHA-256 `060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900`）在宿主机复现；修复后的生产解析路径已通过该二进制的回归。本轮没有修复系统 Bionic 库，也不能据此宣称所有 shell 操作支持 UTF-8。
+本轮通过原始 KernelSU v3.2.0 x86_64 BusyBox（SHA-256 `060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900`）复现 UTF-8 正则退出码 139，并验证修复后的实际生产解析函数。旧失败证据见 [Android 运行 36726242388](https://github.com/LIghtJUNction/MagicNet/actions/runs/36726242388)。没有替换 BusyBox，也没有修复系统 Bionic 库；不能据此宣称所有 shell 操作支持 UTF-8。
 
-候选 [6273e3f](https://github.com/LIghtJUNction/MagicNet/commit/6273e3f4abf61743f327fd2b2bc3ce015a55ad5f) 的 Rust、WebUI 单元/类型/构建及移动端浏览器、组件打包、CI 基础设施和网络回归检查通过。该提交的 Android 验收及 Shell 检查失败，不能作为发布依据；修复后的候选必须重新验收。
+重启验收曾在 adbd 正常退出与重启期间收到 device offline，导致重新启用失败、卸载未执行。修复使用有期限的只读重连与 UID 校验，不重放安装、启停等生命周期操作，也不吞掉失败或超时。
 
-发布要求最终主线提交通过完整 CI 和 Android 15 / KernelSU v3.2.0 / x86_64 的安装、启动、TUN 正向/拒绝/恢复、无效配置回滚、启停、升级、禁用、启用、卸载检查，并验证签名安装包。
+[PR #360](https://github.com/LIghtJUNction/MagicNet/pull/360) 合并后的发布提交为 [fe69660fbf2e2151fb46359b5d7d78f949153cb4](https://github.com/LIghtJUNction/MagicNet/commit/fe69660fbf2e2151fb46359b5d7d78f949153cb4)。以下均对应该提交：
 
-候选 [01cfb26](https://github.com/LIghtJUNction/MagicNet/commit/01cfb26ed75f7d69657c33f4066b96f5b1930767) 的完整质量、构建和网络证据检查通过。[Android 报告 36780845434](https://github.com/LIghtJUNction/MagicNet/actions/runs/36780845434) 中安装、冷启动、TUN 控制、回滚、停服、重启、升级保留和禁用后重启通过；重新启用后 ADB 连接失败，卸载未执行。模拟器日志记录 adbd 正常退出并重启，而采集结果为 device offline。验收脚本新增有期限的只读重连与 UID 校验；失败和超时仍阻止发布，必须在新提交重新完成所有阶段。
+| 检查 | 结果与证据 |
+| --- | --- |
+| Rust、WebUI/浏览器、Shell、组件及基础设施 | [代码质量 36786647429](https://github.com/LIghtJUNction/MagicNet/actions/runs/36786647429) 通过。 |
+| DNS/NAT 与离线网络回归 | [网络回归 36786647394](https://github.com/LIghtJUNction/MagicNet/actions/runs/36786647394) 通过。 |
+| 精确核心、页面和 AVD 存储证据 | [证据 36786647410](https://github.com/LIghtJUNction/MagicNet/actions/runs/36786647410) 通过；内存结果仅属于 Linux 空闲实验。 |
+| Android 生命周期 | [验收 36786647388](https://github.com/LIghtJUNction/MagicNet/actions/runs/36786647388) 三个必需任务与全部 12 阶段通过：安装、冷启动、应用 UID TUN 控制、回滚、停服清理、重启幂等、升级保留、禁用、启用和卸载。 |
+| 正式构建、安装器、完整质量门槛与签名 | [发布 36786647389](https://github.com/LIghtJUNction/MagicNet/actions/runs/36786647389) 通过，已公开 [v1.5.18](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.5.18)。 |
+
+这些自动化结果不覆盖 ARM64/OEM、Play/GMS 登录下载、eBPF 或 IPv6 数据面、公网代理质量、eCapture 执行以及 proxylink 的设备侧订阅解析。未执行的公网代理基准不计入已通过的离线验收。
 
 ## 继续保留的真机任务
 
