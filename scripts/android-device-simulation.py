@@ -356,7 +356,7 @@ class Device:
             evidence['sha256'] = fields[0]
         version = run(BB + ' --help', runtime=True)
         evidence['version_exit_code'] = bounded_exit_code(version.returncode)
-        match = re.match(r'BusyBox v([0-9]+\.[0-9]+\.[0-9]+)(?:\s|[-(])', (version.stdout[:128] + version.stderr[:128]))
+        match = re.match(r'BusyBox v([0-9]+(?:\.[0-9]+){2,3})(?:\s|[-(])', (version.stdout[:128] + version.stderr[:128]))
         if version.returncode == 0 and match:
             evidence['version'] = match[1]
         for name, args, sample, expected_exit, expected_output in busybox_regex_cases():

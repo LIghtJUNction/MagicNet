@@ -431,7 +431,7 @@ class BusyboxPreflightTests(unittest.TestCase):
 
     def results(self):
         return [cp('a' * 64 + '  ' + SIM.BB + '\n'),
-                subprocess.CompletedProcess([], 0, '', 'BusyBox v1.36.1-KSU multi-call binary.\n')] + [
+                subprocess.CompletedProcess([], 0, '', 'BusyBox v1.36.1.1 topjohnwu multi-call binary.\n')] + [
                     cp(expected, rc) for _, _, _, rc, expected in SIM.busybox_regex_cases()]
 
     def test_valid_runtime_records_only_bounded_identity_and_statuses(self):
@@ -444,7 +444,7 @@ class BusyboxPreflightTests(unittest.TestCase):
             record = device.busybox_checks[0]
             self.assertEqual(record['status'], 'passed')
             self.assertEqual(record['sha256'], 'a' * 64)
-            self.assertEqual(record['version'], '1.36.1')
+            self.assertEqual(record['version'], '1.36.1.1')
             self.assertEqual(record['checks']['nodes_absent']['exit_code'], 1)
             calls = shell.call_args_list + kshell.call_args_list
             self.assertEqual(len(calls), 8)
