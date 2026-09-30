@@ -338,6 +338,34 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(run.call_args.args, ('reboot',))
         late.assert_called_once_with()
 
+    def test_root_waits_for_restarted_adbd_and_checks_real_uid(self):
+        device = self.device()
+        # A stale wait-for-device succeeds before the old adbd disconnects.
+        # Neither an offline read nor a still-unprivileged daemon is root.
+        with patch.object(device, 'run', return_value=cp()) as run, \
+             patch.object(device, 'shell', side_effect=[cp('', 1), cp('2000\n'), cp('0\n')]) as shell, \
+             patch.object(SIM.time, 'monotonic', return_value=0), \
+             patch.object(SIM.time, 'sleep'):
+            device.root()
+        self.assertEqual([call.args for call in run.call_args_list].count(('root',)), 1)
+        self.assertEqual(shell.call_count, 3)
+        self.assertTrue(all(call.args == ('id -u',) and call.kwargs['check'] is False
+                            and call.kwargs['timeout'] <= 5 for call in shell.call_args_list))
+
+    def test_root_reconnect_timeout_or_root_request_failure_stays_failed(self):
+        device = self.device()
+        with patch.object(device, 'run', return_value=cp()), \
+             patch.object(device, 'shell', return_value=cp('2000\n')), \
+             patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 0, 30, 30]), \
+             patch.object(SIM.time, 'sleep'), \
+             self.assertRaisesRegex(RuntimeError, 'reconnect before deadline'):
+            device.root()
+        with patch.object(device, 'run', side_effect=RuntimeError('root denied')), \
+             patch.object(device, 'shell') as shell, \
+             self.assertRaisesRegex(RuntimeError, 'root denied'):
+            device.root()
+        shell.assert_not_called()
+
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()
         with patch.object(device, 'shell', return_value=cp('1\n' + BOOT)), \

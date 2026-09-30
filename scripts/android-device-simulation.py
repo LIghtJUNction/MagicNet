@@ -304,7 +304,8 @@ class Device:
         except OSError:
             cp = subprocess.CompletedProcess(argv, 127, '', 'ADB unavailable')
         if check:
-            require(cp.returncode == 0, f'ADB operation failed (exit {cp.returncode})')
+            operation = args[0] if args and args[0] in ('shell', 'root', 'reboot', 'wait-for-device', 'push', 'install') else 'operation'
+            require(cp.returncode == 0, f'ADB {operation} failed (exit {cp.returncode})')
         return cp
 
     def shell(self, command: str, timeout: float = 30, check: bool = True):
@@ -344,8 +345,24 @@ class Device:
 
     def root(self):
         self.run('root')
-        self.run('wait-for-device', timeout=30)
-        require(self.shell('id -u').stdout.strip() == '0', 'debuggable/rootable Android image required')
+        # wait-for-device can observe the old transport before adb root exits
+        # and restarts adbd. Verify the new connection with a read-only probe;
+        # lifecycle mutations must never be replayed to conceal this race.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            connected = self.run('wait-for-device', timeout=min(5, remaining), check=False)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if connected.returncode == 0:
+                identity = self.shell('id -u', timeout=min(5, remaining), check=False)
+                if identity.returncode == 0 and identity.stdout.strip() == '0':
+                    return
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        raise RuntimeError('debuggable/rootable Android image did not reconnect before deadline')
 
     def identify(self):
         self.wait_boot()

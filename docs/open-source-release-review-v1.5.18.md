@@ -34,6 +34,8 @@
 
 发布要求最终主线提交通过完整 CI 和 Android 15 / KernelSU v3.2.0 / x86_64 的安装、启动、TUN 正向/拒绝/恢复、无效配置回滚、启停、升级、禁用、启用、卸载检查，并验证签名安装包。
 
+候选 [01cfb26](https://github.com/LIghtJUNction/MagicNet/commit/01cfb26ed75f7d69657c33f4066b96f5b1930767) 的完整质量、构建和网络证据检查通过。[Android 报告 36780845434](https://github.com/LIghtJUNction/MagicNet/actions/runs/36780845434) 中安装、冷启动、TUN 控制、回滚、停服、重启、升级保留和禁用后重启通过；重新启用后 ADB 连接失败，卸载未执行。模拟器日志记录 adbd 正常退出并重启，而采集结果为 device offline。验收脚本新增有期限的只读重连与 UID 校验；失败和超时仍阻止发布，必须在新提交重新完成所有阶段。
+
 ## 继续保留的真机任务
 
 [OEM 停服规则清理 #336](https://github.com/LIghtJUNction/MagicNet/issues/336)、[#337](https://github.com/LIghtJUNction/MagicNet/issues/337)、[热点 IPv6 #335](https://github.com/LIghtJUNction/MagicNet/issues/335)、[GMS UID 与厂商策略 #329](https://github.com/LIghtJUNction/MagicNet/issues/329) 仍需要对应设备和网络证据。ARM64/OEM、Google Play/GMS、eBPF 与 IPv6 数据面不属于这份 x86_64 AVD 的验证能力；这些任务不能因宿主机或模拟器通过而关闭。
