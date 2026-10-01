@@ -23,6 +23,14 @@ Supported semantics are deliberately limited:
 - OplusNetworkingControlManager: clear a selected known reject_mobile (1),
   reject_wifi (2), or reject_all (4) policy through setUidPolicy. The API and exact
   setter shape must exist; this is capability detection, not a device-name test.
+  Some firmware rejects root's absent package identity even though the setter
+  exists. For confirmed changes only, the root-started, short-lived Java bridge
+  changes its own primary group and UID to Android's reserved system identity
+  before connecting to framework Binder services. The parent CLI remains root;
+  the journal, shared-package checks, policy checks and readback remain required.
+  Starting the bridge as a non-root caller (including system) cannot authorize a
+  write. Firmware permission rejection returns `permission_denied`, without the
+  exception message, and retains the transaction evidence for recovery.
 - Unknown values, absent interfaces, system/SDK-sandbox/isolated identities and
   incomplete shared identities are not modified. MIUI/HyperOS and other vendor
   firewalls are not claimed supported merely because AOSP enumeration succeeds.
@@ -124,3 +132,13 @@ Persistent prevention of a vendor controller reapplying restrictions is NOT
 implemented here. Multiple OEM device acceptance is still required. Keep #329
 open until that evidence exists, and do not label this release a universal or
 permanent Play Store fix based on mock tests alone.
+
+On 2026-10-01, the installed v1.5.19 bridge failed confirmed Play/GMS recovery
+on an Oplus Android 16 device: `setUidPolicy` rejected root's null package
+identity. The corrected bridge completed rollback and repair through the existing
+CLI transactions for Play and the shared GMS/GSF identity. Readback reported both
+records applied with recovered policies; app-identity system DNS returned answers
+for Play's frontend/client endpoints and Google's account endpoint. The running
+TUN and core remained ready. The device owner then confirmed that Play search
+and downloads both worked. This validates the recovery path and those application
+operations on that device; permanent prevention and other OEMs remain unverified.

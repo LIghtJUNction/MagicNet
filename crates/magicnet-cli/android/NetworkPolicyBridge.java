@@ -1,6 +1,7 @@
 package io.github.magicnet;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
@@ -174,12 +175,11 @@ public final class NetworkPolicyBridge {
     }
 
     static String change(String provider, Provider backend, int uid, int before, int after,
-                         String packages) throws Exception {
+                         String packages, boolean rootAuthorized) throws Exception {
         if (!appUid(uid) || before < 0 || after < 0
                 || !(allowedTarget(provider, before) == after
                 || allowedTarget(provider, after) == before)) return error("repair_unsupported");
-        Object caller = Class.forName("android.os.Process").getMethod("myUid").invoke(null);
-        if (!Integer.valueOf(0).equals(caller)) return error("permission_denied");
+        if (!rootAuthorized) return error("permission_denied");
         if (!backend.writable()) return error("repair_unsupported");
         if (!samePackages(uid, packages)) return error("identity_conflict");
         int actual = backend.policy(uid);
@@ -216,6 +216,29 @@ public final class NetworkPolicyBridge {
                     || !(args[1].equals("oplus") || args[1].equals("android"))) {
                 result = error("invalid_request");
             } else {
+                boolean rootAuthorized = false;
+                if (change) {
+                    Object caller = Class.forName("android.os.Process").getMethod("myUid").invoke(null);
+                    rootAuthorized = Integer.valueOf(0).equals(caller);
+                    if (!rootAuthorized) {
+                        System.out.println(error("permission_denied"));
+                        return;
+                    }
+                    if (args[1].equals("oplus")) {
+                        // Oplus rejects root's null package identity. Use Android's
+                        // reserved system identity in this short-lived, root-started
+                        // bridge, before opening any framework Binder connection.
+                        // Never change the CLI parent's credentials or regain root.
+                        Class<?> os = Class.forName("android.system.Os");
+                        os.getMethod("setgid", int.class).invoke(null, 1000);
+                        os.getMethod("setuid", int.class).invoke(null, 1000);
+                        Object effective = Class.forName("android.os.Process").getMethod("myUid").invoke(null);
+                        if (!Integer.valueOf(1000).equals(effective)) {
+                            System.out.println(error("permission_denied"));
+                            return;
+                        }
+                    }
+                }
                 Provider backend = args[1].equals("oplus") ? new OplusProvider() : new AndroidProvider();
                 if (inspect) {
                     result = inspect(args[1], backend);
@@ -223,7 +246,7 @@ public final class NetworkPolicyBridge {
                     result = current(args[1], backend, Integer.parseInt(args[2]));
                 } else {
                     result = change(args[1], backend, Integer.parseInt(args[2]),
-                            Integer.parseInt(args[3]), Integer.parseInt(args[4]), args[5]);
+                            Integer.parseInt(args[3]), Integer.parseInt(args[4]), args[5], rootAuthorized);
                 }
             }
         } catch (ClassNotFoundException | NoSuchMethodException e) {
@@ -232,7 +255,8 @@ public final class NetworkPolicyBridge {
             result = error("invalid_request");
         } catch (Throwable e) {
             // Do not expose exception messages, framework dumps or private identifiers.
-            result = error("observation_failed");
+            while (e instanceof InvocationTargetException && e.getCause() != null) e = e.getCause();
+            result = error(e instanceof SecurityException ? "permission_denied" : "observation_failed");
         }
         System.out.println(result);
     }

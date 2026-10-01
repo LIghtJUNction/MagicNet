@@ -8,8 +8,23 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 STUBS = {
+    "android/system/Os.java": """package android.system;
+public class Os {
+ public static boolean fail;
+ public static int calls;
+ public static void setgid(int gid) {
+  calls++;
+  if (fail) throw new SecurityException("private_identity_failure");
+  if (gid != 1000) throw new AssertionError();
+ }
+ public static void setuid(int uid) { calls++; android.os.Process.uid=uid; }
+}
+""",
     "android/os/Process.java": """package android.os;
-public class Process { public static int uid; public static int myUid() { return uid; } }
+public class Process {
+ public static int uid;
+ public static int myUid() { return uid; }
+}
 """,
     "android/os/IBinder.java": "package android.os; public interface IBinder {}",
     "android/os/ServiceManager.java": """package android.os;
@@ -34,11 +49,15 @@ public class OplusNetworkingControlManager {
  public static int writes;
  public static boolean ignore, unavailable;
  public static OplusNetworkingControlManager getOplusNetworkingControlManager() {
+  if (android.system.Os.calls > 0 && android.os.Process.myUid() != 1000)
+   throw new AssertionError("Binder opened before identity drop");
   return unavailable ? null : new OplusNetworkingControlManager();
  }
  public Object getPolicyList() { return response; }
  @SuppressWarnings("unchecked")
  public void setUidPolicy(int uid, int policy) {
+  if (android.os.Process.myUid() != 1000 || android.system.Os.calls != 2)
+   throw new SecurityException("Only available to whilte list package, your package:null");
   writes++;
   if (!ignore) ((Map<Integer,Integer>)response).put(uid, policy);
  }
@@ -75,8 +94,10 @@ public class BridgeTest {
  static String run(String... args) throws Exception {
   ByteArrayOutputStream buffer = new ByteArrayOutputStream();
   PrintStream previous = System.out;
+  int originalUid = android.os.Process.uid;
+  android.system.Os.calls=0;
   try { System.setOut(new PrintStream(buffer, true, "UTF-8")); NetworkPolicyBridge.main(args); }
-  finally { System.setOut(previous); }
+  finally { System.setOut(previous); android.os.Process.uid=originalUid; }
   return buffer.toString("UTF-8");
  }
  static void check(boolean ok, String reason) { if (!ok) throw new AssertionError(reason); }
@@ -112,6 +133,16 @@ public class BridgeTest {
     android.os.Process.uid=2000;
     result=run("change","oplus","12001","4","0","app.one,app.shared");
     check(OplusNetworkingControlManager.writes==0,"unprivileged write"); break;
+   case "system_caller":
+    android.os.Process.uid=1000;
+    result=run("change","oplus","12001","4","0","app.one,app.shared");
+    check(android.system.Os.calls==0 && OplusNetworkingControlManager.writes==0,
+      "system caller bypassed root authorization"); break;
+   case "identity_drop_failure":
+    android.system.Os.fail=true;
+    result=run("change","oplus","12001","4","0","app.one,app.shared");
+    check(OplusNetworkingControlManager.writes==0 && !result.contains("private_"),
+      "failed identity drop wrote or leaked details"); break;
    case "readback":
     OplusNetworkingControlManager.ignore=true;
     result=run("change","oplus","12001","4","0","app.one,app.shared");
@@ -197,6 +228,12 @@ class BridgeTests(unittest.TestCase):
 
     def test_root_is_required_for_changes(self):
         self.assertEqual(self.scenario("unprivileged")["error"], "permission_denied")
+
+    def test_system_identity_cannot_authorize_a_change(self):
+        self.assertEqual(self.scenario("system_caller")["error"], "permission_denied")
+
+    def test_failed_identity_drop_is_redacted_and_never_writes(self):
+        self.assertEqual(self.scenario("identity_drop_failure")["error"], "permission_denied")
 
     def test_ignored_write_is_not_reported_successful_or_retried_forever(self):
         self.assertEqual(self.scenario("readback")["error"], "repair_not_effective")
