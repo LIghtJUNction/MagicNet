@@ -47,7 +47,8 @@ test("advanced tools retain their native disclosure and keyboard access", async 
   await page.addInitScript(() => localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed"));
   await page.goto("/#/tools", { waitUntil: "networkidle" });
   const sections = page.locator(".tools-sections > details");
-  await expect(sections).toHaveCount(7);
+  await expect(sections).toHaveCount(8);
+  await expect(sections.locator(':scope > summary').filter({ hasText: 'Play 商店联网修复' })).toHaveCount(1);
   await expect(page.locator(".tools-sections > details[open]")).toHaveCount(0);
   for (const section of await sections.all()) {
     const summary = section.locator(":scope > summary");
