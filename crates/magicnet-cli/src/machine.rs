@@ -37,6 +37,10 @@ const MACHINE_COMMANDS: &[&str] = &[
     "network.status",
     "network-access.status",
     "network-access.inspect",
+    "network-access.check",
+    "network-access.repair",
+    "network-access.reapply",
+    "network-access.rollback",
     "sub.status",
     "sub.inspect",
     "wifi.status",
@@ -93,6 +97,19 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
             &format!("network-access.{action}"),
             crate::network_access::inspect(app, *action == "inspect"),
         )),
+        ["network-access", rest @ ..]
+            if matches!(
+                rest.first(),
+                Some(&("check" | "repair" | "reapply" | "rollback"))
+            ) =>
+        {
+            crate::network_access::action(app, rest)
+                .map(|data| envelope(&format!("network-access.{}", rest[0]), data))
+                .map_err(|code| MachineError {
+                    code,
+                    message: "application network-policy action failed",
+                })
+        }
         [command] if *command == "capabilities" => Ok(capabilities_value()),
         [command, action] if *command == "service" && *action == "status" => {
             Ok(service_status_value(app))
@@ -220,7 +237,9 @@ fn capabilities_value() -> Value {
             "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": false,
-            "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply"],
+            "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply",
+                "network-access.repair", "network-access.reapply", "network-access.rollback"],
+            "network_access_confirmation": "candidate-and-confirm-flag",
             "override_patch_format": "json-merge-patch",
             "override_input": "private-payload-file",
         }),
@@ -755,12 +774,30 @@ mod tests {
     }
 
     #[test]
-    fn network_access_machine_mutations_remain_rejected() {
+    fn network_access_machine_mutations_require_explicit_confirmed_candidates() {
         let (root, app) = fixture();
-        for action in ["repair", "allow", "reset"] {
+        for action in ["allow", "reset"] {
             let error = machine_value(&app, &["network-access", action]).unwrap_err();
             assert_eq!(error.code, "machine.unsupported_command");
         }
+        for action in ["repair", "reapply", "rollback"] {
+            for request in [
+                vec!["network-access", action],
+                vec!["network-access", action, "candidate"],
+            ] {
+                assert_eq!(
+                    machine_value(&app, &request).unwrap_err().code,
+                    "invalid_request"
+                );
+            }
+            assert_eq!(
+                machine_value(&app, &["network-access", action, "../unsafe", "--confirm"])
+                    .unwrap_err()
+                    .code,
+                "invalid_candidate"
+            );
+        }
+        assert!(!root.join(".state/network-access-recovery").exists());
         fs::remove_dir_all(root).unwrap();
     }
 

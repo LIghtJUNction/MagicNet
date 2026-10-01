@@ -301,6 +301,21 @@ fn decide(record: &Record, current: u32, rollback: bool) -> Result<Decision> {
     }
 }
 
+fn decide_reapply(record: &Record, current: u32) -> Result<Decision> {
+    // A new, explicit user action may clear the same restriction again. Preserve
+    // the original rollback evidence; never use this from boot/status/repair.
+    if record.phase != "applied" {
+        return Err("reapply_not_available");
+    }
+    if current == record.policy.value {
+        Ok(Decision::Write)
+    } else if Some(current) == record.policy.allowed_target() {
+        Ok(Decision::Noop)
+    } else {
+        Err("policy_conflict")
+    }
+}
+
 fn result(record: &Record, changed: bool) -> Value {
     json!({
         "candidate":record.policy.candidate(), "recorded_phase":record.phase,
@@ -310,7 +325,7 @@ fn result(record: &Record, changed: bool) -> Value {
     })
 }
 
-pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
+pub(super) fn mutate(app: &App, token: &str, rollback: bool, reapply: bool) -> Result<Value> {
     if !valid_token(token) {
         return Err("invalid_candidate");
     }
@@ -321,7 +336,7 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
     let _lock = lock(&dir)?;
     let mut record = match read(&dir, token)? {
         Some(record) => record,
-        None if rollback => return Err("recovery_not_found"),
+        None if rollback || reapply => return Err("recovery_not_found"),
         None => {
             if scan(&dir)?.len() >= MAX_RECORDS {
                 return Err("recovery_limit");
@@ -344,7 +359,11 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
         }
     };
     let (current, writable) = live(app, &record.policy)?;
-    let decision = decide(&record, current, rollback)?;
+    let decision = if reapply {
+        decide_reapply(&record, current)?
+    } else {
+        decide(&record, current, rollback)?
+    };
     if decision == Decision::Noop {
         return Ok(result(&record, false));
     }
@@ -393,6 +412,9 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
 }
 
 pub(super) fn check(app: &App, token: &str) -> Result<Value> {
+    if !valid_token(token) {
+        return Err("invalid_candidate");
+    }
     let dir = directory(&app.moddir, false)?.ok_or("recovery_not_found")?;
     let record = read(&dir, token)?.ok_or("recovery_not_found")?;
     let (current, _) = live(app, &record.policy)?;

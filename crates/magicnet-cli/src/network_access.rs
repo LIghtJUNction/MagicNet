@@ -15,7 +15,7 @@ mod recovery;
 const BRIDGE: &str = "libexec/network-policy-bridge.jar";
 const LIMIT: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
-const USAGE: &str = "cli network-access {status|inspect|check <candidate>|repair <candidate> --confirm|rollback <candidate> --confirm}";
+const USAGE: &str = "cli network-access {status|inspect|check <candidate>|repair <candidate> --confirm|reapply <candidate> --confirm|rollback <candidate> --confirm}";
 
 #[derive(Clone, Debug)]
 struct Policy {
@@ -235,8 +235,8 @@ pub(crate) fn inspect(app: &App, private: bool) -> Value {
         "known_oem_deny_count":policies.iter().filter(|p| p.known_oem_deny()).count(),
         "effective_system_dns":"not_probed",
         "coverage":"available_policy_adapters",
-        // Machine mutations remain prohibited. Human CLI writes require a reviewed token.
-        "repair_supported":false,
+        // Writes require a reviewed candidate and explicit confirmation in either interface.
+        "repair_supported":policies.iter().any(|p| p.writable && p.allowed_target().is_some()),
         "manual_repair_supported":policies.iter().any(|p| p.writable && p.allowed_target().is_some()),
         "recovery":recovery::summary(app, private),
     });
@@ -247,25 +247,35 @@ pub(crate) fn inspect(app: &App, private: bool) -> Value {
 }
 
 pub(crate) fn command(app: &App, args: &[String]) -> Result<(), String> {
-    let value = match args
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        [] | ["status"] => inspect(app, false),
-        ["inspect"] => inspect(app, true),
-        ["check", candidate] => recovery::check(app, candidate).map_err(str::to_string)?,
-        ["repair", candidate, "--confirm"] => {
-            recovery::mutate(app, candidate, false).map_err(str::to_string)?
+    let arguments = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let value = action(app, &arguments).map_err(|code| {
+        if code == "invalid_request" {
+            USAGE.to_string()
+        } else {
+            code.to_string()
         }
-        ["rollback", candidate, "--confirm"] => {
-            recovery::mutate(app, candidate, true).map_err(str::to_string)?
-        }
-        _ => return Err(USAGE.to_string()),
-    };
+    })?;
     println!("{value}");
     Ok(())
+}
+
+pub(crate) fn action(app: &App, args: &[&str]) -> Result<Value, &'static str> {
+    let value = match args {
+        [] | ["status"] => inspect(app, false),
+        ["inspect"] => inspect(app, true),
+        ["check", candidate] => return recovery::check(app, candidate),
+        ["repair", candidate, "--confirm"] => {
+            return recovery::mutate(app, candidate, false, false);
+        }
+        ["reapply", candidate, "--confirm"] => {
+            return recovery::mutate(app, candidate, false, true);
+        }
+        ["rollback", candidate, "--confirm"] => {
+            return recovery::mutate(app, candidate, true, false);
+        }
+        _ => return Err("invalid_request"),
+    };
+    Ok(value)
 }
 
 #[cfg(test)]
