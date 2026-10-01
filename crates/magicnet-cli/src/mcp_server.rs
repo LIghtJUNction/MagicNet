@@ -25,11 +25,21 @@ struct ConnectionPermit {
 
 impl ConnectionPermit {
     fn try_acquire(active: &Arc<AtomicUsize>, limit: usize) -> Option<Self> {
-        active
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < limit).then_some(current + 1)
-            })
-            .ok()?;
+        let mut current = active.load(Ordering::Acquire);
+        loop {
+            if current >= limit {
+                return None;
+            }
+            match active.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(observed) => current = observed,
+            }
+        }
         Some(Self {
             active: Arc::clone(active),
         })
@@ -102,5 +112,48 @@ mod tests {
         drop(first);
         assert!(ConnectionPermit::try_acquire(&active, 2).is_some());
         drop(second);
+    }
+
+    #[test]
+    fn connection_permits_reject_full_counter_without_overflow() {
+        let active = Arc::new(AtomicUsize::new(usize::MAX));
+        assert!(ConnectionPermit::try_acquire(&active, usize::MAX).is_none());
+        assert_eq!(active.load(Ordering::Acquire), usize::MAX);
+    }
+
+    #[test]
+    fn concurrent_connection_permits_never_exceed_capacity() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let start = Arc::new(std::sync::Barrier::new(16));
+        let acquired = Arc::new(std::sync::Barrier::new(17));
+        let release = Arc::new(std::sync::Barrier::new(17));
+        let workers: Vec<_> = (0..16)
+            .map(|_| {
+                let (active, start, acquired, release) = (
+                    active.clone(),
+                    start.clone(),
+                    acquired.clone(),
+                    release.clone(),
+                );
+                thread::spawn(move || {
+                    start.wait();
+                    let permit = ConnectionPermit::try_acquire(&active, 4);
+                    acquired.wait();
+                    release.wait();
+                    permit.is_some()
+                })
+            })
+            .collect();
+        acquired.wait();
+        let peak = active.load(Ordering::Acquire);
+        release.wait();
+        let granted = workers
+            .into_iter()
+            .map(|w| w.join().unwrap())
+            .filter(|granted| *granted)
+            .count();
+        assert_eq!(peak, 4);
+        assert_eq!(granted, 4);
+        assert_eq!(active.load(Ordering::Acquire), 0);
     }
 }
