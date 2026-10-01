@@ -29,6 +29,15 @@ Supported semantics are deliberately limited:
 
 ## Use and authorization
 
+From v1.5.19, open **Tools → Play Store network recovery → Check network
+restrictions**. Review all displayed package names (including packages sharing
+the same Android identity), then remove the selected restriction. Recovery
+records remain visible after the policy disappears from the deny list, allowing
+read-only checks and restoration of the original policy. If the exact original
+restriction returns, a separate **Remove reapplied restriction** action is
+available; it requires new confirmation and retains the original rollback record.
+No policy is changed merely by opening the page, checking or installing a module.
+
 Run from a root shell on the installed module. Read the complete packages array
 before confirming: an Android shared UID changes every package in that array.
 Do not bulk-repair all entries or select an entry solely because it is nonzero.
@@ -41,17 +50,20 @@ cd /data/adb/modules/MagicNet
 # Copy the reviewed entry's opaque candidate string; do not pass a numeric UID.
 ./cli network-access repair '<candidate>' --confirm
 ./cli network-access check '<candidate>'
+# Only if a completed recovery's exact original restriction has returned:
+./cli network-access reapply '<candidate>' --confirm
 # Restore that entry's original configured policy when necessary:
 ./cli network-access rollback '<candidate>' --confirm
 ```
 
 There is no automatic policy mutation on install, boot, subscription update, core
 restart or status inspection. Installing this version alone does NOT silently
-remove existing user/OEM restrictions. Existing WebUI/MCP status and inspect
-consumers remain read-only. `--json network-access repair/rollback/check` are not
-advertised and remain rejected by the machine dispatcher, with no fall-through.
+remove existing user/OEM restrictions. Status/inspect and the existing MCP
+consumers remain read-only. Confirmed machine actions are now advertised by
+capabilities for WebUI. The same commands accept `--json` and use schema-1
+envelopes; invalid/missing confirmation never falls through to human dispatch.
 
-`repair_supported=false` continues to describe the machine mutation surface.
+`repair_supported` identifies currently observed supported restriction candidates.
 The additive `manual_repair_supported` field identifies reviewed human-CLI
 candidates. The additive `recovery` summary exposes only counts/status; explicit
 inspect also returns reviewed package names, candidate tokens and recorded phases,
@@ -86,7 +98,9 @@ explicit rollback to settle that journal before requesting a fresh change.
 Successful repeated repairs/rollbacks are no-ops. Rollback only restores the
 original when the current value is still the value this operation applied; a
 new third-party policy is not overwritten. If a completed repair observes the
-original restriction again, it reports restriction_reapplied. No endless
+original restriction again, ordinary repair reports restriction_reapplied. An
+explicit `reapply <candidate> --confirm` may clear that exact restriction again;
+it rejects interrupted/rolled-back records and different live policies. No endless
 background clearing, controller disabling, global firewall flushing, SELinux
 relaxation, netd ALLOW_MULTI or app-direct routing override is introduced.
 

@@ -16,6 +16,7 @@ import DnsToolsCard from "./DnsToolsCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
 import McpToolsCard from "./McpToolsCard.vue";
 import NetworkPolicyCard from "./NetworkPolicyCard.vue";
+import PlayNetworkRecoveryCard from "./PlayNetworkRecoveryCard.vue";
 import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import { summarizeBackupPayload } from "./backupPayloadSummary";
@@ -340,6 +341,7 @@ function selectWarpGlobal(enabled: boolean): void {
     />
 
     <div class="tools-sections min-w-0">
+      <SectionDisclosure :title="t('Play 商店联网修复')"><PlayNetworkRecoveryCard /></SectionDisclosure>
       <SectionDisclosure title="UDP / IPv6"><NetworkPolicyCard /></SectionDisclosure>
       <SectionDisclosure title="DNS"><DnsToolsCard /></SectionDisclosure>
       <SectionDisclosure :title="t('WARP 出站')">

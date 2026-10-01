@@ -49,6 +49,26 @@ fn explicit_repair_is_idempotent_and_never_reclears_a_reapplied_policy() {
 }
 
 #[test]
+fn explicit_reapply_only_accepts_the_original_restriction_of_a_completed_repair() {
+    let saved = record("applied");
+    assert_eq!(decide_reapply(&saved, 4), Ok(Decision::Write));
+    assert_eq!(decide_reapply(&saved, 0), Ok(Decision::Noop));
+    assert_eq!(decide_reapply(&saved, 2), Err("policy_conflict"));
+    for phase in ["new", "prepared", "rollback_prepared", "rolled_back"] {
+        assert_eq!(
+            decide_reapply(&record(phase), 4),
+            Err("reapply_not_available")
+        );
+    }
+    // Reapplying must keep the same identity and original rollback value.
+    let token = saved.policy.candidate();
+    let mut reapplied = saved.clone();
+    reapplied.phase = "prepared";
+    assert_eq!(reapplied.policy.candidate(), token);
+    assert_eq!(decide(&reapplied, 0, true), Ok(Decision::Write));
+}
+
+#[test]
 fn uncertain_write_requires_reconciliation_or_explicit_rollback() {
     assert_eq!(
         decide(&record("prepared"), 0, false),

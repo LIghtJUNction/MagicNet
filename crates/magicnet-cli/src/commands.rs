@@ -63,7 +63,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "override" => |_, _| Err("Use cli --json override {status|inspect|preview-file <payload>|set-file <payload>|reset-file <payload>|apply-file <payload>|apply}".to_string()), "{status|inspect|preview-file <payload>|set-file <payload>|reset-file <payload>|apply-file <payload>|apply} --json";
     "config-editor" => config_editor, "{get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]";
     "transparent" => transparent_cmd, "{status|set tun|set ebpf|apply}";
-    "network-access" => crate::network_access::command, "{status|inspect}";
+    "network-access" => crate::network_access::command, "{status|inspect|check <candidate>|repair <candidate> --confirm|reapply <candidate> --confirm|rollback <candidate> --confirm}";
     "network" => network_cmd, "{status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply}";
     "core" => core_cmd, "{status|selected|select sing-box}";
     "node" => node_cmd, "{list|current|use|test <name>|test-all [name ...]}";
@@ -129,7 +129,7 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
             "" | "status",
         ) => false,
         ("tailscale", "" | "status") => false,
-        ("network-access", "" | "status" | "inspect") => false,
+        ("network-access", "" | "status" | "inspect" | "check") => false,
         ("core", "selected") => false,
         ("ecapture", "" | "status" | "version" | "help") => false,
         ("mcp", "" | "status" | "logs") => false,
@@ -313,6 +313,8 @@ mod tests {
             "health",
             "core selected",
             "network status",
+            "network-access check candidate",
+            "--json network-access check candidate",
             "wifi status",
             "dns status",
             "transparent status",

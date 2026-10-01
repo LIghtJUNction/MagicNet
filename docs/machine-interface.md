@@ -55,6 +55,10 @@ dns.status
 network.status
 network-access.status
 network-access.inspect
+network-access.check
+network-access.repair
+network-access.reapply
+network-access.rollback
 sub.status
 wifi.status
 machine.capabilities
@@ -237,9 +241,33 @@ counts only successfully observed entries, not a complete-device verdict.
 `configured` is distinct from `effective=not_probed`: these calls do not prove
 application DNS success, actual packet filtering, or website usability.
 
-Both commands are read-only. `repair_supported=false`; machine mutations are
-rejected before the human dispatcher. Automatic repair, rollback and prevention
-of policy reapplication are tracked in [issue #329](https://github.com/LIghtJUNction/MagicNet/issues/329).
+Status and inspect remain read-only. `repair_supported` reports whether an
+observed identity has a supported restriction and framework setter. Capabilities
+advertises the separate confirmed write commands; it does not authorize a write.
+
+`cli --json network-access check <candidate>` reads a recorded operation's live
+configured policy, without publishing packages or UIDs. `repair`, `reapply` and
+`rollback` require exactly `<candidate> --confirm`. Missing confirmation, extra
+arguments and malformed tokens are structured errors and never fall through to
+the human dispatcher. Success uses `network-access.<action>`; errors use stable
+tokens with a generic message. No raw platform output is included.
+
+All write surfaces use the same bounded private journal, exclusive lock, fresh
+identity/policy checks, write-ahead persistence, API readback and conflict-safe
+rollback described in [network-access-recovery.md](network-access-recovery.md).
+Reapply is a separately confirmed action: only an applied record and its exact
+original restriction may be reused, retaining the original rollback evidence.
+Ordinary repair never automatically reclears a reapplied policy. Interrupted
+records require reconciliation/rollback, and changed third-party policies fail
+closed. Framework setters cannot eliminate races with other policy writers.
+
+WebUI's Play recovery inspector keeps package identities in page memory and uses
+redacted command previews, outside public output/support captures. It negotiates
+capabilities and displays the full shared identity before confirmation. MCP's
+existing network-access tools remain read-only. No boot-time or polling mutation
+is introduced. Configured readback does not prove app DNS, login or download
+success; controller reapplication and cross-OEM acceptance remain in
+[issue #329](https://github.com/LIghtJUNction/MagicNet/issues/329).
 
 ## Tailscale lifecycle observation
 
