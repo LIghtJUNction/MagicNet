@@ -83,7 +83,7 @@ magicnet_kernel_route_state_begin() (
     [ "$_mode" != ebpf ] || return 0
     _rules4="$(magicnet_kernel_route_rules 4)" || return 2
     _rules6="$(magicnet_kernel_route_rules 6)" || return 2
-    magicnet_kernel_route_state_write prepared "$_rules4" "$_rules6"
+    magicnet_kernel_route_state_write prepared "$_rules4" "$_rules6" || return 2
 )
 
 magicnet_kernel_route_state_write() (
@@ -133,7 +133,7 @@ magicnet_kernel_route_state_capture() (
     grep -Fqx 'phase=prepared' "$_state" || return 2
     _rules4="$(magicnet_kernel_route_new_rules 4)" || return 2
     _rules6="$(magicnet_kernel_route_new_rules 6)" || return 2
-    magicnet_kernel_route_state_write active "$_rules4" "$_rules6"
+    magicnet_kernel_route_state_write active "$_rules4" "$_rules6" || return 2
 )
 
 # A bounded private recovery ledger records full selectors, not ownership of

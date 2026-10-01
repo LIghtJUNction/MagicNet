@@ -43,6 +43,9 @@ pub(crate) fn file_read(server: &Server, rel: &str) -> String {
         Ok(path) => path,
         Err(err) => return err,
     };
+    if secret_read_denied(&path, &server.moddir) {
+        return "refusing to read a secret file".to_string();
+    }
     let file = match open_regular_file(&path) {
         Ok(file) => file,
         Err(err) => return format!("not a file: {rel}: {err}"),
@@ -98,6 +101,24 @@ fn module_path(server: &Server, rel: &str) -> Result<std::path::PathBuf, String>
         return Err("path escapes module directory".to_string());
     }
     Ok(resolved)
+}
+
+fn secret_read_denied(path: &Path, root: &Path) -> bool {
+    let Ok(root) = fs::canonicalize(root) else {
+        return true;
+    };
+    let Ok(relative) = path.strip_prefix(&root) else {
+        return true;
+    };
+    relative.components().any(|component| {
+        let Some(name) = component.as_os_str().to_str() else {
+            return false;
+        };
+        name.eq_ignore_ascii_case("mcp.conf")
+            || name.eq_ignore_ascii_case("subscription.url")
+            || name.eq_ignore_ascii_case("subscription.local")
+            || name.to_ascii_lowercase().ends_with("-auth.json")
+    })
 }
 
 #[cfg(test)]
@@ -156,6 +177,56 @@ mod tests {
 
         let result = file_read(&server, "large");
         assert!(result.starts_with("file too large: large"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn file_read_rejects_secret_files_and_aliases() {
+        let (server, root) = test_server("secrets");
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::write(
+            root.join(".config/magicnet/mcp.conf"),
+            "MAGICNET_MCP_SECRET=hidden",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/subscription.url"),
+            "https://example.invalid/sub",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/subscription.local"),
+            "proxies: []\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/tailscale-auth.json"),
+            "{\"authKey\":\"hidden\"}",
+        )
+        .unwrap();
+        fs::write(root.join("notes.txt"), "visible").unwrap();
+        symlink(
+            root.join(".config/magicnet/mcp.conf"),
+            root.join("alias.conf"),
+        )
+        .unwrap();
+
+        for path in [
+            ".config/magicnet/mcp.conf",
+            ".config/sing-box/subscription.url",
+            ".config/sing-box/subscription.local",
+            ".config/sing-box/tailscale-auth.json",
+            "alias.conf",
+        ] {
+            assert_eq!(
+                file_read(&server, path),
+                "refusing to read a secret file",
+                "{path}"
+            );
+        }
+        assert_eq!(file_read(&server, "notes.txt"), "visible");
 
         let _ = fs::remove_dir_all(root);
     }

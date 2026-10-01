@@ -290,7 +290,10 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
     shift
     case "$action" in
     -C) grep -Fqx -- "$*" "$ipv6_rules" ;;
-    -I) printf '%s\n' "$*" >>"$ipv6_rules" ;;
+    -I)
+      { printf '%s\n' "$*"; cat "$ipv6_rules"; } >"$ipv6_rules.new"
+      mv "$ipv6_rules.new" "$ipv6_rules"
+      ;;
     -D)
       awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
       mv "$ipv6_rules.new" "$ipv6_rules"
@@ -328,6 +331,56 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
 )
 
 assert_hotspot_ipv6_exempt_is_installed_and_removed
+
+assert_hotspot_ipv6_exempt_is_reprepended_above_tproxy() (
+  ipv6_rules="$WORK/ipv6-mangle-reprepend"
+  : >"$ipv6_rules"
+  mkdir -p "$MODDIR/.config/magicnet"
+  rm -f "$MODDIR/.config/magicnet/transparent-mode.conf"
+  magicnet_cmd_exists() {
+    case "$1" in
+    ip6tables) return 0 ;;
+    *) return 1 ;;
+    esac
+  }
+  magicnet_xtables_table_probe() {
+    [ "$1" = ip6tables ] && [ "$2" = mangle ]
+  }
+  magicnet_ip6tables_cmd() {
+    table=
+    if [ "$1" = -t ]; then
+      table=$2
+      shift 2
+    fi
+    [ "$table" = mangle ] || return 2
+    action=$1
+    shift
+    case "$action" in
+    -C) grep -Fqx -- "$*" "$ipv6_rules" ;;
+    -I)
+      { printf '%s\n' "$*"; cat "$ipv6_rules"; } >"$ipv6_rules.new"
+      mv "$ipv6_rules.new" "$ipv6_rules"
+      ;;
+    -D)
+      awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
+      mv "$ipv6_rules.new" "$ipv6_rules"
+      ;;
+    *) return 2 ;;
+    esac
+  }
+
+  printf '%s\n' \
+    'PREROUTING -p tcp -j TPROXY' \
+    'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' \
+    >"$ipv6_rules"
+  magicnet_hotspot_ipv6_exempt ensure wlan2
+  [ "$(sed -n '1p' "$ipv6_rules")" = \
+    'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' ]
+  grep -Fqx 'PREROUTING -p tcp -j TPROXY' "$ipv6_rules"
+  [ "$(grep -cF 'magicnet-hotspot-ipv6-exempt' "$ipv6_rules")" = 1 ]
+)
+
+assert_hotspot_ipv6_exempt_is_reprepended_above_tproxy
 
 assert_hotspot_ipv6_skipped_when_ip6tables_absent() (
   magicnet_cmd_exists() {

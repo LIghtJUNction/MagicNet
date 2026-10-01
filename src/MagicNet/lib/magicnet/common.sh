@@ -145,7 +145,8 @@ magicnet_singbox_has_subscription() {
 }
 
 magicnet_singbox_api_has_nodes() {
-    magicnet_cmd_exists curl || return 1
+    command -v magicnet_trusted_curl >/dev/null 2>&1 || return 1
+    magicnet_trusted_curl >/dev/null || return 1
     if command -v magicnet_singbox_api_endpoint >/dev/null 2>&1; then
         _api_endpoint="$(magicnet_singbox_api_endpoint)" || return 1
     else
@@ -156,8 +157,8 @@ magicnet_singbox_api_has_nodes() {
         unset _api_endpoint
         return 1
     }
-    _api=$(curl -sS --max-time 5 "${_api_endpoint}/proxies" 2>/dev/null ||
-        curl -sS --max-time 5 "${_api_endpoint}/providers/proxies" 2>/dev/null || true)
+    _api=$(magicnet_trusted_curl_exec -sS --max-time 5 "${_api_endpoint}/proxies" 2>/dev/null ||
+        magicnet_trusted_curl_exec -sS --max-time 5 "${_api_endpoint}/providers/proxies" 2>/dev/null || true)
     [ -n "$_api" ] || {
         unset _api_endpoint _api
         return 1

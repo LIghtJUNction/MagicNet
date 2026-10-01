@@ -285,20 +285,10 @@ magicnet_hotspot_ipv6_exempt() (
     set -- PREROUTING -i "$_iface" -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT
     case "$_mode" in
     ensure)
-        if command -v magicnet_ip6tables_ensure >/dev/null 2>&1; then
-            magicnet_ip6tables_ensure -t mangle "$@" || {
-                magicnet_hotspot_ipv6_exempt cleanup "$_iface" || true
-                return 1
-            }
-        else
-            _rc=0
-            magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
-            case "$_rc" in
-            0) ;;
-            1) magicnet_ip6tables_cmd -t mangle -I "$@" || return 1 ;;
-            *) return "$_rc" ;;
-            esac
-        fi
+        # Membership is not priority. After a sing-box restart the global
+        # TPROXY can sit above a leftover ACCEPT; always re-prepend.
+        magicnet_hotspot_ipv6_exempt cleanup "$_iface" || return $?
+        magicnet_ip6tables_cmd -t mangle -I "$@" || return 1
         ;;
     status)
         _rc=0

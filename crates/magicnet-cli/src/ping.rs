@@ -1,8 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
-use crate::command_text_timeout;
-use crate::utils::command_text_full_timeout;
+use crate::utils::{command_text_full_from, command_text_full_timeout, command_text_timeout_from};
+use crate::App;
 
 const PING_SAMPLE_COUNT: &str = "10";
 const ROUTE_GET_ARGS: &[&str] = &["-4", "route", "get", "1.1.1.1"];
@@ -252,7 +252,7 @@ fn print_gateway_probe() {
     println!();
 }
 
-pub(crate) fn pingtest() -> Result<(), String> {
+pub(crate) fn pingtest(app: &App) -> Result<(), String> {
     println!("MagicNet connectivity test");
     println!("timeout=short");
     println!();
@@ -260,11 +260,18 @@ pub(crate) fn pingtest() -> Result<(), String> {
     let results = [
         (
             "Baidu CN",
-            ping_one("Baidu CN", "www.baidu.com", "https://www.baidu.com", None),
+            ping_one(
+                app,
+                "Baidu CN",
+                "www.baidu.com",
+                "https://www.baidu.com",
+                None,
+            ),
         ),
         (
             "Bilibili CN",
             ping_one(
+                app,
                 "Bilibili CN",
                 "www.bilibili.com",
                 "https://www.bilibili.com",
@@ -274,6 +281,7 @@ pub(crate) fn pingtest() -> Result<(), String> {
         (
             "Google Global",
             ping_one(
+                app,
                 "Google Global",
                 "www.google.com",
                 "https://www.google.com",
@@ -283,6 +291,7 @@ pub(crate) fn pingtest() -> Result<(), String> {
         (
             "ChatGPT Global",
             ping_one(
+                app,
                 "ChatGPT Global",
                 "chatgpt.com",
                 "https://chatgpt.com",
@@ -292,6 +301,7 @@ pub(crate) fn pingtest() -> Result<(), String> {
         (
             "GitHub Global",
             ping_one(
+                app,
                 "GitHub Global",
                 "github.com",
                 "https://github.com",
@@ -309,18 +319,27 @@ pub(crate) fn pingtest() -> Result<(), String> {
     }
 }
 
-pub(crate) fn speedtest() -> Result<(), String> {
+pub(crate) fn speedtest(app: &App) -> Result<(), String> {
     println!("MagicNet speed test");
     println!("{}", speedtest_budget_line());
-    let results =
-        run_speedtest_with(|_, args, timeout| command_text_full_timeout("curl", args, timeout));
+    let results = run_speedtest_with(|_, args, timeout| run_trusted_curl(app, args, timeout, false));
     println!("{}", speed_line(HttpProbePath::Direct, results.direct));
     println!("{}", speed_line(HttpProbePath::Proxy, results.proxy));
     println!("{}", speedtest_summary_line(results));
     speedtest_result(results)
 }
 
-fn ping_one(name: &str, host: &str, url: &str, proxy: Option<&str>) -> bool {
+fn run_trusted_curl(app: &App, args: &[&str], timeout: Duration, compact: bool) -> String {
+    let mut command = crate::trusted_curl(app);
+    command.args(args);
+    if compact {
+        command_text_timeout_from(command, timeout)
+    } else {
+        command_text_full_from(command, timeout)
+    }
+}
+
+fn ping_one(app: &App, name: &str, host: &str, url: &str, proxy: Option<&str>) -> bool {
     let http_path = HttpProbePath::from_proxy(proxy);
     println!("[{name}]");
     println!("host={host}");
@@ -338,7 +357,7 @@ fn ping_one(name: &str, host: &str, url: &str, proxy: Option<&str>) -> bool {
         println!("ping=skipped(proxy path)");
     }
     let curl_args = curl_args(url, proxy);
-    let http = command_text_timeout("curl", &curl_args, Duration::from_secs(7));
+    let http = run_trusted_curl(app, &curl_args, Duration::from_secs(7), true);
     println!("http={http}");
     let reachable = http_probe_reachable(&http);
     println!("{}", http_timing_line(&http, reachable, http_path));
@@ -469,6 +488,7 @@ fn speedtest_budget_line() -> String {
 fn speedtest_args(path: HttpProbePath) -> Vec<&'static str> {
     match path {
         HttpProbePath::Direct => vec![
+            "-q",
             "-sS",
             "-L",
             "--range",
@@ -488,6 +508,7 @@ fn speedtest_args(path: HttpProbePath) -> Vec<&'static str> {
             SPEEDTEST_DIRECT_URL,
         ],
         HttpProbePath::Proxy => vec![
+            "-q",
             "-sS",
             "-L",
             "--max-filesize",
@@ -788,6 +809,7 @@ fn ping_args<'a>(host: &'a str, proxy: Option<&str>) -> Option<Vec<&'a str>> {
 
 fn curl_args<'a>(url: &'a str, proxy: Option<&'a str>) -> Vec<&'a str> {
     let mut args = vec![
+        "-q",
         "-sS",
         "-I",
         "-o",
@@ -1365,6 +1387,7 @@ mod tests {
         let args = curl_args("https://www.baidu.com", None);
 
         assert_eq!(path_label(None), "direct");
+        assert_eq!(args.first(), Some(&"-q"));
         assert!(args.windows(2).any(|pair| pair == ["--noproxy", "*"]));
         assert!(!args.contains(&"-x"));
         assert!(!args.contains(&"-f"));
@@ -1374,6 +1397,7 @@ mod tests {
     fn proxy_curl_uses_proxy_without_fail_flag() {
         let args = curl_args("https://chatgpt.com", Some("http://127.0.0.1:7892"));
 
+        assert_eq!(args.first(), Some(&"-q"));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["-x", "http://127.0.0.1:7892"]));
@@ -1512,6 +1536,7 @@ mod tests {
         assert_eq!(
             speedtest_args(HttpProbePath::Direct),
             vec![
+                "-q",
                 "-sS",
                 "-L",
                 "--range",
@@ -1534,6 +1559,7 @@ mod tests {
         assert_eq!(
             speedtest_args(HttpProbePath::Proxy),
             vec![
+                "-q",
                 "-sS",
                 "-L",
                 "--max-filesize",

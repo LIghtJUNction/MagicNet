@@ -372,11 +372,18 @@ magicnet_singbox_fetch_clock() {
     printf '%s\n' "${_fetch_uptime%%.*}"
 }
 
-# Prefer the packaged curl, then Android system curl. Host fixtures may still
-# supply a PATH curl. Loader and shell-hook variables must not reach the child.
+# Isolated fetch fixtures may load this file without primitives.sh.
 magicnet_singbox_trusted_curl() {
+    if command -v magicnet_trusted_curl >/dev/null 2>&1; then
+        magicnet_trusted_curl
+        return
+    fi
     if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/curl" ]; then
         printf '%s\n' "${MODDIR}/bin/curl"
+        return 0
+    fi
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/system/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/system/bin/curl"
         return 0
     fi
     if [ -x /system/bin/curl ]; then
@@ -387,6 +394,10 @@ magicnet_singbox_trusted_curl() {
 }
 
 magicnet_singbox_fetch_curl_env() {
+    if command -v magicnet_trusted_curl_env >/dev/null 2>&1; then
+        magicnet_trusted_curl_env "$@"
+        return
+    fi
     env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
         -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
         -u LD_PRELOAD -u LD_LIBRARY_PATH -u LD_AUDIT -u LD_DEBUG \

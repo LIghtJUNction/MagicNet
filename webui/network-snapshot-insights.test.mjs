@@ -63,6 +63,24 @@ try {
     tunInsight("TUN interface is ready, but no device name")?.value,
     "not detected",
   );
+  const dnsInsight = (text) =>
+    insights
+      .buildNetworkSnapshotInsights(text)
+      .find((item) => item.label === "DNS 捕获");
+  assert.equal(
+    dnsInsight("iptables -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053")
+      ?.value,
+    "detected",
+  );
+  assert.equal(
+    dnsInsight("iptables -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 2053")
+      ?.value,
+    "detected",
+  );
+  assert.equal(
+    dnsInsight("no redirect clues")?.value,
+    "not detected",
+  );
   console.log("network snapshot interface tests passed");
 } finally {
   await rm(dir, { recursive: true, force: true });

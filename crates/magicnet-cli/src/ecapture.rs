@@ -164,13 +164,13 @@ fn parse_pcap_args(args: &[String]) -> Result<PcapArgs, String> {
         return Ok(PcapArgs {
             seconds: seconds.clamp(1, MAX_CAPTURE_SECONDS),
             ifname: validate_ifname(ifname)?.to_string(),
-            filter: args.iter().skip(2).cloned().collect(),
+            filter: validate_pcap_filter(args.iter().skip(2))?,
         });
     }
     Ok(PcapArgs {
         seconds: DEFAULT_CAPTURE_SECONDS,
         ifname: validate_ifname(first)?.to_string(),
-        filter: args.iter().skip(1).cloned().collect(),
+        filter: validate_pcap_filter(args.iter().skip(1))?,
     })
 }
 
@@ -185,6 +185,37 @@ fn validate_ifname(ifname: &str) -> Result<&str, String> {
     } else {
         Err("invalid capture interface name".to_string())
     }
+}
+
+fn validate_pcap_filter<'a>(
+    tokens: impl Iterator<Item = &'a String>,
+) -> Result<Vec<String>, String> {
+    let mut filter = Vec::new();
+    for token in tokens {
+        if filter.len() >= 32 {
+            return Err("pcap filter is too long".to_string());
+        }
+        validate_pcap_filter_token(token)?;
+        filter.push(token.clone());
+    }
+    Ok(filter)
+}
+
+fn validate_pcap_filter_token(token: &str) -> Result<(), String> {
+    if token.is_empty()
+        || token.len() > 64
+        || token.starts_with('-')
+        || !token.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'.' | b'_' | b'-' | b':' | b'/' | b'*' | b'=' | b'(' | b')' | b',' | b'\\'
+                )
+        })
+    {
+        return Err("invalid pcap filter token".to_string());
+    }
+    Ok(())
 }
 
 fn finish_capture(outcome: RunOutcome) -> Result<(), String> {
@@ -259,6 +290,22 @@ mod tests {
             .unwrap_err()
             .contains("invalid capture interface"));
         assert!(parse_pcap_args(&strings(&["30", "rmnet_data0"])).is_ok());
+    }
+
+    #[test]
+    fn pcap_rejects_flag_like_filter_tokens() {
+        assert!(parse_pcap_args(&strings(&["wlan0", "-i", "lo"]))
+            .unwrap_err()
+            .contains("invalid pcap filter token"));
+        assert!(parse_pcap_args(&strings(&["wlan0", "tcp;id"]))
+            .unwrap_err()
+            .contains("invalid pcap filter token"));
+        assert_eq!(
+            parse_pcap_args(&strings(&["wlan0", "tcp", "port", "443"]))
+                .unwrap()
+                .filter,
+            strings(&["tcp", "port", "443"])
+        );
     }
 }
 

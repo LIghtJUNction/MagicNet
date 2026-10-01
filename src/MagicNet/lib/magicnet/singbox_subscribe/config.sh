@@ -11,6 +11,21 @@ if ! command -v magicnet_singbox_api_listener_exists >/dev/null 2>&1; then
     fi
 fi
 
+magicnet_singbox_runtime_curl() {
+    if command -v magicnet_trusted_curl_exec >/dev/null 2>&1; then
+        magicnet_trusted_curl_exec "$@"
+        return
+    fi
+    _runtime_curl=$(command -v curl 2>/dev/null) || {
+        unset _runtime_curl
+        return 127
+    }
+    "$_runtime_curl" -q "$@"
+    _runtime_curl_rc=$?
+    unset _runtime_curl
+    return "$_runtime_curl_rc"
+}
+
 magicnet_singbox_emitted_node_port_valid() {
     _emitted_port=$(printf '%s' "$1" |
         sed -n 's/.*"server_port":\([0-9][0-9]*\)[,}].*/\1/p')
@@ -973,7 +988,7 @@ magicnet_singbox_owned_ready() {
     while IFS= read -r _ready_owned_pid; do
         if [ "$_ready_api_expected" -eq 0 ] || {
             magicnet_singbox_listener_owned "$_ready_owned_pid" &&
-                curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
+                magicnet_singbox_runtime_curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                 grep -q '"version"'
         }; then
             _ready_found=1
@@ -1036,7 +1051,7 @@ magicnet_singbox_ensure_start_owned() {
             [ "$_api_expected" -eq 0 ] ||
                 {
                     magicnet_singbox_listener_owned "$_new_pid" &&
-                        curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
+                        magicnet_singbox_runtime_curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                         grep -q '"version"'
                 }
         }; then
@@ -1285,7 +1300,7 @@ magicnet_singbox_restart_if_running() {
 }
 
 magicnet_singbox_google_works() {
-    curl -fsSI --max-time "${MAGICNET_GOOGLE_TEST_MAX_TIME:-15}" \
+    magicnet_singbox_runtime_curl -fsSI --max-time "${MAGICNET_GOOGLE_TEST_MAX_TIME:-15}" \
         -x http://127.0.0.1:7892 \
         https://www.google.com >/dev/null 2>&1
 }

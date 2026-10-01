@@ -56,9 +56,39 @@ number_in_range "$rounds" 1 3 || fail 'Invalid repeat'
 number_in_range "$timeout" 1 30 || fail 'Invalid timeout'
 number_in_range "$proxy_port" 1 65535 || fail 'Invalid proxy port'
 [ -r "$targets" ] || fail 'Target catalog is not readable'
-curl_bin=${MAGICNET_CURL:-"$module_dir/bin/curl"}
-[ -x "$curl_bin" ] || curl_bin=${MAGICNET_CURL:-curl}
-command -v "$curl_bin" >/dev/null 2>&1 || { printf 'curl is required\n' >&2; exit 2; }
+# Host fixtures may pin an absolute MAGICNET_CURL. Android ignores inherited
+# overrides so a caller cannot redirect probes to an untrusted binary.
+curl_bin=
+if [ ! -x /system/bin/getprop ] && [ -n "${MAGICNET_CURL:-}" ]; then
+    case "$MAGICNET_CURL" in
+    /*)
+        if [ -x "$MAGICNET_CURL" ]; then
+            curl_bin=$MAGICNET_CURL
+        else
+            printf 'curl is required\n' >&2
+            exit 2
+        fi
+        ;;
+    *)
+        printf 'curl is required\n' >&2
+        exit 2
+        ;;
+    esac
+fi
+if [ -z "$curl_bin" ] && [ -x "$module_dir/bin/curl" ]; then
+    curl_bin=$module_dir/bin/curl
+fi
+if [ -z "$curl_bin" ] && [ -x /system/bin/curl ]; then
+    curl_bin=/system/bin/curl
+fi
+if [ -z "$curl_bin" ]; then
+    curl_bin=$(command -v curl 2>/dev/null) || { printf 'curl is required\n' >&2; exit 2; }
+fi
+case "$curl_bin" in
+/*) ;;
+*) printf 'curl is required\n' >&2; exit 2 ;;
+esac
+[ -x "$curl_bin" ] || { printf 'curl is required\n' >&2; exit 2; }
 for tool in awk mktemp id cat rm; do
     command -v "$tool" >/dev/null 2>&1 || { printf 'Required tool missing: %s\n' "$tool" >&2; exit 2; }
 done
