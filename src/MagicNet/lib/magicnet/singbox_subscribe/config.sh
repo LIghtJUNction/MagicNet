@@ -1060,25 +1060,49 @@ magicnet_singbox_ensure_start_owned() {
         fi
         sleep 1
     done
-    kill "$_new_pid" 2>/dev/null || true
+    # Readiness failure still needs graceful teardown. Never leave a rejected
+    # TERM or an unresolved generation behind for the journal's next restart.
+    if ! magicnet_singbox_stop_owned_config "$_owned_config"; then
+        unset _api_expected
+        return 2
+    fi
     unset _api_expected
     return 1
 }
 
-magicnet_singbox_signal_pids_file() {
+magicnet_singbox_signal_pids_file() (
     _signal_file="$1"
     _signal_number="$2"
-    [ -f "$_signal_file" ] && [ ! -L "$_signal_file" ] || return 1
+    _signal_config="$3"
+    _signal_probe=
+    trap '[ -z "$_signal_probe" ] || rm -f "$_signal_probe"' EXIT
+    [ -f "$_signal_file" ] && [ ! -L "$_signal_file" ] || return 2
+    case "$_signal_number" in 15 | 9) ;; *) return 2 ;; esac
     while IFS= read -r _signal_pid; do
-        case "$_signal_pid" in '' | *[!0-9]* | 0) return 1 ;; esac
-        if [ "$_signal_number" = 9 ]; then
-            kill -9 "$_signal_pid" 2>/dev/null || true
-        else
-            kill "$_signal_pid" 2>/dev/null || true
+        case "$_signal_pid" in '' | *[!0-9]* | 0*) return 2 ;; esac
+        [ "$_signal_pid" -le 2147483647 ] 2>/dev/null || return 2
+        if kill "-$_signal_number" "$_signal_pid" 2>/dev/null; then
+            continue
         fi
+        # Match the normal lifecycle's signal contract without importing
+        # kamfw into the isolated subscription loader. ESRCH-like races are
+        # harmless only after a complete query proves this target disappeared.
+        [ -n "$_signal_probe" ] ||
+            _signal_probe=$(magicnet_proc_query_temp_create) || return 2
+        if magicnet_singbox_owned_pids_to_file "$_signal_config" "$_signal_probe"; then
+            if grep -Fx "$_signal_pid" "$_signal_probe" >/dev/null 2>&1; then
+                :
+            else
+                _signal_probe_rc=$?
+                [ "$_signal_probe_rc" -ne 1 ] || continue
+            fi
+        else
+            _signal_probe_rc=$?
+            [ "$_signal_probe_rc" -ne 1 ] || continue
+        fi
+        return 2
     done <"$_signal_file"
-    unset _signal_file _signal_number _signal_pid
-}
+)
 
 # Refresh the destination until the owned set is empty or the deadline passes.
 # The return code remains tri-state: 0=still found at deadline, 1=empty,
@@ -1097,61 +1121,67 @@ magicnet_singbox_wait_owned_state() {
         1) return 1 ;;
         0)
             [ "$(date +%s)" -lt "$_wait_deadline" ] || return 0
-            sleep 1
+            sleep 1 || return 2
             ;;
         *) return 2 ;;
         esac
     done
 }
 
-magicnet_singbox_stop_owned_after_failure() {
-    _failure_config="$1"
-    _failure_pids=$(magicnet_proc_query_temp_create) || return 2
-    if magicnet_singbox_owned_pids_to_file "$_failure_config" "$_failure_pids"; then
-        _failure_query_rc=0
-    else
-        _failure_query_rc=$?
-    fi
-    case "$_failure_query_rc" in
-    0) magicnet_singbox_signal_pids_file "$_failure_pids" 15 || true ;;
-    1)
-        ip link delete magicnet0 2>/dev/null || true
-        rm -f "$_failure_pids"
-        return 0
-        ;;
-    *)
-        rm -f "$_failure_pids"
+# Restart and failed-start cleanup must use the same signal/wait semantics.
+# Keep the initial set separate so a replacement never inherits an expired
+# generation's KILL deadline. Snapshots and scratch stay private to this subshell.
+magicnet_singbox_stop_owned_config() (
+    _stop_config="$1"
+    _stop_initial=$(magicnet_proc_query_temp_create) || return 2
+    _stop_live=$(magicnet_proc_query_temp_create) || {
+        rm -f "$_stop_initial"
         return 2
-        ;;
-    esac
-    _failure_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
-    if magicnet_singbox_wait_owned_state \
-        "$_failure_config" "$_failure_pids" "$_failure_deadline"; then
-        _failure_query_rc=0
+    }
+    trap 'rm -f "$_stop_initial" "$_stop_live"' EXIT
+    if magicnet_singbox_owned_pids_to_file "$_stop_config" "$_stop_initial"; then
+        _stop_rc=0
     else
-        _failure_query_rc=$?
+        _stop_rc=$?
     fi
-    if [ "$_failure_query_rc" -eq 0 ]; then
-        magicnet_singbox_signal_pids_file "$_failure_pids" 9 || true
-        _failure_kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
-        if magicnet_singbox_wait_owned_state \
-            "$_failure_config" "$_failure_pids" "$_failure_kill_deadline"; then
-            _failure_query_rc=0
-        else
-            _failure_query_rc=$?
-        fi
+    case "$_stop_rc" in
+    0) ;;
+    1) return 0 ;;
+    *) return 2 ;;
+    esac
+    magicnet_singbox_signal_pids_file "$_stop_initial" 15 "$_stop_config" || return 2
+    _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-10}))
+    if magicnet_singbox_wait_owned_state \
+        "$_stop_config" "$_stop_live" "$_stop_deadline"; then
+        _stop_rc=0
+    else
+        _stop_rc=$?
     fi
-    _failure_rc=1
-    if [ "$_failure_query_rc" -eq 1 ]; then
-        ip link delete magicnet0 2>/dev/null || true
-        _failure_rc=0
-    elif [ "$_failure_query_rc" -eq 2 ]; then
-        _failure_rc=2
+    case "$_stop_rc" in
+    0) ;;
+    1) return 0 ;;
+    *) return 2 ;;
+    esac
+    while IFS= read -r _stop_pid; do
+        grep -Fx "$_stop_pid" "$_stop_initial" >/dev/null 2>&1 || return 2
+    done <"$_stop_live"
+    magicnet_singbox_signal_pids_file "$_stop_live" 9 "$_stop_config" || return 2
+    _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
+    if magicnet_singbox_wait_owned_state \
+        "$_stop_config" "$_stop_live" "$_stop_deadline"; then
+        return 1
+    else
+        _stop_rc=$?
     fi
-    rm -f "$_failure_pids"
-    unset _failure_config _failure_pids _failure_query_rc _failure_deadline
-    unset _failure_kill_deadline
-    return "$_failure_rc"
+    [ "$_stop_rc" -eq 1 ] || return 2
+    return 0
+)
+
+magicnet_singbox_stop_owned_after_failure() {
+    # The core owns its TUN/TC teardown. This standalone loader cannot prove
+    # that a lingering magicnet0 belongs to the stopped generation; eBPF does
+    # not own that interface at all. Preserve unknown external resources.
+    magicnet_singbox_stop_owned_config "$1"
 }
 
 magicnet_singbox_reset_bootstrap_cache() {
@@ -1189,56 +1219,22 @@ magicnet_singbox_restart_owned() {
     # Establish an authoritative owned-process set before touching DNS, TUN,
     # supervisors, or any process. An indeterminate lookup leaves the complete
     # running generation unchanged and must not be treated as an empty set.
-    _owned_pids=$(magicnet_proc_query_temp_create) || return 2
-    if magicnet_singbox_owned_pids_to_file "$_owned_config" "$_owned_pids"; then
+    if magicnet_singbox_stop_owned_config "$_owned_config"; then
         _owned_query_rc=0
     else
         _owned_query_rc=$?
     fi
     case "$_owned_query_rc" in
-    0)
-        magicnet_singbox_signal_pids_file "$_owned_pids" 15 || true
-        _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
-        if magicnet_singbox_wait_owned_state \
-            "$_owned_config" "$_owned_pids" "$_stop_deadline"; then
-            _owned_query_rc=0
-        else
-            _owned_query_rc=$?
-        fi
-        if [ "$_owned_query_rc" -eq 0 ]; then
-            magicnet_singbox_signal_pids_file "$_owned_pids" 9 || true
-            _kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
-            if magicnet_singbox_wait_owned_state \
-                "$_owned_config" "$_owned_pids" "$_kill_deadline"; then
-                _owned_query_rc=0
-            else
-                _owned_query_rc=$?
-            fi
-        fi
-        ;;
-    1) ;;
-    *)
-        warn "sing-box process discovery is indeterminate; restart aborted before runtime teardown"
-        rm -f "$_owned_pids"
-        return 2
-        ;;
-    esac
-
-    case "$_owned_query_rc" in
-    1) ;;
+    0) ;;
     2)
         warn "sing-box stop state is indeterminate; preserving TUN, DNS rules, and supervisors"
-        rm -f "$_owned_pids"
         return 2
         ;;
     *)
         warn "sing-box did not stop before the bounded restart deadline"
-        rm -f "$_owned_pids"
         return 1
         ;;
     esac
-    rm -f "$_owned_pids"
-
     # A listener with no authoritatively owned process is not safe to replace.
     if magicnet_singbox_api_listener_exists; then
         warn "sing-box API listener ownership is unknown; restart aborted"
@@ -1247,18 +1243,21 @@ magicnet_singbox_restart_owned() {
 
     # Only now is the old core definitely absent. Keep all network policy and
     # supervisor state intact throughout discovery and stop-wait uncertainty.
-    magicnet_supervisors_stop >/dev/null 2>&1 || return 1
+    _owned_cleanup_rc=0
+    magicnet_supervisors_stop >/dev/null 2>&1 || _owned_cleanup_rc=1
     magicnet_disable_dns_capture >/dev/null 2>&1 ||
-        warn "Failed to clear DNS capture before subscription restart"
+        { warn "Failed to clear DNS capture before subscription restart"; _owned_cleanup_rc=1; }
     magicnet_disable_dns_leak_guard >/dev/null 2>&1 ||
-        warn "Failed to clear DNS leak guard before subscription restart"
+        { warn "Failed to clear DNS leak guard before subscription restart"; _owned_cleanup_rc=1; }
+    # The listener is gone. Even a supervisor failure must not skip independent
+    # interception cleanup and strand apps behind a dead local DNS port.
+    [ "$_owned_cleanup_rc" -eq 0 ] || return 1
 
     _restart_rc=0
     if [ "${MAGICNET_SUB_RESET_BOOTSTRAP_CACHE:-0}" = 1 ]; then
         magicnet_singbox_reset_bootstrap_cache "$_owned_config" || _restart_rc=1
     fi
     if [ "$_restart_rc" -eq 0 ]; then
-        ip link delete magicnet0 2>/dev/null || true
         if magicnet_singbox_ensure_start_owned "$_owned_config"; then
             _restart_rc=0
         else
@@ -1274,8 +1273,8 @@ magicnet_singbox_restart_owned() {
             if [ "$_post_start_rc" -ne 0 ]; then
                 magicnet_disable_dns_capture >/dev/null 2>&1 || true
                 magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
-                magicnet_singbox_stop_owned_after_failure "$_owned_config" || true
                 _restart_rc=1
+                magicnet_singbox_stop_owned_after_failure "$_owned_config" || _restart_rc=$?
             else
                 magicnet_singbox_record_runtime_fingerprint ||
                     warn "Failed to record the running sing-box configuration fingerprint"
@@ -1290,7 +1289,7 @@ magicnet_singbox_restart_owned() {
     else
         magicnet_singbox_supervisor_restore "$_owned_fswatch_active" || _restart_rc=1
     fi
-    unset _owned_pids _owned_query_rc _stop_deadline _kill_deadline
+    unset _owned_query_rc _owned_cleanup_rc
     return "$_restart_rc"
 }
 

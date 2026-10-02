@@ -83,7 +83,7 @@ done
   restart_rc=$?
   set -e
   test "$restart_rc" -eq 2
-  grep -q '^kill:4242$' "$fixture/mutations.log"
+  grep -q '^kill:-15 4242$' "$fixture/mutations.log"
   ! grep -Eq 'supervisors|dns|ip:|core-start|policy-reapply' "$fixture/mutations.log"
 )
 

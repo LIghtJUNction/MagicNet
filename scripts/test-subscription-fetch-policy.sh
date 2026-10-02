@@ -316,6 +316,8 @@ old_core=$!
 magicnet_singbox_pids() { kill -0 "$old_core" 2>/dev/null && printf '%s\n' "$old_core"; }
 magicnet_singbox_is_running() { kill -0 "$old_core" 2>/dev/null; }
 magicnet_supervisors_stop() { printf 'stop\n' >>"$order_log"; }
+magicnet_disable_dns_capture() { :; }
+magicnet_disable_dns_leak_guard() { :; }
 magicnet_after_kernel_start_unlocked() { :; }
 magicnet_fswatch_start() { printf 'start\n' >>"$order_log"; }
 magicnet_fswatch_status() { return 0; }
