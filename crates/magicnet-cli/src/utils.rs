@@ -659,9 +659,18 @@ pub(crate) fn command_text_timeout(program: &str, args: &[&str], timeout: Durati
     compact_command_output(&command_text_full_timeout(program, args, timeout))
 }
 
+pub(crate) fn command_text_timeout_from(command: Command, timeout: Duration) -> String {
+    compact_command_output(&command_text_full_from(command, timeout))
+}
+
 pub(crate) fn command_text_full_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
     let mut command = Command::new(program);
     command.args(args);
+    command_text_full_from(command, timeout)
+}
+
+pub(crate) fn command_text_full_from(command: Command, timeout: Duration) -> String {
+    let program = command.get_program().to_string_lossy().into_owned();
     match run_bounded_command(command, timeout, MAX_COMMAND_STREAM_BYTES) {
         Ok(output) if output.timed_out => format!("timeout after {}ms", timeout.as_millis()),
         Ok(output) => merge_command_output(&output.stdout, &output.stderr),

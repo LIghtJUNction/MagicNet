@@ -29,13 +29,13 @@ try {
     "utf8",
   );
   await writeFile(join(dir, "statusTone.mjs"), transpile(tone), "utf8");
+  await writeFile(join(dir, "i18n.mjs"), "export const t = (value) => value;\n", "utf8");
   await writeFile(
     join(dir, "networkSnapshotInsights.mjs"),
     transpile(
-      source.replace(
-        /from\s+["']@\/lib\/statusTone["']/g,
-        'from "./statusTone.mjs"',
-      ),
+      source
+        .replace(/from\s+["']@\/lib\/statusTone["']/g, 'from "./statusTone.mjs"')
+        .replace(/from\s+["']@\/i18n["']/g, 'from "./i18n.mjs"'),
     ),
     "utf8",
   );
@@ -61,6 +61,24 @@ try {
   );
   assert.equal(
     tunInsight("TUN interface is ready, but no device name")?.value,
+    "not detected",
+  );
+  const dnsInsight = (text) =>
+    insights
+      .buildNetworkSnapshotInsights(text)
+      .find((item) => item.label === "DNS 捕获");
+  assert.equal(
+    dnsInsight("iptables -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053")
+      ?.value,
+    "detected",
+  );
+  assert.equal(
+    dnsInsight("iptables -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 2053")
+      ?.value,
+    "detected",
+  );
+  assert.equal(
+    dnsInsight("no redirect clues")?.value,
     "not detected",
   );
   console.log("network snapshot interface tests passed");

@@ -29,13 +29,13 @@ magicnet_diag_http() {
     _proxy="${3:-}"
     _format='HTTP %{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}'
     if [ -n "$_proxy" ]; then
-        if _result=$(curl -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" -x "$_proxy" "$_url" 2>/dev/null); then
+        if _result=$(magicnet_trusted_curl_exec -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" -x "$_proxy" "$_url" 2>/dev/null); then
             _curl_rc=0
         else
             _curl_rc=$?
         fi
     else
-        if _result=$(curl -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" "$_url" 2>/dev/null); then
+        if _result=$(magicnet_trusted_curl_exec -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" "$_url" 2>/dev/null); then
             _curl_rc=0
         else
             _curl_rc=$?
@@ -56,7 +56,7 @@ magicnet_diag_proxy_now() {
     _name="$1"
     _endpoint="$(magicnet_diag_api_endpoint 2>/dev/null || true)"
     if [ -n "$_endpoint" ]; then
-        _api=$(curl -sS --max-time 3 "${_endpoint}/proxies/${_name}" 2>/dev/null || true)
+        _api=$(magicnet_trusted_curl_exec -sS --max-time 3 "${_endpoint}/proxies/${_name}" 2>/dev/null || true)
     else
         _api=''
     fi
@@ -96,7 +96,7 @@ magicnet_action_diagnose() {
     _fswatch_pid=$(magicnet_fswatch_status)
     panel_row "fswatch" "$(magicnet_display_status "${_fswatch_pid:-Stopped}")"
     _diag_api="$(magicnet_diag_api_endpoint 2>/dev/null || true)"
-    if [ -n "$_diag_api" ] && curl -sS --max-time 3 "${_diag_api}/proxies" >/dev/null 2>&1; then
+    if [ -n "$_diag_api" ] && magicnet_trusted_curl_exec -sS --max-time 3 "${_diag_api}/proxies" >/dev/null 2>&1; then
         panel_row "sing-box API" "OK"
     else
         panel_row "sing-box API" "FAIL"
