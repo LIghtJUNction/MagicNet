@@ -674,7 +674,10 @@ mod tests {
             "MAGICNET_UDP_TIMEOUT=1h\n",
             "MAGICNET_DNS_CAPTURE_PORT=0\n",
             "MAGICNET_TUN_INET=127.0.0.1/30\n",
+            "MAGICNET_TUN_INET=172.20.0.2/30\n",
+            "MAGICNET_TUN_INET=172.20.0.3/30\n",
             "MAGICNET_TUN_INET6=fe80::1/64\n",
+            "MAGICNET_TUN_INET6=fd12::3/126\n",
         ] {
             assert!(!sourced_conf_content_matches_schema(network, invalid));
         }

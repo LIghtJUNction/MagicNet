@@ -123,17 +123,27 @@ fn valid_package(name: &str) -> bool {
 fn packages_from_text(text: &str) -> Result<BTreeMap<u32, Vec<String>>, &'static str> {
     let mut result: BTreeMap<u32, Vec<String>> = BTreeMap::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let (name, uid) = line
+        let (name, uids) = line
             .strip_prefix("package:")
             .and_then(|line| line.rsplit_once(" uid:"))
             .ok_or("package_inventory_invalid")?;
         if !valid_package(name) {
             return Err("package_inventory_invalid");
         }
-        let uid = uid
-            .parse::<u32>()
-            .map_err(|_| "package_inventory_invalid")?;
-        result.entry(uid).or_default().push(name.to_string());
+        // Newer PackageManager versions merge a package installed for several
+        // Android users into one comma-separated UID list. Keep those identities
+        // separate; a shared UID's complete package set is still reviewed per user.
+        for uid in uids.split(',') {
+            if uid.is_empty() || !uid.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("package_inventory_invalid");
+            }
+            let uid = uid
+                .parse::<u32>()
+                .ok()
+                .filter(|uid| *uid <= i32::MAX as u32)
+                .ok_or("package_inventory_invalid")?;
+            result.entry(uid).or_default().push(name.to_string());
+        }
     }
     if result.is_empty() {
         return Err("package_inventory_unavailable");
@@ -291,6 +301,46 @@ mod tests {
         assert_eq!(map[&10109].len(), 2);
         assert!(packages_from_text("package:app.good uid:10001\npermission denied").is_err());
         assert!(packages_from_text("").is_err());
+    }
+
+    #[test]
+    fn merged_multiuser_uids_keep_each_complete_shared_identity_separate() {
+        let map = packages_from_text(
+            "package:app.shared uid:110007,10007\npackage:app.one uid:10007,110007\npackage:app.owner_only uid:10007\n",
+        )
+        .unwrap();
+        assert_eq!(map[&10007], ["app.one", "app.owner_only", "app.shared"]);
+        assert_eq!(map[&110007], ["app.one", "app.shared"]);
+        let policies = parse_policies(
+            "oplus",
+            &json!({"provider":"oplus","repair_supported":true,"entries":[{"uid":10007,"policy":4},{"uid":110007,"policy":4}]}),
+            &map,
+        )
+        .unwrap();
+        assert!(policies.iter().all(|p| p.allowed_target() == Some(0)));
+        assert_ne!(policies[0].candidate(), policies[1].candidate());
+        assert_eq!(
+            policies[1].public()["packages"],
+            json!(["app.one", "app.shared"])
+        );
+    }
+
+    #[test]
+    fn invalid_uid_lists_are_not_accepted_as_partial_package_inventories() {
+        for uids in [
+            "10007,",
+            ",10007",
+            "10007,,110007",
+            "10007,no_uid",
+            "10007,-1",
+            "10007,+110007",
+            "10007, 110007",
+            "10007,2147483648",
+            "4294967296",
+        ] {
+            let text = format!("package:app.valid uid:10001\npackage:app.shared uid:{uids}\n");
+            assert_eq!(packages_from_text(&text), Err("package_inventory_invalid"));
+        }
     }
 
     #[test]

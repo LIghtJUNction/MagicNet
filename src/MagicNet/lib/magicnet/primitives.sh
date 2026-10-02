@@ -52,6 +52,50 @@ magicnet_jq_ai_tags_lib() {
     printf '%s\n' "$(magicnet_lib_dir)/jq"
 }
 
+# Prefer the packaged curl, then Android system curl. Host fixtures may still
+# supply a PATH curl, but Android must fail if no trusted binary is present.
+magicnet_trusted_curl() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/bin/curl"
+        return 0
+    fi
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/system/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/system/bin/curl"
+        return 0
+    fi
+    if [ -x /system/bin/curl ]; then
+        printf '%s\n' /system/bin/curl
+        return 0
+    fi
+    magicnet_android_runtime && return 1
+    command -v curl 2>/dev/null || return 1
+}
+
+# Loader and shell-hook variables must not reach the child curl process.
+magicnet_trusted_curl_env() (
+    # Clear in a subshell with the shell builtin. A PATH-selected env wrapper
+    # would reintroduce command hijacking before the trusted curl is executed.
+    unset http_proxy https_proxy all_proxy no_proxy \
+        HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY \
+        LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG \
+        LD_DYNAMIC_WEAK LD_ORIGIN_PATH LD_PROFILE \
+        LD_SHOW_AUXV LD_TRACE_LOADED_OBJECTS \
+        LD_USE_LOAD_BIAS LD_VERBOSE LD_WARN \
+        ENV BASH_ENV CDPATH GCONV_PATH NLSPATH HOSTALIASES || return 1
+    "$@"
+)
+
+magicnet_trusted_curl_exec() {
+    _trusted_curl_bin=$(magicnet_trusted_curl) || {
+        unset _trusted_curl_bin
+        return 127
+    }
+    magicnet_trusted_curl_env "$_trusted_curl_bin" -q "$@"
+    _trusted_curl_rc=$?
+    unset _trusted_curl_bin
+    return "$_trusted_curl_rc"
+}
+
 magicnet_json_escape() {
     LC_ALL=C printf '%s' "$1" |
         tr '\r\n\t' '   ' |

@@ -260,6 +260,14 @@ magicnet_singbox_transaction_reconcile() {
         ! magicnet_singbox_recovery_config_valid "$_tx_dir/old-config"; then
         return 1
     fi
+    # Prove every required backup is present before restoring any component.
+    # An incomplete journal must not mix the old config with active work/source
+    # files merely because its missing backup is discovered later in recovery.
+    if { [ -f "$_tx_dir/had-work" ] && [ ! -d "$_tx_dir/old-work" ]; } ||
+        { [ -f "$_tx_dir/had-url" ] && [ ! -f "$_tx_dir/old-url" ]; } ||
+        { [ -f "$_tx_dir/had-local" ] && [ ! -f "$_tx_dir/old-local" ]; }; then
+        return 1
+    fi
     _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
     _tx_restart_required=0
     if [ -f "$_tx_dir/was-running" ]; then
@@ -284,10 +292,11 @@ magicnet_singbox_transaction_reconcile() {
         _tx_tmp="${_tx_active_config}.reconcile.$$"
         if ! (
             umask 077
-            cp -f "$_tx_dir/old-config" "$_tx_tmp"
+            cp -f "$_tx_dir/old-config" "$_tx_tmp" &&
+                magicnet_singbox_recovery_config_valid "$_tx_tmp" &&
+                chmod 600 "$_tx_tmp"
         ) ||
-            ! mv -f "$_tx_tmp" "$_tx_active_config" ||
-            ! chmod 600 "$_tx_active_config"; then
+            ! mv -f "$_tx_tmp" "$_tx_active_config"; then
             rm -f "$_tx_tmp" 2>/dev/null || true
             return 1
         fi

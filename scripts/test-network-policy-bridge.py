@@ -72,12 +72,15 @@ public interface INetworkPolicyManager {
  class Stub {
   public static Map<Integer,Integer> values = new TreeMap<>();
   public static int writes;
+  public static boolean clearRejectAfterListing;
   public static INetworkPolicyManager asInterface(IBinder binder) {
    return new INetworkPolicyManager() {
     public int getUidPolicy(int uid) { Integer value=values.get(uid); return value==null?0:value; }
     public int[] getUidsWithPolicy(int policy) {
-     return values.keySet().stream().filter(k -> (values.get(k)&policy)!=0)
+     int[] result = values.keySet().stream().filter(k -> (values.get(k)&policy)!=0)
         .mapToInt(Integer::intValue).toArray();
+     if (clearRejectAfterListing) values.put(12001, values.get(12001)&~1);
+     return result;
     }
     public void setUidPolicy(int uid, int policy) { writes++; values.put(uid,policy); }
    };
@@ -171,6 +174,14 @@ public class BridgeTest {
     check(INetworkPolicyManager.Stub.values.get(13002)==1,"other app altered");
     result=run("get","android","12001");
     check(result.contains("\"policy\":4"),"non-reject policy absent from exact query"); break;
+   case "android_list_race":
+    INetworkPolicyManager.Stub.values.put(12001,5);
+    INetworkPolicyManager.Stub.values.put(13002,9);
+    INetworkPolicyManager.Stub.values.put(14003,1);
+    INetworkPolicyManager.Stub.clearRejectAfterListing=true;
+    result=run("inspect","android");
+    check(INetworkPolicyManager.Stub.values.get(12001)==4,"race did not clear reject bit");
+    check(INetworkPolicyManager.Stub.writes==0,"inspection changed policies"); break;
    case "strict_args":
     for (String[] request : new String[][] {{},{"change"},{"change","oplus"},
        {"change","oplus","12001","4","0","app.shared,app.one"},
@@ -246,6 +257,11 @@ class BridgeTests(unittest.TestCase):
 
     def test_aosp_repair_preserves_other_flags_and_exact_readback(self):
         self.assertEqual(self.scenario("android")["policy"], 4)
+
+    def test_aosp_inspect_omits_restrictions_cleared_during_exact_readback(self):
+        self.assertEqual(self.scenario("android_list_race")["entries"], [
+            {"uid": 13002, "policy": 9}, {"uid": 14003, "policy": 1},
+        ])
 
     def test_malformed_requests_do_not_write(self):
         self.assertTrue(self.scenario("strict_args")["ok"])

@@ -119,7 +119,11 @@ userspace Tailscale endpoint 是 sing-box 配置的一部分，需要显式添�
 
 ## 网络兼容与恢复
 
-默认网络参数是双栈、IPv4 优先、MTU 1400、UDP 超时 5 分钟、DNS 捕获端口 1053、TUN 网段 `172.19.0.1/30`。其它本机 VPN 占用这些值时，在 `.config/magicnet/network-policy.conf` 设置 `MAGICNET_DNS_CAPTURE_PORT`、`MAGICNET_TUN_INET` 和 `MAGICNET_TUN_INET6`，再执行 `cli network apply`。IPv6 或 QUIC/UDP 异常时可临时切换：
+默认网络参数是双栈、IPv4 优先、MTU 1400、UDP 超时 5 分钟、DNS 捕获端口 1053、TUN 网段 `172.19.0.1/30`。其它本机 VPN 占用这些值时，在 `.config/magicnet/network-policy.conf` 设置 `MAGICNET_DNS_CAPTURE_PORT`、`MAGICNET_TUN_INET` 和 `MAGICNET_TUN_INET6`，再执行 `cli network apply`。
+
+TUN 地址必须为 sing-box 派生的 DNS 目标留下同网段的下一个地址，IPv4 的下一个地址还不能是广播地址。例如 `172.20.0.1/30` 可用，`172.20.0.2/30` 和 `172.20.0.3/30` 不可用；`fd12::2/126` 可用，`fd12::3/126` 不可用。无效值按默认地址处理。选择空闲端口和网段后，仍需在两个 VPN 同时运行时验证 DNS 捕获和外连。
+
+IPv6 或 QUIC/UDP 异常时可临时切换：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli network status

@@ -61,6 +61,21 @@ for valid in fc00::1/64 FDFF::1/126 fd12:3456:789a:1:2:3:4:5/64; do
     magicnet_ipv6_tun_cidr_valid "$valid" || fail "valid ULA TUN IPv6 rejected: $valid"
 done
 
+# auto_redirect derives its DNS destination from the following address. It
+# must remain in the TUN prefix and must not be the IPv4 broadcast address.
+for invalid in 172.20.0.2/30 172.20.0.3/30 172.20.1.254/23 172.20.1.255/23 172.20.0.126/25 172.20.0.127/25 10.255.255.254/8 10.255.255.255/8; do
+    magicnet_ipv4_tun_cidr_valid "$invalid" && fail "TUN IPv4 without a usable next address accepted: $invalid"
+done
+for valid in 172.20.0.1/30 172.20.1.253/23 172.20.0.125/25; do
+    magicnet_ipv4_tun_cidr_valid "$valid" || fail "TUN IPv4 with a usable next address rejected: $valid"
+done
+for invalid in fd12::3/126 fd12::7/125 fd12::ffff/112 fd12:1:2:3:4:ffff:ffff:ffff/80 fd12:1:2:3:7fff:ffff:ffff:ffff/65 fd12:1:2:3:ffff:ffff:ffff:ffff/64; do
+    magicnet_ipv6_tun_cidr_valid "$invalid" && fail "TUN IPv6 without a next address accepted: $invalid"
+done
+for valid in fd12::2/126 fd12::6/125 fd12::fffe/112 fd12:1:2:3:4:ffff:ffff:fffe/80 fd12:1:2:3:7fff:ffff:ffff:fffe/65 fd12:1:2:3:ffff:ffff:ffff:fffe/64; do
+    magicnet_ipv6_tun_cidr_valid "$valid" || fail "TUN IPv6 with a next address rejected: $valid"
+done
+
 export MAGIC_DNS_CAPTURE_PORT=15353
 export MAGICNET_TUN_INET=172.20.0.1/30
 export MAGICNET_TUN_INET6=fd12:3456:789a::1/64
@@ -134,5 +149,19 @@ magicnet_singbox_apply_transparent_mode || fail "transparent apply failed with p
   and ([.inbounds[] | select(.tag == "tun-in" and .address == ["172.20.0.1/30", "fd12:3456:789a::1/64"])] | length) == 1
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null ||
     fail "transparent apply did not materialize policy DNS/TUN pins"
+
+# A syntactically valid CIDR can still put the derived DNS address outside
+# the prefix or on its broadcast address. Never materialize those pins.
+cat >"$MODDIR/.config/magicnet/network-policy.conf" <<'CONF'
+MAGICNET_DNS_CAPTURE_PORT=15353
+MAGICNET_TUN_INET=172.20.0.2/30
+MAGICNET_TUN_INET6=fd12::3/126
+CONF
+magicnet_singbox_apply_transparent_mode || fail "transparent apply failed to normalize unusable pins"
+"$HOST_JQ" -e '
+  ([.inbounds[] | select(.tag == "tun-in" and .address == ["172.19.0.1/30", "fdfe:dcba:9876::1/126"])] | length) == 1
+  and ([.inbounds[] | select(.tag == "magicnet-dns-in" and .listen_port == 15353)] | length) == 1
+' "$MODDIR/.config/sing-box/config.json" >/dev/null ||
+    fail "transparent apply materialized a TUN pin without a usable DNS address"
 
 printf '%s\n' 'dataplane policy pin test passed'

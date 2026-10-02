@@ -477,7 +477,7 @@ pub(crate) fn stop_owned_singbox(app: &App, initial_pids: Vec<String>) -> Result
     stop_singbox_with(
         &initial_pids,
         || owned_singbox_pids(app),
-        signal_pid,
+        |pid, force| signal_owned_singbox_with(pid, force, || owned_singbox_pids(app), signal_pid),
         SINGBOX_STOP_GRACE,
         SINGBOX_KILL_GRACE,
         SINGBOX_STOP_POLL_INTERVAL,
@@ -487,13 +487,13 @@ pub(crate) fn stop_owned_singbox(app: &App, initial_pids: Vec<String>) -> Result
 fn stop_singbox_with(
     initial_pids: &[String],
     mut discover: impl FnMut() -> Result<Vec<String>, String>,
-    mut signal: impl FnMut(&str, bool),
+    mut signal: impl FnMut(&str, bool) -> Result<(), String>,
     term_grace: Duration,
     kill_grace: Duration,
     poll_interval: Duration,
 ) -> Result<(), String> {
     for pid in initial_pids {
-        signal(pid, false);
+        signal(pid, false)?;
     }
 
     // Poll so a fast exit does not pay the full grace period. Discovery errors
@@ -510,7 +510,7 @@ fn stop_singbox_with(
         return Err("managed sing-box process set changed during stop".to_string());
     }
     for pid in &live {
-        signal(pid, true);
+        signal(pid, true)?;
     }
     if !live.is_empty() {
         let kill_deadline = Instant::now() + kill_grace;
@@ -533,17 +533,38 @@ fn stop_singbox_with(
     Ok(())
 }
 
-fn signal_pid(pid: &str, force: bool) {
-    let program = if cfg!(target_os = "android") {
-        "/system/bin/kill"
-    } else {
-        "/bin/kill"
-    };
-    let mut command = Command::new(program);
-    if force {
-        command.arg("-9");
+fn signal_owned_singbox_with(
+    pid: &str,
+    force: bool,
+    mut discover: impl FnMut() -> Result<Vec<String>, String>,
+    mut signal: impl FnMut(&str, bool) -> Result<(), String>,
+) -> Result<(), String> {
+    // DNS/supervisor cleanup can outlive the initial discovery. Recheck the
+    // module's ownership before signaling; a stale PID may now be unrelated.
+    if discover()?.iter().any(|owned| owned == pid) {
+        signal(pid, force)?;
     }
-    let _ = command.arg(pid).status();
+    Ok(())
+}
+
+fn signal_pid(pid: &str, force: bool) -> Result<(), String> {
+    let pid = pid
+        .parse::<libc::pid_t>()
+        .ok()
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| "invalid sing-box signal target".to_string())?;
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    // A syscall is bounded and reports failure directly. Spawning `kill`
+    // could fail silently or wait outside the shutdown polling budget.
+    if unsafe { libc::kill(pid, signal) } == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        // A core that exited between discovery and signaling is already gone.
+        return Ok(());
+    }
+    Err(format!("cannot signal managed sing-box {pid}: {err}"))
 }
 
 // These variables are implementation details of the subscription transaction.

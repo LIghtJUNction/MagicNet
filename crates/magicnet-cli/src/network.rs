@@ -163,7 +163,13 @@ pub(crate) fn ipv4_tun_cidr_valid(value: &str) -> bool {
     let Ok(address) = address.parse::<std::net::Ipv4Addr>() else {
         return false;
     };
-    (8..=30).contains(&prefix) && !matches!(address.octets()[0], 0 | 127 | 224..=255)
+    if !(8..=30).contains(&prefix) || matches!(address.octets()[0], 0 | 127 | 224..=255) {
+        return false;
+    }
+    // sing-tun uses the following address for DNS/TCP. It must stay in the
+    // prefix and must not be the IPv4 broadcast address.
+    let host_mask = u32::MAX >> prefix;
+    (u32::from(address) & host_mask) < host_mask - 1
 }
 
 pub(crate) fn ipv6_tun_cidr_valid(value: &str) -> bool {
@@ -184,7 +190,12 @@ pub(crate) fn ipv6_tun_cidr_valid(value: &str) -> bool {
         return false;
     };
     // A textual fc/fd prefix is not enough: fc::1 actually starts with 00fc.
-    (64..=126).contains(&prefix) && address.segments()[0] & 0xfe00 == 0xfc00
+    if !(64..=126).contains(&prefix) || address.segments()[0] & 0xfe00 != 0xfc00 {
+        return false;
+    }
+    // Reserve the next address for sing-tun DNS without crossing the prefix.
+    let host_mask = u128::MAX >> prefix;
+    (u128::from(address) & host_mask) < host_mask
 }
 
 fn normalize_udp_timeout(value: &str) -> Option<&'static str> {
@@ -324,6 +335,45 @@ mod tests {
             assert!(!ipv6_tun_cidr_valid(value), "{value:?}");
         }
         for value in ["fc00::1/64", "FDFF::1/126", "fd12:3456:789a:1:2:3:4:5/64"] {
+            assert!(ipv6_tun_cidr_valid(value), "{value:?}");
+        }
+    }
+
+    #[test]
+    fn tun_addresses_reserve_a_reachable_next_address_for_dns() {
+        for value in [
+            "172.20.0.2/30",
+            "172.20.0.3/30",
+            "172.20.1.254/23",
+            "172.20.1.255/23",
+            "172.20.0.126/25",
+            "172.20.0.127/25",
+            "10.255.255.254/8",
+            "10.255.255.255/8",
+        ] {
+            assert!(!ipv4_tun_cidr_valid(value), "{value:?}");
+        }
+        for value in ["172.20.0.1/30", "172.20.1.253/23", "172.20.0.125/25"] {
+            assert!(ipv4_tun_cidr_valid(value), "{value:?}");
+        }
+        for value in [
+            "fd12::3/126",
+            "fd12::7/125",
+            "fd12::ffff/112",
+            "fd12:1:2:3:4:ffff:ffff:ffff/80",
+            "fd12:1:2:3:7fff:ffff:ffff:ffff/65",
+            "fd12:1:2:3:ffff:ffff:ffff:ffff/64",
+        ] {
+            assert!(!ipv6_tun_cidr_valid(value), "{value:?}");
+        }
+        for value in [
+            "fd12::2/126",
+            "fd12::6/125",
+            "fd12::fffe/112",
+            "fd12:1:2:3:4:ffff:ffff:fffe/80",
+            "fd12:1:2:3:7fff:ffff:ffff:fffe/65",
+            "fd12:1:2:3:ffff:ffff:ffff:fffe/64",
+        ] {
             assert!(ipv6_tun_cidr_valid(value), "{value:?}");
         }
     }

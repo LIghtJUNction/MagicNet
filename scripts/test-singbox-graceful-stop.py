@@ -70,7 +70,7 @@ magicnet_proc_query_temp_create() { mktemp "$MODDIR/tmp/pids.XXXXXX"; }
 reset_core() {
     printf '0\n' >"$MODDIR/clock"
     printf '0\n' >"$MODDIR/queries"
-    rm -f "$MODDIR/termed" "$MODDIR/killed"
+    rm -f "$MODDIR/termed" "$MODDIR/killed" "$MODDIR/signal-exit" "$MODDIR/kill-refused"
     : >"$MODDIR/rules"
 }
 : >"$MODDIR/events"
@@ -90,9 +90,32 @@ kill() {
     case "$1" in
         -9)
             event "KILL:$2:$now"
+            case "$scenario" in
+                kill_denied | kill_denied_unknown)
+                    : >"$MODDIR/kill-refused"
+                    return 1
+                    ;;
+                kill_exit_race)
+                    rm -f "$MODDIR/rules"
+                    : >"$MODDIR/signal-exit"
+                    return 1
+                    ;;
+            esac
             [ "$scenario" = unkillable ] || : >"$MODDIR/killed"
             ;;
-        *) event "TERM:$1:$now"; : >"$MODDIR/termed" ;;
+        *)
+            [ "$1" != -15 ] || shift
+            event "TERM:$1:$now"
+            case "$scenario" in
+                term_denied | term_denied_unknown) return 1 ;;
+                term_exit_race)
+                    rm -f "$MODDIR/rules"
+                    : >"$MODDIR/signal-exit"
+                    return 1
+                    ;;
+            esac
+            : >"$MODDIR/termed"
+            ;;
     esac
 }
 singbox_pids_to_file() {
@@ -105,8 +128,11 @@ singbox_pids_to_file() {
         unknown_initial) return 2 ;;
         unknown_poll) [ "$queries" -le 1 ] || return 2 ;;
         unknown_late) [ "$now" -lt 600 ] || return 2 ;;
+        term_denied_unknown) [ "$queries" -le 1 ] || return 2 ;;
+        kill_denied_unknown) [ ! -e "$MODDIR/kill-refused" ] || return 2 ;;
         stopped) return 1 ;;
     esac
+    [ ! -e "$MODDIR/signal-exit" ] || return 1
     [ ! -e "$MODDIR/killed" ] || return 1
     if [ "$scenario" = immediate ] && [ -e "$MODDIR/termed" ]; then
         rm -f "$MODDIR/rules"
@@ -203,6 +229,46 @@ grep -qx 'KILL:123:10000' "$MODDIR/events"
 ! grep -q '^success$' "$MODDIR/events"
 ''')
 
+    def test_refused_sigterm_never_escalates_or_reports_success(self):
+        for scenario in ("term_denied", "term_denied_unknown"):
+            self.run_case(scenario, r'''
+[ "$rc" = 2 ]
+[ "$(cat "$MODDIR/clock")" = 0 ]
+grep -qx 'TERM:123:0' "$MODDIR/events"
+! grep -q '^KILL:' "$MODDIR/events"
+! grep -q '^success$' "$MODDIR/events"
+''')
+
+    def test_refused_sigkill_keeps_failure_without_extra_wait(self):
+        for scenario in ("kill_denied", "kill_denied_unknown"):
+            self.run_case(scenario, r'''
+[ "$rc" = 2 ]
+grep -qx 'KILL:123:10000' "$MODDIR/events"
+[ "$(cat "$MODDIR/clock")" = 10000 ]
+! grep -q '^success$' "$MODDIR/events"
+''')
+
+    def test_signal_exit_races_are_success_only_after_confirmed_disappearance(self):
+        for scenario, elapsed in (("term_exit_race", 0), ("kill_exit_race", 10000)):
+            self.run_case(scenario, f'''
+[ "$rc" = 0 ]
+[ "$(cat "$MODDIR/clock")" = {elapsed} ]
+[ ! -e "$MODDIR/rules" ]
+grep -qx success "$MODDIR/events"
+''')
+
+    def test_signal_helper_rejects_invalid_pids_before_sending_any_signal(self):
+        self.run_case("stopped", r'''
+for pid in '' 0 00 0123 -1 abc 2147483648 999999999999999999999999999999999; do
+    printf '%s\n' "$pid" >"$MODDIR/invalid-pids"
+    : >"$MODDIR/events"
+    signal_rc=0
+    singbox_signal_pids_file "$MODDIR/invalid-pids" 15 || signal_rc=$?
+    [ "$signal_rc" = 2 ]
+    ! grep -Eq '^(TERM|KILL):' "$MODDIR/events"
+done
+''')
+
     def test_replacement_pid_does_not_inherit_old_sigkill_deadline(self):
         self.run_case("replacement", r'''
 [ "$rc" = 2 ]
@@ -236,6 +302,14 @@ grep -qx 'KILL:123:10000' "$MODDIR/events"
 [ "$rc" = 2 ]
 [ "$(grep -c '^launch$' "$MODDIR/events")" = 1 ]
 [ "$(cat "$MODDIR/clock")" = 11000 ]
+! grep -q '^success$' "$MODDIR/events"
+''', start=True)
+
+    def test_failed_start_does_not_retry_after_refused_signal(self):
+        for scenario in ("term_denied", "kill_denied"):
+            self.run_case(scenario, r'''
+[ "$rc" = 2 ]
+[ "$(grep -c '^launch$' "$MODDIR/events")" = 1 ]
 ! grep -q '^success$' "$MODDIR/events"
 ''', start=True)
 

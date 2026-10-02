@@ -98,6 +98,7 @@ check bash scripts/test-singbox-pid-discovery.sh
 check bash scripts/test-singbox-ownership.sh
 check bash scripts/test-singbox-tristate-safety.sh
 check python3 scripts/test-singbox-graceful-stop.py
+check python3 scripts/test-subscription-signal-safety.py
 check bash scripts/test-api-endpoint.sh
 check bash scripts/test-singbox-readiness.sh
 check sh scripts/test-singbox-runtime-memory.sh

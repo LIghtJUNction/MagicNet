@@ -321,6 +321,10 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
         result = self.run_probe(env=dict(self.env, MAGICNET_CURL=str(self.base / "absent")))
         self.assertEqual(result.returncode, 2)
 
+    def test_relative_magicnet_curl_is_rejected(self):
+        result = self.run_probe(env=dict(self.env, MAGICNET_CURL="curl"))
+        self.assertEqual(result.returncode, 2)
+
     def test_catalog_is_validated_before_any_network(self):
         args_file = self.base / "args.json"
         invalid = ["", "# empty\n", self.row() * 2, self.row().replace("https://", "http://"),

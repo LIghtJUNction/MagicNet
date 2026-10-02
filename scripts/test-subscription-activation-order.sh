@@ -59,24 +59,26 @@ unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_RESET_BOOTSTRAP_CACHE \
 # expose a core without its TUN/DNS policy and make the next request flaky.
 failure_state="$fixture/failure-state"
 printf 'stopped\n' >"$failure_state"
-failure_owned_pids=
+# Signal helpers use private subshells; liveness must remain shared like /proc.
+failure_pid_file="$fixture/failure-pids"
+: >"$failure_pid_file"
 magicnet_singbox_owned_pids_to_file() {
   : >"$2"
-  if test -n "$failure_owned_pids"; then
-    printf '%s\n' "$failure_owned_pids" >"$2"
+  if test -s "$failure_pid_file"; then
+    cat "$failure_pid_file" >"$2"
     return 0
   fi
   return 1
 }
 magicnet_singbox_ensure_start_owned() {
   printf 'running\n' >"$failure_state"
-  failure_owned_pids=222
+  printf '222\n' >"$failure_pid_file"
 }
 magicnet_after_kernel_start_unlocked() { return 1; }
 kill() {
   case "$*" in
   *222*)
-    failure_owned_pids=
+    : >"$failure_pid_file"
     printf 'stopped\n' >"$failure_state"
     ;;
   esac
@@ -90,8 +92,8 @@ failure_restart_rc=$?
 set -e
 test "$failure_restart_rc" -ne 0
 test "$(cat "$failure_state")" = stopped
-test -z "$failure_owned_pids"
-unset failure_state failure_owned_pids failure_restart_rc
+test ! -s "$failure_pid_file"
+unset failure_state failure_pid_file failure_restart_rc
 unset MAGICNET_SUB_STOP_TIMEOUT MAGICNET_SUB_KILL_TIMEOUT CONFIG_LOCK_HELD
 : >"$events"
 

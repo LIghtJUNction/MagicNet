@@ -1,3 +1,4 @@
+# shellcheck shell=ash
 # Network policy helpers (IPv6 preference, TUN MTU, UDP timeout).
 # Kernel DNS capture / leak-guard live in network.sh, not here.
 magicnet_network_policy_conf() {
@@ -128,6 +129,11 @@ magicnet_ipv4_tun_cidr_valid() {
             if (split(cidr[1], address, ".") != 4) exit 1
             for (i = 1; i <= 4; i++) if (!octet(address[i])) exit 1
             if (address[1] + 0 == 0 || address[1] + 0 == 127 || address[1] + 0 >= 224) exit 1
+            # sing-tun derives DNS from the next address. Keep that address
+            # inside this prefix and away from its IPv4 broadcast address.
+            number = ((address[1] * 256 + address[2]) * 256 + address[3]) * 256 + address[4]
+            size = 2 ^ (32 - cidr[2])
+            if (number % size >= size - 2) exit 1
         }
         END { if (NR != 1) exit 1 }
     '
@@ -135,6 +141,13 @@ magicnet_ipv4_tun_cidr_valid() {
 
 magicnet_ipv6_tun_cidr_valid() {
     printf '%s\n' "$1" | awk '
+        function hex(value, result, j) {
+            result = 0
+            value = tolower(value)
+            for (j = 1; j <= length(value); j++)
+                result = result * 16 + index("0123456789abcdef", substr(value, j, 1)) - 1
+            return result
+        }
         {
             if (NR != 1) exit 1
             if (split($0, cidr, "/") != 2) exit 1
@@ -149,6 +162,7 @@ magicnet_ipv6_tun_cidr_valid() {
                 parts = split(halves[h], group, ":")
                 for (i = 1; i <= parts; i++) {
                     if (group[i] == "" || length(group[i]) > 4 || group[i] !~ /^[0-9A-Fa-f]+$/) exit 1
+                    hextet[h == 1 ? i : 8 - parts + i] = hex(group[i])
                     groups++
                 }
             }
@@ -157,6 +171,16 @@ magicnet_ipv6_tun_cidr_valid() {
             } else if (groups != 8) {
                 exit 1
             }
+            # Compare only 16-bit chunks: whole IPv6 values exceed awk exact
+            # integer precision. All-one host bits leave no DNS next address.
+            host_bits = 128 - cidr[2]
+            for (i = 8; host_bits > 0; i--) {
+                bits = host_bits > 16 ? 16 : host_bits
+                size = 2 ^ bits
+                if (hextet[i] % size != size - 1) has_next = 1
+                host_bits -= bits
+            }
+            if (!has_next) exit 1
         }
         END { if (NR != 1) exit 1 }
     '

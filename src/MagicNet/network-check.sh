@@ -66,7 +66,21 @@ if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
     invalid 'invalid proxy port'
 fi
 [ -r "$TARGETS" ] || invalid 'targets file is unreadable'
-command -v curl >/dev/null 2>&1 || { printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2; }
+CURL_BIN=
+if [ -x "$MODDIR/bin/curl" ]; then
+    CURL_BIN="$MODDIR/bin/curl"
+elif [ -x "$MODDIR/system/bin/curl" ]; then
+    CURL_BIN="$MODDIR/system/bin/curl"
+elif [ -x /system/bin/curl ]; then
+    CURL_BIN=/system/bin/curl
+else
+    CURL_BIN=$(command -v curl 2>/dev/null) || { printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2; }
+fi
+case "$CURL_BIN" in
+/*) ;;
+*) printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2 ;;
+esac
+[ -x "$CURL_BIN" ] || { printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2; }
 
 # Validate everything before making requests. A typo/empty corpus must never pass.
 # Do not print URLs: a user-supplied corpus might contain private paths/tokens.
@@ -82,7 +96,7 @@ awk -F '|' '
 # Older libcurl ignores max-filesize for unknown/chunked lengths. Refuse to
 # probe instead of silently violating the response-body budget. Check the linked
 # library as well as the executable; distribution builds may use different ones.
-if ! curl --disable --version 2>/dev/null | awk '
+if ! "$CURL_BIN" --disable --version 2>/dev/null | awk '
     function bounded(v, parts) {
         if (v !~ /^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$/) return 0
         split(v, parts, ".")
@@ -125,7 +139,7 @@ probe() (
         case "$FAMILY" in 4) set -- "$@" --ipv4 ;; 6) set -- "$@" --ipv6 ;; esac
     fi
     rc=0
-    curl "$@" --url "$url" > "$WORK/$id.$round.meta" 2>/dev/null || rc=$?
+    "$CURL_BIN" "$@" --url "$url" > "$WORK/$id.$round.meta" 2>/dev/null || rc=$?
     code=000; redirects=0; bytes=0; dns=-; tcp=-; tls=-; total=-; version=-
     IFS='|' read -r code redirects bytes dns tcp tls total version < "$WORK/$id.$round.meta" || :
     status=FAIL; reason=transport
