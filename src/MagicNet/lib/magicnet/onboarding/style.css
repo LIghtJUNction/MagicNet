@@ -62,7 +62,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .telegram > svg:first-child { color: #2582a6; }
 .discord > svg:first-child { color: #5865b6; }
 .community .out { margin-left: 10px; width: 14px; height: 14px; color: var(--muted); }
-.utilities { gap: 2px; }
+.utilities { gap: 2px; flex-wrap: wrap; }
 .utilities a { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border-radius: 12px; color: var(--muted); }
 .utilities svg { width: 18px; height: 18px; }
 .utilities .lmm { gap: 9px; margin-left: 16px; padding: 0 8px; font-size: 11px; letter-spacing: .2px; }

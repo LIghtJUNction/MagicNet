@@ -148,6 +148,8 @@ kam build
 
 ## 社区与支持
 
+<a href="https://donate.lmm.best"><img src="https://donate.lmm.best/badge.svg?currency=CNY&amp;lang=zh-CN&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=Donate" alt="捐赠支持" width="360" /></a>
+
 - Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
 - GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
 - 开发支持：MagicNet 的网络功能不依赖 LLM API；如需 OpenAI 兼容的多模型接口，可以使用 [LMM API Gateway](https://api.lmm.best)。[项目源码](https://github.com/TokenNotIncluded/api.lmm.best)现由 [TokenNotIncluded](https://github.com/TokenNotIncluded) 组织托管。

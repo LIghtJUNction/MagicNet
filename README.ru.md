@@ -2,6 +2,8 @@
 
 [简体中文](README.md) · [English](README.en.md) · [Русский](README.ru.md)
 
+<a href="https://donate.lmm.best"><img src="https://donate.lmm.best/badge.svg?currency=USD&amp;lang=en&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=Donate" alt="Поддержать проект" width="360" /></a>
+
 MagicNet управляет сетевым трафиком Android через [собственную версию sing-box](sing-box) с root-доступом, не занимая системное VPN-подключение. Доступны режимы `tun` и `ebpf`; по умолчанию используется `tun`.
 
 ## Возможности

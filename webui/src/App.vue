@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Bug,
+  Coffee,
   Gauge,
   GitBranch,
   Github,
@@ -665,6 +666,9 @@ onUnmounted(() => {
             </Button>
             <Button variant="outline" @click="openExternal(REPO, 'GitHub')">
               <Github :size="18" aria-hidden="true" />GitHub
+            </Button>
+            <Button variant="outline" @click="openExternal('https://donate.lmm.best', '捐赠')">
+              <Coffee :size="18" aria-hidden="true" />{{ t('捐赠') }}
             </Button>
           </div>
           <OpenSourceSupportNote />
