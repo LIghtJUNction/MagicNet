@@ -30,9 +30,10 @@ export function buildNetworkSnapshotInsights(
     text,
     /\bmasquerade\b|\bsnat\b|\bdnat\b|-t nat\b|chain postrouting\b/i,
   );
-  const hasDnsRedirect = hasSnapshotLine(
-    text,
-    /\b(dpt:53|--dport 53|udp dpt:domain|tcp dpt:domain|redirect\b.*:53|to-ports [1-9][0-9]{0,4})\b/i,
+  const hasDnsRedirect = text.split(/\r?\n/).some(
+    (line) =>
+      /(?:^|\s)--dport\s+53(?=\s|$)|\bdpt:(?:53|domain)(?=\s|$)/i.test(line) &&
+      /\b(?:REDIRECT|DNAT)\b/i.test(line),
   );
   return [
     {

@@ -8,6 +8,7 @@ use crate::{command_text_timeout, App, SHORT_TIMEOUT};
 const DEFAULT_CAPTURE_SECONDS: u64 = 15;
 const MAX_CAPTURE_SECONDS: u64 = 300;
 const MAX_CAPTURE_OUTPUT_BYTES: usize = 1024 * 1024;
+const MAX_PCAP_FILTER_BYTES: usize = 2048;
 
 pub(crate) fn ecapture_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
@@ -191,8 +192,10 @@ fn validate_pcap_filter<'a>(
     tokens: impl Iterator<Item = &'a String>,
 ) -> Result<Vec<String>, String> {
     let mut filter = Vec::new();
+    let mut bytes = 0;
     for token in tokens {
-        if filter.len() >= 32 {
+        bytes += token.len();
+        if filter.len() >= 32 || bytes > MAX_PCAP_FILTER_BYTES {
             return Err("pcap filter is too long".to_string());
         }
         validate_pcap_filter_token(token)?;
@@ -203,13 +206,33 @@ fn validate_pcap_filter<'a>(
 
 fn validate_pcap_filter_token(token: &str) -> Result<(), String> {
     if token.is_empty()
-        || token.len() > 64
-        || token.starts_with('-')
+        || token.len() > MAX_PCAP_FILTER_BYTES
+        || token.trim_start().starts_with('-')
         || !token.bytes().all(|byte| {
             byte.is_ascii_alphanumeric()
                 || matches!(
                     byte,
-                    b'.' | b'_' | b'-' | b':' | b'/' | b'*' | b'=' | b'(' | b')' | b',' | b'\\'
+                    b'.' | b'_'
+                        | b'-'
+                        | b':'
+                        | b'/'
+                        | b'*'
+                        | b'='
+                        | b'('
+                        | b')'
+                        | b','
+                        | b'\\'
+                        | b' '
+                        | b'['
+                        | b']'
+                        | b'&'
+                        | b'|'
+                        | b'^'
+                        | b'<'
+                        | b'>'
+                        | b'+'
+                        | b'%'
+                        | b'!'
                 )
         })
     {
@@ -306,6 +329,33 @@ mod tests {
                 .filter,
             strings(&["tcp", "port", "443"])
         );
+    }
+
+    #[test]
+    fn pcap_preserves_quoted_bpf_expressions_and_operators() {
+        for expression in [
+            "tcp port 443",
+            "tcp[13] & 2 != 0",
+            "len > 100",
+            "(ip[2:2] - ((ip[0] & 0xf) << 2)) > 100",
+            "tcp port 443 and (host 192.0.2.1 or host 192.0.2.2 or host 192.0.2.3)",
+        ] {
+            let parsed = parse_pcap_args(&strings(&["wlan0", expression])).unwrap();
+            assert_eq!(parsed.filter, strings(&[expression]));
+        }
+        assert!(parse_pcap_args(&strings(&["wlan0", " --pid=1"])).is_err());
+        assert!(parse_pcap_args(&strings(&["wlan0", "tcp\nport 443"])).is_err());
+    }
+
+    #[test]
+    fn pcap_filter_size_is_bounded_across_arguments() {
+        let long = "a".repeat(MAX_PCAP_FILTER_BYTES);
+        assert!(parse_pcap_args(&strings(&["wlan0", &long])).is_ok());
+        assert!(parse_pcap_args(&strings(&["wlan0", &long, "tcp"])).is_err());
+        assert!(parse_pcap_args(&strings(&["wlan0", &(long + "a")])).is_err());
+        let mut args = strings(&["wlan0"]);
+        args.extend((0..33).map(|_| "tcp".to_string()));
+        assert!(parse_pcap_args(&args).is_err());
     }
 }
 

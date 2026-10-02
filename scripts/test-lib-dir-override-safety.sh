@@ -42,8 +42,25 @@ chmod 755 "$MODDIR/bin/curl" "$WORKDIR/evil-bin/curl"
 PATH="$WORKDIR/evil-bin:$PATH"
 export PATH
 [ "$(magicnet_trusted_curl)" = "$MODDIR/bin/curl" ] || fail "trusted curl did not prefer the packaged binary"
+export FAKE_ENV_CALLED="$WORKDIR/evil-env-called"
+# The marker expands inside the fake child, not while writing its script.
+# shellcheck disable=SC2016
+printf '%s\n' '#!/bin/sh' ': >"$FAKE_ENV_CALLED"' 'exit 93' >"$WORKDIR/evil-bin/env"
+chmod 755 "$WORKDIR/evil-bin/env"
+curl_rc=0
+magicnet_trusted_curl_exec || curl_rc=$?
+[ "$curl_rc" = 91 ] || fail "trusted curl execution was redirected through PATH env"
+[ ! -e "$FAKE_ENV_CALLED" ] || fail "trusted curl ran an untrusted PATH env"
 
 rm -f "$MODDIR/bin/curl"
+export MAGICNET_TEST_FORCE_ANDROID=1
+if [ ! -x /system/bin/curl ]; then
+    if magicnet_trusted_curl >"$WORKDIR/curl-path"; then
+        fail "Android runtime accepted an untrusted PATH curl when trusted curl is missing"
+    fi
+    [ ! -s "$WORKDIR/curl-path" ] || fail "missing trusted Android curl emitted a path"
+fi
+unset MAGICNET_TEST_FORCE_ANDROID
 # Without a packaged binary, PATH curl remains a last-resort host fixture.
 case "$(magicnet_trusted_curl)" in
 "$WORKDIR/evil-bin/curl"|*/curl) ;;

@@ -81,6 +81,18 @@ try {
     dnsInsight("no redirect clues")?.value,
     "not detected",
   );
+  for (const text of [
+    "iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 8080",
+    "iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 2053",
+    "iptables -t nat -A OUTPUT -p udp --dport 5300 -j REDIRECT --to-ports 2053",
+    "iptables -A INPUT -p udp --dport 53 -j ACCEPT",
+  ]) {
+    assert.equal(dnsInsight(text)?.value, "not detected", text);
+  }
+  assert.equal(
+    dnsInsight("REDIRECT udp -- anywhere anywhere udp dpt:domain redir ports 2053")?.value,
+    "detected",
+  );
   console.log("network snapshot interface tests passed");
 } finally {
   await rm(dir, { recursive: true, force: true });
