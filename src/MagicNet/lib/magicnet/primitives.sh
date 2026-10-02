@@ -52,6 +52,47 @@ magicnet_jq_ai_tags_lib() {
     printf '%s\n' "$(magicnet_lib_dir)/jq"
 }
 
+# Prefer the packaged curl, then Android system curl. Host fixtures may still
+# supply a PATH curl. Never search an untrusted relative name first.
+magicnet_trusted_curl() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/bin/curl"
+        return 0
+    fi
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/system/bin/curl" ]; then
+        printf '%s\n' "${MODDIR}/system/bin/curl"
+        return 0
+    fi
+    if [ -x /system/bin/curl ]; then
+        printf '%s\n' /system/bin/curl
+        return 0
+    fi
+    command -v curl 2>/dev/null || return 1
+}
+
+# Loader and shell-hook variables must not reach the child curl process.
+magicnet_trusted_curl_env() {
+    env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
+        -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+        -u LD_PRELOAD -u LD_LIBRARY_PATH -u LD_AUDIT -u LD_DEBUG \
+        -u LD_DYNAMIC_WEAK -u LD_ORIGIN_PATH -u LD_PROFILE \
+        -u LD_SHOW_AUXV -u LD_TRACE_LOADED_OBJECTS \
+        -u LD_USE_LOAD_BIAS -u LD_VERBOSE -u LD_WARN \
+        -u ENV -u BASH_ENV -u CDPATH -u GCONV_PATH -u NLSPATH -u HOSTALIASES \
+        "$@"
+}
+
+magicnet_trusted_curl_exec() {
+    _trusted_curl_bin=$(magicnet_trusted_curl) || {
+        unset _trusted_curl_bin
+        return 127
+    }
+    magicnet_trusted_curl_env "$_trusted_curl_bin" -q "$@"
+    _trusted_curl_rc=$?
+    unset _trusted_curl_bin
+    return "$_trusted_curl_rc"
+}
+
 magicnet_json_escape() {
     LC_ALL=C printf '%s' "$1" |
         tr '\r\n\t' '   ' |

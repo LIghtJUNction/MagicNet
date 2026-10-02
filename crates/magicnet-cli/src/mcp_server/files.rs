@@ -23,6 +23,9 @@ pub(crate) fn file_list(server: &Server, rel: &str) -> String {
         };
         let suffix = if file_type.is_dir() { "/" } else { "" };
         let entry_path = entry.path();
+        if secret_read_denied(&entry_path, &server.moddir) {
+            continue;
+        }
         let display = entry_path
             .strip_prefix(&server.moddir)
             .unwrap_or(entry_path.as_path())
@@ -43,6 +46,9 @@ pub(crate) fn file_read(server: &Server, rel: &str) -> String {
         Ok(path) => path,
         Err(err) => return err,
     };
+    if secret_read_denied(&path, &server.moddir) {
+        return "refusing to read a secret file".to_string();
+    }
     let file = match open_regular_file(&path) {
         Ok(file) => file,
         Err(err) => return format!("not a file: {rel}: {err}"),
@@ -98,6 +104,34 @@ fn module_path(server: &Server, rel: &str) -> Result<std::path::PathBuf, String>
         return Err("path escapes module directory".to_string());
     }
     Ok(resolved)
+}
+
+fn secret_read_denied(path: &Path, root: &Path) -> bool {
+    let Ok(root) = fs::canonicalize(root) else {
+        return true;
+    };
+    // Resolve first so a same-module alias cannot bypass the filename denylist.
+    let Ok(path) = fs::canonicalize(path) else {
+        return true;
+    };
+    let Ok(relative) = path.strip_prefix(&root) else {
+        return true;
+    };
+    relative.components().any(|component| {
+        let Some(name) = component.as_os_str().to_str() else {
+            return false;
+        };
+        let name = name.to_ascii_lowercase();
+        name == "mcp.conf"
+            || name == ".env"
+            || name == "secret"
+            || name == "subscription.url"
+            || name == "subscription.local"
+            || name == "warp.conf"
+            || name == "warp-endpoint.json"
+            || name == "singbox-config-repo.conf"
+            || name.ends_with("-auth.json")
+    })
 }
 
 #[cfg(test)]
@@ -156,6 +190,74 @@ mod tests {
 
         let result = file_read(&server, "large");
         assert!(result.starts_with("file too large: large"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn file_read_rejects_secret_files_and_aliases() {
+        let (server, root) = test_server("secrets");
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::write(
+            root.join(".config/magicnet/mcp.conf"),
+            "MAGICNET_MCP_SECRET=hidden",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/subscription.url"),
+            "https://example.invalid/sub",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/subscription.local"),
+            "proxies: []\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/sing-box/tailscale-auth.json"),
+            "{\"authKey\":\"hidden\"}",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/magicnet/.env"),
+            "MAGICNET_SINGBOX_SUBSCRIPTION_URL=hidden",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".config/magicnet/warp-endpoint.json"),
+            "{\"private_key\":\"hidden\"}",
+        )
+        .unwrap();
+        fs::write(root.join("notes.txt"), "visible").unwrap();
+        symlink(
+            root.join(".config/magicnet/mcp.conf"),
+            root.join("alias.conf"),
+        )
+        .unwrap();
+
+        for path in [
+            ".config/magicnet/mcp.conf",
+            ".config/magicnet/.env",
+            ".config/magicnet/warp-endpoint.json",
+            ".config/sing-box/subscription.url",
+            ".config/sing-box/subscription.local",
+            ".config/sing-box/tailscale-auth.json",
+            "alias.conf",
+        ] {
+            assert_eq!(
+                file_read(&server, path),
+                "refusing to read a secret file",
+                "{path}"
+            );
+        }
+        assert_eq!(file_read(&server, "notes.txt"), "visible");
+        let listing = file_list(&server, "");
+        assert!(listing.contains("notes.txt"), "{listing}");
+        assert!(
+            !listing.contains("alias.conf") && !listing.contains("mcp.conf"),
+            "{listing}"
+        );
 
         let _ = fs::remove_dir_all(root);
     }

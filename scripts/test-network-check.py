@@ -116,6 +116,27 @@ class ProbeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("pass=1 fail=0 incomplete=0", result.stdout)
 
+    def test_module_curl_is_preferred_over_path_curl(self):
+        module_bin = self.script.parent / "bin"
+        module_bin.mkdir()
+        decoy_calls = self.work / "decoy-calls"
+        decoy_calls.mkdir()
+        decoy = self.bin / "curl"
+        decoy.write_text(
+            "#!/usr/bin/env python3\n"
+            "from pathlib import Path\n"
+            "Path(%r).write_text('used')\n"
+            "raise SystemExit('path curl must not run')\n" % str(decoy_calls / "used")
+        )
+        decoy.chmod(0o755)
+        module_curl = module_bin / "curl"
+        module_curl.write_text(MOCK)
+        module_curl.chmod(0o755)
+        result = self.one("200")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((decoy_calls / "used").exists())
+        self.assertTrue(list(self.calls.glob("*.json")))
+
     def test_http_error_and_unfinished_redirect_never_pass(self):
         for code in (100, 206, 301, 302, 401, 403, 404, 407, 429, 500, 502, 503, 599):
             with self.subTest(code=code):
