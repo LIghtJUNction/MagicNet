@@ -2,8 +2,8 @@
 # Compatibility for kamfw 35b2284: its one-second stop and failed-start
 # SIGKILL interrupt sing-box's own firewall teardown. Keep this small lifecycle
 # overlay in the module until the shared dependency carries the same fix.
-# Ownership discovery, readiness, dataplane preparation and signaling stay in
-# kamfw; callers keep the established singbox_start/singbox_stop interface.
+# Ownership discovery, readiness and dataplane preparation stay in kamfw;
+# callers keep the established singbox_start/singbox_stop interface.
 
 import __singbox__ || return 1
 # The pinned loader uses shared scratch names across nested imports. Explicitly
@@ -23,6 +23,42 @@ set_i18n "SINGBOX_STOP_PROCESS_CHANGED" \
 set_i18n "SINGBOX_STOP_GRACE_EXPIRED" \
     "zh" "sing-box 正常退出等待超时，正在强制停止。" \
     "en" "sing-box graceful shutdown timed out; forcing stop."
+set_i18n "SINGBOX_STOP_SIGNAL_FAILED" \
+    "zh" "sing-box 停止信号未送达，进程状态仍未确认。" \
+    "en" "Failed to deliver sing-box stop signal; process state is unresolved."
+
+# The pinned helper ignores kill failures. A refused TERM must not become
+# permission to escalate to KILL. An exit between discovery and kill is harmless
+# only when a complete follow-up discovery proves that target has disappeared.
+singbox_signal_pids_file() (
+    _singbox_signal_file="$1"
+    _singbox_signal="$2"
+    _singbox_signal_probe=
+    trap '[ -z "$_singbox_signal_probe" ] || rm -f "$_singbox_signal_probe"' EXIT
+    case "$_singbox_signal" in 15 | 9) ;; *) return 2 ;; esac
+    while IFS= read -r _singbox_signal_pid; do
+        case "$_singbox_signal_pid" in '' | *[!0-9]* | 0*) return 2 ;; esac
+        [ "$_singbox_signal_pid" -le 2147483647 ] 2>/dev/null || return 2
+        if kill "-$_singbox_signal" "$_singbox_signal_pid" 2>/dev/null; then
+            continue
+        fi
+        [ -n "$_singbox_signal_probe" ] ||
+            _singbox_signal_probe=$(magicnet_proc_query_temp_create) || return 2
+        if singbox_pids_to_file "$_singbox_signal_probe"; then
+            if grep -Fx "$_singbox_signal_pid" "$_singbox_signal_probe" >/dev/null 2>&1; then
+                :
+            else
+                _singbox_signal_state=$?
+                [ "$_singbox_signal_state" -ne 1 ] || continue
+            fi
+        else
+            _singbox_signal_state=$?
+            [ "$_singbox_signal_state" -ne 1 ] || continue
+        fi
+        error "$(i18n 'SINGBOX_STOP_SIGNAL_FAILED')"
+        return 2
+    done <"$_singbox_signal_file"
+)
 
 singbox_start() {
     if is_singbox_running; then
