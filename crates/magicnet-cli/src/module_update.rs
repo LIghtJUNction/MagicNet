@@ -22,6 +22,7 @@ const RECEIPTS: &str = ".state/module-update/receipts.json";
 const METADATA: &str = ".state/module-update/release.json";
 const LOCK: &str = ".state/module-update/lock";
 const API: &str = "https://api.github.com/repos/LIghtJUNction/MagicNet/releases/latest";
+const ASSET_API: &str = "https://api.github.com/repos/LIghtJUNction/MagicNet/releases/assets/";
 const REPO: &str = "https://github.com/LIghtJUNction/MagicNet/releases/download/";
 const MAX_CORE: usize = 12 * 1024 * 1024;
 const CHILD_FD: i32 = 198;
@@ -788,6 +789,8 @@ pub(crate) fn worker(app: &App, args: &[String]) -> Result<()> {
 #[derive(Clone)]
 struct Release {
     version: Version,
+    core_id: u64,
+    sums_id: u64,
     core_sha: String,
     sums_sha: String,
     size: u64,
@@ -823,7 +826,7 @@ fn parse_release(value: &Value) -> Result<Release> {
         let asset = matching.next().ok_or("module-update.invalid_release")?;
         if matching.next().is_some()
             || asset["state"] != "uploaded"
-            || asset["id"].as_u64().is_none()
+            || asset["id"].as_u64().is_none_or(|id| id == 0)
             || asset["size"].as_u64().is_none_or(|v| v == 0 || v > limit)
             || asset["browser_download_url"] != format!("{REPO}{tag}/{name}")
         {
@@ -838,6 +841,8 @@ fn parse_release(value: &Value) -> Result<Release> {
             version: tag.into(),
             code,
         },
+        core_id: core["id"].as_u64().unwrap(),
+        sums_id: sums["id"].as_u64().unwrap(),
         core_sha: digest(core["digest"].as_str().unwrap_or("")).ok_or("module-update.integrity")?,
         sums_sha: digest(sums["digest"].as_str().unwrap_or("")).ok_or("module-update.integrity")?,
         size: core["size"].as_u64().unwrap(),
@@ -856,7 +861,7 @@ fn load_release(app: &App, expected: &Version) -> Result<Release> {
 
 fn check_worker(app: &App, record: &mut BTreeMap<String, String>) -> Result<()> {
     phase(app, record, "checking")?;
-    let body = fetch(app, API, 1024 * 1024)?;
+    let body = fetch(app, API, 1024 * 1024, FetchMedia::ReleaseJson)?;
     let json: Value = serde_json::from_slice(&body).map_err(|_| "module-update.invalid_release")?;
     let release = parse_release(&json)?;
     crate::write_secret_file(
@@ -936,19 +941,11 @@ fn install_worker(app: &App, record: &mut BTreeMap<String, String>) -> Result<()
     let directory = private_dir(app)?;
     require_space(&directory, release.size * 3 + 64 * 1024 * 1024)?;
     phase(app, record, "downloading")?;
-    let sums = fetch(
-        app,
-        &format!("{REPO}{}/SHA256SUMS", latest.version),
-        64 * 1024,
-    )?;
+    let sums = fetch_asset(app, release.sums_id, 64 * 1024)?;
     if sha(&sums) != release.sums_sha || checksum_entry(&sums)? != release.core_sha {
         return Err("module-update.integrity");
     }
-    let bytes = fetch(
-        app,
-        &format!("{REPO}{}/MagicNet-core.zip", latest.version),
-        MAX_CORE,
-    )?;
+    let bytes = fetch_asset(app, release.core_id, MAX_CORE)?;
     phase(app, record, "verifying")?;
     if bytes.len() as u64 != release.size || sha(&bytes) != release.core_sha {
         return Err("module-update.integrity");
@@ -1037,64 +1034,49 @@ fn allowed_url(url: &str) -> Result<(String, u16)> {
     Ok((host.into(), 443))
 }
 
-fn fetch(app: &App, url: &str, limit: usize) -> Result<Vec<u8>> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FetchMedia {
+    ReleaseJson,
+    AssetOctets,
+}
+
+impl FetchMedia {
+    fn accept(self) -> &'static str {
+        match self {
+            Self::ReleaseJson => "application/vnd.github+json",
+            Self::AssetOctets => "application/octet-stream",
+        }
+    }
+}
+
+fn asset_url(id: u64) -> Result<String> {
+    if id == 0 {
+        return Err("module-update.invalid_release");
+    }
+    Ok(format!("{ASSET_API}{id}"))
+}
+
+fn fetch_asset(app: &App, id: u64, limit: usize) -> Result<Vec<u8>> {
+    fetch(app, &asset_url(id)?, limit, FetchMedia::AssetOctets)
+}
+
+fn fetch(app: &App, url: &str, limit: usize, media: FetchMedia) -> Result<Vec<u8>> {
+    fetch_with(url, limit, media, |url, limit, media| {
+        fetch_response(app, url, limit, media)
+    })
+}
+
+fn fetch_with(
+    url: &str,
+    limit: usize,
+    media: FetchMedia,
+    mut request: impl FnMut(&str, usize, FetchMedia) -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
     let mut url = url.to_owned();
     for _ in 0..=5 {
-        let (host, port) = allowed_url(&url)?;
-        let addresses = (host.as_str(), port)
-            .to_socket_addrs()
-            .map_err(|_| "module-update.network")?
-            .map(|a| a.ip())
-            .collect::<HashSet<_>>();
-        crate::subscriptions::validate_resolved_subscription_addresses(&addresses)
-            .map_err(|_| "module-update.network")?;
-        let mut command = crate::trusted_curl(app);
-        command
-            .args([
-                "-q",
-                "-sS",
-                "--noproxy",
-                "*",
-                "--proto",
-                "=https",
-                "--max-redirs",
-                "0",
-                "--max-filesize",
-                &limit.to_string(),
-                "--connect-timeout",
-                "15",
-                "--max-time",
-                "180",
-                "--include",
-            ])
-            .args([
-                "--user-agent",
-                "MagicNet-module-updater/1",
-                "--header",
-                "Accept: application/vnd.github+json",
-            ]);
-        let mut pins = Vec::new();
-        for address in addresses {
-            let address = if address.is_ipv6() {
-                format!("[{address}]")
-            } else {
-                address.to_string()
-            };
-            pins.push(address);
-        }
-        pins.sort();
-        command.args(["--resolve", &format!("{host}:{port}:{}", pins.join(","))]);
-        // curl gets no caller-supplied CA/config/auth or key-log environment.
-        command
-            .env_clear()
-            .env("PATH", "/system/bin:/system/xbin:/vendor/bin");
-        command.arg(&url);
-        let output = run_bounded_command(command, Duration::from_secs(185), limit + 16384)
-            .map_err(|_| "module-update.network")?;
-        if output.timed_out || output.truncated || !output.status.is_some_and(|s| s.success()) {
-            return Err("module-update.network");
-        }
-        let (code, location, body) = response_bytes(&output.stdout, limit)?;
+        allowed_url(&url)?;
+        let bytes = request(&url, limit, media)?;
+        let (code, location, body) = response_bytes(&bytes, limit)?;
         match code {
             200 => return Ok(body.to_vec()),
             301 | 302 | 303 | 307 | 308 => {
@@ -1105,6 +1087,77 @@ fn fetch(app: &App, url: &str, limit: usize) -> Result<Vec<u8>> {
         }
     }
     Err("module-update.network")
+}
+
+fn fetch_response(app: &App, url: &str, limit: usize, media: FetchMedia) -> Result<Vec<u8>> {
+    let (host, port) = allowed_url(url)?;
+    let addresses = (host.as_str(), port)
+        .to_socket_addrs()
+        .map_err(|_| "module-update.network")?
+        .map(|a| a.ip())
+        .collect::<HashSet<_>>();
+    crate::subscriptions::validate_resolved_subscription_addresses(&addresses)
+        .map_err(|_| "module-update.network")?;
+    let command = download_command(app, url, limit, media, &host, port, addresses);
+    let output = run_bounded_command(command, Duration::from_secs(185), limit + 16384)
+        .map_err(|_| "module-update.network")?;
+    if output.timed_out || output.truncated || !output.status.is_some_and(|s| s.success()) {
+        return Err("module-update.network");
+    }
+    Ok(output.stdout)
+}
+
+fn download_command(
+    app: &App,
+    url: &str,
+    limit: usize,
+    media: FetchMedia,
+    host: &str,
+    port: u16,
+    addresses: HashSet<std::net::IpAddr>,
+) -> Command {
+    let mut command = crate::trusted_curl(app);
+    command
+        .args([
+            "-q",
+            "-sS",
+            "--noproxy",
+            "*",
+            "--proto",
+            "=https",
+            "--max-redirs",
+            "0",
+            "--max-filesize",
+            &limit.to_string(),
+            "--connect-timeout",
+            "15",
+            "--max-time",
+            "180",
+            "--include",
+        ])
+        .args([
+            "--user-agent",
+            "MagicNet-module-updater/1",
+            "--header",
+            &format!("Accept: {}", media.accept()),
+        ]);
+    let mut pins = Vec::new();
+    for address in addresses {
+        let address = if address.is_ipv6() {
+            format!("[{address}]")
+        } else {
+            address.to_string()
+        };
+        pins.push(address);
+    }
+    pins.sort();
+    command.args(["--resolve", &format!("{host}:{port}:{}", pins.join(","))]);
+    // curl gets no caller-supplied CA/config/auth or key-log environment.
+    command
+        .env_clear()
+        .env("PATH", "/system/bin:/system/xbin:/vendor/bin");
+    command.arg(url);
+    command
 }
 
 fn response_bytes(bytes: &[u8], limit: usize) -> Result<(u16, Option<String>, &[u8])> {
@@ -1273,6 +1326,158 @@ mod tests {
         assert!(parse_release(&r).is_err());
     }
     #[test]
+    fn official_asset_ids_are_required_and_keep_fixed_download_endpoints() {
+        let parsed = parse_release(&release()).unwrap();
+        assert_eq!(parsed.core_id, 1);
+        assert_eq!(parsed.sums_id, 2);
+        assert_eq!(asset_url(parsed.core_id).unwrap(), format!("{ASSET_API}1"));
+        assert_eq!(asset_url(parsed.sums_id).unwrap(), format!("{ASSET_API}2"));
+        assert_eq!(asset_url(0), Err("module-update.invalid_release"));
+        for pointer in ["/assets/0/id", "/assets/1/id"] {
+            for id in [Value::Null, json!(0), json!(-1), json!(1.5), json!("1")] {
+                let mut value = release();
+                *value.pointer_mut(pointer).unwrap() = id;
+                assert!(matches!(
+                    parse_release(&value),
+                    Err("module-update.invalid_release")
+                ));
+            }
+        }
+    }
+    #[test]
+    fn asset_api_accepts_direct_binary_content_and_validated_redirects() {
+        let api = asset_url(1).unwrap();
+        let binary = [b'P', b'K', 0, 255];
+        let mut calls = 0;
+        let bytes = fetch_with(&api, 4, FetchMedia::AssetOctets, |url, limit, media| {
+            calls += 1;
+            assert_eq!(url, api);
+            assert_eq!(limit, 4);
+            assert_eq!(media, FetchMedia::AssetOctets);
+            let mut response =
+                b"HTTP/2 200\r\nContent-Type: application/octet-stream\r\n\r\n".to_vec();
+            response.extend_from_slice(&binary);
+            Ok(response)
+        })
+        .unwrap();
+        assert_eq!(bytes, binary);
+        assert_eq!(calls, 1);
+
+        let target = "https://release-assets.githubusercontent.com/assets/file?sig=abc";
+        let mut calls = 0;
+        let bytes = fetch_with(&api, 4, FetchMedia::AssetOctets, |url, limit, media| {
+            calls += 1;
+            assert_eq!(limit, 4);
+            assert_eq!(media, FetchMedia::AssetOctets);
+            if calls == 1 {
+                assert_eq!(url, api);
+                Ok(format!("HTTP/2 302\r\nLocation: {target}\r\n\r\n").into_bytes())
+            } else {
+                assert_eq!(url, target);
+                Ok(b"HTTP/2 200\r\n\r\nbody".to_vec())
+            }
+        })
+        .unwrap();
+        assert_eq!(bytes, b"body");
+        assert_eq!(calls, 2);
+    }
+    #[test]
+    fn asset_redirects_reject_untrusted_targets_before_following() {
+        for target in [
+            "http://release-assets.githubusercontent.com/file",
+            "https://github.com@evil.invalid/file",
+            "https://release-assets.githubusercontent.com.evil.invalid/file",
+            "https://release-assets.githubusercontent.com:443/file",
+            "https://evil.invalid/file",
+            "https://release-assets.githubusercontent.com/file#fragment",
+            "https://release-assets.githubusercontent.com/fi\\le",
+            "/relative/file",
+        ] {
+            let mut calls = 0;
+            assert_eq!(
+                fetch_with(
+                    &asset_url(1).unwrap(),
+                    4,
+                    FetchMedia::AssetOctets,
+                    |_, _, _| {
+                        calls += 1;
+                        Ok(format!("HTTP/2 302\r\nLocation: {target}\r\n\r\n").into_bytes())
+                    }
+                ),
+                Err("module-update.network")
+            );
+            assert_eq!(calls, 1);
+        }
+        let mut calls = 0;
+        assert_eq!(
+            fetch_with(
+                &asset_url(1).unwrap(),
+                4,
+                FetchMedia::AssetOctets,
+                |_, _, _| {
+                    calls += 1;
+                    Ok(b"HTTP/2 302\r\nLocation: https://release-assets.githubusercontent.com/file\r\n\r\n".to_vec())
+                }
+            ),
+            Err("module-update.network")
+        );
+        assert_eq!(calls, 6);
+    }
+    #[test]
+    fn requests_negotiate_json_and_binary_without_automatic_redirects() {
+        let app = crate::test_support::temp_app();
+        for (url, media, accept) in [
+            (
+                API.to_owned(),
+                FetchMedia::ReleaseJson,
+                "Accept: application/vnd.github+json",
+            ),
+            (
+                asset_url(1).unwrap(),
+                FetchMedia::AssetOctets,
+                "Accept: application/octet-stream",
+            ),
+        ] {
+            let addresses = [
+                "140.82.112.5".parse().unwrap(),
+                "2606:50c0:8000::154".parse().unwrap(),
+            ]
+            .into_iter()
+            .collect();
+            let command = download_command(
+                &app,
+                &url,
+                64 * 1024,
+                media,
+                "api.github.com",
+                443,
+                addresses,
+            );
+            let args = command
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(args[0], "-q");
+            for pair in [
+                ["--header", accept],
+                ["--max-redirs", "0"],
+                ["--noproxy", "*"],
+                ["--proto", "=https"],
+            ] {
+                assert!(args.windows(2).any(|args| args == pair));
+            }
+            assert!(args.windows(2).any(|args| args
+                == [
+                    "--resolve",
+                    "api.github.com:443:140.82.112.5,[2606:50c0:8000::154]"
+                ]));
+            assert_eq!(args.last().unwrap(), &url);
+            assert!(!args
+                .iter()
+                .any(|arg| matches!(*arg, "-L" | "--location" | "--location-trusted")));
+        }
+    }
+    #[test]
     fn checksums_reject_duplicates_and_wrong_filename() {
         let hash = "a".repeat(64);
         assert_eq!(
@@ -1424,6 +1629,10 @@ mod tests {
             bounded_text(&app.moddir.join(crate::state::module_update_path()), 8192).unwrap(),
             before
         );
+        // Simulate owner exit deterministically: parallel tests may fork while
+        // this descriptor is open and keep the lock until their child execs.
+        // Production handoff remains close-only and has its own test below.
+        assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_UN) }, 0);
         drop(held);
         let held = lock(&app).unwrap();
         settle_locked(&app).unwrap();

@@ -63,7 +63,17 @@ and sanitized messages; neither command output nor download URLs are exposed.
 Only the official GitHub latest **non-draft, non-prerelease** release is queried.
 The tag must be a bounded stable version. The core asset name is exactly
 `MagicNet-core.zip`, and checksum asset exactly `SHA256SUMS`, with fixed official
-release download paths. The GitHub asset's SHA-256 digest and the exact
+release download paths checked in the release metadata. The checked positive
+asset IDs produce fixed download URLs under
+`https://api.github.com/repos/LIghtJUNction/MagicNet/releases/assets/<id>`.
+Release metadata uses `Accept: application/vnd.github+json`; asset content uses
+`Accept: application/octet-stream`. The asset API may return the content
+directly with HTTP 200 or redirect with HTTP 302 to an allowed official asset
+host. The updater handles both, without consuming a caller-selected URL or
+falling back to a mirror. This avoids depending on the browser download
+endpoint, which may stall for GET even when its HEAD request responds promptly.
+See the [official GitHub asset API](https://docs.github.com/en/rest/releases/assets#get-a-release-asset).
+The GitHub asset's SHA-256 digest and the exact
 `SHA256SUMS` entry must both match the downloaded ZIP. This is GitHub HTTPS and
 two matching release digests, not independent public-key signature verification.
 
