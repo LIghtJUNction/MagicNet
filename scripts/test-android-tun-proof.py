@@ -76,19 +76,68 @@ class TunProofTests(unittest.TestCase):
         result = proof.verify(adb, lambda *_: {'ok': True, 'uid': 10123}, 'component')
         self.assertEqual(result['reason'], 'app_uid_not_confirmed')
 
+    def test_known_cli_failure_categories_discard_raw_diagnostics(self):
+        noise = 'subscription=https://private.invalid/?token=private-value node=private-node'
+        cases = (
+            ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
+            ('supervisor PID file changed during stop', 'supervisor_pid_changed'),
+            ('prepare network for core stop: child failed', 'network_stop_failed'),
+            ('finalize stopped network: child failed', 'network_finalize_failed'),
+            ('config apply is still busy after 2000 ms; retry the lifecycle action', 'config_apply_busy'),
+            ('config validation failed', 'config_validation'),
+            ('No sing-box nodes were found. Configure a subscription URL', 'nodes_unavailable'),
+            ('No subscription source is configured, so the kernel cannot start.', 'source_unavailable'),
+            ('ADB deadline exceeded', 'adb_deadline'),
+            ('unrecognized child failure', 'command_failed'),
+        )
+        for message, kind in cases:
+            with self.subTest(message=message):
+                diagnostic = proof.sanitized_failure(
+                    noise + '\n[error] ' + message + '\n' + noise, operation='core_restart')
+                self.assertEqual(diagnostic, {'kind': kind})
+
+    def test_startup_failure_uses_only_known_stage_and_bounded_exit_code(self):
+        self.assertEqual(proof.sanitized_failure(
+            '[warn] Startup step failed: stage=route-capture exit=2\nprivate-error',
+            operation='core_restart'),
+            {'kind': 'startup_step_failed', 'stage': 'route-capture', 'stage_exit_code': 2})
+        self.assertEqual(proof.sanitized_failure(
+            '[warn] Startup step failed: stage=core-launch exit=139\n'
+            '[error] finalize stopped network: private-error', operation='core_restart'),
+            {'kind': 'network_finalize_failed', 'stage': 'core-launch', 'stage_exit_code': 139})
+        for stage, exit_code in (('private-node', '1'), ('dns', '-1'), ('dns', '0'),
+                                 ('dns', '256'), ('dns', '9999'), ('dns', '1private')):
+            with self.subTest(stage=stage, exit_code=exit_code):
+                self.assertEqual(proof.sanitized_failure(
+                    f'Startup step failed: stage={stage} exit={exit_code}', operation='core_restart'),
+                    {'kind': 'command_failed'})
+
+    def test_validator_config_text_cannot_forge_service_failure_or_startup_stage(self):
+        output = ('config validation failed\n{"tag":"managed supervisor did not stop after SIGTERM"}\n'
+                  'Startup step failed: stage=core-launch exit=2 private-secret')
+        for operation in ('config_save', 'core_restart'):
+            with self.subTest(operation=operation):
+                self.assertEqual(proof.sanitized_failure(output, operation=operation),
+                                 {'kind': 'config_validation'})
+        self.assertEqual(proof.sanitized_failure(
+            'managed supervisor did not stop after SIGTERM\n'
+            'Startup step failed: stage=core-launch exit=2', operation='config_save'),
+            {'kind': 'command_failed'})
 
     def transaction(self, *, reject_timeout=False, failed_save=False, failed_restore=False,
-                    failed_reverse_cleanup=False):
+                    failed_reverse_cleanup=False, failed_restart=False,
+                    save_error='', restart_error='', restore_error=''):
         # This executes restoration/accounting with an in-memory device and a
         # real local marker server. It is NOT evidence of Android TUN capture.
         active = copy.deepcopy(BASE)
         payloads = {}
         saves = []
         removed_marker = []
+        sentinel_operations = []
 
         def adb(command, **_):
             nonlocal active
-            rc, output = 0, ''
+            rc, output, error = 0, '', ''
             args = shlex.split(command)
             if command == 'getprop ro.kernel.qemu':
                 output = '1'
@@ -112,18 +161,24 @@ class TunProofTests(unittest.TestCase):
                 saves.append(copy.deepcopy(active))
                 if failed_save and len(saves) == 1:
                     rc = 1  # Activation may change the file before reporting failure.
+                    error = save_error
             elif args[1:] == ['service', 'restart', 'sing-box']:
                 if failed_restore and active == BASE:
                     rc = 1
+                    error = restore_error
+                elif failed_restart and active != BASE:
+                    rc = 1
+                    error = restart_error
             elif command == 'rm -f ' + proof.MARKER:
                 removed_marker.append(True)
             else:
                 self.fail('unexpected device operation: ' + command)
-            return subprocess.CompletedProcess(['adb'], rc, output)
+            return subprocess.CompletedProcess(['adb'], rc, output, error)
 
         def instrument(_component, operation, _timeout, **values):
             if operation == 'identity':
                 return {'ok': True, 'uid': 10123}
+            sentinel_operations.append(operation)
             blocked = active['route']['rules'][0]['action'] == 'reject'
             if not blocked:
                 with socket.create_connection(('127.0.0.1', values['port']), timeout=2) as client:
@@ -141,6 +196,9 @@ class TunProofTests(unittest.TestCase):
             report = proof.verify(adb, instrument, 'component')
         self.assertEqual(active, BASE)
         self.assertFalse(payloads, 'private staging payloads must be removed')
+        if failed_save or failed_restart:
+            self.assertFalse(sentinel_operations, 'failed activation must not reach a sentinel probe')
+            self.assertEqual(len(saves), 2, 'one activation and one restoration, without write retries')
         if not failed_restore:
             self.assertTrue(removed_marker)
         return report, saves
@@ -176,13 +234,51 @@ class TunProofTests(unittest.TestCase):
         self.assertEqual(report['failure_exit_code'], 1)
 
     def test_first_operation_failure_survives_failed_restoration(self):
-        report, _ = self.transaction(failed_save=True, failed_restore=True)
+        report, _ = self.transaction(failed_save=True, failed_restore=True,
+                                    save_error='config validation failed\nprivate-config',
+                                    restore_error='Startup step failed: stage=route-capture exit=2\nprivate-config')
         self.assertEqual(report['failure_control'], 'positive')
         self.assertEqual(report['failure_operation'], 'config_save')
         self.assertEqual(report['failure_exit_code'], 1)
+        self.assertEqual(report['failure_kind'], 'config_validation')
+        self.assertNotIn('failure_stage', report)
+        self.assertNotIn('failure_stage_exit_code', report)
+        self.assertEqual(report['restore_failure_operation'], 'core_restart')
+        self.assertEqual(report['restore_failure_exit_code'], 1)
+        self.assertEqual(report['restore_failure_kind'], 'startup_step_failed')
+        self.assertEqual(report['restore_failure_stage'], 'route-capture')
+        self.assertEqual(report['restore_failure_stage_exit_code'], 2)
+        self.assertFalse(report['restored'])
+        self.assertEqual(report['reason'], 'config_restore_failed_discard_avd')
+        self.assertNotIn('private-config', json.dumps(report))
         self.assertNotIn('argv', report)
         self.assertNotIn('stdout', report)
         self.assertNotIn('stderr', report)
+
+    def test_failed_restart_records_category_and_keeps_restore_independent(self):
+        report, _ = self.transaction(
+            failed_restart=True, failed_restore=True,
+            restart_error='managed supervisor did not stop after SIGTERM\nprivate-token',
+            restore_error='supervisor PID file changed during stop\nprivate-token')
+        self.assertEqual(report['status'], 'not_verified')
+        self.assertEqual(report['failure_control'], 'positive')
+        self.assertEqual(report['failure_operation'], 'core_restart')
+        self.assertEqual(report['failure_kind'], 'supervisor_stop_timeout')
+        self.assertEqual(report['restore_failure_kind'], 'supervisor_pid_changed')
+        self.assertEqual(report['restore_failure_operation'], 'core_restart')
+        self.assertEqual(report['restore_failure_exit_code'], 1)
+        self.assertFalse(report['restored'])
+        self.assertEqual(report['reason'], 'config_restore_failed_discard_avd')
+        self.assertNotIn('private-token', json.dumps(report))
+
+    def test_failed_restart_stays_failed_after_successful_restoration(self):
+        report, _ = self.transaction(
+            failed_restart=True, restart_error='prepare network for core stop: private-token')
+        self.assertEqual(report['status'], 'not_verified')
+        self.assertEqual(report['failure_kind'], 'network_stop_failed')
+        self.assertTrue(report['restored'])
+        self.assertFalse(any(key.startswith('restore_failure_') for key in report))
+        self.assertNotIn('private-token', json.dumps(report))
 
     def test_failed_reverse_cleanup_cannot_report_verified(self):
         report, _ = self.transaction(failed_reverse_cleanup=True)

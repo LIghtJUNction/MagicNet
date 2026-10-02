@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import re
 import secrets
 import shlex
 import socketserver
@@ -25,6 +26,50 @@ MODDIR = '/data/adb/modules/MagicNet'
 CLI = MODDIR + '/cli'
 MARKER = MODDIR + '/.config/sing-box/standalone-config'
 SENTINEL = '198.18.0.42'
+STARTUP_STAGES = frozenset({
+    'subscription', 'chain', 'transparent', 'hotspot', 'dns', 'tailscale', 'apps',
+    'warp', 'overrides', 'auth', 'config-check', 'route-baseline', 'core-launch',
+    'route-capture', 'network-ready',
+})
+
+
+def sanitized_failure(output: str, *, operation: str) -> dict:
+    """Keep fixed diagnostic tokens only, even when CLI errors contain config text."""
+    diagnostic = {'kind': 'command_failed'}
+    messages = (
+        ('config validation failed', 'config_validation'),
+        ('config apply is still busy', 'config_apply_busy'),
+    )
+    if operation == 'core_restart':
+        messages += (
+            ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
+            ('supervisor PID file changed during stop', 'supervisor_pid_changed'),
+            ('prepare network for core stop:', 'network_stop_failed'),
+            ('finalize stopped network:', 'network_finalize_failed'),
+        )
+    messages += (
+        ('No sing-box nodes were found', 'nodes_unavailable'),
+        ('No sing-box nodes found', 'nodes_unavailable'),
+        ('No subscription source is configured', 'source_unavailable'),
+        ('ADB deadline exceeded', 'adb_deadline'),
+    )
+    for message, kind in messages:
+        if message in output:
+            diagnostic['kind'] = kind
+            break
+    # Validation errors can embed arbitrary config strings. Such strings
+    # cannot establish a service failure category or a startup stage.
+    if operation != 'core_restart' or diagnostic['kind'] == 'config_validation':
+        return diagnostic
+    for match in re.finditer(
+            r'Startup step failed: stage=([a-z-]{1,32}) exit=([0-9]{1,3})(?=\s|$)', output):
+        stage, exit_code = match.groups()
+        if stage in STARTUP_STAGES and 1 <= int(exit_code) <= 255:
+            diagnostic.update(stage=stage, stage_exit_code=int(exit_code))
+            if diagnostic['kind'] == 'command_failed':
+                diagnostic['kind'] = 'startup_step_failed'
+            break
+    return diagnostic
 
 
 def fixture_config(original: dict, uid: int, port: int, *, blocked: bool) -> dict:
@@ -92,21 +137,15 @@ def verify(adb, instrument, component) -> dict:
         if cp.returncode:
             # Keep the first failure even if restoration also fails. Never
             # retain argv, payloads or raw output from a user configuration.
-            report.setdefault('failure_control', control)
-            report.setdefault('failure_operation', operation)
-            report.setdefault('failure_exit_code', cp.returncode)
-            output = cp.stdout + (cp.stderr or '')
-            kind = 'command_failed'
-            for message, label in (
-                    ('config apply is still busy', 'config_apply_busy'),
-                    ('config validation failed', 'config_validation'),
-                    ('No sing-box nodes found', 'nodes_unavailable'),
-                    ('No subscription source is configured', 'source_unavailable'),
-                    ('ADB deadline exceeded', 'adb_deadline')):
-                if message in output:
-                    kind = label
-                    break
-            report.setdefault('failure_kind', kind)
+            failure = {'operation': operation, 'exit_code': cp.returncode,
+                       **sanitized_failure(cp.stdout + '\n' + (cp.stderr or ''), operation=operation)}
+            if 'failure_control' not in report:
+                report['failure_control'] = control
+                report.update({'failure_' + key: value for key, value in failure.items()})
+            # A secondary restore failure must not overwrite the original
+            # cause, or lend its startup stage to the original failure record.
+            if control == 'restore' and 'restore_failure_operation' not in report:
+                report.update({'restore_failure_' + key: value for key, value in failure.items()})
             raise RuntimeError('device_operation_failed')
         return cp.stdout
 
