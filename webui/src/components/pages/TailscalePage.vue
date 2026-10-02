@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
-import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, XCircle } from "lucide-vue-next";
+import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, RefreshCw, XCircle } from "lucide-vue-next";
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
 import TailscaleControls from "./TailscaleControls.vue";
