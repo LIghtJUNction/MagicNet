@@ -267,6 +267,52 @@ def bounded_exit_code(value):
     return value if type(value) is int and -255 <= value <= 255 else None
 
 
+def adb_result_kind(result: subprocess.CompletedProcess) -> str:
+    # Keep only normalized diagnostics. ADB can include a serial or an argv in
+    # its raw output; neither belongs in the public acceptance report.
+    output = (result.stdout + '\n' + result.stderr).lower()
+    if ('cannot run as root' in output or 'root access is disabled' in output
+            or 'permission denied' in output or 'operation not permitted' in output):
+        return 'root_denied'
+    if 'unauthorized' in output or 'access denied' in output:
+        return 'authorization_denied'
+    if result.returncode == 0:
+        return 'success'
+    if result.returncode == 124:
+        return 'timeout'
+    if result.returncode == 127:
+        return 'unavailable'
+    if result.returncode != 1:
+        return 'command_failed'
+    patterns = (
+        (r'device offline(?: \((?:no transport|transport offline)\))?', 'transport_offline'),
+        (r"device(?: '[^'\r\n]{1,80}')? not found|no devices(?:/emulators)? found",
+         'transport_missing'),
+        (r'device disconnected|connection reset by peer|connection closed|transport is closing|closed',
+         'transport_disconnected'),
+        (r"(?:unexpected )?eof|protocol fault \((?:couldn't read status(?: length| message)?|no status)\)"
+         r'(?:: (?:success|eof|closed|connection reset by peer))?', 'transport_eof'),
+    )
+    kinds = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line in ('restarting adbd as root', 'adbd is already running as root',
+                                '* daemon started successfully'):
+            continue
+        if re.fullmatch(r'\* daemon not running; starting now at tcp:[0-9]+', line):
+            continue
+        for pattern, kind in patterns:
+            if re.fullmatch(r'(?:adb: )?(?:error: )?(?:unable to connect for root: )?(?:'
+                            + pattern + ')', line):
+                kinds.append(kind)
+                break
+        else:
+            # A known transport line must not swallow an accompanying unknown
+            # error. Keep the failed request failed until its cause is understood.
+            return 'command_failed'
+    return kinds[0] if kinds else 'command_failed'
+
+
 class Device:
     def __init__(self):
         require(os.environ.get('MAGICNET_DISPOSABLE_AVD') == '1', 'explicit disposable AVD opt-in required')
@@ -275,6 +321,7 @@ class Device:
         self.verified = False
         self.late_load_on_reboot = False
         self.busybox_checks = []
+        self.root_checks = []
         self.boot_log = ROOT / 'artifacts/android-kernelsu/emulator.log'
 
     def boot_failure(self, offset: int = 0) -> str | None:
@@ -344,23 +391,61 @@ class Device:
         raise RuntimeError('Android boot deadline exceeded')
 
     def root(self):
-        self.run('root')
+        # The first request can race adbd's boot-time restart too. Bound the
+        # entire operation, and retry only an explicitly observed transport loss.
+        deadline = time.monotonic() + 30
+        evidence = {'status': 'failed', 'root_requests': [], 'wait_attempts': 0,
+                    'identity_attempts': 0}
+        require(len(self.root_checks) < 16, 'ADB root history budget exceeded')
+        self.root_checks.append(evidence)
+        request_needed = True
+        request_accepted = False
         # wait-for-device can observe the old transport before adb root exits
         # and restarts adbd. Verify the new connection with a read-only probe;
         # lifecycle mutations must never be replayed to conceal this race.
-        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
+            if request_needed:
+                requested = self.run('root', timeout=min(5, remaining), check=False)
+                kind = adb_result_kind(requested)
+                evidence['root_requests'].append({'exit_code': bounded_exit_code(requested.returncode),
+                                                 'diagnostic': kind,
+                                                 'stderr_present': bool(requested.stderr)})
+                require(kind != 'root_denied',
+                        f'ADB root refused (exit {requested.returncode}; diagnostic root_denied)')
+                require(kind == 'success' or kind.startswith('transport_'),
+                        f'ADB root failed (exit {requested.returncode}; diagnostic {kind})')
+                request_accepted = kind == 'success'
+                request_needed = False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            evidence['wait_attempts'] += 1
             connected = self.run('wait-for-device', timeout=min(5, remaining), check=False)
+            kind = adb_result_kind(connected)
+            require(kind == 'success' or kind == 'timeout' or kind.startswith('transport_'),
+                    f'ADB reconnect failed (exit {connected.returncode}; diagnostic {kind})')
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
             if connected.returncode == 0:
+                evidence['identity_attempts'] += 1
                 identity = self.shell('id -u', timeout=min(5, remaining), check=False)
-                if identity.returncode == 0 and identity.stdout.strip() == '0':
-                    return
+                kind = adb_result_kind(identity)
+                require(kind == 'success' or kind == 'timeout' or kind.startswith('transport_'),
+                        f'ADB root identity failed (exit {identity.returncode}; diagnostic {kind})')
+                if identity.returncode == 0:
+                    uid = identity.stdout.strip()
+                    require(re.fullmatch(r'[0-9]+', uid) is not None, 'ADB root identity is invalid')
+                    if uid == '0':
+                        require(time.monotonic() < deadline, 'ADB root identity arrived after deadline')
+                        evidence['status'] = 'passed'
+                        return
+                    # A lost reply may still have applied root. Only reissue
+                    # after a real non-root observation, never after acceptance.
+                    request_needed = not request_accepted
             time.sleep(min(0.25, max(0, deadline - time.monotonic())))
         raise RuntimeError('debuggable/rootable Android image did not reconnect before deadline')
 
@@ -844,6 +929,7 @@ def main() -> int:
     finally:
         if device is not None:
             report.provenance['busybox_checks'] = device.busybox_checks
+            report.provenance['root_checks'] = device.root_checks
         report.write()
         if device is not None:
             try:

@@ -40,8 +40,8 @@ def elf(machine=62):
     return bytes(value)
 
 
-def cp(output='', rc=0):
-    return subprocess.CompletedProcess(['adb'], rc, output, '')
+def cp(output='', rc=0, stderr=''):
+    return subprocess.CompletedProcess(['adb'], rc, output, stderr)
 
 
 class ArchiveTests(unittest.TestCase):
@@ -343,7 +343,8 @@ class DeviceTests(unittest.TestCase):
         # A stale wait-for-device succeeds before the old adbd disconnects.
         # Neither an offline read nor a still-unprivileged daemon is root.
         with patch.object(device, 'run', return_value=cp()) as run, \
-             patch.object(device, 'shell', side_effect=[cp('', 1), cp('2000\n'), cp('0\n')]) as shell, \
+             patch.object(device, 'shell', side_effect=[cp('', 1, 'error: device offline'),
+                                                       cp('2000\n'), cp('0\n')]) as shell, \
              patch.object(SIM.time, 'monotonic', return_value=0), \
              patch.object(SIM.time, 'sleep'):
             device.root()
@@ -356,7 +357,7 @@ class DeviceTests(unittest.TestCase):
         device = self.device()
         with patch.object(device, 'run', return_value=cp()), \
              patch.object(device, 'shell', return_value=cp('2000\n')), \
-             patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 0, 30, 30]), \
+             patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 0, 0, 30, 30, 30]), \
              patch.object(SIM.time, 'sleep'), \
              self.assertRaisesRegex(RuntimeError, 'reconnect before deadline'):
             device.root()
@@ -365,6 +366,148 @@ class DeviceTests(unittest.TestCase):
              self.assertRaisesRegex(RuntimeError, 'root denied'):
             device.root()
         shell.assert_not_called()
+
+    def test_root_transport_failure_retries_only_after_nonroot_observation(self):
+        for error in ('error: device offline', "error: device 'emulator-5554' not found",
+                      'adb: unable to connect for root: device offline',
+                      'adb: unable to connect for root: device offline (no transport)',
+                      'error: device offline (transport offline)',
+                      'error: device disconnected', 'error: connection reset by peer',
+                      'error: closed', 'error: unexpected EOF',
+                      "error: protocol fault (couldn't read status): Success",
+                      "error: protocol fault (couldn't read status length): Success",
+                      "error: protocol fault (couldn't read status message): EOF"):
+            with self.subTest(error=error):
+                device = self.device()
+                roots = iter([cp('', 1, error), cp()])
+                def run(operation, **options):
+                    self.assertFalse(options['check'])
+                    self.assertLessEqual(options['timeout'], 5)
+                    return next(roots) if operation == 'root' else cp()
+                with patch.object(device, 'run', side_effect=run) as runner, \
+                     patch.object(device, 'shell', side_effect=[cp('2000\n'), cp('0\n')]) as shell, \
+                     patch.object(SIM.time, 'monotonic', return_value=0), \
+                     patch.object(SIM.time, 'sleep'):
+                    device.root()
+                self.assertEqual([c.args[0] for c in runner.call_args_list],
+                                 ['root', 'wait-for-device', 'root', 'wait-for-device'])
+                self.assertEqual(shell.call_count, 2)
+                evidence = device.root_checks[0]
+                self.assertEqual(evidence['status'], 'passed')
+                self.assertTrue(evidence['root_requests'][0]['diagnostic'].startswith('transport_'))
+                self.assertTrue(evidence['root_requests'][0]['stderr_present'])
+                self.assertNotIn(error, json.dumps(evidence))
+
+    def test_lost_root_reply_does_not_repeat_an_already_effective_request(self):
+        device = self.device()
+        with patch.object(device, 'run', side_effect=[cp('', 1, 'error: EOF'), cp()]) as run, \
+             patch.object(device, 'shell', return_value=cp('0\n')) as shell, \
+             patch.object(SIM.time, 'monotonic', return_value=0):
+            device.root()
+        self.assertEqual([c.args[0] for c in run.call_args_list], ['root', 'wait-for-device'])
+        shell.assert_called_once()
+
+    def test_production_root_refusal_cannot_be_overridden_by_transport_or_uid_zero(self):
+        for code, denial in ((0, 'adbd cannot run as root in production builds'),
+                             (1, 'adbd cannot run as root in production builds'),
+                             (1, 'root access is disabled'), (1, 'permission denied'),
+                             (1, 'operation not permitted')):
+            device = self.device()
+            denial += '\nerror: device offline'
+            with self.subTest(code=code), \
+                 patch.object(device, 'run', return_value=cp('', code, denial)) as run, \
+                 patch.object(device, 'shell', return_value=cp('0\n')) as shell, \
+                 self.assertRaisesRegex(RuntimeError, 'root refused'):
+                device.root()
+            run.assert_called_once()
+            shell.assert_not_called()
+            self.assertEqual(device.root_checks[0]['root_requests'][0]['diagnostic'], 'root_denied')
+
+    def test_unknown_missing_timeout_and_abnormal_root_errors_are_not_retried(self):
+        for failure in (cp('', 1), cp('', 1, 'permission denied'), cp('', 1, 'unknown failure'),
+                        cp('', 124, 'ADB deadline exceeded'), cp('', 127, 'ADB unavailable'),
+                        cp('', -11, 'error: device offline'), cp('', 139, 'error: EOF')):
+            device = self.device()
+            with self.subTest(failure=failure), \
+                 patch.object(device, 'run', return_value=failure) as run, \
+                 patch.object(device, 'shell', return_value=cp('0\n')) as shell, \
+                self.assertRaisesRegex(RuntimeError, 'ADB root (failed|refused)'):
+                device.root()
+            run.assert_called_once()
+            shell.assert_not_called()
+
+    def test_transport_words_do_not_hide_unknown_or_authorization_errors(self):
+        for error in ('permission denied: unexpected EOF',
+                      'error: unauthorized device; connection closed',
+                      'access denied\nerror: device offline',
+                      'unknown failure\nerror: device offline',
+                      'adb: unable to connect for root: unknown failure',
+                      'error: device offline (unknown failure)',
+                      'error: unexpected EOF while applying an unknown operation'):
+            device = self.device()
+            with self.subTest(error=error), \
+                 patch.object(device, 'run', return_value=cp('', 1, error)) as run, \
+                 patch.object(device, 'shell', return_value=cp('0\n')) as shell, \
+                 self.assertRaisesRegex(RuntimeError, 'ADB root (failed|refused)'):
+                device.root()
+            run.assert_called_once()
+            shell.assert_not_called()
+
+    def test_unknown_reconnect_or_identity_errors_do_not_become_root_success(self):
+        for operation in ('wait-for-device', 'id -u'):
+            device = self.device()
+            results = [cp(), cp('', 1, 'unexpected permission denied')
+                       if operation == 'wait-for-device' else cp()]
+            with self.subTest(operation=operation), \
+                 patch.object(device, 'run', side_effect=results) as run, \
+                 patch.object(device, 'shell', return_value=cp('', 1, 'unknown shell failure')) as shell, \
+                 self.assertRaisesRegex(RuntimeError, 'ADB (reconnect|root identity) failed'):
+                device.root()
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(shell.call_count, int(operation == 'id -u'))
+
+    def test_root_global_deadline_covers_first_request_and_permanent_disconnect(self):
+        device = self.device()
+        elapsed = [0.0]
+        calls = []
+        def run(operation, **options):
+            remaining = 30 - elapsed[0]
+            self.assertGreater(remaining, 0)
+            self.assertLessEqual(options['timeout'], min(5, remaining))
+            calls.append(operation)
+            elapsed[0] += options['timeout']
+            return cp('', 1, 'error: device offline') if operation == 'root' else cp('', 124)
+        with patch.object(device, 'run', side_effect=run), \
+             patch.object(device, 'shell') as shell, \
+             patch.object(SIM.time, 'monotonic', side_effect=lambda: elapsed[0]), \
+             patch.object(SIM.time, 'sleep', side_effect=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds)), \
+             self.assertRaisesRegex(RuntimeError, 'reconnect before deadline'):
+            device.root()
+        self.assertEqual(elapsed[0], 30)
+        self.assertEqual(calls.count('root'), 1)
+        self.assertEqual(calls.count('wait-for-device'), 5)
+        shell.assert_not_called()
+
+    def test_no_read_or_success_is_allowed_after_root_operation_deadline(self):
+        for operation in ('root', 'wait-for-device', 'id -u'):
+            device = self.device()
+            elapsed = [0.0]
+            def run(name, **options):
+                if name == operation:
+                    elapsed[0] = 30
+                return cp()
+            def identity(command, **options):
+                elapsed[0] = 30
+                return cp('0\n')
+            with self.subTest(operation=operation), \
+                 patch.object(device, 'run', side_effect=run) as runner, \
+                 patch.object(device, 'shell', side_effect=identity) as shell, \
+                 patch.object(SIM.time, 'monotonic', side_effect=lambda: elapsed[0]), \
+                 patch.object(SIM.time, 'sleep'), \
+                 self.assertRaisesRegex(RuntimeError, 'deadline'):
+                device.root()
+            self.assertEqual(runner.call_count, 1 if operation == 'root' else 2)
+            self.assertEqual(shell.call_count, int(operation == 'id -u'))
 
     def test_old_boot_completed_flag_does_not_count_as_reboot(self):
         device = self.device()
