@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Copy, RefreshCw, Route } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -14,6 +14,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { useVisibilityTask } from "@/composables/useVisibilityTask";
 import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildProxySelectionPlan, formatProxySelectionPlanReport, type ProxySelectionPlan } from "./proxySelectionPlan";
+import { matchingProxyGroups, matchingProxyGroupNodes } from "./proxyGroupView";
 
 type PendingProxyAction = {
   group: ProxyGroupSummary;
@@ -29,6 +30,8 @@ const groupQuery = ref("");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
 const pendingAction = ref<PendingProxyAction | null>(null);
 const selectionPlanCopied = ref(false);
+const groupLimit = ref(8);
+const nodeLimits = ref(new Map<string, number>());
 
 const snapshot = computed(() => parseProxyGroupsSnapshot(rawOutput.value));
 const pendingPlan = computed<ProxySelectionPlan | null>(() => {
@@ -36,18 +39,12 @@ const pendingPlan = computed<ProxySelectionPlan | null>(() => {
   if (!action) return null;
   return buildProxySelectionPlan(action.group, action.node, groupDelays.value[action.group.name] || []);
 });
-const filteredGroups = computed(() => {
-  const query = groupQuery.value.trim().toLowerCase();
-  const groups = snapshot.value?.groups || [];
-  if (!query) return groups;
-  return groups.filter((group) => [
-    group.name,
-    group.type,
-    group.now,
-    ...group.proxies
-  ].some((value) => sanitizeProxyName(value).toLowerCase().includes(query)));
+const filteredGroups = computed(() => matchingProxyGroups(snapshot.value?.groups || [], groupQuery.value));
+const visibleGroups = computed(() => filteredGroups.value.slice(0, groupLimit.value));
+watch(groupQuery, () => {
+  groupLimit.value = 8;
+  nodeLimits.value = new Map();
 });
-const visibleGroups = computed(() => filteredGroups.value.slice(0, 8));
 
 async function refreshGroups(): Promise<void> {
   await withAction("proxy-groups-refresh", async () => {
@@ -55,6 +52,8 @@ async function refreshGroups(): Promise<void> {
     pendingAction.value = null;
     selectionPlanCopied.value = false;
     groupDelays.value = {};
+    groupLimit.value = 8;
+    nodeLimits.value = new Map();
     rawOutput.value = await runCli("api proxies", t("读取代理组"));
   });
 }
@@ -101,14 +100,15 @@ function groupDelayStats(group: ProxyGroupSummary) {
 }
 
 function visibleGroupNodes(group: ProxyGroupSummary): string[] {
-  const query = groupQuery.value.trim().toLowerCase();
-  if (!query) return group.proxies.slice(0, 9);
-  const groupMatched = [group.name, group.type, group.now]
-    .some((value) => sanitizeProxyName(value).toLowerCase().includes(query));
-  const nodes = groupMatched
-    ? group.proxies
-    : group.proxies.filter((node) => sanitizeProxyName(node).toLowerCase().includes(query));
-  return nodes.slice(0, 9);
+  return matchingProxyGroupNodes(group, groupQuery.value).slice(0, nodeLimits.value.get(group.name) ?? 9);
+}
+
+function remainingGroupNodes(group: ProxyGroupSummary): number {
+  return matchingProxyGroupNodes(group, groupQuery.value).length - visibleGroupNodes(group).length;
+}
+
+function showMoreNodes(group: ProxyGroupSummary): void {
+  nodeLimits.value.set(group.name, (nodeLimits.value.get(group.name) ?? 9) + 9);
 }
 
 async function selectNode(group: string, node: string): Promise<void> {
@@ -175,7 +175,7 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> {{ t("代理组") }}</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("调用 api proxies 读取 selector/provider，并可确认后执行 api select。") }}
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("选择节点后确认切换。当前选择会优先展示。") }}
         </p>
       </div>
       <div class="flex gap-2">
@@ -190,7 +190,7 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <SearchField v-model="groupQuery" :placeholder="t('搜索代理组或节点')" />
       <span class="text-sm text-[var(--mn-ink-muted)]">
-        {{ t("{visible} / {total} 组", { visible: filteredGroups.length, total: snapshot?.groups.length || 0 }) }} </span>
+        {{ t("{visible} / {total} 组", { visible: visibleGroups.length, total: filteredGroups.length }) }} </span>
     </div>
 
     <ConfirmPanel
@@ -223,14 +223,16 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
       </template>
     </ConfirmPanel>
 
-    <div v-if="visibleGroups.length" class="grid gap-3">
-      <div v-for="group in visibleGroups" :key="group.name" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
-        <div class="mb-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+    <div v-if="visibleGroups.length" class="grid gap-6">
+      <section v-for="group in visibleGroups" :key="group.name" class="proxy-group min-w-0 border-t border-[var(--mn-border)] pt-4">
+        <div class="mb-3 min-w-0">
           <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ sanitizeProxyName(group.name) }}</p>
+            <h4 class="break-words text-base font-semibold text-[var(--mn-ink)]">{{ sanitizeProxyName(group.name) }}</h4>
             <p class="text-xs text-[var(--mn-ink-muted)]">{{ group.type }} · {{ t("{count} 个节点", { count: group.proxies.length }) }}</p>
           </div>
-          <span class="truncate rounded border border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] px-2 py-1 text-xs text-[var(--mn-ink-soft)]">{{ sanitizeProxyName(group.now || t("未选择")) }}</span>
+          <p class="mt-2 break-words text-sm text-[var(--mn-ink-soft)]">
+            <span class="text-[var(--mn-ink-muted)]">{{ t("当前选择") }} · </span>{{ sanitizeProxyName(group.now || t("未选择")) }}
+          </p>
         </div>
         <div class="mb-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
           <p class="text-xs text-[var(--mn-ink-muted)]">
@@ -252,16 +254,31 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
             :disabled="node === group.now || isRunning('proxy-groups-select')"
             @click="requestSelect(group, node)"
           >
-            <span class="truncate">{{ sanitizeProxyName(node) }}</span>
+            <span class="break-words">{{ sanitizeProxyName(node) }}</span>
+            <span v-if="node === group.now" class="mt-1 text-xs">{{ t("已选择") }}</span>
             <span v-if="groupDelays[group.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
               {{ sanitizeNodeText(groupDelays[group.name].find((entry) => entry.node === node)?.summary || "") }}
               · {{ nodeDelayQualityLabel(groupDelays[group.name].find((entry) => entry.node === node)?.quality || "failed") }}
             </span>
           </button>
         </div>
-      </div>
+        <Button v-if="remainingGroupNodes(group) > 0" class="mt-3 w-full" size="sm" variant="ghost" @click="showMoreNodes(group)">
+          {{ t("显示更多节点（还有 {count} 个）", { count: remainingGroupNodes(group) }) }}
+        </Button>
+      </section>
+      <Button v-if="filteredGroups.length > visibleGroups.length" variant="outline" @click="groupLimit += 8">
+        {{ t("显示更多组（还有 {count} 组）", { count: filteredGroups.length - visibleGroups.length }) }}
+      </Button>
     </div>
-    <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
+    <div v-else-if="snapshot" class="mn-empty py-6" role="status">
+      <p>{{ groupQuery.trim() ? t("没有匹配项") : t("暂无可用代理组") }}</p>
+      <Button v-if="groupQuery.trim()" class="mt-3" variant="outline" @click="groupQuery = ''">{{ t("清除搜索") }}</Button>
+    </div>
+    <p v-else-if="isRunning('proxy-groups-refresh')" class="py-4 text-sm text-[var(--mn-ink-muted)]" role="status">{{ t("正在读取代理组…") }}</p>
+    <div v-else-if="rawOutput" class="grid gap-2" role="status">
+      <p class="text-sm text-[var(--mn-warning)]">{{ t("未能读取代理组，请刷新重试。") }}</p>
+      <pre class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
+    </div>
     </Card>
   </div>
 </template>

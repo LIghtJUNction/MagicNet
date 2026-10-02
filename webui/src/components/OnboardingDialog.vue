@@ -12,7 +12,16 @@ const emit = defineEmits<{
 
 const dialog = ref<HTMLElement | null>(null);
 const value = ref("");
+const viewportStyle = ref<{ height: string; top: string }>();
 let previousBodyOverflow = "";
+
+function measureViewport(): void {
+  const viewport = window.visualViewport;
+  // Some WebViews resize only the visual viewport when the keyboard opens.
+  viewportStyle.value = viewport
+    ? { height: `${viewport.height}px`, top: `${viewport.offsetTop}px` }
+    : undefined;
+}
 
 function submit(): void {
   const trimmed = value.value.trim();
@@ -26,22 +35,29 @@ function trapFocus(event: KeyboardEvent): void {
 onMounted(() => {
   previousBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
+  measureViewport();
+  window.addEventListener("resize", measureViewport, { passive: true });
+  window.visualViewport?.addEventListener("resize", measureViewport, { passive: true });
+  window.visualViewport?.addEventListener("scroll", measureViewport, { passive: true });
   void nextTick(() => {
     dialog.value?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
   });
 });
 
 onUnmounted(() => {
+  window.removeEventListener("resize", measureViewport);
+  window.visualViewport?.removeEventListener("resize", measureViewport);
+  window.visualViewport?.removeEventListener("scroll", measureViewport);
   document.body.style.overflow = previousBodyOverflow;
 });
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[70] grid place-items-center p-3 sm:p-6">
+  <div class="fixed inset-0 z-[70] grid grid-rows-[minmax(0,1fr)] place-items-center p-3 sm:p-6" :style="viewportStyle">
     <button class="mn-overlay absolute inset-0 size-full" type="button" :aria-label="t('关闭')" @click="emit('dismiss')" />
     <section
       ref="dialog"
-      class="mn-chrome relative z-10 w-full max-w-xl rounded-md p-1.5"
+      class="mn-chrome relative z-10 min-h-0 max-h-full w-full max-w-xl overflow-y-auto overscroll-contain rounded-md p-1.5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"

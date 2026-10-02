@@ -1,4 +1,12 @@
 export default {
+  "选择节点后确认切换。当前选择会优先展示。": ["Select a node, then confirm the switch. The current selection appears first.", "Выберите узел и подтвердите переключение. Текущий выбор показан первым."],
+  "当前选择": ["Current selection", "Текущий выбор"],
+  "已选择": ["Selected", "Выбран"],
+  "显示更多节点（还有 {count} 个）": ["Show more nodes ({count} remaining)", "Показать ещё узлы (осталось: {count})"],
+  "显示更多组（还有 {count} 组）": ["Show more groups ({count} remaining)", "Показать ещё группы (осталось: {count})"],
+  "暂无可用代理组": ["No proxy groups available", "Нет доступных групп прокси"],
+  "正在读取代理组…": ["Loading proxy groups…", "Загрузка групп прокси…"],
+  "未能读取代理组，请刷新重试。": ["Could not load proxy groups. Refresh to try again.", "Не удалось загрузить группы прокси. Обновите и повторите попытку."],
   "点击生成查看脱敏支持包。": ["Click Generate to view the sanitized support bundle.", "Нажмите «Создать», чтобы просмотреть обезличенный пакет диагностики."],
   "生成诊断上下文": ["Generate diagnostic context", "Собрать диагностические данные"],
   "脱敏诊断上下文已复制。": ["Sanitized diagnostic context copied.", "Обезличенные диагностические данные скопированы."],

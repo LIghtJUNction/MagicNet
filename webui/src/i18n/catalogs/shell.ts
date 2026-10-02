@@ -1,4 +1,6 @@
 export default {
+  "搜索": ["Search", "Поиск"],
+  "清除搜索": ["Clear search", "Очистить поиск"],
   "{p0}\n\n... 输出过长，已折叠中间 {p1} 个字符 ...\n\n{p2}": ["{p0}\n\n... Output truncated: {p1} characters omitted ...\n\n{p2}", "{p0}\n\n... Вывод сокращён: пропущено символов: {p1} ...\n\n{p2}"],
   "准备": ["Prepare", "Подготовка"],
   "写入": ["Write", "Запись"],
