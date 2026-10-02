@@ -626,11 +626,12 @@ fn supervisors_record(app: &App, wifi_supervisor: &str) -> StateRecord {
         .field("wifi_policy", normalize_supervisor_state(wifi_supervisor))
         .field(
             "kernel_watchdog",
-            pidfile_state(&app.moddir.join(".state/watchdog/magicnet-kernel.pid")),
+            supervisor_pidfile_state(app, &app.moddir.join(".state/watchdog/magicnet-kernel.pid")),
         )
         .field(
             "hotspot_watchdog",
-            pidfile_state(
+            supervisor_pidfile_state(
+                app,
                 &app.moddir
                     .join(".state/watchdog/magicnet-hotspot-route.pid"),
             ),
@@ -650,16 +651,28 @@ fn normalize_supervisor_state(value: &str) -> &'static str {
 }
 
 fn pidfile_state(path: &Path) -> &'static str {
-    let Ok(value) = fs::read_to_string(path) else {
-        return "stopped";
+    let pid = match crate::process::read_pidfile(path) {
+        Ok(Some(pid)) => pid,
+        Ok(None) => return "stopped",
+        Err(_) => return "unknown",
     };
-    let Some(pid) = value.trim().parse::<u32>().ok().filter(|pid| *pid > 0) else {
-        return "unknown";
+    match crate::process::proc_pid_is_live(Path::new(&format!("/proc/{pid}"))) {
+        Ok(true) => "running",
+        Ok(false) => "stale",
+        Err(_) => "unknown",
+    }
+}
+
+fn supervisor_pidfile_state(app: &App, path: &Path) -> &'static str {
+    let pid = match crate::process::read_pidfile(path) {
+        Ok(Some(pid)) => pid,
+        Ok(None) => return "stopped",
+        Err(_) => return "unknown",
     };
-    if Path::new(&format!("/proc/{pid}")).is_dir() {
-        "running"
-    } else {
-        "stale"
+    match crate::service::supervisor_pidfile_matches(app, path, pid) {
+        Ok(true) => "running",
+        Ok(false) => "stale",
+        Err(_) => "unknown",
     }
 }
 
@@ -754,6 +767,8 @@ fn mcp_record(app: &App) -> StateRecord {
         "disabled"
     } else if process == "running" {
         "running"
+    } else if process == "unknown" {
+        "unknown"
     } else {
         "stopped"
     };

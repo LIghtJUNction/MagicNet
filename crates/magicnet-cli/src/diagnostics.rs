@@ -11,8 +11,8 @@ use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
 use crate::{
     clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
-    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_proc_argv,
-    run_magicnet_function, singbox_pid_summary, App,
+    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, run_magicnet_function,
+    singbox_pid_summary, App,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -1640,21 +1640,21 @@ pub(crate) fn supervisor_pid(app: &App, kind: &str, name: &str) -> String {
         .join(".state")
         .join(kind)
         .join(format!("{name}.pid"));
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|text| text.trim().parse::<u32>().ok())
-        .filter(|pid| supervisor_pid_matches(app, *pid, name))
-        .map(|pid| pid.to_string())
-        .unwrap_or_else(|| "stopped".to_string())
+    let pid = match crate::process::read_pidfile(&path) {
+        Ok(Some(pid)) => pid,
+        Ok(None) => return "stopped".to_string(),
+        Err(_) => return "unknown".to_string(),
+    };
+    match supervisor_pid_matches(app, pid, name) {
+        Ok(true) => pid.to_string(),
+        Ok(false) => "stopped".to_string(),
+        Err(_) => "unknown".to_string(),
+    }
 }
 
-fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> bool {
-    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
-    if !proc_dir.exists() {
-        return false;
-    }
-    let argv = read_proc_argv(&proc_dir.join("cmdline")).unwrap_or_default();
-    supervisor_cmdline_matches(&app.moddir, name, &argv)
+fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> Result<bool, String> {
+    crate::process::live_process_argv(pid)
+        .map(|argv| argv.is_some_and(|argv| supervisor_cmdline_matches(&app.moddir, name, &argv)))
 }
 
 fn supervisor_cmdline_matches(moddir: &Path, name: &str, argv: &[String]) -> bool {

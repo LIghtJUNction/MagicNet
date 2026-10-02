@@ -5,9 +5,10 @@ use crate::{
 };
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -355,16 +356,68 @@ fn read_live_proc_text(
 ) -> Result<Option<String>, String> {
     match read_proc_text_bounded(&proc_dir.join(file_name), max_bytes) {
         Ok(value) => Ok(Some(value)),
-        Err(_) if !proc_dir.exists() => Ok(None),
+        Err(_)
+            if fs::metadata(proc_dir).is_err_and(|err| err.kind() == io::ErrorKind::NotFound) =>
+        {
+            Ok(None)
+        }
         Err(err) => Err(err),
     }
 }
 
-fn proc_pid_is_live(proc_dir: &Path) -> Result<bool, String> {
+pub(crate) fn proc_pid_is_live(proc_dir: &Path) -> Result<bool, String> {
     let Some(stat) = read_live_proc_text(proc_dir, "stat", MAX_PROC_STAT_BYTES)? else {
         return Ok(false);
     };
     proc_pid_stat_is_live(&stat)
+}
+
+/// A missing marker is different from an unreadable or malformed marker.
+/// Reject nonregular sources before reading so a damaged PID file cannot hang
+/// status or lose its recovery evidence during a control operation.
+pub(crate) fn read_pidfile(path: &Path) -> Result<Option<u32>, String> {
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("unable to read supervisor PID file".to_string()),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|_| "unable to inspect supervisor PID file".to_string())?;
+    if !metadata.is_file() || metadata.len() > 64 {
+        return Err("invalid supervisor PID file".to_string());
+    }
+    let mut value = String::new();
+    file.take(65)
+        .read_to_string(&mut value)
+        .map_err(|_| "unable to read supervisor PID file".to_string())?;
+    if value.len() > 64 {
+        return Err("invalid supervisor PID file".to_string());
+    }
+    let value = value.trim();
+    let pid = value
+        .parse::<libc::pid_t>()
+        .ok()
+        .filter(|pid| *pid > 0 && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .ok_or_else(|| "invalid supervisor PID file".to_string())?;
+    Ok(Some(pid as u32))
+}
+
+pub(crate) fn live_process_argv(pid: u32) -> Result<Option<Vec<String>>, String> {
+    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+    if !proc_pid_is_live(&proc_dir)? {
+        return Ok(None);
+    }
+    match read_proc_argv(&proc_dir.join("cmdline")) {
+        Ok(argv) => Ok(Some(argv)),
+        Err(_) if matches!(proc_pid_is_live(&proc_dir), Ok(false)) => Ok(None),
+        // Keep raw argv and potentially sensitive diagnostics out of status.
+        Err(_) => Err("unable to inspect live supervisor ownership".to_string()),
+    }
 }
 
 fn proc_pid_stat_is_live(stat: &str) -> Result<bool, String> {
@@ -571,7 +624,7 @@ fn signal_owned_singbox_with(
     Ok(())
 }
 
-fn signal_pid(pid: &str, force: bool) -> Result<(), String> {
+pub(crate) fn signal_pid(pid: &str, force: bool) -> Result<(), String> {
     let pid = pid
         .parse::<libc::pid_t>()
         .ok()
@@ -588,7 +641,7 @@ fn signal_pid(pid: &str, force: bool) -> Result<(), String> {
         // A core that exited between discovery and signaling is already gone.
         return Ok(());
     }
-    Err(format!("cannot signal managed sing-box {pid}: {err}"))
+    Err(format!("cannot signal managed process {pid}: {err}"))
 }
 
 // These variables are implementation details of the subscription transaction.

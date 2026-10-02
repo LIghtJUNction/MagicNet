@@ -11,8 +11,8 @@ use serde_json::Value;
 
 use crate::{
     cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid,
-    ebpf_runtime::inspect_ebpf_attachments, owned_singbox_pids, read_proc_argv,
-    run_magicnet_function, singbox_pid_summary, stop_owned_singbox, write_text_file, App,
+    ebpf_runtime::inspect_ebpf_attachments, owned_singbox_pids, run_magicnet_function,
+    singbox_pid_summary, stop_owned_singbox, write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
@@ -199,17 +199,18 @@ fn stop_service(app: &App) -> Result<(), String> {
     // A user-requested stop takes precedence over an fswatch apply.  Stop the
     // producer and its current worker before waiting for the process lock;
     // otherwise a lifecycle button can sit behind a full config restart.
-    quiesce_config_apply(app);
+    quiesce_config_apply(app)?;
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
     stop_all_direct(app, false)
 }
 
-fn quiesce_config_apply(app: &App) {
-    stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
+fn quiesce_config_apply(app: &App) -> Result<(), String> {
+    stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"))?;
     ignore_command(
         "pkill",
         &["-f", &format!("{}/cli.*config apply", app.moddir.display())],
     );
+    Ok(())
 }
 
 pub(crate) fn supervisor_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -460,7 +461,7 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
 }
 
 fn restart(app: &App, target: &str) -> Result<(), String> {
-    quiesce_config_apply(app);
+    quiesce_config_apply(app)?;
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
     restart_with_options_unlocked(app, target, false)
 }
@@ -509,13 +510,13 @@ pub(crate) fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<
     // must leave the old core, supervisors, TUN, and DNS policy untouched.
     let owned_singbox = owned_singbox_pids(app)?;
 
-    stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
+    stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"))?;
     stop_supervisor_pidfile(
         app,
         app.moddir
             .join(".state/watchdog/magicnet-hotspot-route.pid"),
-    );
-    stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
+    )?;
+    stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"))?;
     ignore_command(
         "pkill",
         &[
@@ -596,20 +597,33 @@ fn restore_network_after_failed_stop_command() -> &'static str {
     RESTORE_NETWORK_AFTER_FAILED_STOP_COMMAND
 }
 
-fn stop_supervisor_pidfile(app: &App, path: PathBuf) {
-    if let Ok(text) = fs::read_to_string(&path) {
-        if let Ok(pid) = text.trim().parse::<u32>() {
-            if supervisor_pidfile_matches(app, &path, pid) {
-                ignore_command("kill", &[&pid.to_string()]);
+fn stop_supervisor_pidfile(app: &App, path: PathBuf) -> Result<(), String> {
+    let Some(pid) = crate::process::read_pidfile(&path)? else {
+        return Ok(());
+    };
+    if supervisor_pidfile_matches(app, &path, pid)? {
+        crate::process::signal_pid(&pid.to_string(), false)?;
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while supervisor_pidfile_matches(app, &path, pid)? {
+            if Instant::now() >= deadline {
+                return Err("managed supervisor did not stop after SIGTERM".to_string());
             }
+            thread::sleep(Duration::from_millis(25));
         }
     }
-    let _ = fs::remove_file(path);
+    // Preserve a generation change detected during stop. This check and unlink
+    // do not provide an atomic compare-and-remove against concurrent producers.
+    match crate::process::read_pidfile(&path)? {
+        Some(current) if current == pid => fs::remove_file(path)
+            .map_err(|_| "unable to remove stopped supervisor PID file".to_string()),
+        None => Ok(()),
+        Some(_) => Err("supervisor PID file changed during stop".to_string()),
+    }
 }
 
-fn supervisor_pidfile_matches(app: &App, path: &Path, pid: u32) -> bool {
-    let argv = read_proc_argv(Path::new(&format!("/proc/{pid}/cmdline"))).unwrap_or_default();
-    supervisor_cmdline_matches(&app.moddir, path, &argv)
+pub(crate) fn supervisor_pidfile_matches(app: &App, path: &Path, pid: u32) -> Result<bool, String> {
+    crate::process::live_process_argv(pid)
+        .map(|argv| argv.is_some_and(|argv| supervisor_cmdline_matches(&app.moddir, path, &argv)))
 }
 
 fn supervisor_cmdline_matches(moddir: &Path, path: &Path, argv: &[String]) -> bool {
