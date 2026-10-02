@@ -495,6 +495,8 @@ class FailureGateTests(unittest.TestCase):
 
 def check_core(binary):
     core = str(Path(binary).resolve())
+    SIM.require((ROOT / 'src/MagicNet/lib/kamfw/__singbox__.sh').is_file(),
+                'startup fixture requires the initialized kamfw submodule')
     with tempfile.TemporaryDirectory() as tmp:
         module = Path(tmp) / 'module'
         (module / 'bin').mkdir(parents=True)
@@ -527,7 +529,8 @@ def check_core(binary):
             startup = '''
 import() {
     if [ "$1" = __singbox__ ] && [ "${core_helpers_loaded:-0}" != 1 ]; then
-        . "$MODDIR/lib/kamfw/__singbox__.sh"
+        . "$MODDIR/lib/kamfw/__singbox__.sh" || return
+        declare -F singbox_prepare_route_config >/dev/null || return 1
         core_helpers_loaded=1
     fi
 }
@@ -540,7 +543,7 @@ success() { :; }
 config() { :; }
 ip() { return 0; }
 . "$MODDIR/lib/magicnet.sh"
-import __singbox__
+import __singbox__ || exit
 is_singbox_running() { return 1; }
 magicnet_prepare_singbox_candidate_unlocked
 '''
@@ -555,6 +558,13 @@ magicnet_prepare_singbox_candidate_unlocked
 
 
 class CoreCheckHarnessTests(unittest.TestCase):
+    def test_missing_startup_helper_fails_before_any_core_check(self):
+        with tempfile.TemporaryDirectory() as tmp, patch(__name__ + '.ROOT', Path(tmp)), \
+                patch('subprocess.run') as run:
+            with self.assertRaisesRegex(RuntimeError, 'initialized kamfw submodule'):
+                check_core('/unused/core')
+            run.assert_not_called()
+
     @unittest.skipUnless(shutil.which('jq'), 'host jq is required')
     def test_real_renderer_is_loaded_and_both_candidates_reach_core_check(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -579,6 +589,8 @@ class CoreCheckHarnessTests(unittest.TestCase):
                 self.assertEqual(configs[index]['dns']['final'], 'fixture-dns')
                 self.assertEqual(configs[index]['dns']['servers'], SIM.fixture_config()['dns']['servers'])
                 self.assertEqual(configs[index]['route']['default_domain_resolver'], 'fixture-dns')
+                self.assertIs(configs[index]['route']['auto_detect_interface'], False,
+                              'startup skipped the real kamfw route helper')
             SIM.verify_migrated_node(configs[5])
 
 

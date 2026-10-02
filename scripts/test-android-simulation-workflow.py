@@ -45,6 +45,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(any('test-android-device-simulation.py' in s.get('run', '') for s in harness))
         self.assertFalse(any('cache' in s.get('uses', '') for s in harness))
 
+    def test_harness_initializes_real_startup_helper_before_core_checks(self):
+        harness = self.jobs['harness']['steps']
+        names = [step.get('name') for step in harness]
+        init = next(step for step in harness if step.get('name') == 'Initialize startup fixture helpers')
+        self.assertNotIn('if', init)
+        self.assertNotIn('continue-on-error', init)
+        self.assertEqual(init['run'], 'git submodule update --init src/MagicNet/lib/kamfw')
+        self.assertLess(names.index(init['name']), names.index('Test simulation safety and workflow wiring'))
+
     def test_simulation_is_not_optional_or_cached(self):
         simulation = self.step('Exercise offline Android KernelSU lifecycle')
         self.assertNotIn('if', simulation)

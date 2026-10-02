@@ -578,9 +578,10 @@ def tun_controls(device: Device, out: Path, phase: str):
             ('positive', 'reject', 'positive_after', 'restored')), 'app-UID TUN controls failed')
 
 
-def invalid_config_rollback(device: Device):
+def invalid_config_rollback(device: Device) -> dict:
     bad = MOD + '/.tmp/webui-payload/ci-invalid.json'
     save = f'{MOD}/cli config-editor save-file sing-box {bad}'
+    validator = f'{MOD}/bin/sing-box check -c {bad} -D {MOD}/.config/sing-box'
     try:
         # Positive control on the exact same path and command. A permission or
         # path-validation failure must not masquerade as malformed-JSON rejection.
@@ -588,14 +589,21 @@ def invalid_config_rollback(device: Device):
                       f'cp {MOD}/.config/sing-box/config.json {bad} && chmod 0600 {bad}')
         device.kshell(save, timeout=90)
         device.ready()
+        device.kshell(validator, timeout=30)
         before = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
         device.kshell(f'printf "{{" >{bad}')
+        # The CLI normalizes every child-validator failure to exit 1, including
+        # crashes. Independently require the exact core's normal rejection on
+        # the same payload/path; signals, panics and unavailable tools are failures.
+        rejected = device.kshell(validator, timeout=30, check=False)
+        require(rejected.returncode == 1, 'core validator did not reject malformed JSON normally')
         result = device.kshell(save, timeout=90, check=False)
-        require(result.returncode not in (0, 124, 127),
-                'invalid configuration was accepted or validation unavailable')
+        require(result.returncode == 1, 'config save did not reject malformed JSON normally')
         after = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
         require(before == after, 'invalid config changed the active configuration')
         device.ready()
+        return {'core_rejection_exit_code': rejected.returncode,
+                'save_rejection_exit_code': result.returncode, 'active_config_preserved': True}
     finally:
         device.kshell('rm -f ' + bad)
 
@@ -797,7 +805,7 @@ def main() -> int:
             with report.phase('app-uid-tun-controls'):
                 tun_controls(device, out, 'app-uid-tun-controls')
             with report.phase('invalid-config-rollback'):
-                invalid_config_rollback(device)
+                report.provenance['invalid_config_rollback'] = invalid_config_rollback(device)
             with report.phase('stop-cleanup'):
                 device.kshell(MOD + '/cli service stop sing-box', timeout=90)
                 device.stopped()

@@ -80,6 +80,8 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends python3-yaml
           fi
+      - name: Initialize startup fixture helpers
+        run: git submodule update --init src/MagicNet/lib/kamfw
       # No cached passes: validate failure propagation before any expensive SDK work.
       - name: Test simulation safety and workflow wiring
         run: |

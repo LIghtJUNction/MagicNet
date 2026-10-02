@@ -600,13 +600,15 @@ class TunControlTests(unittest.TestCase):
 
 
 class InvalidConfigTests(unittest.TestCase):
-    def device(self, reject_rc=1, changed=False, deny_valid=False):
+    def device(self, reject_rc=1, changed=False, deny_valid=False,
+               core_reject_rc=1, deny_core_valid=False):
         calls = []
         reads = 0
         saves = 0
+        validations = 0
 
         def shell(command, **options):
-            nonlocal reads, saves
+            nonlocal reads, saves, validations
             calls.append(command)
             if 'config-editor save-file' in command:
                 saves += 1
@@ -616,6 +618,14 @@ class InvalidConfigTests(unittest.TestCase):
                     return cp()
                 self.assertIs(options.get('check'), False)
                 return cp(rc=reject_rc)
+            if '/bin/sing-box check' in command:
+                validations += 1
+                if validations == 1:
+                    if deny_core_valid:
+                        raise RuntimeError('valid core control failed')
+                    return cp()
+                self.assertIs(options.get('check'), False)
+                return cp(rc=core_reject_rc)
             if 'config-editor get' in command:
                 reads += 1
                 return cp(json.dumps({'fixture': 2 if changed and reads > 1 else 1}))
@@ -625,12 +635,19 @@ class InvalidConfigTests(unittest.TestCase):
 
     def test_valid_same_path_control_precedes_malformed_rejection(self):
         device, calls = self.device()
-        SIM.invalid_config_rollback(device)
+        report = SIM.invalid_config_rollback(device)
         saves = [i for i, c in enumerate(calls) if 'config-editor save-file' in c]
         malformed = next(i for i, c in enumerate(calls) if 'printf "{"' in c)
         self.assertLess(saves[0], malformed)
         self.assertLess(malformed, saves[1])
         self.assertEqual(calls[saves[0]], calls[saves[1]])
+        validators = [i for i, c in enumerate(calls) if '/bin/sing-box check' in c]
+        self.assertLess(validators[0], malformed)
+        self.assertLess(malformed, validators[1])
+        self.assertLess(validators[1], saves[1])
+        self.assertEqual(calls[validators[0]], calls[validators[1]])
+        self.assertEqual(report, {'core_rejection_exit_code': 1,
+                                  'save_rejection_exit_code': 1, 'active_config_preserved': True})
         self.assertTrue(calls[-1].startswith('rm -f '))
         self.assertEqual(device.ready.call_count, 2)
 
@@ -641,13 +658,29 @@ class InvalidConfigTests(unittest.TestCase):
         self.assertFalse(any('printf "{"' in c for c in calls))
         self.assertTrue(calls[-1].startswith('rm -f '))
 
-    def test_accepted_invalid_config_or_unavailable_validator_fails(self):
-        for code in (0, 124, 127):
+    def test_cli_crashes_and_nonstandard_failures_are_not_rejection(self):
+        for code in (0, 2, 101, 124, 126, 127, 134, 137, 139, 255, -6, -11):
             with self.subTest(code=code):
                 device, calls = self.device(reject_rc=code)
                 with self.assertRaises(RuntimeError):
                     SIM.invalid_config_rollback(device)
                 self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_abnormal_core_control_fails_even_when_cli_would_return_one(self):
+        for code in (0, 2, 101, 124, 126, 127, 134, 137, 139, 255, -6, -11):
+            with self.subTest(code=code):
+                device, calls = self.device(core_reject_rc=code)
+                with self.assertRaisesRegex(RuntimeError, 'core validator'):
+                    SIM.invalid_config_rollback(device)
+                self.assertEqual(sum('config-editor save-file' in c for c in calls), 1)
+                self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_unavailable_positive_core_control_never_reaches_malformed_payload(self):
+        device, calls = self.device(deny_core_valid=True)
+        with self.assertRaisesRegex(RuntimeError, 'valid core control failed'):
+            SIM.invalid_config_rollback(device)
+        self.assertFalse(any('printf "{"' in c for c in calls))
+        self.assertTrue(calls[-1].startswith('rm -f '))
 
     def test_failed_validation_must_not_change_active_config(self):
         device, calls = self.device(changed=True)
@@ -702,6 +735,10 @@ def check_core(binary: str):
         config.write_text(json.dumps(SIM.fixture_config()))
         subprocess.run([str(Path(binary).resolve()), 'check', '-c', str(config)],
                        check=True, timeout=30, cwd=tmp)
+        config.write_text('{')
+        rejected = subprocess.run([str(Path(binary).resolve()), 'check', '-c', str(config)],
+                                  capture_output=True, timeout=30, cwd=tmp)
+        SIM.require(rejected.returncode == 1, 'core validator did not reject malformed JSON normally')
 
 
 if __name__ == '__main__':
