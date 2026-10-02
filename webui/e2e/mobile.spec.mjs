@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { connectReadOnlyNativeFixture } from "./read-only-native-fixture.mjs";
 
 const pages = [
   ["run", "control", null],
@@ -44,8 +45,9 @@ async function navigate(page, workspace, tab, heading) {
 }
 
 async function seedView(page, overrides = {}) {
-  // The bridge is absent when the module initializes, so no root commands can
-  // execute. Only display state is supplied; this is not a device/network test.
+  // A browser-only bridge makes the supplied connection state observable.
+  // It cannot execute root commands or accept mutations.
+  await connectReadOnlyNativeFixture(page);
   await page.evaluate(async (overrides) => {
     const { useMagicNet } = await import("/src/composables/useMagicNet.ts");
     const { state } = useMagicNet();
@@ -216,6 +218,10 @@ test("mode changes use a focus-trapped confirmation, never optimistic state", as
   await expect(dialog).toBeHidden();
   await expect(target).toBeFocused();
   await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
+  await settle(page);
+  expect(await page.evaluate(() => window.__readOnlyNativeFixture.requests.filter(
+    command => command.includes("transparent set"),
+  ))).toEqual([]);
 });
 
 test("device unavailable, stopped, unknown, and failed states remain distinct", async ({

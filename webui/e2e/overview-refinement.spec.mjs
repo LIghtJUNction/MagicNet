@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { connectReadOnlyNativeFixture } from "./read-only-native-fixture.mjs";
 
 async function fit(page) {
   expect(
@@ -26,8 +27,9 @@ for (const theme of ["light", "dark"]) {
     }, theme);
     await page.goto("/", { waitUntil: "networkidle" });
     await expect(page.locator(".mn-control")).toBeVisible();
+    await connectReadOnlyNativeFixture(page);
     await page.evaluate(async () => {
-      // Display fixture only: no root bridge is installed and no commands run.
+      // Display fixture only: the read-only mock never runs device commands.
       const { state } = (
         await import("/src/composables/useMagicNet.ts")
       ).useMagicNet();
@@ -88,7 +90,7 @@ for (const theme of ["light", "dark"]) {
     if (await desktop.isVisible()) await desktop.click();
     else await page.locator('[data-workspace="configure"]:visible').click();
     await expect(page.locator(".subscriptions-page")).toBeVisible();
-    // Navigation performs a fresh read. Without a native bridge the prior
+    // Navigation performs a fresh read. With an unavailable mock response the prior
     // success must be cleared, not silently retained by the display fixture.
     await expect(page.locator(".update-outcome")).toHaveText("状态未知");
     await page.evaluate(async () => {

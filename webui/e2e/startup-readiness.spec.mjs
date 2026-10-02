@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { connectReadOnlyNativeFixture } from './read-only-native-fixture.mjs';
 
 async function setFixture(page, overrides = {}) {
+  await connectReadOnlyNativeFixture(page);
   await page.evaluate(async overrides => {
-    // Display-only fixture: no root bridge and no device/network mutation.
+    // Display-only state backed by a read-only mock, never a real root bridge.
     const {state} = (await import('/src/composables/useMagicNet.ts')).useMagicNet();
     Object.assign(state, {hasKsu:true, busy:false, phase:'idle', queueDepth:0, task:'', notice:'', output:''});
     state.backgroundTask.status = 'idle';
@@ -55,10 +57,12 @@ for (const theme of ['light','dark']) {
     await page.screenshot({path:info.outputPath(`${theme}-failure.png`),fullPage:true,timeout:20_000});
     await page.locator('.mn-control-hero .mn-control-notice').getByRole('button',{name:'查看输出'}).click();
     await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');
-    // A read-only log refresh may fail without a native bridge, but must not
+    // A read-only log refresh may fail in the display mock, but must not
     // erase the original startup failure or replace its foreground history.
     await page.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(page.locator('.page-surface pre').first()).toContainText('machine.unsupported_command');
     await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');
+    expect(await page.evaluate(async () => (await import('/src/composables/useMagicNet.ts')).useMagicNet().state.hasKsu)).toBe(true);
     expect(errors).toEqual([]);
   });
 }
