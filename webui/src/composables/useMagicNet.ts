@@ -396,6 +396,14 @@ async function runPrivatePayloadCli(
   return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview, false);
 }
 
+/** Machine observers must not publish payloads or take foreground ownership. */
+async function runMachineCli(args: string, label: string): Promise<ExecOutcome> {
+  if (!/^--json(?: [A-Za-z0-9_.-]+)+$/.test(args)) {
+    return { ok: false, timedOut: false, errno: -1, stdout: "", stderr: "", text: "machine.invalid_request" };
+  }
+  return runPrivatePayloadCli(args, label, "--json [machine-response]");
+}
+
 async function stagePrivatePayload(
   namespace: "tmp" | "subscription",
   basename: string,
@@ -1292,6 +1300,7 @@ export function useMagicNet() {
     runShell,
     runCli,
     runPrivateCli,
+    runMachineCli,
     stagePrivatePayload,
     removePrivatePayload,
     startBackgroundCli,

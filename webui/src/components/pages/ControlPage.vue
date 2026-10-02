@@ -27,6 +27,7 @@ import Input from "@/components/ui/Input.vue";
 import RemovableTag from "@/components/ui/RemovableTag.vue";
 import StatTile from "@/components/ui/StatTile.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
+import ModuleUpdateCard from "./ModuleUpdateCard.vue";
 import {
   applyConfigAction,
   applyTransparentModeAction,
@@ -500,6 +501,7 @@ onMounted(() => {
       <button type="button" @click="emit('goto-tab', 'subs')"><DownloadCloud :size="19" /><span>{{ t("订阅与节点") }}<small>{{ t("管理来源与更新") }}</small></span><ArrowUpRight :size="16" /></button>
       <button type="button" :disabled="!state.hasKsu || serviceStatus.state !== 'ready'" @click="withAction('open-zashboard', () => openSingBoxUi('zashboard'))"><ExternalLink :size="19" /><span>{{ t("节点面板") }}<small>{{ t("服务就绪后可打开") }}</small></span><ArrowUpRight :size="16" /></button>
     </nav>
+    <ModuleUpdateCard />
     <div class="mn-control-section-title"><h3>{{ t("网络设置") }}</h3><span>{{ t("按需调整，无需反复重启") }}</span></div>
 
     <div class="mn-control-settings">
