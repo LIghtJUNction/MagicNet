@@ -2,7 +2,7 @@
 
 [简体中文](README.md) · [English](README.en.md) · [Русский](README.ru.md)
 
-<a href="https://donate.lmm.best"><img src="https://donate.lmm.best/badge.svg?currency=USD&amp;lang=en&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=Donate" alt="Donate" width="360" /></a>
+<a href="https://donate.lmm.best/?project=magicnet"><img src="https://donate.lmm.best/badge.svg?project=magicnet&amp;currency=CNY&amp;lang=en&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=MagicNet" alt="Donate" width="360" /></a>
 
 MagicNet manages Android network traffic through a root-controlled [sing-box fork](sing-box), without occupying Android's VPN slot. It supports explicit `tun` and `ebpf` modes, with `tun` enabled by default.
 

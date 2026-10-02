@@ -148,7 +148,7 @@ kam build
 
 ## 社区与支持
 
-<a href="https://donate.lmm.best"><img src="https://donate.lmm.best/badge.svg?currency=CNY&amp;lang=zh-CN&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=Donate" alt="捐赠支持" width="360" /></a>
+<a href="https://donate.lmm.best/?project=magicnet"><img src="https://donate.lmm.best/badge.svg?project=magicnet&amp;currency=CNY&amp;lang=zh-CN&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=MagicNet" alt="捐赠支持" width="360" /></a>
 
 - Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
 - GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
