@@ -6,14 +6,16 @@ trap 'rm -rf "$fixture"' EXIT
 export MODDIR="$fixture/module"
 mkdir -p "$MODDIR/bin" "$MODDIR/.config/sing-box" "$MODDIR/.state/sing-box/subscription-work"
 ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+mkdir -p "$MODDIR/lib"
+ln -s "$ROOT/src/MagicNet/lib/magicnet" "$MODDIR/lib/magicnet"
 import() { :; }
 info() { :; }
 warn() { :; }
 error() { :; }
 success() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
-. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
-. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
+# Load the subscription helpers through the same shim as CLI payload updates.
+. "$ROOT/src/MagicNet/lib/magicnet_singbox_subscribe.sh"
 
 # Exercise the production JSON and checkpoint validators, with an explicit
 # fake core that can reject semantically invalid JSON or time out independently.
@@ -116,6 +118,67 @@ cmp "$active" "$fixture/valid"
 test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
 test -d "$transaction"
 rm -rf "$transaction"
+
+# Missing backup components must be detected before replacing any active file.
+# Otherwise recovery writes old-config, then fails while the newer work/source
+# generation is still active and the durable journal remains incomplete.
+jq '.generation="active"' "$fixture/valid" >"$active"
+cp "$active" "$fixture/before"
+printf 'active-url\n' >"$source_file"
+local_source="$MODDIR/.config/sing-box/subscription.local"
+printf 'active-local\n' >"$local_source"
+for missing in old-work old-url old-local; do
+  mkdir -p "$transaction/old-work"
+  cp "$fixture/valid" "$transaction/old-config"
+  touch "$transaction/had-config" "$transaction/had-work" "$transaction/had-url" "$transaction/had-local"
+  printf 'backup-work\n' >"$transaction/old-work/marker"
+  printf 'backup-url\n' >"$transaction/old-url"
+  printf 'backup-local\n' >"$transaction/old-local"
+  rm -rf "${transaction:?}/$missing"
+  if magicnet_singbox_transaction_reconcile; then
+    echo "accepted an incomplete recovery journal: $missing" >&2; exit 1
+  fi
+  cmp "$active" "$fixture/before"
+  test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
+  test "$(cat "$source_file")" = active-url
+  test "$(cat "$local_source")" = active-local
+  test -d "$transaction"
+  rm -rf "$transaction"
+done
+
+# Validate and make the actual staged copy private before publishing it. Copy
+# success alone is not evidence of usable JSON, and chmod failure must not
+# replace the active file before reporting that recovery failed.
+for recovery_fault in copy chmod; do
+  mkdir -p "$transaction"
+  cp "$fixture/valid" "$transaction/old-config"
+  touch "$transaction/had-config"
+  (
+    cp() {
+      case "${*: -1}" in
+        "$active".reconcile.*)
+          if [ "$recovery_fault" = copy ]; then : >"${*: -1}"; return 0; fi ;;
+      esac
+      command cp "$@"
+    }
+    chmod() {
+      case "${*: -1}" in
+        "$active".reconcile.*) [ "$recovery_fault" != chmod ] || return 1 ;;
+      esac
+      command chmod "$@"
+    }
+    if magicnet_singbox_transaction_reconcile; then
+      echo "published a failed staged recovery config: $recovery_fault" >&2; exit 1
+    fi
+  )
+  cmp "$active" "$fixture/before"
+  test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
+  test "$(cat "$source_file")" = active-url
+  test "$(cat "$local_source")" = active-local
+  test -d "$transaction"
+  test -z "$(find "${active%/*}" -maxdepth 1 -name 'config.json.reconcile.*' -print -quit)"
+  rm -rf "$transaction"
+done
 
 # A validated commit can advance the checkpoint only after journal removal.
 magicnet_singbox_save_last_good
