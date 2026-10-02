@@ -80,7 +80,13 @@ class TunProofTests(unittest.TestCase):
         noise = 'subscription=https://private.invalid/?token=private-value node=private-node'
         cases = (
             ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
+            ('managed supervisor did not stop after SIGKILL', 'supervisor_stop_timeout'),
+            ('managed supervisor force-stop is unavailable', 'supervisor_force_unavailable'),
+            ('managed supervisor process generation changed during inspection', 'supervisor_generation_changed'),
+            ('managed supervisor process generation changed during stop', 'supervisor_generation_changed'),
+            ('managed supervisor ownership changed during stop', 'supervisor_ownership_changed'),
             ('supervisor PID file changed during stop', 'supervisor_pid_changed'),
+            ('supervisor PID file changed during read', 'supervisor_pid_changed'),
             ('prepare network for core stop: child failed', 'network_stop_failed'),
             ('finalize stopped network: child failed', 'network_finalize_failed'),
             ('config apply is still busy after 2000 ms; retry the lifecycle action', 'config_apply_busy'),
@@ -123,6 +129,12 @@ class TunProofTests(unittest.TestCase):
             'managed supervisor did not stop after SIGTERM\n'
             'Startup step failed: stage=core-launch exit=2', operation='config_save'),
             {'kind': 'command_failed'})
+        for message in ('managed supervisor force-stop is unavailable',
+                        'managed supervisor process generation changed during stop',
+                        'managed supervisor ownership changed during stop',
+                        'supervisor PID file changed during read'):
+            self.assertEqual(proof.sanitized_failure(message, operation='config_save'),
+                             {'kind': 'command_failed'})
 
     def transaction(self, *, reject_timeout=False, failed_save=False, failed_restore=False,
                     failed_reverse_cleanup=False, failed_restart=False,

@@ -43,7 +43,13 @@ def sanitized_failure(output: str, *, operation: str) -> dict:
     if operation == 'core_restart':
         messages += (
             ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
+            ('managed supervisor did not stop after SIGKILL', 'supervisor_stop_timeout'),
+            ('managed supervisor force-stop is unavailable', 'supervisor_force_unavailable'),
+            ('managed supervisor process generation changed during inspection', 'supervisor_generation_changed'),
+            ('managed supervisor process generation changed during stop', 'supervisor_generation_changed'),
+            ('managed supervisor ownership changed during stop', 'supervisor_ownership_changed'),
             ('supervisor PID file changed during stop', 'supervisor_pid_changed'),
+            ('supervisor PID file changed during read', 'supervisor_pid_changed'),
             ('prepare network for core stop:', 'network_stop_failed'),
             ('finalize stopped network:', 'network_finalize_failed'),
         )

@@ -6,9 +6,9 @@ use crate::{
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::fd::RawFd;
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -376,6 +376,28 @@ pub(crate) fn proc_pid_is_live(proc_dir: &Path) -> Result<bool, String> {
 /// Reject nonregular sources before reading so a damaged PID file cannot hang
 /// status or lose its recovery evidence during a control operation.
 pub(crate) fn read_pidfile(path: &Path) -> Result<Option<u32>, String> {
+    read_pidfile_identity(path).map(|identity| identity.map(|identity| identity.pid))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SupervisorPidfile {
+    pub(crate) pid: u32,
+    fingerprint: (u64, u64, u64, i64, i64, i64, i64),
+}
+
+fn pidfile_fingerprint(metadata: &fs::Metadata) -> (u64, u64, u64, i64, i64, i64, i64) {
+    (
+        metadata.dev(),
+        metadata.ino(),
+        metadata.len(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.ctime(),
+        metadata.ctime_nsec(),
+    )
+}
+
+pub(crate) fn read_pidfile_identity(path: &Path) -> Result<Option<SupervisorPidfile>, String> {
     let file = match fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -392,7 +414,8 @@ pub(crate) fn read_pidfile(path: &Path) -> Result<Option<u32>, String> {
         return Err("invalid supervisor PID file".to_string());
     }
     let mut value = String::new();
-    file.take(65)
+    (&file)
+        .take(65)
         .read_to_string(&mut value)
         .map_err(|_| "unable to read supervisor PID file".to_string())?;
     if value.len() > 64 {
@@ -404,7 +427,126 @@ pub(crate) fn read_pidfile(path: &Path) -> Result<Option<u32>, String> {
         .ok()
         .filter(|pid| *pid > 0 && value.bytes().all(|byte| byte.is_ascii_digit()))
         .ok_or_else(|| "invalid supervisor PID file".to_string())?;
-    Ok(Some(pid as u32))
+    let after = file
+        .metadata()
+        .map_err(|_| "unable to inspect supervisor PID file".to_string())?;
+    if pidfile_fingerprint(&metadata) != pidfile_fingerprint(&after) {
+        return Err("supervisor PID file changed during read".to_string());
+    }
+    Ok(Some(SupervisorPidfile {
+        pid: pid as u32,
+        fingerprint: pidfile_fingerprint(&metadata),
+    }))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LiveProcessIdentity {
+    pub(crate) starttime: u64,
+    pub(crate) argv: Vec<String>,
+}
+
+pub(crate) fn live_process_identity(pid: u32) -> Result<Option<LiveProcessIdentity>, String> {
+    live_process_identity_at(pid, &PathBuf::from(format!("/proc/{pid}")))
+}
+
+fn live_process_identity_at(
+    pid: u32,
+    proc_dir: &Path,
+) -> Result<Option<LiveProcessIdentity>, String> {
+    let read_identity = || {
+        let Some(stat) = read_live_proc_text(proc_dir, "stat", MAX_PROC_STAT_BYTES)? else {
+            return Ok(None);
+        };
+        let identity = proc_pid_stat_identity(&stat)?;
+        if identity.pid != pid {
+            return Err(
+                "managed supervisor process generation changed during inspection".to_string(),
+            );
+        }
+        Ok(Some(identity))
+    };
+    let Some(before) = read_identity()? else {
+        return Ok(None);
+    };
+    if !before.live {
+        return Ok(None);
+    }
+    let argv = read_proc_argv(&proc_dir.join("cmdline"));
+    let Some(after) = read_identity()? else {
+        return Ok(None);
+    };
+    if before.starttime != after.starttime {
+        return Err("managed supervisor process generation changed during inspection".to_string());
+    }
+    if !after.live {
+        return Ok(None);
+    }
+    let argv = argv.map_err(|_| "unable to inspect live supervisor ownership".to_string())?;
+    Ok(Some(LiveProcessIdentity {
+        starttime: after.starttime,
+        argv,
+    }))
+}
+
+/// Pin a numeric PID when supported. A missing handle is NOT evidence of exit.
+/// Any unavailable pin (kernel support, denial or resource failure) retains
+/// verified numeric TERM compatibility. Forced stops require a handle and
+/// otherwise fail closed; this helper never turns open failure into liveness.
+pub(crate) fn pin_supervisor_process(pid: u32) -> Option<fs::File> {
+    if pid == 0 || pid > libc::pid_t::MAX as u32 {
+        return None;
+    }
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    {
+        let fd =
+            unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) } as libc::c_int;
+        if fd >= 0 {
+            return Some(unsafe { fs::File::from_raw_fd(fd) });
+        }
+    }
+    let _ = pid;
+    None
+}
+
+pub(crate) fn signal_supervisor_process(
+    pid: u32,
+    pin: Option<&fs::File>,
+    force: bool,
+) -> io::Result<()> {
+    if pid == 0 || pid > libc::pid_t::MAX as u32 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid supervisor signal target",
+        ));
+    }
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    if let Some(pin) = pin {
+        let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        if unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                pin.as_raw_fd(),
+                signal,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            )
+        } == 0
+        {
+            return Ok(());
+        }
+        return Err(io::Error::last_os_error());
+    }
+    if force {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "managed supervisor force-stop is unavailable",
+        ));
+    }
+    if unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 pub(crate) fn live_process_argv(pid: u32) -> Result<Option<Vec<String>>, String> {
@@ -421,10 +563,20 @@ pub(crate) fn live_process_argv(pid: u32) -> Result<Option<Vec<String>>, String>
 }
 
 fn proc_pid_stat_is_live(stat: &str) -> Result<bool, String> {
+    proc_pid_stat_identity(stat).map(|identity| identity.live)
+}
+
+struct ProcStatIdentity {
+    pid: u32,
+    starttime: u64,
+    live: bool,
+}
+
+fn proc_pid_stat_identity(stat: &str) -> Result<ProcStatIdentity, String> {
     let (identity, fields) = stat
         .rsplit_once(") ")
         .ok_or_else(|| "malformed proc stat".to_string())?;
-    let valid_pid = identity
+    let pid = identity
         .split_once(" (")
         .and_then(|(pid, _)| {
             pid.bytes()
@@ -432,26 +584,26 @@ fn proc_pid_stat_is_live(stat: &str) -> Result<bool, String> {
                 .then(|| pid.parse::<libc::pid_t>().ok())
                 .flatten()
         })
-        .is_some_and(|pid| pid > 0);
-    if !valid_pid {
-        return Err("malformed proc stat identity".to_string());
-    }
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| "malformed proc stat identity".to_string())? as u32;
     let mut fields = fields.split_whitespace();
     let state = fields.next();
     // A partial stat ending at the state token is not a complete liveness
     // observation. Field 22 (starttime) must be present and numeric too.
-    if fields
+    let starttime = fields
         .nth(18)
         .and_then(|value| value.parse::<u64>().ok())
-        .is_none()
-    {
-        return Err("incomplete proc stat".to_string());
-    }
-    match state {
-        Some("Z" | "X" | "x") => Ok(false),
-        Some("R" | "S" | "D" | "T" | "t" | "I" | "W" | "P" | "K") => Ok(true),
-        _ => Err("unknown proc state".to_string()),
-    }
+        .ok_or_else(|| "incomplete proc stat".to_string())?;
+    let live = match state {
+        Some("Z" | "X" | "x") => false,
+        Some("R" | "S" | "D" | "T" | "t" | "I" | "W" | "P" | "K") => true,
+        _ => return Err("unknown proc state".to_string()),
+    };
+    Ok(ProcStatIdentity {
+        pid,
+        starttime,
+        live,
+    })
 }
 
 fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Path) -> Option<bool> {
@@ -1379,10 +1531,279 @@ fn startup_error(app: &App) -> Option<String> {
 #[cfg(test)]
 mod path_tests {
     use super::{
-        parse_named_process_output, proc_pid_is_live, proc_pid_stat_is_live,
-        singbox_commandline_owned, singbox_executable_owned, write_named_process_candidates,
+        live_process_identity_at, parse_named_process_output, proc_pid_is_live,
+        proc_pid_stat_is_live, read_pidfile_identity, singbox_commandline_owned,
+        singbox_executable_owned, write_named_process_candidates, LiveProcessIdentity,
     };
     use std::path::{Path, PathBuf};
+
+    fn complete_proc_stat(pid: u32, comm: &str, state: &str, starttime: u64) -> String {
+        format!("{pid} ({comm}) {state} {}{starttime}\n", "1 ".repeat(18))
+    }
+
+    #[test]
+    fn supervisor_identity_reads_complete_stat_and_brackets_in_process_name() {
+        let app = crate::test_support::temp_app();
+        let expected_argv = vec!["/bin/sh".to_string(), "/module/watcher.loop.sh".to_string()];
+        std::fs::write(
+            app.moddir.join("cmdline"),
+            b"/bin/sh\0/module/watcher.loop.sh\0",
+        )
+        .unwrap();
+        for state in ["R", "S", "D", "T", "t", "I", "W", "P", "K"] {
+            std::fs::write(
+                app.moddir.join("stat"),
+                complete_proc_stat(123, "watcher ) nested ( name", state, 987654),
+            )
+            .unwrap();
+            assert_eq!(
+                live_process_identity_at(123, &app.moddir).unwrap(),
+                Some(LiveProcessIdentity {
+                    starttime: 987654,
+                    argv: expected_argv.clone(),
+                }),
+                "state {state} lost the process generation or exact argv"
+            );
+        }
+    }
+
+    #[test]
+    fn supervisor_zombie_identity_does_not_require_cmdline() {
+        let app = crate::test_support::temp_app();
+        for state in ["Z", "X", "x"] {
+            std::fs::write(
+                app.moddir.join("stat"),
+                complete_proc_stat(123, "watcher", state, 87),
+            )
+            .unwrap();
+            assert_eq!(live_process_identity_at(123, &app.moddir).unwrap(), None);
+        }
+    }
+
+    #[test]
+    fn supervisor_malformed_incomplete_and_unknown_stat_remain_indeterminate() {
+        let app = crate::test_support::temp_app();
+        std::fs::write(
+            app.moddir.join("cmdline"),
+            b"/bin/sh\0/module/watcher.loop.sh\0",
+        )
+        .unwrap();
+        let cases = [
+            "malformed".to_string(),
+            "123 watcher) S 1".to_string(),
+            complete_proc_stat(0, "watcher", "S", 87),
+            "2147483648 (watcher) S 1".to_string(),
+            "123 (watcher) S".to_string(),
+            format!("123 (watcher) S {}\n", "1 ".repeat(18)),
+            format!("123 (watcher) S {}unknown\n", "1 ".repeat(18)),
+            complete_proc_stat(123, "watcher", "Q", 87),
+        ];
+        for stat in cases {
+            std::fs::write(app.moddir.join("stat"), &stat).unwrap();
+            assert!(
+                live_process_identity_at(123, &app.moddir).is_err(),
+                "bad stat was treated as a stopped or owned process: {stat:?}"
+            );
+        }
+        std::fs::write(
+            app.moddir.join("stat"),
+            complete_proc_stat(124, "watcher", "S", 87),
+        )
+        .unwrap();
+        assert_eq!(
+            live_process_identity_at(123, &app.moddir).unwrap_err(),
+            "managed supervisor process generation changed during inspection"
+        );
+    }
+
+    #[test]
+    fn missing_supervisor_proc_dir_is_stopped_but_missing_live_files_are_unknown() {
+        let app = crate::test_support::temp_app();
+        assert_eq!(
+            live_process_identity_at(123, &app.moddir.join("missing")).unwrap(),
+            None
+        );
+        assert!(live_process_identity_at(123, &app.moddir).is_err());
+        std::fs::write(
+            app.moddir.join("stat"),
+            complete_proc_stat(123, "watcher", "S", 87),
+        )
+        .unwrap();
+        for contents in [
+            None,
+            Some(b"".as_slice()),
+            Some(b"private-unterminated".as_slice()),
+        ] {
+            if let Some(contents) = contents {
+                std::fs::write(app.moddir.join("cmdline"), contents).unwrap();
+            }
+            assert_eq!(
+                live_process_identity_at(123, &app.moddir).unwrap_err(),
+                "unable to inspect live supervisor ownership"
+            );
+        }
+    }
+
+    #[test]
+    fn supervisor_pidfile_identity_detects_same_pid_atomic_replacement() {
+        let app = crate::test_support::temp_app();
+        let path = app.moddir.join("watcher.pid");
+        assert_eq!(read_pidfile_identity(&path).unwrap(), None);
+        std::fs::write(&path, "123\n").unwrap();
+        let original = read_pidfile_identity(&path).unwrap().unwrap();
+        assert_eq!(original, read_pidfile_identity(&path).unwrap().unwrap());
+        let replacement = app.moddir.join("replacement.pid");
+        std::fs::write(&replacement, "123\n").unwrap();
+        std::fs::rename(replacement, &path).unwrap();
+        let replaced = read_pidfile_identity(&path).unwrap().unwrap();
+        assert_eq!(original.pid, replaced.pid);
+        assert_ne!(original.fingerprint.1, replaced.fingerprint.1);
+        assert_ne!(
+            original, replaced,
+            "same numeric PID hid a new marker generation"
+        );
+    }
+
+    #[test]
+    fn supervisor_pidfile_identity_detects_identical_in_place_rewrite() {
+        let app = crate::test_support::temp_app();
+        let path = app.moddir.join("watcher.pid");
+        std::fs::write(&path, "123\n").unwrap();
+        // Make the original mtime distinct without depending on filesystem
+        // timestamp resolution or sleeping between two writes.
+        std::fs::File::open(&path)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1))
+            .unwrap();
+        let original = read_pidfile_identity(&path).unwrap().unwrap();
+        std::fs::write(&path, "123\n").unwrap();
+        let rewritten = read_pidfile_identity(&path).unwrap().unwrap();
+        assert_eq!(original.pid, rewritten.pid);
+        assert_eq!(original.fingerprint.1, rewritten.fingerprint.1);
+        assert_eq!(original.fingerprint.2, rewritten.fingerprint.2);
+        assert_ne!(
+            original, rewritten,
+            "same PID and bytes hid an in-place rewrite"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    struct OwnedSignalChild(std::process::Child);
+
+    #[cfg(target_os = "linux")]
+    impl OwnedSignalChild {
+        fn spawn(ignore_term: bool) -> Self {
+            use std::io::Read;
+            use std::os::fd::AsRawFd;
+            let script = if ignore_term {
+                "trap '' TERM; printf 'ready\\n'; read hold"
+            } else {
+                "printf 'ready\\n'; read hold"
+            };
+            let mut child = Self(
+                std::process::Command::new("/bin/sh")
+                    .args(["-c", script])
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+            let stdout = child.0.stdout.as_mut().unwrap();
+            let mut pollfd = libc::pollfd {
+                fd: stdout.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            assert_eq!(
+                unsafe { libc::poll(&mut pollfd, 1, 2000) },
+                1,
+                "child readiness timed out"
+            );
+            let mut ready = [0; 6];
+            stdout.read_exact(&mut ready).unwrap();
+            assert_eq!(&ready, b"ready\n");
+            assert!(child.0.try_wait().unwrap().is_none());
+            child
+        }
+
+        fn wait_exited(&mut self) -> std::process::ExitStatus {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Some(status) = self.0.try_wait().unwrap() {
+                    return status;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "owned child did not exit"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        fn finish_normally(&mut self) {
+            use std::io::Write;
+            use std::os::unix::process::ExitStatusExt;
+            self.0.stdin.as_mut().unwrap().write_all(b"hold\n").unwrap();
+            let status = self.wait_exited();
+            assert!(
+                status.success(),
+                "untargeted child was signaled: {status:?}"
+            );
+            assert_eq!(status.signal(), None);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for OwnedSignalChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supervisor_numeric_term_compatibility_signals_only_owned_test_child() {
+        use std::os::unix::process::ExitStatusExt;
+        let mut child = OwnedSignalChild::spawn(false);
+        super::signal_supervisor_process(child.0.id(), None, false).unwrap();
+        assert_eq!(child.wait_exited().signal(), Some(libc::SIGTERM));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supervisor_force_without_pin_fails_closed_and_child_exits_normally() {
+        let mut child = OwnedSignalChild::spawn(false);
+        let error = super::signal_supervisor_process(child.0.id(), None, true).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+        child.finish_normally();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supervisor_pinned_term_and_kill_cannot_signal_a_new_numeric_pid() {
+        use std::os::unix::process::ExitStatusExt;
+        for force in [false, true] {
+            let mut owned = OwnedSignalChild::spawn(force);
+            let mut decoy = OwnedSignalChild::spawn(false);
+            let Some(pin) = super::pin_supervisor_process(owned.0.id()) else {
+                eprintln!("pidfd_open unavailable; pinned signal test requires supported kernel");
+                return;
+            };
+            super::signal_supervisor_process(decoy.0.id(), Some(&pin), force).unwrap();
+            assert_eq!(
+                owned.wait_exited().signal(),
+                Some(if force { libc::SIGKILL } else { libc::SIGTERM })
+            );
+            // A dead pinned generation must return its own error, rather
+            // than fall back to the replacement numeric PID passed in.
+            let error =
+                super::signal_supervisor_process(decoy.0.id(), Some(&pin), force).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::ESRCH));
+            decoy.finish_normally();
+        }
+    }
 
     #[test]
     fn atomic_replacement_preserves_exact_executable_ownership() {

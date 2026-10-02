@@ -351,3 +351,408 @@ fn supervisor_pidfiles_require_the_matching_module_command() {
         &argv(&["/data/adb/modules/MagicNet/cli", "config", "apply"])
     ));
 }
+
+#[test]
+fn supervisor_stop_escalates_only_after_confirmed_survival_and_verifies_exit() {
+    use std::cell::Cell;
+    let killed = Cell::new(false);
+    let mut signals = Vec::new();
+    super::stop_supervisor_with(
+        || Ok(!killed.get()),
+        |force| {
+            signals.push(force);
+            killed.set(force);
+            Ok(())
+        },
+        Duration::ZERO,
+        Duration::ZERO,
+        Duration::ZERO,
+    )
+    .unwrap();
+    assert_eq!(signals, vec![false, true]);
+
+    for observations in [vec![true, false], vec![true, true, false]] {
+        let mut observations = observations.into_iter();
+        let mut signals = Vec::new();
+        super::stop_supervisor_with(
+            || {
+                Ok(observations
+                    .next()
+                    .expect("unexpected observation after exit"))
+            },
+            |force| {
+                signals.push(force);
+                Ok(())
+            },
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+        )
+        .unwrap();
+        assert_eq!(
+            signals,
+            vec![false],
+            "a confirmed exit must never receive KILL"
+        );
+    }
+}
+
+#[test]
+fn supervisor_stop_unknown_or_replacement_never_receives_kill() {
+    for error in [
+        "ownership unknown",
+        "PID marker changed",
+        "process generation changed",
+        "argv changed",
+    ] {
+        for successful_observations in 0..=2 {
+            let mut observations = 0;
+            let mut signals = Vec::new();
+            let result = super::stop_supervisor_with(
+                || {
+                    observations += 1;
+                    if observations > successful_observations {
+                        Err(error.to_string())
+                    } else {
+                        Ok(true)
+                    }
+                },
+                |force| {
+                    signals.push(force);
+                    Ok(())
+                },
+                Duration::ZERO,
+                Duration::ZERO,
+                Duration::ZERO,
+            );
+            assert_eq!(result.unwrap_err(), error);
+            assert_eq!(
+                signals,
+                if successful_observations == 0 {
+                    vec![]
+                } else {
+                    vec![false]
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn supervisor_stop_retains_failed_signals_and_failed_exit() {
+    for failed_force in [false, true] {
+        let mut signals = Vec::new();
+        let result = super::stop_supervisor_with(
+            || Ok(true),
+            |force| {
+                signals.push(force);
+                if force == failed_force {
+                    Err("signal denied".to_string())
+                } else {
+                    Ok(())
+                }
+            },
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+        );
+        assert_eq!(result.unwrap_err(), "signal denied");
+        assert_eq!(
+            signals,
+            if failed_force {
+                vec![false, true]
+            } else {
+                vec![false]
+            }
+        );
+    }
+    let mut signals = Vec::new();
+    let result = super::stop_supervisor_with(
+        || Ok(true),
+        |force| {
+            signals.push(force);
+            Ok(())
+        },
+        Duration::ZERO,
+        Duration::ZERO,
+        Duration::ZERO,
+    );
+    assert_eq!(
+        result.unwrap_err(),
+        "managed supervisor did not stop after SIGKILL"
+    );
+    assert_eq!(signals, vec![false, true]);
+}
+
+#[test]
+fn supervisor_pidfile_unlink_failure_preserves_evidence_and_returns_error() {
+    use std::os::unix::fs::PermissionsExt;
+    if unsafe { libc::geteuid() } == 0 {
+        // Root bypasses directory write permissions. The nonregular and
+        // marker-generation cases still verify fail-closed cleanup there.
+        return;
+    }
+    let (app, root) = fixture_app("watcher-unlink-failure");
+    let path = app.moddir.join(".state/fswatch/magicnet-config.pid");
+    let parent = path.parent().unwrap();
+    fs::create_dir_all(parent).unwrap();
+    fs::write(&path, "2147483647\n").unwrap();
+    let marker = crate::process::read_pidfile_identity(&path)
+        .unwrap()
+        .unwrap();
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+    let result = super::remove_supervisor_pidfile_if_unchanged(&path, marker);
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(
+        result.unwrap_err(),
+        "unable to remove stopped supervisor PID file"
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), "2147483647\n");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn supervisor_invalid_signal_targets_are_rejected_without_signaling() {
+    for pid in [0, libc::pid_t::MAX as u32 + 1, u32::MAX] {
+        assert!(crate::process::pin_supervisor_process(pid).is_none());
+        for force in [false, true] {
+            assert_eq!(
+                crate::process::signal_supervisor_process(pid, None, force)
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::InvalidInput
+            );
+        }
+    }
+}
+
+struct OwnedSupervisorChild(std::process::Child);
+
+impl Drop for OwnedSupervisorChild {
+    fn drop(&mut self) {
+        // Every fixture starts its own session. Clean its external sleep too.
+        unsafe {
+            libc::kill(-(self.0.id() as libc::pid_t), libc::SIGKILL);
+        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn spawn_supervisor_fixture(app: &App, ignore_term: bool) -> (OwnedSupervisorChild, PathBuf) {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let directory = app.moddir.join(".state/fswatch");
+    fs::create_dir_all(&directory).unwrap();
+    let script = directory.join("magicnet-config.loop.sh");
+    let ready = app.moddir.join("ready");
+    fs::write(
+        &script,
+        format!(
+            "trap '' HUP\n{}printf ready >'{}'\nwhile :; do /bin/sleep 15; done\n",
+            if ignore_term { "trap '' TERM\n" } else { "" },
+            ready.display()
+        ),
+    )
+    .unwrap();
+    let mut command = Command::new("/bin/sh");
+    command
+        .arg(&script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    let child = OwnedSupervisorChild(command.spawn().unwrap());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ready.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(ready.exists(), "fixture supervisor failed to start");
+    let marker = directory.join("magicnet-config.pid");
+    fs::write(&marker, format!("{}\n", child.0.id())).unwrap();
+    (child, marker)
+}
+
+#[test]
+fn supervisor_stop_terminates_cooperative_and_term_ignoring_watchers() {
+    use std::os::unix::process::ExitStatusExt;
+    for ignore_term in [false, true] {
+        let (app, root) = fixture_app(if ignore_term {
+            "watcher-kill"
+        } else {
+            "watcher-term"
+        });
+        let (mut child, marker) = spawn_supervisor_fixture(&app, ignore_term);
+        let started = Instant::now();
+        super::stop_supervisor_pidfile(&app, marker.clone()).unwrap();
+        assert!(!marker.exists());
+        assert_eq!(
+            child.0.wait().unwrap().signal(),
+            Some(if ignore_term {
+                libc::SIGKILL
+            } else {
+                libc::SIGTERM
+            })
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "stop exceeded bounded TERM/KILL grace"
+        );
+        drop(child);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn supervisor_stop_preserves_a_foreign_process_and_cleans_its_unchanged_stale_marker() {
+    use std::os::unix::process::CommandExt;
+    let (app, root) = fixture_app("foreign-watcher");
+    let marker = root.join(".state/fswatch/magicnet-config.pid");
+    fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    let mut command = std::process::Command::new("/bin/sleep");
+    command.arg("30");
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    let mut child = OwnedSupervisorChild(command.spawn().unwrap());
+    fs::write(&marker, child.0.id().to_string()).unwrap();
+    super::stop_supervisor_pidfile(&app, marker.clone()).unwrap();
+    assert!(!marker.exists());
+    assert!(
+        child.0.try_wait().unwrap().is_none(),
+        "foreign process was signaled"
+    );
+    drop(child);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn supervisor_generation_and_marker_changes_block_signals_and_cleanup() {
+    let (app, root) = fixture_app("watcher-generation");
+    let (mut child, path) = spawn_supervisor_fixture(&app, true);
+    let marker = crate::process::read_pidfile_identity(&path)
+        .unwrap()
+        .unwrap();
+    let identity = crate::process::live_process_identity(marker.pid)
+        .unwrap()
+        .unwrap();
+    let mut reused = identity.clone();
+    reused.starttime = reused.starttime.saturating_add(1);
+    assert!(
+        super::supervisor_generation_is_live(&app, &path, marker, &reused)
+            .unwrap_err()
+            .contains("generation changed")
+    );
+    let mut foreign = identity.clone();
+    foreign.argv = argv(&["/bin/sleep", "30"]);
+    assert!(
+        super::supervisor_generation_is_live(&app, &path, marker, &foreign)
+            .unwrap_err()
+            .contains("ownership changed")
+    );
+
+    let replacement = path.with_extension("replacement");
+    fs::write(&replacement, marker.pid.to_string()).unwrap();
+    fs::rename(&replacement, &path).unwrap();
+    assert!(
+        super::supervisor_generation_is_live(&app, &path, marker, &identity)
+            .unwrap_err()
+            .contains("PID file changed")
+    );
+    assert!(super::remove_supervisor_pidfile_if_unchanged(&path, marker).is_err());
+    assert!(path.exists(), "same-PID replacement marker must survive");
+    fs::remove_file(&path).unwrap();
+    assert!(
+        super::supervisor_generation_is_live(&app, &path, marker, &identity).is_err(),
+        "missing marker is not evidence of exit"
+    );
+    assert!(child.0.try_wait().unwrap().is_none());
+    drop(child);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires a separately built AOSP Android-profile mksh and generated watcher fixture"]
+fn android_mksh_external_sleep_watcher_stops_before_the_sleep_finishes() {
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+    use std::process::{Command, Stdio};
+    let shell =
+        std::env::var_os("MAGICNET_TEST_MKSH").expect("AOSP Android-profile mksh fixture required");
+    let root = PathBuf::from(
+        std::env::var_os("MAGICNET_TEST_MKSH_MODULE").expect("generated watcher fixture required"),
+    );
+    let app = App {
+        moddir: root.clone(),
+        log_dir: root.join(".log"),
+        api: String::new(),
+    };
+    let marker = root.join(".state/fswatch/magicnet-config.pid");
+    let script = root.join(".state/fswatch/magicnet-config.loop.sh");
+    let mut command = Command::new(shell);
+    command
+        .arg(&script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    let mut child = OwnedSupervisorChild(command.spawn().unwrap());
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let children = PathBuf::from(format!(
+        "/proc/{}/task/{}/children",
+        child.0.id(),
+        child.0.id()
+    ));
+    let mut sleeping = false;
+    while Instant::now() < deadline {
+        if let Ok(pids) = fs::read_to_string(&children) {
+            sleeping = pids.split_whitespace().any(|pid| {
+                fs::read(format!("/proc/{pid}/cmdline"))
+                    .is_ok_and(|argv| argv.starts_with(b"sleep\0"))
+            });
+            if sleeping {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        sleeping,
+        "generated watcher did not enter its external sleep"
+    );
+    fs::write(&marker, child.0.id().to_string()).unwrap();
+    let started = Instant::now();
+    let result = super::stop_supervisor_pidfile(&app, marker.clone());
+    eprintln!(
+        "Android-profile mksh watcher stop: {result:?}; elapsed={:?}",
+        started.elapsed()
+    );
+    assert!(
+        result.is_ok(),
+        "normal Android watcher could not stop: {result:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(!marker.exists());
+    assert_eq!(child.0.wait().unwrap().signal(), Some(libc::SIGKILL));
+}

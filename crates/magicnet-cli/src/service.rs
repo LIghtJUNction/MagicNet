@@ -598,27 +598,125 @@ fn restore_network_after_failed_stop_command() -> &'static str {
 }
 
 fn stop_supervisor_pidfile(app: &App, path: PathBuf) -> Result<(), String> {
-    let Some(pid) = crate::process::read_pidfile(&path)? else {
+    let Some(marker) = crate::process::read_pidfile_identity(&path)? else {
         return Ok(());
     };
-    if supervisor_pidfile_matches(app, &path, pid)? {
-        crate::process::signal_pid(&pid.to_string(), false)?;
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while supervisor_pidfile_matches(app, &path, pid)? {
-            if Instant::now() >= deadline {
-                return Err("managed supervisor did not stop after SIGTERM".to_string());
-            }
-            thread::sleep(Duration::from_millis(25));
+    let initial = crate::process::live_process_identity(marker.pid)?;
+    if let Some(identity) = initial
+        .as_ref()
+        .filter(|identity| supervisor_cmdline_matches(&app.moddir, &path, &identity.argv))
+    {
+        let pin = crate::process::pin_supervisor_process(marker.pid);
+        let observe = || supervisor_generation_is_live(app, &path, marker, identity);
+        stop_supervisor_with(
+            observe,
+            |force| {
+                // pidfd_open can race the snapshot too. Verify the same
+                // generation, ownership and marker again after pinning and
+                // immediately before either signal.
+                if !observe()? {
+                    return Ok(());
+                }
+                match crate::process::signal_supervisor_process(marker.pid, pin.as_ref(), force) {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.raw_os_error() == Some(libc::ESRCH) && !observe()? => {
+                        Ok(())
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Unsupported => {
+                        Err(error.to_string())
+                    }
+                    Err(error) => Err(format!("cannot signal managed supervisor: {error}")),
+                }
+            },
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            Duration::from_millis(25),
+        )?;
+        if observe()? {
+            return Err("managed supervisor survived stop verification".to_string());
         }
+    } else if crate::process::live_process_identity(marker.pid)? != initial {
+        // Known foreign/dead PIDs may have an unchanged stale marker. An
+        // unknown observation or a new generation must retain its evidence.
+        return Err("managed supervisor process generation changed during stop".to_string());
     }
+    remove_supervisor_pidfile_if_unchanged(&path, marker)
+}
+
+fn remove_supervisor_pidfile_if_unchanged(
+    path: &Path,
+    marker: crate::process::SupervisorPidfile,
+) -> Result<(), String> {
     // Preserve a generation change detected during stop. This check and unlink
     // do not provide an atomic compare-and-remove against concurrent producers.
-    match crate::process::read_pidfile(&path)? {
-        Some(current) if current == pid => fs::remove_file(path)
+    match crate::process::read_pidfile_identity(path)? {
+        Some(current) if current == marker => fs::remove_file(path)
             .map_err(|_| "unable to remove stopped supervisor PID file".to_string()),
         None => Ok(()),
         Some(_) => Err("supervisor PID file changed during stop".to_string()),
     }
+}
+
+fn supervisor_generation_is_live(
+    app: &App,
+    path: &Path,
+    marker: crate::process::SupervisorPidfile,
+    expected: &crate::process::LiveProcessIdentity,
+) -> Result<bool, String> {
+    let current = crate::process::live_process_identity(marker.pid)?;
+    match crate::process::read_pidfile_identity(path)? {
+        Some(observed) if observed == marker => {}
+        None if current.is_none() => return Ok(false),
+        _ => return Err("supervisor PID file changed during stop".to_string()),
+    }
+    let Some(current) = current else {
+        return Ok(false);
+    };
+    if current.starttime != expected.starttime {
+        return Err("managed supervisor process generation changed during stop".to_string());
+    }
+    if current.argv != expected.argv
+        || !supervisor_cmdline_matches(&app.moddir, path, &current.argv)
+    {
+        return Err("managed supervisor ownership changed during stop".to_string());
+    }
+    Ok(true)
+}
+
+fn stop_supervisor_with(
+    mut observe: impl FnMut() -> Result<bool, String>,
+    mut signal: impl FnMut(bool) -> Result<(), String>,
+    term_grace: Duration,
+    kill_grace: Duration,
+    poll_interval: Duration,
+) -> Result<(), String> {
+    if !observe()? {
+        return Ok(());
+    }
+    signal(false)?;
+    for (grace, force) in [(term_grace, false), (kill_grace, true)] {
+        let deadline = Instant::now() + grace;
+        loop {
+            if !observe()? {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                break;
+            }
+            thread::sleep(poll_interval.min(deadline.saturating_duration_since(Instant::now())));
+        }
+        if force {
+            return Err("managed supervisor did not stop after SIGKILL".to_string());
+        }
+        // Android mksh may defer TERM while waiting for an external sleep.
+        // Maintenance watchers have no core/firewall teardown to protect;
+        // match the shell supervisor stop's bounded TERM -> KILL policy.
+        if !observe()? {
+            return Ok(());
+        }
+        signal(true)?;
+    }
+    unreachable!("both supervisor stop phases return")
 }
 
 pub(crate) fn supervisor_pidfile_matches(app: &App, path: &Path, pid: u32) -> Result<bool, String> {

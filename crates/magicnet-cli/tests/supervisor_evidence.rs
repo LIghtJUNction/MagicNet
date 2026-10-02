@@ -255,7 +255,8 @@ fn live_owned_supervisor_is_reported_and_term_exit_precedes_cleanup() {
 }
 
 #[test]
-fn sigterm_survivor_keeps_its_pidfile_and_blocks_cleanup() {
+fn sigterm_survivor_is_killed_before_pidfile_and_network_cleanup() {
+    use std::os::unix::process::ExitStatusExt;
     let fixture = Fixture::new();
     fixture.script(
         ".state/fswatch/magicnet-config.loop.sh",
@@ -266,7 +267,46 @@ fn sigterm_survivor_keeps_its_pidfile_and_blocks_cleanup() {
     );
     fixture.write(FSWATCH_PID, &format!("{}\n", child.0.id()));
     assert_eq!(fixture.fswatch(), child.0.id().to_string());
-    fixture.unknown_stop_preserves(Some(&mut child));
+    fixture.write("lib/magicnet.sh", &format!(
+        "magicnet_prepare_network_for_core_stop() {{ if [ -r /proc/{}/stat ]; then test \"$(awk '{{print $3}}' /proc/{}/stat)\" = Z || return 90; fi; test ! -e \"$MODDIR/.state/fswatch/magicnet-config.pid\" || return 91; printf prepare > \"$MODDIR/cleanup-entered\"; }}\nmagicnet_lifecycle_after_stop() {{ printf final > \"$MODDIR/cleanup-finished\"; }}\nmagicnet_supervisors_start_detached() {{ :; }}\n",
+        child.0.id(), child.0.id()
+    ));
+    let started = Instant::now();
+    let output = fixture.run(&["service", "stop"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(started.elapsed() < Duration::from_secs(4));
+    assert_eq!(child.0.wait().unwrap().signal(), Some(libc::SIGKILL));
+    assert!(!fixture.path(FSWATCH_PID).exists());
+    assert!(fixture.path("cleanup-entered").exists());
+    assert!(fixture.path("cleanup-finished").exists());
+    assert_eq!(fixture.fswatch(), "stopped");
+}
+
+#[test]
+fn same_pid_atomic_marker_replacement_during_stop_is_preserved() {
+    let fixture = Fixture::new();
+    fixture.script(
+        ".state/fswatch/magicnet-config.loop.sh",
+        "#!/bin/sh\ntrap 'printf \"%s\\n\" \"$$\" > \"$MODDIR/.state/fswatch/replacement.pid\"; mv \"$MODDIR/.state/fswatch/replacement.pid\" \"$MODDIR/.state/fswatch/magicnet-config.pid\"; exit 0' TERM\nprintf 'ready\\n'\nread hold\n",
+    );
+    let mut child = Process::ready(
+        Command::new("/bin/sh")
+            .arg(fixture.path(".state/fswatch/magicnet-config.loop.sh"))
+            .env("MODDIR", &fixture.0),
+    );
+    fixture.write(FSWATCH_PID, &format!("{}\n", child.0.id()));
+    let output = fixture.run(&["service", "stop"]);
+    assert!(!output.status.success());
+    assert!(child.0.try_wait().unwrap().is_some());
+    assert_eq!(
+        fs::read_to_string(fixture.path(FSWATCH_PID)).unwrap(),
+        format!("{}\n", child.0.id())
+    );
+    assert!(!fixture.path("cleanup-entered").exists());
 }
 
 #[test]
