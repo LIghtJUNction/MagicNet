@@ -110,6 +110,9 @@ public final class NetworkPolicyBridge {
                 }
                 result.put(uid, policy(uid));
             }
+            // The deny may be cleared between enumeration and exact readback.
+            // Retain unknown flags only when the observed reject bit is still set.
+            result.entrySet().removeIf(entry -> (entry.getValue() & 1) == 0);
             return result;
         }
 
