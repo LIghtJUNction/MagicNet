@@ -234,11 +234,6 @@ fn proc_comm_is_shell(comm: &str) -> bool {
     matches!(comm.trim(), "sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
 }
 
-fn proc_cmdline_transient_error(error: &str) -> bool {
-    error.contains("proc cmdline is empty or unterminated")
-        || error.contains("proc cmdline contains an invalid argument")
-}
-
 fn proc_cmdline_has_script_bytes(bytes: &[u8], script: &[u8]) -> bool {
     if bytes.is_empty() || bytes.last() != Some(&0) {
         return false;
@@ -328,9 +323,10 @@ pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
         let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
             Ok(argv) => argv,
             // A process can become a zombie between the stat and cmdline
-            // reads. It cannot be an owned live core anymore, so ignore the
-            // transient malformed cmdline instead of failing every stop.
-            Err(err) if !proc_dir.exists() || proc_cmdline_transient_error(&err) => continue,
+            // reads. Only a second liveness observation can prove that this
+            // error is an exit race. Empty/invalid argv can also belong to a
+            // live process and must keep ownership indeterminate.
+            Err(_) if matches!(proc_pid_is_live(&proc_dir), Ok(false)) => continue,
             Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
         };
         if !singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir)
@@ -368,13 +364,41 @@ fn proc_pid_is_live(proc_dir: &Path) -> Result<bool, String> {
     let Some(stat) = read_live_proc_text(proc_dir, "stat", MAX_PROC_STAT_BYTES)? else {
         return Ok(false);
     };
-    Ok(proc_pid_stat_is_live(&stat))
+    proc_pid_stat_is_live(&stat)
 }
 
-fn proc_pid_stat_is_live(stat: &str) -> bool {
-    stat.rsplit_once(") ")
-        .and_then(|(_, fields)| fields.chars().next())
-        .is_some_and(|state| state != 'Z')
+fn proc_pid_stat_is_live(stat: &str) -> Result<bool, String> {
+    let (identity, fields) = stat
+        .rsplit_once(") ")
+        .ok_or_else(|| "malformed proc stat".to_string())?;
+    let valid_pid = identity
+        .split_once(" (")
+        .and_then(|(pid, _)| {
+            pid.bytes()
+                .all(|byte| byte.is_ascii_digit())
+                .then(|| pid.parse::<libc::pid_t>().ok())
+                .flatten()
+        })
+        .is_some_and(|pid| pid > 0);
+    if !valid_pid {
+        return Err("malformed proc stat identity".to_string());
+    }
+    let mut fields = fields.split_whitespace();
+    let state = fields.next();
+    // A partial stat ending at the state token is not a complete liveness
+    // observation. Field 22 (starttime) must be present and numeric too.
+    if fields
+        .nth(18)
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_none()
+    {
+        return Err("incomplete proc stat".to_string());
+    }
+    match state {
+        Some("Z" | "X" | "x") => Ok(false),
+        Some("R" | "S" | "D" | "T" | "t" | "I" | "W" | "P" | "K") => Ok(true),
+        _ => Err("unknown proc state".to_string()),
+    }
 }
 
 fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Path) -> Option<bool> {
@@ -1302,8 +1326,8 @@ fn startup_error(app: &App) -> Option<String> {
 #[cfg(test)]
 mod path_tests {
     use super::{
-        parse_named_process_output, proc_pid_stat_is_live, singbox_commandline_owned,
-        singbox_executable_owned, write_named_process_candidates,
+        parse_named_process_output, proc_pid_is_live, proc_pid_stat_is_live,
+        singbox_commandline_owned, singbox_executable_owned, write_named_process_candidates,
     };
     use std::path::{Path, PathBuf};
 
@@ -1399,9 +1423,41 @@ mod path_tests {
 
     #[test]
     fn singbox_zombie_processes_are_not_reported_as_running() {
-        assert!(proc_pid_stat_is_live("123 (sing-box) S 1 2 3 4 5 6"));
-        assert!(!proc_pid_stat_is_live("123 (sing-box) Z 1 2 3 4 5 6"));
-        assert!(!proc_pid_stat_is_live("malformed"));
+        let stat = |state| format!("123 (sing-box) {state} {}100\n", "1 ".repeat(18));
+        for state in ["R", "S", "D", "T", "t", "I", "W", "P", "K"] {
+            assert!(proc_pid_stat_is_live(&stat(state)).unwrap());
+        }
+        for state in ["Z", "X", "x"] {
+            assert!(!proc_pid_stat_is_live(&stat(state)).unwrap());
+        }
+        for stat in [
+            "malformed",
+            "123 (sing-box) ",
+            "123 (sing-box) sleeping 1",
+            "123 (sing-box) Q 1",
+            "0 (sing-box) Z 1",
+            "123 (sing-box) Z",
+        ] {
+            assert!(proc_pid_stat_is_live(stat).is_err());
+        }
+        assert!(proc_pid_stat_is_live(&stat("Q")).is_err());
+    }
+
+    #[test]
+    fn malformed_proc_stat_is_indeterminate_not_stopped() {
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-malformed-stat-{}-{}",
+            std::process::id(),
+            std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("stat"), "malformed").unwrap();
+        let result = proc_pid_is_live(&root);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            result.is_err(),
+            "malformed stat was reported stopped: {result:?}"
+        );
     }
 
     #[test]
