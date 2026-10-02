@@ -53,6 +53,9 @@ const MACHINE_COMMANDS: &[&str] = &[
     "override.set",
     "override.reset",
     "override.apply",
+    "module-update.status",
+    "module-update.check",
+    "module-update.install",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -86,6 +89,16 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 
 fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
     match command {
+        ["module-update", "status"] => Ok(envelope(
+            "module-update.status",
+            crate::module_update::status(app),
+        )),
+        ["module-update", rest @ ..] => crate::module_update::action(app, rest)
+            .map(|data| envelope(&format!("module-update.{}", rest[0]), data))
+            .map_err(|code| MachineError {
+                code,
+                message: crate::module_update::message(code),
+            }),
         ["tailscale", "status"] => crate::tailscale_control::status(app)
             .map(|data| envelope("tailscale.status", data))
             .map_err(|code| MachineError {
@@ -238,7 +251,10 @@ fn capabilities_value() -> Value {
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": false,
             "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply",
-                "network-access.repair", "network-access.reapply", "network-access.rollback"],
+                "network-access.repair", "network-access.reapply", "network-access.rollback",
+                "module-update.check", "module-update.install"],
+            "module_update_source": "official-stable-github-release",
+            "module_update_install": "detached-worker-staged-reboot-required",
             "network_access_confirmation": "candidate-and-confirm-flag",
             "override_patch_format": "json-merge-patch",
             "override_input": "private-payload-file",
@@ -821,6 +837,17 @@ mod tests {
         let commands = value["data"]["commands"]
             .as_array()
             .expect("commands array");
+        for action in ["status", "check", "install"] {
+            let name = format!("module-update.{action}");
+            assert!(commands.iter().any(|command| command == &name));
+            if action != "status" {
+                assert!(value["data"]["mutation_commands"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|command| command == &name));
+            }
+        }
         assert!(commands
             .iter()
             .any(|command| command.as_str() == Some("service.status")));
@@ -833,6 +860,34 @@ mod tests {
         assert!(commands
             .iter()
             .any(|command| command.as_str() == Some("wifi.status")));
+    }
+
+    #[test]
+    fn module_update_machine_requests_are_explicit_and_cannot_fall_back_to_shell() {
+        let (root, app) = fixture();
+        let value = machine_value(&app, &["module-update", "status"]).unwrap();
+        assert_eq!(value["command"], "module-update.status");
+        assert!(!root.join(".state").exists());
+        for request in [
+            vec!["module-update"],
+            vec!["module-update", "install"],
+            vec!["module-update", "check", "$(id)"],
+            vec![
+                "module-update",
+                "install",
+                "v1.5.20",
+                "v1.5.21",
+                "../unsafe",
+            ],
+            vec!["module-update", "reboot"],
+        ] {
+            assert_eq!(
+                machine_value(&app, &request).unwrap_err().code,
+                "module-update.invalid_request"
+            );
+        }
+        assert!(!root.join(".state").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

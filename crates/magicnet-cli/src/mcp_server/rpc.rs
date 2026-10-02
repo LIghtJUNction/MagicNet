@@ -82,6 +82,7 @@ pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
 fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
     match tool {
         "magicnet_capabilities" => run_cli(server, &["--json", "capabilities"]),
+        "magicnet_module_update_status" => run_cli(server, &["--json", "module-update", "status"]),
         "magicnet_transparent_status" => run_cli(server, &["--json", "transparent", "status"]),
         "magicnet_dns_status" => run_cli(server, &["--json", "dns", "status"]),
         "magicnet_network_access_status" => {

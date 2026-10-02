@@ -7,6 +7,14 @@ MagicNet keeps two CLI surfaces on purpose:
 
 Status commands are read-only. The separately designed `override` family also supports bounded, versioned mutations (see [configuration overrides](config-overrides.md)). Use either `cli --json <command...>` or `cli <command...> --json`. Clients should query `cli --json capabilities` instead of assuming that every MagicNet version supports the same commands.
 
+The separately designed [module-update family](module-update.md) exposes a
+read-only `status` plus explicit asynchronous `check` and `install` mutations.
+Clients negotiate all three capabilities, send bounded request IDs and version
+preconditions, and recover progress through status. A successful staged install
+requires reboot; it does not change the effective version immediately. MCP
+adds only the read-only `magicnet_module_update_status` convenience tool. No
+MCP convenience update/install writer is introduced.
+
 ## Envelope
 
 Successful responses use one JSON object on stdout:
@@ -62,6 +70,9 @@ network-access.rollback
 sub.status
 wifi.status
 machine.capabilities
+module-update.status
+module-update.check
+module-update.install
 ```
 
 Examples:

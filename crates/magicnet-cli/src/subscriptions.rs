@@ -1012,7 +1012,9 @@ fn is_public_subscription_address(address: IpAddr) -> bool {
     }
 }
 
-fn validate_resolved_subscription_addresses(addresses: &HashSet<IpAddr>) -> Result<(), String> {
+pub(crate) fn validate_resolved_subscription_addresses(
+    addresses: &HashSet<IpAddr>,
+) -> Result<(), String> {
     if addresses.is_empty() {
         return Err("Subscription hostname returned no addresses".to_string());
     }

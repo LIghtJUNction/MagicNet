@@ -149,6 +149,7 @@ fn private_module_path(relative: &Path) -> bool {
                     "override-materialization",
                     "install-config",
                     "install-onboarding",
+                    "module-update",
                 ]
                 .iter()
                 .any(|name| private_name_or_copy(&pair[1], name)))
@@ -335,6 +336,8 @@ mod tests {
             ".state/override-materialization/checkpoint.json",
             ".state/install-onboarding.fixture/baseline-subscription.url",
             ".state/install-config.123/outbounds.json",
+            ".state/module-update/headers",
+            ".state/module-update/release.json",
         ];
         for (index, path) in private_paths.iter().enumerate() {
             let target = root.join(path);

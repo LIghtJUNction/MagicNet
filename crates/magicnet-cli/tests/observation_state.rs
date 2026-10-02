@@ -63,6 +63,24 @@ fn help_and_rejected_commands_do_not_create_state() {
 }
 
 #[test]
+fn json_flags_always_route_internal_update_worker_to_the_machine_dispatcher() {
+    for args in [
+        vec!["--json", "__module-update-worker", "request_1234"],
+        vec!["__module-update-worker", "request_1234", "--json"],
+        vec!["__module-update-worker", "--json"],
+    ] {
+        let fixture = Fixture::new();
+        let output = fixture.run(&args);
+        assert!(!output.status.success());
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["schema"], 1);
+        assert_eq!(result["ok"], false);
+        assert_eq!(result["error"]["code"], "machine.unsupported_command");
+        assert!(!fixture.0.join(".state").exists());
+    }
+}
+
+#[test]
 fn a_path_query_does_not_replace_existing_canonical_observations() {
     let fixture = Fixture::new();
     let machines = fixture.0.join(".state/machines");

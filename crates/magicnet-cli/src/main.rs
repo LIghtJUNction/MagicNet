@@ -45,6 +45,7 @@ mod local_http;
 mod machine;
 mod mcp;
 mod mcp_server;
+mod module_update;
 mod network;
 mod network_access;
 mod network_observation;
@@ -115,6 +116,17 @@ fn main() {
     }
 
     let app = App::from_env();
+    if args
+        .first()
+        .is_some_and(|arg| arg == "__module-update-worker")
+        && !args.iter().any(|arg| arg == "--json")
+    {
+        if let Err(code) = module_update::worker(&app, &args[1..]) {
+            eprintln!("[error] {code}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.as_slice() == ["__override-materialize"] {
         let result = overrides::materialize(&app);
         reconcile_state(&app, "override-materialize");

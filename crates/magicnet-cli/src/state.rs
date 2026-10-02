@@ -50,6 +50,7 @@ const MODULE_TRANSACTION_STAGE: &str = ".tmp/magicnet-app-transaction";
 #[derive(Clone, Copy)]
 enum Domain {
     Overrides,
+    ModuleUpdate,
     Service,
     Transparent,
     Subscription,
@@ -69,6 +70,7 @@ impl Domain {
     fn name(self) -> &'static str {
         match self {
             Self::Overrides => "overrides",
+            Self::ModuleUpdate => "module-update",
             Self::Service => "service",
             Self::Transparent => "transparent",
             Self::Subscription => "subscription",
@@ -88,6 +90,10 @@ impl Domain {
     fn path(self) -> PathBuf {
         Path::new(STATE_ROOT).join(format!("{}.state", self.name()))
     }
+}
+
+pub(crate) fn module_update_path() -> PathBuf {
+    Domain::ModuleUpdate.path()
 }
 
 struct StateRecord {
@@ -170,7 +176,10 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
         (Domain::Overrides, overrides_record(app)),
     ];
 
-    publish_records(app, &records)
+    publish_records(app, &records)?;
+    // This domain is owned by a detached producer. Its own lock prevents a
+    // stale global snapshot from overwriting an in-flight phase publication.
+    crate::module_update::reconcile(app).map_err(str::to_owned)
 }
 
 fn overrides_record(app: &App) -> StateRecord {

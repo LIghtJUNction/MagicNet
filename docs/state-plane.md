@@ -22,6 +22,7 @@ Canonical machine snapshots live under:
   tailscale.state
   transactions.state
   overrides.state
+  module-update.state
 ```
 
 Each file is a small line-oriented record:
@@ -66,6 +67,18 @@ A persistent user choice must not be hidden in `.state`. Selector choices theref
 ## Transactional publication
 
 `magicnet-cli` reconciles all canonical machine records from one observation pass. It calculates the complete snapshot first, compares it with the previous files, and sends all changed records through the existing multi-file transaction primitive. The transaction stages and syncs replacements and rolls already-published files back if a later replacement fails.
+
+The detached module updater owns `module-update.state` under its own flock.
+It publishes each internal phase immediately. General reconciliation processes
+this domain separately after the common snapshot and only if its operation lock
+is available, so it cannot replace a live worker's newer progress with a stale
+snapshot. It then normalizes interrupted installation and reboot promotion
+against manager staging and boot evidence. Read-only machine status can report
+new external observations without writing files; the next explicit reconcile
+or update control publishes their settled canonical form. The persistent user
+request is `.config/magicnet/module-update.conf`; private release/download files
+are recovery inputs. See [module updates](module-update.md) for error, ownership,
+staging and rollback semantics.
 
 This is a recoverable multi-file commit, not a claim that every file rename is simultaneously visible to lock-free readers. A reader that needs a cross-domain point-in-time snapshot should use the versioned machine interface rather than independently racing several `.state` files.
 
