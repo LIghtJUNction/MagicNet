@@ -424,13 +424,19 @@ magicnet_hotspot_choose_rule_priority() {
     return 1
 }
 
-magicnet_hotspot_tun_route_table_ready() {
+magicnet_hotspot_tun_route_table_ready() (
     magicnet_iface_exists magicnet0 || return 1
-    ip route show table 2022 2>/dev/null | awk '
-        index($0, "dev magicnet0") > 0 { found = 1 }
-        END { exit found ? 0 : 1 }
+    _route_table=2022
+    if command -v magicnet_kernel_route_table >/dev/null 2>&1; then
+        _route_table="$(magicnet_kernel_route_table)" || return 2
+    fi
+    _route_output="$(ip route show table "$_route_table" 2>/dev/null)" || return 2
+    # Token match only. A substring such as magicnet0-extra is not magicnet0.
+    printf '%s\n' "$_route_output" | awk '
+        { for (i = 1; i < NF; i++) if ($i == "dev" && $(i + 1) == "magicnet0") found = 1 }
+        END { exit !found }
     '
-}
+)
 
 # A saved file is recovery evidence, not proof that the kernel still matches.
 magicnet_hotspot_routes_current() (
