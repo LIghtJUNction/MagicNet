@@ -701,7 +701,7 @@ mod tests {
 
     use serde_json::{json, Value};
 
-    use super::{handle_jsonrpc, run_cli_with_timeout, Server};
+    use super::{cli_args_reveal_secret, handle_jsonrpc, run_cli_with_timeout, Server};
 
     #[test]
     fn protocol_discovery_and_notifications_do_not_spawn_cli() {
