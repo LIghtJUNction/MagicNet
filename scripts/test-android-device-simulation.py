@@ -561,6 +561,33 @@ class DeviceTests(unittest.TestCase):
              patch.object(SIM.time, 'sleep'), self.assertRaisesRegex(RuntimeError, 'did not become ready'):
             device.ready(timeout=1)
 
+    def test_service_stop_failure_is_recorded_and_never_replayed(self):
+        device = self.device()
+        with patch.object(device, 'kshell', return_value=cp('private', 1,
+                          '[error] read sing-box candidate 123 cmdline: secret')) as run, \
+             self.assertRaisesRegex(RuntimeError, 'service stop command failed'):
+            device.stop_service()
+        run.assert_called_once()
+        self.assertEqual(device.stop_checks, [{'operation': 'service_stop', 'exit_code': 1,
+                                              'error_kinds': ['core_identity']}])
+
+    def test_stop_observation_waits_for_kernel_exit_without_replaying_stop(self):
+        device = self.device()
+        with patch.object(device, 'kshell', side_effect=[cp(rc=1), cp(), *[cp()] * 6]) as run, \
+             patch.object(SIM.time, 'sleep'):
+            device.stopped()
+        self.assertEqual(device.stop_checks[-1]['exit_codes'], [1, 0])
+        self.assertTrue(all('service stop' not in call.args[0] for call in run.call_args_list))
+
+    def test_stop_observation_has_a_deadline_and_keeps_failures(self):
+        device = self.device()
+        with patch.object(device, 'kshell', return_value=cp('private', 127)), \
+             patch.object(SIM.time, 'monotonic', side_effect=[0, 0, 0, 1, 1]), \
+             patch.object(SIM.time, 'sleep'), \
+             self.assertRaisesRegex(RuntimeError, 'survived stop observation deadline'):
+            device.stopped(timeout=1)
+        self.assertEqual(device.stop_checks[-1]['exit_codes'], [127])
+
     def test_network_cleanup_failure_is_not_suppressed(self):
         device = self.device()
         for observation in ('-A OUTPUT -j magicnet-dns-output', 'lookup 2022'):

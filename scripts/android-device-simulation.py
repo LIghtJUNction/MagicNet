@@ -322,6 +322,7 @@ class Device:
         self.late_load_on_reboot = False
         self.busybox_checks = []
         self.root_checks = []
+        self.stop_checks = []
         self.boot_log = ROOT / 'artifacts/android-kernelsu/emulator.log'
 
     def boot_failure(self, offset: int = 0) -> str | None:
@@ -575,11 +576,53 @@ class Device:
             time.sleep(min(2, max(0, deadline - time.monotonic())))
         raise RuntimeError('core process/API/TUN did not become ready')
 
-    def stopped(self):
+    def stop_service(self):
+        # Never replay a lifecycle mutation to hide a failure. Keep only a
+        # bounded exit code; command output can contain private configuration.
+        result = self.kshell(MOD + '/cli service stop sing-box', timeout=90, check=False)
+        error_kinds = {
+            'prepare network for core stop:': 'network_prepare',
+            'finalize stopped network:': 'network_finalize',
+            'read sing-box candidate ': 'core_identity',
+            'managed sing-box process set changed': 'core_generation',
+            'managed sing-box did not stop': 'core_timeout',
+            'cannot signal managed process ': 'core_signal',
+            'managed supervisor ': 'supervisor_stop',
+            'supervisor PID file changed': 'supervisor_marker',
+            'unable to inspect live supervisor': 'supervisor_identity',
+        }
+        kinds = sorted({kind for prefix, kind in error_kinds.items()
+                        if any(line.startswith('[error] ' + prefix)
+                               for line in result.stderr.splitlines())})
+        self.stop_checks.append({'operation': 'service_stop',
+                                 'exit_code': bounded_exit_code(result.returncode),
+                                 'error_kinds': kinds})
+        require(result.returncode == 0,
+                f'service stop command failed (exit {result.returncode}; kinds {kinds})')
+
+    def stopped(self, timeout: float = 10):
         # Observe the kernel, not just the CLI return code or a stale state file.
-        self.kshell(f'test ! -e /sys/class/net/magicnet0 && '
-                    f'{{ p=$({BB} pidof sing-box 2>/dev/null); rc=$?; '
-                    f'test "$rc" = 1 && test -z "$p"; }}')
+        # CLI ownership checks exclude zombies. BusyBox pidof can still see
+        # them until their parent reaps them; wait only on this read-only proof.
+        deadline = time.monotonic() + timeout
+        evidence = {'operation': 'kernel_stop', 'exit_codes': []}
+        self.stop_checks.append(evidence)
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            result = self.kshell(f'test ! -e /sys/class/net/magicnet0 && '
+                                 f'{{ p=$({BB} pidof sing-box 2>/dev/null); rc=$?; '
+                                 f'test "$rc" = 1 && test -z "$p"; }}',
+                                 timeout=min(3, remaining), check=False)
+            evidence['exit_codes'].append(bounded_exit_code(result.returncode))
+            if result.returncode == 0:
+                break
+            time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+        else:
+            raise RuntimeError('core process/TUN survived stop observation deadline')
+        require(bool(evidence['exit_codes']) and evidence['exit_codes'][-1] == 0,
+                'core process/TUN survived stop observation deadline')
         for command in ('ip -4 rule show', 'ip -6 rule show', 'ip -4 route show table all',
                         'ip -6 route show table all', 'iptables-save', 'ip6tables-save'):
             cp = self.kshell(command, timeout=10)
@@ -892,7 +935,7 @@ def main() -> int:
             with report.phase('invalid-config-rollback'):
                 report.provenance['invalid_config_rollback'] = invalid_config_rollback(device)
             with report.phase('stop-cleanup'):
-                device.kshell(MOD + '/cli service stop sing-box', timeout=90)
+                device.stop_service()
                 device.stopped()
             with report.phase('restart-idempotence'):
                 device.kshell(MOD + '/cli service start sing-box', timeout=90)
@@ -930,6 +973,7 @@ def main() -> int:
         if device is not None:
             report.provenance['busybox_checks'] = device.busybox_checks
             report.provenance['root_checks'] = device.root_checks
+            report.provenance['stop_checks'] = device.stop_checks
         report.write()
         if device is not None:
             try:
