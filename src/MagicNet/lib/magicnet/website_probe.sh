@@ -58,8 +58,12 @@ number_in_range "$proxy_port" 1 65535 || fail 'Invalid proxy port'
 [ -r "$targets" ] || fail 'Target catalog is not readable'
 # Host fixtures may pin an absolute MAGICNET_CURL. Android ignores inherited
 # overrides so a caller cannot redirect probes to an untrusted binary.
+android_runtime=0
+if [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]; then
+    android_runtime=1
+fi
 curl_bin=
-if [ ! -x /system/bin/getprop ] && [ -n "${MAGICNET_CURL:-}" ]; then
+if [ "$android_runtime" -eq 0 ] && [ -n "${MAGICNET_CURL:-}" ]; then
     case "$MAGICNET_CURL" in
     /*)
         if [ -x "$MAGICNET_CURL" ]; then
@@ -81,8 +85,12 @@ fi
 if [ -z "$curl_bin" ] && [ -x /system/bin/curl ]; then
     curl_bin=/system/bin/curl
 fi
-if [ -z "$curl_bin" ]; then
+if [ -z "$curl_bin" ] && [ "$android_runtime" -eq 0 ]; then
     curl_bin=$(command -v curl 2>/dev/null) || { printf 'curl is required\n' >&2; exit 2; }
+fi
+if [ -z "$curl_bin" ]; then
+    printf 'curl is required\n' >&2
+    exit 2
 fi
 case "$curl_bin" in
 /*) ;;

@@ -137,6 +137,19 @@ class ProbeTests(unittest.TestCase):
         self.assertFalse((decoy_calls / "used").exists())
         self.assertTrue(list(self.calls.glob("*.json")))
 
+    def test_android_runtime_refuses_path_curl_but_keeps_module_curl(self):
+        env = dict(self.env, MAGICNET_TEST_FORCE_ANDROID="1")
+        row = "probe|test|https://example.invalid/200|200"
+        result = self.run_probe([row], env=env)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("curl unavailable", result.stderr)
+        module_bin = self.script.parent / "bin"
+        module_bin.mkdir()
+        (module_bin / "curl").write_text(MOCK)
+        (module_bin / "curl").chmod(0o755)
+        result = self.run_probe([row], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_http_error_and_unfinished_redirect_never_pass(self):
         for code in (100, 206, 301, 302, 401, 403, 404, 407, 429, 500, 502, 503, 599):
             with self.subTest(code=code):

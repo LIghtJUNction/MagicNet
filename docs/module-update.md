@@ -101,7 +101,9 @@ migration and component checks; the updater does not copy stale PID/owner state
 or replace the active module directory itself.
 
 An existing pending `modules_update/MagicNet`, active `update`, `disable` or
-`remove` marker prevents a new install. No foreign pending package is deleted.
+`remove` marker prevents a new install, including idempotent receipt replay of
+an older successful check. `recovery_required` likewise refuses replay so a
+stale receipt cannot advertise `available`. No foreign pending package is deleted.
 The installer is noninteractive, and successful exit is insufficient on its
 own: the staged module identity/version plus the active manager update marker
 must be verified. Then the result is `reboot_required`, never active success.
