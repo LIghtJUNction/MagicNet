@@ -332,6 +332,20 @@ magicnet_fswatch_path() {
     printf '%s\n' "${MODDIR}/.config"
 }
 
+# Prefer packaged or Android system flock. Host fixtures may still use PATH.
+magicnet_trusted_flock() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/flock" ]; then
+        printf '%s\n' "${MODDIR}/bin/flock"
+        return 0
+    fi
+    if [ -x /system/bin/flock ]; then
+        printf '%s\n' /system/bin/flock
+        return 0
+    fi
+    magicnet_android_runtime && return 1
+    command -v flock 2>/dev/null || return 1
+}
+
 magicnet_fswatch_busybox_bin() (
     _mfb_busybox_bin="${KAM_FSWATCH_BUSYBOX_BIN:-}"
     if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
@@ -345,19 +359,24 @@ magicnet_fswatch_busybox_bin() (
     for _mfb_candidate in \
         /data/adb/ap/bin/busybox \
         /data/adb/ksu/bin/busybox \
-        /data/adb/magisk/busybox; do
-        if [ -x "$_mfb_candidate" ] &&
+        /data/adb/magisk/busybox \
+        "${MODDIR}/bin/busybox" \
+        "${MODDIR}/system/bin/busybox"; do
+        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
             "$_mfb_candidate" flock --help >/dev/null 2>&1; then
             printf '%s\n' "$_mfb_candidate"
             return 0
         fi
     done
 
-    _mfb_candidate="$(command -v busybox 2>/dev/null || true)"
-    if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
-        "$_mfb_candidate" flock --help >/dev/null 2>&1; then
-        printf '%s\n' "$_mfb_candidate"
-        return 0
+    # Host fixtures may still resolve BusyBox from PATH. Android must not.
+    if ! magicnet_android_runtime; then
+        _mfb_candidate="$(command -v busybox 2>/dev/null || true)"
+        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
+            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
+            printf '%s\n' "$_mfb_candidate"
+            return 0
+        fi
     fi
     return 1
 )
@@ -385,7 +404,7 @@ magicnet_fswatch_start() {
     [ "$_fw_rc" -ne 2 ] || return 2
     magicnet_trim_log_file "${MODDIR}/.log/fswatch.log"
     _fswatch_busybox_bin="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
-    _fswatch_flock_bin="$(command -v flock 2>/dev/null || true)"
+    _fswatch_flock_bin="$(magicnet_trusted_flock 2>/dev/null || true)"
     if [ -z "$_fswatch_busybox_bin" ] && [ -n "$_fswatch_flock_bin" ] &&
         ! flock -n -o /dev/null true >/dev/null 2>&1; then
         magicnet_warn "$(i18n MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE | t "$_fswatch_flock_bin")"

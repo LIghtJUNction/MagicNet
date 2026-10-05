@@ -325,6 +325,25 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
         result = self.run_probe(env=dict(self.env, MAGICNET_CURL="curl"))
         self.assertEqual(result.returncode, 2)
 
+    def test_android_runtime_ignores_inherited_tmpdir(self):
+        isolated = self.base / "isolated-module" / "lib" / "magicnet"
+        isolated.mkdir(parents=True)
+        probe = isolated / "website_probe.sh"
+        probe.write_text(PROBE.read_text())
+        probe.chmod(0o755)
+        (isolated.parent.parent / ".state").mkdir()
+        decoy = self.base / "not-a-dir-tmpdir"
+        decoy.write_text("file")
+        env = dict(self.env, MAGICNET_CURL=str(self.mock), MAGICNET_TEST_FORCE_ANDROID="1",
+                   TMPDIR=str(decoy))
+        target = self.base / "targets.tsv"
+        target.write_text(self.row())
+        command = [PROBE_SHELL, str(probe), "--targets", str(target), "--path", "native",
+                   "--family", "4", "--jobs", "1", "--timeout", "3"]
+        result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(list((isolated.parent.parent / ".state").glob("magicnet-web.*")))
+
     def test_catalog_is_validated_before_any_network(self):
         args_file = self.base / "args.json"
         invalid = ["", "# empty\n", self.row() * 2, self.row().replace("https://", "http://"),

@@ -11,8 +11,23 @@ export type MachineEnvelope<T extends Record<string, unknown>> = {
 };
 
 export type NetworkPolicyStatus = {
-  configured: { ipv6_mode: string; mtu: number; udp_timeout: string };
-  effective: { ipv6_mode: string; stack: string; mtu: number | null; udp_timeout: string };
+  configured: {
+    ipv6_mode: string;
+    mtu: number;
+    udp_timeout: string;
+    dns_capture_port?: number;
+    tun_inet?: string;
+    tun_inet6?: string;
+  };
+  effective: {
+    ipv6_mode: string;
+    stack: string;
+    mtu: number | null;
+    udp_timeout: string;
+    dns_capture_port?: number | null;
+    tun_inet?: string | null;
+    tun_inet6?: string | null;
+  };
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -98,10 +113,46 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
       !Number.isSafeInteger(effective.mtu) || effective.mtu <= 0)) ||
     typeof effective.udp_timeout !== "string" || !effective.udp_timeout
   ) return null;
-  return {
-    configured: { ipv6_mode: configured.ipv6_mode, mtu: configured.mtu, udp_timeout: configured.udp_timeout },
-    effective: { ipv6_mode: effective.ipv6_mode, stack: effective.stack, mtu: effective.mtu, udp_timeout: effective.udp_timeout },
+  const optionalPort = (value: unknown, allowNull: boolean) => {
+    if (value === undefined) return undefined;
+    if (value === null) return allowNull ? null : false;
+    return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65535
+      ? value
+      : false;
   };
+  const optionalCidr = (value: unknown, allowNull: boolean) => {
+    if (value === undefined) return undefined;
+    if (value === null) return allowNull ? null : false;
+    return typeof value === "string" && value.length > 0 && value.length <= 64 ? value : false;
+  };
+  const configuredPort = optionalPort(configured.dns_capture_port, false);
+  const configuredInet = optionalCidr(configured.tun_inet, false);
+  const configuredInet6 = optionalCidr(configured.tun_inet6, false);
+  const effectivePort = optionalPort(effective.dns_capture_port, true);
+  const effectiveInet = optionalCidr(effective.tun_inet, true);
+  const effectiveInet6 = optionalCidr(effective.tun_inet6, true);
+  if (
+    configuredPort === false || configuredInet === false || configuredInet6 === false ||
+    effectivePort === false || effectiveInet === false || effectiveInet6 === false
+  ) return null;
+  const parsedConfigured: NetworkPolicyStatus["configured"] = {
+    ipv6_mode: configured.ipv6_mode,
+    mtu: configured.mtu,
+    udp_timeout: configured.udp_timeout,
+  };
+  if (typeof configuredPort === "number") parsedConfigured.dns_capture_port = configuredPort;
+  if (typeof configuredInet === "string") parsedConfigured.tun_inet = configuredInet;
+  if (typeof configuredInet6 === "string") parsedConfigured.tun_inet6 = configuredInet6;
+  const parsedEffective: NetworkPolicyStatus["effective"] = {
+    ipv6_mode: effective.ipv6_mode,
+    stack: effective.stack,
+    mtu: effective.mtu,
+    udp_timeout: effective.udp_timeout,
+  };
+  if (effectivePort !== undefined) parsedEffective.dns_capture_port = effectivePort;
+  if (effectiveInet !== undefined) parsedEffective.tun_inet = effectiveInet;
+  if (effectiveInet6 !== undefined) parsedEffective.tun_inet6 = effectiveInet6;
+  return { configured: parsedConfigured, effective: parsedEffective };
 }
 
 

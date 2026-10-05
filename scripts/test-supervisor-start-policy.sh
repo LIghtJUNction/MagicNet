@@ -128,4 +128,38 @@ PATH="$incompatible_bin:/usr/bin:/bin" KAM_FSWATCH_BUSYBOX_BIN="$busybox_bin" \
     magicnet_fswatch_start
 grep -Fx "$busybox_bin" "$busybox_output" >/dev/null
 
+# Android must not execute a PATH decoy busybox/flock after the fixed-path scan.
+android_decoy="$fixture/android-decoy"
+mkdir -p "$android_decoy"
+cat >"$android_decoy/busybox" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'android path busybox used' >&2
+exit 0
+EOF
+cat >"$android_decoy/flock" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'android path flock used' >&2
+exit 0
+EOF
+chmod +x "$android_decoy/busybox" "$android_decoy/flock"
+android_busybox="$(
+    PATH="$android_decoy:/usr/bin:/bin" \
+        KAM_FSWATCH_BUSYBOX_BIN='' \
+        MAGICNET_TEST_FORCE_ANDROID=1 \
+        magicnet_fswatch_busybox_bin || true
+)"
+if [ -n "$android_busybox" ]; then
+    printf '%s\n' "android PATH busybox was accepted: $android_busybox" >&2
+    exit 1
+fi
+android_flock="$(
+    PATH="$android_decoy:/usr/bin:/bin" \
+        MAGICNET_TEST_FORCE_ANDROID=1 \
+        magicnet_trusted_flock || true
+)"
+if [ -n "$android_flock" ]; then
+    printf '%s\n' "android PATH flock was accepted: $android_flock" >&2
+    exit 1
+fi
+
 printf '%s\n' 'supervisor start policy test passed'

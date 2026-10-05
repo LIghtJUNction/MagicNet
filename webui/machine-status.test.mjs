@@ -47,6 +47,16 @@ test("network status preserves configured/effective differences and unknown valu
   assert.deepEqual(parseMachineNetwork(envelope("network.status", network)), network);
   const unknown = { ...network, effective: { ipv6_mode: "unavailable", stack: "unavailable", mtu: null, udp_timeout: "unavailable" } };
   assert.deepEqual(parseMachineNetwork(envelope("network.status", unknown)), unknown);
+  const pinned = {
+    configured: { ...network.configured, dns_capture_port: 15353, tun_inet: "172.20.0.1/30", tun_inet6: "fd12::2/126" },
+    effective: { ...network.effective, dns_capture_port: 15353, tun_inet: "172.20.0.1/30", tun_inet6: "fd12::2/126" },
+  };
+  assert.deepEqual(parseMachineNetwork(envelope("network.status", pinned)), pinned);
+  const unavailablePins = {
+    ...network,
+    effective: { ...network.effective, dns_capture_port: null, tun_inet: null, tun_inet6: null },
+  };
+  assert.deepEqual(parseMachineNetwork(envelope("network.status", unavailablePins)), unavailablePins);
 });
 
 test("network shape validation rejects partial, unsafe and out-of-policy values", () => {
@@ -58,6 +68,14 @@ test("network shape validation rejects partial, unsafe and out-of-policy values"
   for (const mtu of [-1, 0, 1.5, "1400", Number.MAX_SAFE_INTEGER + 1]) {
     assert.equal(parseMachineNetwork(envelope("network.status", { ...network, effective: { ...network.effective, mtu } })), null);
   }
+  assert.equal(parseMachineNetwork(envelope("network.status", {
+    ...network,
+    configured: { ...network.configured, dns_capture_port: 0 },
+  })), null);
+  assert.equal(parseMachineNetwork(envelope("network.status", {
+    ...network,
+    configured: { ...network.configured, tun_inet: "" },
+  })), null);
   assert.equal(parseMachineNetwork(envelope("network.status", { configured: network.configured })), null);
 });
 

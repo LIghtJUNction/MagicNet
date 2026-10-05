@@ -92,9 +92,18 @@ esac
 for tool in awk mktemp id cat rm; do
     command -v "$tool" >/dev/null 2>&1 || { printf 'Required tool missing: %s\n' "$tool" >&2; exit 2; }
 done
-tmp_base=${TMPDIR:-}
-if [ -z "$tmp_base" ]; then
-    if [ -d "$module_dir/.state" ]; then tmp_base="$module_dir/.state"; else tmp_base=/tmp; fi
+# Android ignores inherited TMPDIR so probe artifacts stay in module state.
+if [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]; then
+    if [ -d "$module_dir/.state" ]; then
+        tmp_base="$module_dir/.state"
+    else
+        tmp_base="$module_dir"
+    fi
+else
+    tmp_base=${TMPDIR:-}
+    if [ -z "$tmp_base" ]; then
+        if [ -d "$module_dir/.state" ]; then tmp_base="$module_dir/.state"; else tmp_base=/tmp; fi
+    fi
 fi
 work=$(mktemp -d "$tmp_base/magicnet-web.XXXXXX") || exit 2
 pids=''

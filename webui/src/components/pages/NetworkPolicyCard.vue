@@ -17,6 +17,12 @@ const effectiveMode = ref("unavailable");
 const effectiveStack = ref("unavailable");
 const effectiveMtu = ref("unavailable");
 const effectiveUdpTimeout = ref("unavailable");
+const configuredDnsPort = ref("1053");
+const configuredTunInet = ref("172.19.0.1/30");
+const configuredTunInet6 = ref("fdfe:dcba:9876::1/126");
+const effectiveDnsPort = ref("unavailable");
+const effectiveTunInet = ref("unavailable");
+const effectiveTunInet6 = ref("unavailable");
 
 
 const modeHint = computed(() => {
@@ -35,6 +41,16 @@ async function refreshStatus(silent = false): Promise<void> {
   effectiveStack.value = status.effective.stack;
   effectiveMtu.value = status.effective.mtu === null ? "unavailable" : String(status.effective.mtu);
   effectiveUdpTimeout.value = status.effective.udp_timeout;
+  configuredDnsPort.value = status.configured.dns_capture_port === undefined
+    ? "1053"
+    : String(status.configured.dns_capture_port);
+  configuredTunInet.value = status.configured.tun_inet ?? "172.19.0.1/30";
+  configuredTunInet6.value = status.configured.tun_inet6 ?? "fdfe:dcba:9876::1/126";
+  effectiveDnsPort.value = status.effective.dns_capture_port == null
+    ? "unavailable"
+    : String(status.effective.dns_capture_port);
+  effectiveTunInet.value = status.effective.tun_inet ?? "unavailable";
+  effectiveTunInet6.value = status.effective.tun_inet6 ?? "unavailable";
 }
 
 async function applyPolicy(): Promise<void> {
@@ -99,6 +115,12 @@ onMounted(() => void refreshStatus(true));
     <pre class="overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">effective_ipv6_mode={{ effectiveMode }}
 effective_stack={{ effectiveStack }}
 effective_mtu={{ effectiveMtu }}
-effective_udp_timeout={{ effectiveUdpTimeout }}</pre>
+effective_udp_timeout={{ effectiveUdpTimeout }}
+configured_dns_capture_port={{ configuredDnsPort }}
+configured_tun_inet={{ configuredTunInet }}
+configured_tun_inet6={{ configuredTunInet6 }}
+effective_dns_capture_port={{ effectiveDnsPort }}
+effective_tun_inet={{ effectiveTunInet }}
+effective_tun_inet6={{ effectiveTunInet6 }}</pre>
   </Card>
 </template>
