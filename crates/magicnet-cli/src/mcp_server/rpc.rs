@@ -363,13 +363,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_app_add_many" => app_add_many(server, args),
         "magicnet_app_remove" => app_package(server, args, "remove"),
         "magicnet_app_apply" => run_cli(server, &["app", "apply"]),
-        "magicnet_mcp_control" => run_cli_owned(
-            server,
-            vec![
-                "mcp".into(),
-                arg(args, "action").unwrap_or_else(|| "status".to_string()),
-            ],
-        ),
+        "magicnet_mcp_control" => mcp_control(server, args),
         "magicnet_api" => run_cli_owned(
             server,
             vec![
@@ -518,9 +512,13 @@ fn cli_args(server: &Server, args: &Value) -> String {
         return "missing args\nrc=-1".to_string();
     }
     if cli_args_reveal_secret(&out) {
-        return "refusing to reveal MCP secret over MCP\nrc=-1".to_string();
+        return refuse_private_cli();
     }
     run_cli_owned(server, out)
+}
+
+fn refuse_private_cli() -> String {
+    "refusing to reveal private module data over MCP\nrc=-1".to_string()
 }
 
 fn cli_args_reveal_secret(args: &[String]) -> bool {
@@ -529,7 +527,18 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
         .map(String::as_str)
         .filter(|item| *item != "--json")
         .collect::<Vec<_>>();
-    matches!(command.as_slice(), ["mcp", "secret", ..])
+    // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
+    // Named private tools remain the explicit path for those contents.
+    matches!(
+        command.as_slice(),
+        ["mcp", "secret" | "logs", ..]
+            | ["sub", "get" | "list" | "file" | "copy-path", ..]
+            | ["backup", "export", ..]
+            | ["config-editor", "get", ..]
+            | ["config-editor", "repo", "get" | "get-json", ..]
+            | ["override", "inspect", ..]
+            | ["service", "logs", ..]
+    )
 }
 
 fn service_control(server: &Server, args: &Value) -> String {
@@ -538,12 +547,34 @@ fn service_control(server: &Server, args: &Value) -> String {
     if action == "status" {
         return run_cli(server, &["--json", "service", "status"]);
     }
+    if action == "logs" {
+        return log_read(
+            server,
+            target
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .unwrap_or("sing-box"),
+            120,
+            true,
+        );
+    }
     match target {
         Some(target) if !target.is_empty() => {
             run_cli_owned(server, vec!["service".into(), action, target])
         }
         _ => run_cli_owned(server, vec!["service".into(), action]),
     }
+}
+
+fn mcp_control(server: &Server, args: &Value) -> String {
+    let action = arg(args, "action").unwrap_or_else(|| "status".to_string());
+    if action == "secret" {
+        return refuse_private_cli();
+    }
+    if action == "logs" {
+        return log_read(server, "mcp", 120, true);
+    }
+    run_cli_owned(server, vec!["mcp".into(), action])
 }
 
 fn config_validate(server: &Server, args: &Value) -> String {
@@ -670,7 +701,7 @@ mod tests {
 
     use serde_json::{json, Value};
 
-    use super::{handle_jsonrpc, run_cli_with_timeout, Server};
+    use super::{cli_args_reveal_secret, handle_jsonrpc, run_cli_with_timeout, Server};
 
     #[test]
     fn protocol_discovery_and_notifications_do_not_spawn_cli() {
@@ -756,11 +787,58 @@ mod tests {
         let response = call_echo_tool("magicnet_cli", json!({"args": ["mcp", "secret"]}));
         let text = response["result"]["content"][0]["text"].as_str().unwrap();
         assert!(
-            text.contains("refusing to reveal MCP secret over MCP"),
+            text.contains("refusing to reveal private module data over MCP"),
             "{text}"
         );
         assert!(text.contains("rc=-1"), "{text}");
         assert_ne!(text, "mcp secret\n\nrc=0");
+    }
+
+    #[test]
+    fn magicnet_cli_refuses_secret_dumping_commands() {
+        for args in [
+            ["mcp", "secret"].as_slice(),
+            ["--json", "mcp", "secret"].as_slice(),
+            ["mcp", "--json", "secret"].as_slice(),
+            ["sub", "get"].as_slice(),
+            ["sub", "list"].as_slice(),
+            ["sub", "file"].as_slice(),
+            ["sub", "copy-path"].as_slice(),
+            ["backup", "export"].as_slice(),
+            ["config-editor", "get", "sing-box"].as_slice(),
+            ["config-editor", "repo", "get"].as_slice(),
+            ["config-editor", "repo", "get-json"].as_slice(),
+            ["override", "inspect"].as_slice(),
+            ["service", "logs"].as_slice(),
+            ["mcp", "logs"].as_slice(),
+        ] {
+            let owned = args
+                .iter()
+                .map(|item| (*item).to_string())
+                .collect::<Vec<_>>();
+            assert!(cli_args_reveal_secret(&owned), "{owned:?}");
+        }
+        for args in [
+            ["service", "status"].as_slice(),
+            ["sub", "status"].as_slice(),
+            ["health"].as_slice(),
+            ["mcp", "status"].as_slice(),
+            ["--json", "sub", "status"].as_slice(),
+            ["config-editor", "validate", "sing-box"].as_slice(),
+        ] {
+            let owned = args
+                .iter()
+                .map(|item| (*item).to_string())
+                .collect::<Vec<_>>();
+            assert!(!cli_args_reveal_secret(&owned), "{owned:?}");
+        }
+        let response = call_echo_tool("magicnet_cli", json!({"args": ["sub", "get"]}));
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("refusing to reveal private module data over MCP"),
+            "{text}"
+        );
+        assert_ne!(text, "sub get\n\nrc=0");
     }
 
     #[test]
