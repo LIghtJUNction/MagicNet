@@ -66,6 +66,10 @@ if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
     invalid 'invalid proxy port'
 fi
 [ -r "$TARGETS" ] || invalid 'targets file is unreadable'
+android_runtime=0
+if [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]; then
+    android_runtime=1
+fi
 CURL_BIN=
 if [ -x "$MODDIR/bin/curl" ]; then
     CURL_BIN="$MODDIR/bin/curl"
@@ -73,8 +77,12 @@ elif [ -x "$MODDIR/system/bin/curl" ]; then
     CURL_BIN="$MODDIR/system/bin/curl"
 elif [ -x /system/bin/curl ]; then
     CURL_BIN=/system/bin/curl
-else
+elif [ "$android_runtime" -eq 0 ]; then
     CURL_BIN=$(command -v curl 2>/dev/null) || { printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2; }
+fi
+if [ -z "$CURL_BIN" ]; then
+    printf 'INCOMPLETE: curl unavailable\n' >&2
+    exit 2
 fi
 case "$CURL_BIN" in
 /*) ;;

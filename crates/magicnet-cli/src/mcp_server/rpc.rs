@@ -388,7 +388,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
             server,
             arg(args, "source").as_deref().unwrap_or("mcp"),
             arg_usize(args, "lines").unwrap_or(200),
-            arg_bool(args, "redact").unwrap_or(true),
+            true,
         ),
         "magicnet_debug_snapshot" => {
             debug_snapshot(server, arg_usize(args, "lines").unwrap_or(120))
@@ -740,6 +740,46 @@ mod tests {
             "--json service status\n\nrc=0"
         );
         assert!(response["result"].get("isError").is_none());
+    }
+
+    #[test]
+    fn magicnet_log_read_always_redacts_over_mcp() {
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-mcp-log-redact-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".log")).unwrap();
+        fs::write(
+            root.join(".log/mcp-server.log"),
+            "fetch failed source=https://secret.example/private-value result=timeout\n",
+        )
+        .unwrap();
+        let server = Server {
+            moddir: root.clone(),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "magicnet_log_read", "arguments": {"source": "mcp", "redact": false}}
+        })
+        .to_string();
+        let response: Value =
+            serde_json::from_str(&handle_jsonrpc(&payload, &server)).expect("valid JSON");
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.contains("secret.example") && !text.contains("private-value"),
+            "{text}"
+        );
+        assert!(text.contains("<redacted-url>"), "{text}");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
