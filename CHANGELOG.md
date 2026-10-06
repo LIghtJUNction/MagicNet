@@ -46,6 +46,10 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 
 ## Unreleased
 
+- Ignore inherited Android `/proc` fixtures, cgroup roots, and fswatch BusyBox
+  overrides so CLI/service lifecycle cannot be pointed at a forged process tree.
+- Remove unused `magicnet_dns_capture_delete_jump` and
+  `magicnet_install_selected_core` leftovers after their callers were replaced.
 - Exempt hotspot-downstream IPv6 from sing-box's global mangle TPROXY so
   tethered clients can reach IPv6-first sites without restoring TPROXY,
   Redirect, or netd `ALLOW_MULTI` (#335).

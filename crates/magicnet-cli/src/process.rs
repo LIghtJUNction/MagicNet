@@ -819,8 +819,23 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
+// CLI launches shell without sourcing entry.sh. Inherited proc/cgroup
+// fixtures and BusyBox overrides must not redirect lifecycle or fswatch.
+const UNSAFE_RUNTIME_ENV: &[&str] = &[
+    "MAGICNET_SINGBOX_PROC_ROOT",
+    "MAGICNET_PROC_ROOT",
+    "MAGICNET_PROCESS_CGROUP_ROOTS",
+    "KAM_FSWATCH_BUSYBOX_BIN",
+];
+
 fn clear_unsafe_subscription_environment(command: &mut Command) {
     for key in UNSAFE_SUBSCRIPTION_ENV {
+        command.env_remove(key);
+    }
+}
+
+fn clear_unsafe_runtime_environment(command: &mut Command) {
+    for key in UNSAFE_RUNTIME_ENV {
         command.env_remove(key);
     }
 }
@@ -1004,6 +1019,7 @@ fn run_magicnet_shell(
         .stdin(Stdio::null());
     clear_unsafe_loader_environment(&mut command);
     clear_unsafe_subscription_environment(&mut command);
+    clear_unsafe_runtime_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
@@ -1966,9 +1982,10 @@ mod path_tests {
 #[cfg(test)]
 mod process_group_tests {
     use super::{
-        clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
-        run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
-        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        clear_unsafe_runtime_environment, clear_unsafe_subscription_environment,
+        command_timeout_secs, run_magicnet_function, run_process_group, terminate_timed_out_child,
+        trusted_shell, App, TimedChildWait, DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS,
+        UNSAFE_RUNTIME_ENV, UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -2177,6 +2194,29 @@ mod process_group_tests {
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
                 "unsafe subscription variable leaked: {key}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn function_runner_does_not_inherit_runtime_proc_overrides(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = Command::new("sh");
+        command.args(["-c", "env"]);
+        for key in UNSAFE_RUNTIME_ENV {
+            command.env(key, "attacker-controlled");
+        }
+        clear_unsafe_runtime_environment(&mut command);
+        let output = command.output()?;
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+        for key in UNSAFE_RUNTIME_ENV {
+            assert!(
+                !stdout
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key}="))),
+                "unsafe runtime variable leaked: {key}"
             );
         }
         Ok(())

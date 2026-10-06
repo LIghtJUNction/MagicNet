@@ -278,13 +278,6 @@ magicnet_ask_default_core() {
   magicnet_set_default_core sing-box
 }
 
-magicnet_install_selected_core() {
-  if [ "$MAGIC_SINGBOX" != "0" ] &&
-    { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
-    printf '%s\n' sing-box
-  fi
-}
-
 magicnet_print_install_summary() {
   newline
   print "MagicNet"
