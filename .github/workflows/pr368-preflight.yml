@@ -1,0 +1,41 @@
+name: PR368 integration preflight
+on:
+  push:
+    branches: [codex/pr368-preflight-20261007]
+    paths: [.github/workflows/pr368-preflight.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Reproduce reviewed integration and run host regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/maintenance/pr368-integration.patch "$RUNNER_TEMP/integration.patch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          test -z "$(git ls-remote origin refs/heads/codex/pr368-integrated-20261007)"
+          git fetch origin 259a7624c7e74e2ec7c3a942e5ca3b97c2962628 710e885c224d44c73e539d868f27662d2b88470a
+          git checkout --detach 259a7624c7e74e2ec7c3a942e5ca3b97c2962628
+          set +e
+          git merge --no-commit --no-ff 710e885c224d44c73e539d868f27662d2b88470a
+          merge_rc=$?
+          set -e
+          test "$merge_rc" = 1
+          test "$(git diff --name-only --diff-filter=U)" = scripts/test-website-probe.py
+          git checkout --ours scripts/test-website-probe.py
+          git apply "$RUNNER_TEMP/integration.patch"
+          git add scripts/test-supervisor-start-policy.sh scripts/test-website-probe.py src/MagicNet/lib/magicnet/supervisors.sh
+          git diff --cached --check
+          test "$(git write-tree)" = 7a3ff49e539e5311de9e41489fbb04e8f10cb3b7
+          bash scripts/test-supervisor-start-policy.sh
+          python scripts/test-website-probe.py -q
+          git commit -m 'Merge main into #368; enforce trusted fswatch execution and preserve probe tests'
+          git push origin HEAD:refs/heads/codex/pr368-integrated-20261007
+          git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
