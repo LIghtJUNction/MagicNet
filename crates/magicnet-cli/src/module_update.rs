@@ -1722,7 +1722,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn receipt_replay_is_blocked_when_recovery_or_staging_is_present() {
         let (_base, app) = fixture();
         let mut record = sample_record(&app, "failed");
