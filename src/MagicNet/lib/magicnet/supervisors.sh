@@ -406,16 +406,23 @@ magicnet_fswatch_start() {
     _fswatch_busybox_bin="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
     _fswatch_flock_bin="$(magicnet_trusted_flock 2>/dev/null || true)"
     if [ -z "$_fswatch_busybox_bin" ] && [ -n "$_fswatch_flock_bin" ] &&
-        ! flock -n -o /dev/null true >/dev/null 2>&1; then
+        ! "$_fswatch_flock_bin" -n -o /dev/null true >/dev/null 2>&1; then
         magicnet_warn "$(i18n MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE | t "$_fswatch_flock_bin")"
         set -- 1
         unset _fswatch_name _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
         return "$1"
     fi
     [ -n "$_fswatch_busybox_bin" ] && KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin"
+    # kamfw resolves worker commands through PATH. Preserve host fixtures but
+    # never reintroduce an untrusted Android PATH after selecting the tools.
+    _fswatch_exec_path="$PATH"
+    if magicnet_android_runtime; then
+        _fswatch_exec_path="${MODDIR}/bin:/system/bin:/system/xbin:/vendor/bin"
+    fi
     # These intent files have dedicated controllers. Watching them here would
     # race explicit activation or restart the core for an unrelated MCP edit.
-    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
+    PATH="$_fswatch_exec_path" \
+        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
         fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?
@@ -423,7 +430,7 @@ magicnet_fswatch_start() {
         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
     fi
     set -- "$_fswatch_rc"
-    unset _fswatch_name _fswatch_rc _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
+    unset _fswatch_name _fswatch_rc _fswatch_busybox_bin _fswatch_flock_bin _fswatch_exec_path _fw_rc
     return "$1"
 }
 

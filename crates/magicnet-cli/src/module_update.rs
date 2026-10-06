@@ -479,6 +479,25 @@ fn receipt_ledger(app: &App) -> Result<Value> {
     Ok(value)
 }
 
+fn refuse_if_recovery_or_staging(app: &App) -> Result<()> {
+    if status(app)["recovery_required"] == true {
+        return Err("module-update.recovery_required");
+    }
+    if staging_present(app)? {
+        return Err("module-update.pending_update");
+    }
+    Ok(())
+}
+
+fn verified_staged_module(app: &App) -> Result<PathBuf> {
+    let staged = pending(app);
+    let metadata = fs::symlink_metadata(&staged).map_err(|_| "module-update.staging_unverified")?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("module-update.staging_unverified");
+    }
+    Ok(staged)
+}
+
 fn replay_receipt(
     ledger: &Value,
     action: &str,
@@ -585,6 +604,10 @@ pub(crate) fn action(app: &App, args: &[&str]) -> Result<Value> {
     settle_locked(app)?;
     update_terminal_receipt(app)?;
     let mut ledger = receipt_ledger(app)?;
+    // Recovery and leftover staging outrank idempotent receipts. A stale
+    // successful check must not advertise "available" after an interrupted
+    // install left recovery_required=true.
+    refuse_if_recovery_or_staging(app)?;
     if let Some(data) = replay_receipt(&ledger, action, expected_installed, expected_latest, id)? {
         return Ok(data);
     }
@@ -593,13 +616,6 @@ pub(crate) fn action(app: &App, args: &[&str]) -> Result<Value> {
             return Ok(status(app));
         }
         return Err("module-update.conflict");
-    }
-    let observed = status(app);
-    if observed["recovery_required"] == true {
-        return Err("module-update.recovery_required");
-    }
-    if staging_present(app)? {
-        return Err("module-update.pending_update");
     }
     if action == "install" {
         if detect_manager().is_none() {
@@ -992,7 +1008,7 @@ fn install_worker(app: &App, record: &mut BTreeMap<String, String>) -> Result<()
         if output.timed_out || !output.status.is_some_and(|s| s.success()) {
             return Err("module-update.install_failed");
         }
-        let staged = pending(app);
+        let staged = verified_staged_module(app)?;
         if module_version(&staged.join("module.prop")) != Some(latest.clone())
             || !marked(app, "update")
             || marked(app, "disable")
@@ -1703,6 +1719,47 @@ mod tests {
         assert!(active_version(&app).is_some());
         fs::write(app.moddir.join("bin/magicnet-cli"), "different").unwrap();
         assert!(active_version(&app).is_none());
+    }
+
+    #[test]
+    fn receipt_replay_is_blocked_when_recovery_or_staging_is_present() {
+        let (_base, app) = fixture();
+        let mut record = sample_record(&app, "failed");
+        put(&mut record, "recovery_required", "true");
+        put(&mut record, "error_code", "module-update.interrupted");
+        publish(&app, &record).unwrap();
+        assert_eq!(
+            refuse_if_recovery_or_staging(&app),
+            Err("module-update.recovery_required")
+        );
+
+        put(&mut record, "recovery_required", "false");
+        put(&mut record, "error_code", "none");
+        publish(&app, &record).unwrap();
+        fs::write(app.moddir.join("update"), "").unwrap();
+        assert_eq!(
+            refuse_if_recovery_or_staging(&app),
+            Err("module-update.pending_update")
+        );
+        fs::remove_file(app.moddir.join("update")).unwrap();
+        assert_eq!(refuse_if_recovery_or_staging(&app), Ok(()));
+    }
+
+    #[test]
+    fn staged_module_must_be_a_real_directory() {
+        let (_base, app) = fixture();
+        let staged = pending(&app);
+        fs::create_dir_all(staged.parent().unwrap()).unwrap();
+        let foreign = app.moddir.join("keep");
+        fs::create_dir_all(&foreign).unwrap();
+        std::os::unix::fs::symlink(&foreign, &staged).unwrap();
+        assert_eq!(
+            verified_staged_module(&app),
+            Err("module-update.staging_unverified")
+        );
+        fs::remove_file(&staged).unwrap();
+        fs::create_dir_all(&staged).unwrap();
+        assert_eq!(verified_staged_module(&app).unwrap(), staged);
     }
 
     #[test]

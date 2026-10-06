@@ -168,6 +168,7 @@ fn private_module_path(relative: &Path) -> bool {
             "singbox-config-repo.conf",
             "config-override.json",
             "config-override-active.json",
+            "module-update.conf",
         ]
         .iter()
         .any(|secret| private_name_or_copy(name, secret))
@@ -278,6 +279,11 @@ mod tests {
             "{\"private_key\":\"hidden\"}",
         )
         .unwrap();
+        fs::write(
+            root.join(".config/magicnet/module-update.conf"),
+            "schema=1\naction=check\nrequest_id=request_1234\n",
+        )
+        .unwrap();
         fs::write(root.join("notes.txt"), "visible").unwrap();
         symlink(
             root.join(".config/magicnet/mcp.conf"),
@@ -289,6 +295,7 @@ mod tests {
             ".config/magicnet/mcp.conf",
             ".config/magicnet/.env",
             ".config/magicnet/warp-endpoint.json",
+            ".config/magicnet/module-update.conf",
             ".config/sing-box/subscription.url",
             ".config/sing-box/subscription.local",
             ".config/sing-box/tailscale-auth.json",

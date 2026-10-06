@@ -541,6 +541,29 @@ assert_hotspot_probe_errors_preserve_config
   magicnet_hotspot_tun_route_table_ready() { echo 'TUN probe is invalid for eBPF' >&2; exit 99; }
   [ "$(magicnet_hotspot_route_status)" = 'route_status=shared-tc-unverified' ]
 )
+(
+  ip() {
+    if [ "${1:-}" = route ] && [ "${2:-}" = show ] && [ "${3:-}" = table ]; then
+      printf '%s\n' '10.0.0.0/8 dev magicnet0-extra proto static'
+      return 0
+    fi
+    return 2
+  }
+  if magicnet_hotspot_tun_route_table_ready; then
+    printf '%s\n' 'substring magicnet0-extra was treated as magicnet0' >&2
+    exit 1
+  fi
+)
+(
+  ip() {
+    if [ "${1:-}" = route ] && [ "${2:-}" = show ] && [ "${3:-}" = table ]; then
+      printf '%s\n' '10.0.0.0/8 dev magicnet0 proto static'
+      return 0
+    fi
+    return 2
+  }
+  magicnet_hotspot_tun_route_table_ready
+)
 
 # Standalone configs are valid without the template proxy/direct names. Use
 # the real renderer and reject every dangling member, including stale hotspot.

@@ -44,15 +44,23 @@ ordinary status summaries. Captures and throughput tests remain intentional,
 bounded actions.
 
 The generic `magicnet_file_list` / `magicnet_file_read` tools refuse credential
-files and their staging/backup names, the `.config/sing-box` tree, and private
-runtime trees under `.state` (`sing-box`, `transparent-transaction`,
-`override-materialization`, installer config and onboarding scratch directories).
+files and their staging/backup names, the `.config/sing-box` tree, module-update
+intent (`.config/magicnet/module-update.conf`), and private runtime trees under
+`.state` (`sing-box`, `transparent-transaction`, `override-materialization`,
+installer config, onboarding scratch, and `module-update` download state).
 These trees hold subscription sources, node credentials, Tailscale identities
 and whole-config recovery copies under names such as `old-url` or `input-source`.
 In-module symlink aliases receive the same checks. Public canonical state under
-`.state/machines` and ordinary logs remain readable. Use the explicitly private
-config editor, override inspect or subscription tools when the user requests
-those contents.
+`.state/machines` remains readable. `magicnet_log_read` always redacts URLs and
+secrets; the `redact` argument cannot disable that over MCP. Use the explicitly
+private config editor, override inspect or subscription tools when the user
+requests those contents.
+
+The generic `magicnet_cli` tool refuses the same private dumps: `mcp secret`,
+`sub get` / `list` / `file` / `copy-path`, `config-editor get` and repository
+getters, `backup export`, `override inspect`, and raw `service` / `mcp` logs.
+`magicnet_service_control` / `magicnet_mcp_control` log tails go through
+`magicnet_log_read` redaction. Use those named tools instead of generic argv.
 
 ## Read-only resources
 

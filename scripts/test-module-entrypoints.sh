@@ -40,6 +40,7 @@ output=$(
         MAGICNET_SUB_CONFIG_FILE=/tmp/evil-config.json \
         MAGICNET_SUB_URL_FILE=/tmp/evil-url \
         MAGICNET_SUB_SOURCE_FILE=/tmp/evil-source \
+        KAM_HOME=/tmp/evil-kam \
         MODDIR="$fixture" sh -c '
             . "$1"
             [ -z "${LD_PRELOAD+x}" ] || exit 11
@@ -54,6 +55,7 @@ output=$(
             [ -z "${MAGICNET_SUB_CONFIG_FILE+x}" ] || exit 17
             [ -z "${MAGICNET_SUB_URL_FILE+x}" ] || exit 18
             [ -z "${MAGICNET_SUB_SOURCE_FILE+x}" ] || exit 19
+            [ -z "${KAM_HOME+x}" ] || exit 24
         ' entry-env "$ENTRY" 2>&1
 )
 status=$?
