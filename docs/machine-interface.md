@@ -121,7 +121,7 @@ Examples already enforced in schema 1:
 
 - Subscription status reports source type, configured count, update/transaction state, lifecycle counters and whether a reason exists; it does not expose the URL or reason text.
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
-- Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
+- Network status separates `configured` policy from the values materialized in the effective sing-box configuration. `configured` / `effective` include IPv6 mode, MTU, UDP timeout, DNS capture port, and TUN IPv4/IPv6 CIDRs so a conflicting local VPN can be diagnosed without reading `network-policy.conf` or `config.json`.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
 - Transparent status reports attachment states and interface counts, not shared-interface names.
 

@@ -384,6 +384,9 @@ fn network_status_value(app: &App) -> Value {
             .map(String::as_str)
             .unwrap_or_default(),
     );
+    let configured_dns_capture_port = crate::network::configured_dns_capture_port(&values);
+    let configured_tun_inet = crate::network::configured_tun_inet(&values);
+    let configured_tun_inet6 = crate::network::configured_tun_inet6(&values);
 
     let effective =
         crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
@@ -411,6 +414,8 @@ fn network_status_value(app: &App) -> Value {
         .and_then(|tun| tun.get("udp_timeout"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
+    let effective_dns_capture_port = crate::network::effective_dns_capture_port(effective.as_ref());
+    let (effective_tun_inet, effective_tun_inet6) = crate::network::effective_tun_addresses(tun);
 
     envelope(
         "network.status",
@@ -419,12 +424,18 @@ fn network_status_value(app: &App) -> Value {
                 "ipv6_mode": configured_ipv6_mode,
                 "mtu": configured_mtu,
                 "udp_timeout": configured_udp_timeout,
+                "dns_capture_port": configured_dns_capture_port,
+                "tun_inet": configured_tun_inet,
+                "tun_inet6": configured_tun_inet6,
             },
             "effective": {
                 "ipv6_mode": effective_ipv6_mode,
                 "stack": effective_stack,
                 "mtu": effective_mtu,
                 "udp_timeout": effective_udp_timeout,
+                "dns_capture_port": effective_dns_capture_port,
+                "tun_inet": effective_tun_inet,
+                "tun_inet6": effective_tun_inet6,
             }
         }),
     )
@@ -986,19 +997,25 @@ mod tests {
         let (root, app) = fixture();
         fs::write(
             root.join(".config/magicnet/network-policy.conf"),
-            "MAGICNET_IPV6_MODE=prefer_ipv6\nMAGICNET_TUN_MTU=1380\nMAGICNET_UDP_TIMEOUT=10m\n",
+            "MAGICNET_IPV6_MODE=prefer_ipv6\nMAGICNET_TUN_MTU=1380\nMAGICNET_UDP_TIMEOUT=10m\nMAGICNET_DNS_CAPTURE_PORT=15353\nMAGICNET_TUN_INET=172.20.0.1/30\nMAGICNET_TUN_INET6=fd12::2/126\n",
         )
         .expect("write network policy");
         fs::write(
             root.join(".config/sing-box/config.json"),
-            r#"{"dns":{"strategy":"prefer_ipv6"},"inbounds":[{"type":"tun","stack":"mixed","mtu":1380,"udp_timeout":"10m"}]}"#,
+            r#"{"dns":{"strategy":"prefer_ipv6"},"inbounds":[{"type":"direct","tag":"magicnet-dns-in","listen_port":15353},{"type":"tun","stack":"mixed","mtu":1380,"udp_timeout":"10m","address":["172.20.0.1/30","fd12::2/126"]}]}"#,
         )
         .expect("write effective config");
         let value = network_status_value(&app);
         assert_eq!(value["command"], "network.status");
         assert_eq!(value["data"]["configured"]["mtu"], 1380);
+        assert_eq!(value["data"]["configured"]["dns_capture_port"], 15353);
+        assert_eq!(value["data"]["configured"]["tun_inet"], "172.20.0.1/30");
+        assert_eq!(value["data"]["configured"]["tun_inet6"], "fd12::2/126");
         assert_eq!(value["data"]["effective"]["stack"], "mixed");
         assert_eq!(value["data"]["effective"]["udp_timeout"], "10m");
+        assert_eq!(value["data"]["effective"]["dns_capture_port"], 15353);
+        assert_eq!(value["data"]["effective"]["tun_inet"], "172.20.0.1/30");
+        assert_eq!(value["data"]["effective"]["tun_inet6"], "fd12::2/126");
         fs::remove_dir_all(root).expect("remove fixture");
     }
 

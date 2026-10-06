@@ -846,8 +846,19 @@ const UNSAFE_LOADER_ENV: &[&str] = &[
     "HOSTALIASES",
 ];
 
+// CLI-spawned shells source kamfw directly and never pass through entry.sh.
+// A caller-injected module root would redirect supervisor pidfiles or
+// privileged library loads even after the entrypoint sanitizes its own env.
+const UNSAFE_MODULE_ROOT_ENV: &[&str] = &["KAM_HOME", "MAGICNET_LIB_DIR"];
+
 pub(crate) fn clear_unsafe_loader_environment(command: &mut Command) {
     for key in UNSAFE_LOADER_ENV {
+        command.env_remove(key);
+    }
+}
+
+fn clear_unsafe_module_root_environment(command: &mut Command) {
+    for key in UNSAFE_MODULE_ROOT_ENV {
         command.env_remove(key);
     }
 }
@@ -1004,6 +1015,7 @@ fn run_magicnet_shell(
         .stdin(Stdio::null());
     clear_unsafe_loader_environment(&mut command);
     clear_unsafe_subscription_environment(&mut command);
+    clear_unsafe_module_root_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
@@ -1966,9 +1978,10 @@ mod path_tests {
 #[cfg(test)]
 mod process_group_tests {
     use super::{
-        clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
-        run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
-        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        clear_unsafe_module_root_environment, clear_unsafe_subscription_environment,
+        command_timeout_secs, run_magicnet_function, run_process_group, terminate_timed_out_child,
+        trusted_shell, App, TimedChildWait, DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS,
+        UNSAFE_MODULE_ROOT_ENV, UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -2008,6 +2021,8 @@ mod process_group_tests {
         assert!(super::UNSAFE_LOADER_ENV.contains(&"GCONV_PATH"));
         assert!(super::UNSAFE_LOADER_ENV.contains(&"NLSPATH"));
         assert!(super::UNSAFE_LOADER_ENV.contains(&"HOSTALIASES"));
+        assert!(super::UNSAFE_MODULE_ROOT_ENV.contains(&"KAM_HOME"));
+        assert!(super::UNSAFE_MODULE_ROOT_ENV.contains(&"MAGICNET_LIB_DIR"));
     }
 
     #[test]
@@ -2177,6 +2192,29 @@ mod process_group_tests {
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
                 "unsafe subscription variable leaked: {key}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn function_runner_does_not_inherit_module_root_overrides(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = Command::new("sh");
+        command.args(["-c", "env"]);
+        for key in UNSAFE_MODULE_ROOT_ENV {
+            command.env(key, "attacker-controlled");
+        }
+        clear_unsafe_module_root_environment(&mut command);
+        let output = command.output()?;
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+        for key in UNSAFE_MODULE_ROOT_ENV {
+            assert!(
+                !stdout
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key}="))),
+                "unsafe module-root variable leaked: {key}"
             );
         }
         Ok(())

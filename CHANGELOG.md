@@ -46,6 +46,12 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 
 ## Unreleased
 
+- Report configured and effective DNS capture port and TUN CIDRs from
+  `cli network status` / `--json network.status` so a conflicting local VPN
+  can be diagnosed without reading private policy files (#330).
+- Strip inherited `KAM_HOME` and `MAGICNET_LIB_DIR` from CLI-spawned shells,
+  refuse Android PATH busybox/flock fallbacks for fswatch, and keep website
+  probe temp files in module state.
 - Exempt hotspot-downstream IPv6 from sing-box's global mangle TPROXY so
   tethered clients can reach IPv6-first sites without restoring TPROXY,
   Redirect, or netd `ALLOW_MULTI` (#335).

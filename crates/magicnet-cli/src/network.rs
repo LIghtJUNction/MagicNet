@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -10,6 +11,9 @@ const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
 const DEFAULT_IPV6_MODE: &str = "prefer_ipv4";
 const DEFAULT_MTU: u16 = 1400;
 const DEFAULT_UDP_TIMEOUT: &str = "5m";
+pub(crate) const DEFAULT_DNS_CAPTURE_PORT: u16 = 1053;
+pub(crate) const DEFAULT_TUN_INET: &str = "172.19.0.1/30";
+pub(crate) const DEFAULT_TUN_INET6: &str = "fdfe:dcba:9876::1/126";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct NetworkPolicy {
@@ -153,6 +157,64 @@ pub(crate) fn normalize_dns_capture_port(value: &str) -> Option<u16> {
     canonical_u16(value).filter(|port| *port >= 1)
 }
 
+pub(crate) fn configured_dns_capture_port(values: &HashMap<String, String>) -> u16 {
+    values
+        .get("MAGICNET_DNS_CAPTURE_PORT")
+        .and_then(|value| normalize_dns_capture_port(value))
+        .unwrap_or(DEFAULT_DNS_CAPTURE_PORT)
+}
+
+pub(crate) fn configured_tun_inet(values: &HashMap<String, String>) -> String {
+    values
+        .get("MAGICNET_TUN_INET")
+        .filter(|value| ipv4_tun_cidr_valid(value))
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_TUN_INET.to_string())
+}
+
+pub(crate) fn configured_tun_inet6(values: &HashMap<String, String>) -> String {
+    values
+        .get("MAGICNET_TUN_INET6")
+        .filter(|value| ipv6_tun_cidr_valid(value))
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_TUN_INET6.to_string())
+}
+
+pub(crate) fn effective_dns_capture_port(config: Option<&Value>) -> Option<u16> {
+    config
+        .and_then(|config| config.get("inbounds"))
+        .and_then(Value::as_array)
+        .and_then(|inbounds| {
+            inbounds.iter().find(|inbound| {
+                inbound.get("type").and_then(Value::as_str) == Some("direct")
+                    && inbound.get("tag").and_then(Value::as_str) == Some("magicnet-dns-in")
+            })
+        })
+        .and_then(|inbound| inbound.get("listen_port"))
+        .and_then(Value::as_u64)
+        .and_then(|port| u16::try_from(port).ok())
+        .filter(|port| *port >= 1)
+}
+
+pub(crate) fn effective_tun_addresses(tun: Option<&Value>) -> (Option<String>, Option<String>) {
+    let addresses = tun
+        .and_then(|tun| tun.get("address"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str);
+    let mut inet = None;
+    let mut inet6 = None;
+    for address in addresses {
+        if inet.is_none() && ipv4_tun_cidr_valid(address) {
+            inet = Some(address.to_string());
+        } else if inet6.is_none() && ipv6_tun_cidr_valid(address) {
+            inet6 = Some(address.to_string());
+        }
+    }
+    (inet, inet6)
+}
+
 pub(crate) fn ipv4_tun_cidr_valid(value: &str) -> bool {
     let Some((address, prefix)) = value.split_once('/') else {
         return false;
@@ -211,9 +273,13 @@ fn normalize_udp_timeout(value: &str) -> Option<&'static str> {
 }
 
 fn print_status(app: &App, policy: &NetworkPolicy) {
+    let values = read_kv(app.moddir.join(NETWORK_POLICY_CONF));
     println!("ipv6_mode={}", policy.ipv6_mode);
     println!("mtu={}", policy.mtu);
     println!("udp_timeout={}", policy.udp_timeout);
+    println!("dns_capture_port={}", configured_dns_capture_port(&values));
+    println!("tun_inet={}", configured_tun_inet(&values));
+    println!("tun_inet6={}", configured_tun_inet6(&values));
 
     let effective = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .ok()
@@ -233,6 +299,7 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
         .and_then(|dns| dns.get("strategy"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
+    let (effective_inet, effective_inet6) = effective_tun_addresses(tun);
     println!("effective_ipv6_mode={strategy}");
     println!(
         "effective_stack={}",
@@ -252,6 +319,20 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
         tun.and_then(|tun| tun.get("udp_timeout"))
             .and_then(Value::as_str)
             .unwrap_or("unavailable")
+    );
+    println!(
+        "effective_dns_capture_port={}",
+        effective_dns_capture_port(effective.as_ref())
+            .map(|port| port.to_string())
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!(
+        "effective_tun_inet={}",
+        effective_inet.as_deref().unwrap_or("unavailable")
+    );
+    println!(
+        "effective_tun_inet6={}",
+        effective_inet6.as_deref().unwrap_or("unavailable")
     );
 }
 
@@ -296,6 +377,54 @@ mod tests {
         assert_eq!(normalize_dns_capture_port("15353"), Some(15353));
         assert_eq!(normalize_dns_capture_port("0"), None);
         assert_eq!(normalize_dns_capture_port("dns"), None);
+    }
+
+    #[test]
+    fn dataplane_pins_report_configured_defaults_and_effective_inbounds() {
+        let mut values = HashMap::new();
+        assert_eq!(configured_dns_capture_port(&values), 1053);
+        assert_eq!(configured_tun_inet(&values), "172.19.0.1/30");
+        assert_eq!(configured_tun_inet6(&values), "fdfe:dcba:9876::1/126");
+        values.insert("MAGICNET_DNS_CAPTURE_PORT".into(), "0".into());
+        values.insert("MAGICNET_TUN_INET".into(), "127.0.0.1/30".into());
+        values.insert("MAGICNET_TUN_INET6".into(), "fe80::1/64".into());
+        assert_eq!(configured_dns_capture_port(&values), 1053);
+        assert_eq!(configured_tun_inet(&values), "172.19.0.1/30");
+        assert_eq!(configured_tun_inet6(&values), "fdfe:dcba:9876::1/126");
+        values.insert("MAGICNET_DNS_CAPTURE_PORT".into(), "15353".into());
+        values.insert("MAGICNET_TUN_INET".into(), "172.20.0.1/30".into());
+        values.insert("MAGICNET_TUN_INET6".into(), "fd12::2/126".into());
+        assert_eq!(configured_dns_capture_port(&values), 15353);
+        assert_eq!(configured_tun_inet(&values), "172.20.0.1/30");
+        assert_eq!(configured_tun_inet6(&values), "fd12::2/126");
+
+        let config = serde_json::json!({
+            "inbounds": [
+                {
+                    "type": "direct",
+                    "tag": "magicnet-dns-in",
+                    "listen": "127.0.0.1",
+                    "listen_port": 15353
+                },
+                {
+                    "type": "tun",
+                    "address": ["172.20.0.1/30", "fd12::2/126"]
+                }
+            ]
+        });
+        assert_eq!(effective_dns_capture_port(Some(&config)), Some(15353));
+        assert_eq!(
+            effective_tun_addresses(config["inbounds"].as_array().and_then(|inbounds| {
+                inbounds
+                    .iter()
+                    .find(|inbound| inbound.get("type").and_then(Value::as_str) == Some("tun"))
+            })),
+            (
+                Some("172.20.0.1/30".to_string()),
+                Some("fd12::2/126".to_string())
+            )
+        );
+        assert_eq!(effective_dns_capture_port(None), None);
     }
 
     #[test]

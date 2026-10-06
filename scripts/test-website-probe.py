@@ -325,6 +325,30 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
         result = self.run_probe(env=dict(self.env, MAGICNET_CURL="curl"))
         self.assertEqual(result.returncode, 2)
 
+    def test_android_runtime_ignores_inherited_tmpdir(self):
+        isolated = self.base / "isolated-module" / "lib" / "magicnet"
+        isolated.mkdir(parents=True)
+        probe = isolated / "website_probe.sh"
+        probe.write_text(PROBE.read_text())
+        probe.chmod(0o755)
+        (isolated.parent.parent / ".state").mkdir()
+        decoy = self.base / "not-a-dir-tmpdir"
+        decoy.write_text("file")
+        # Android deliberately ignores inherited curl overrides. Install the
+        # fixture at the trusted module path so this test isolates TMPDIR.
+        packaged_curl = isolated.parent.parent / "bin" / "curl"
+        packaged_curl.parent.mkdir()
+        shutil.copy2(self.mock, packaged_curl)
+        env = dict(self.env, MAGICNET_TEST_FORCE_ANDROID="1", TMPDIR=str(decoy))
+        env.pop("MAGICNET_CURL", None)
+        target = self.base / "targets.tsv"
+        target.write_text(self.row())
+        command = [PROBE_SHELL, str(probe), "--targets", str(target), "--path", "native",
+                   "--family", "4", "--jobs", "1", "--timeout", "3"]
+        result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(list((isolated.parent.parent / ".state").glob("magicnet-web.*")))
+
     def test_android_runtime_refuses_path_and_inherited_curl(self):
         isolated = self.base / "isolated-module" / "lib" / "magicnet"
         isolated.mkdir(parents=True)
