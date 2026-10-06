@@ -1,0 +1,131 @@
+diff --git a/scripts/test-supervisor-start-policy.sh b/scripts/test-supervisor-start-policy.sh
+index 5b870a9b..b247dd66 100755
+--- a/scripts/test-supervisor-start-policy.sh
++++ b/scripts/test-supervisor-start-policy.sh
+@@ -162,4 +162,37 @@ if [ -n "$android_flock" ]; then
+     exit 1
+ fi
+ 
++# Resolving a trusted binary must govern the actual compatibility probe and
++# worker launch too. A PATH decoy must never replace the resolved flock.
++(
++    trusted_flock="$fixture/trusted-flock"
++    trusted_marker="$fixture/trusted-flock.called"
++    decoy_marker="$fixture/decoy-flock.called"
++    worker_path="$fixture/worker.path"
++    export trusted_marker decoy_marker
++    cat >"$trusted_flock" <<'EOF'
++#!/bin/sh
++printf '%s\n' "$*" >"$trusted_marker"
++exit 0
++EOF
++    cat >"$android_decoy/flock" <<'EOF'
++#!/bin/sh
++printf '%s\n' used >"$decoy_marker"
++exit 0
++EOF
++    chmod +x "$trusted_flock" "$android_decoy/flock"
++    magicnet_trusted_flock() { printf '%s\n' "$trusted_flock"; }
++    magicnet_fswatch_busybox_bin() { return 1; }
++    fswatch() {
++        [ "${1:-}" != status ] || return 1
++        printf '%s\n' "$PATH" >"$worker_path"
++    }
++    PATH="$android_decoy:/usr/bin:/bin" KAM_FSWATCH_BUSYBOX_BIN='' \
++        MAGICNET_TEST_FORCE_ANDROID=1 magicnet_fswatch_start
++    [ -f "$trusted_marker" ] || { printf '%s\n' 'resolved flock was not invoked' >&2; exit 1; }
++    [ ! -e "$decoy_marker" ] || { printf '%s\n' 'launcher executed PATH flock' >&2; exit 1; }
++    grep -Fx -- '-n -o /dev/null true' "$trusted_marker" >/dev/null
++    grep -Fx "$MODDIR/bin:/system/bin:/system/xbin:/vendor/bin" "$worker_path" >/dev/null
++)
++
+ printf '%s\n' 'supervisor start policy test passed'
+diff --git a/scripts/test-website-probe.py b/scripts/test-website-probe.py
+index 2d672a5b..6da7869d 100644
+--- a/scripts/test-website-probe.py
++++ b/scripts/test-website-probe.py
+@@ -334,8 +334,13 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
+         (isolated.parent.parent / ".state").mkdir()
+         decoy = self.base / "not-a-dir-tmpdir"
+         decoy.write_text("file")
+-        env = dict(self.env, MAGICNET_CURL=str(self.mock), MAGICNET_TEST_FORCE_ANDROID="1",
+-                   TMPDIR=str(decoy))
++        # Android deliberately ignores inherited curl overrides. Install the
++        # fixture at the trusted module path so this test isolates TMPDIR.
++        packaged_curl = isolated.parent.parent / "bin" / "curl"
++        packaged_curl.parent.mkdir()
++        shutil.copy2(self.mock, packaged_curl)
++        env = dict(self.env, MAGICNET_TEST_FORCE_ANDROID="1", TMPDIR=str(decoy))
++        env.pop("MAGICNET_CURL", None)
+         target = self.base / "targets.tsv"
+         target.write_text(self.row())
+         command = [PROBE_SHELL, str(probe), "--targets", str(target), "--path", "native",
+@@ -344,6 +349,29 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
+         self.assertEqual(result.returncode, 0, result.stderr)
+         self.assertFalse(list((isolated.parent.parent / ".state").glob("magicnet-web.*")))
+ 
++    def test_android_runtime_refuses_path_and_inherited_curl(self):
++        isolated = self.base / "isolated-module" / "lib" / "magicnet"
++        isolated.mkdir(parents=True)
++        probe = isolated / "website_probe.sh"
++        probe.write_text(PROBE.read_text())
++        probe.chmod(0o755)
++        env = dict(self.env)
++        env.pop("MAGICNET_CURL", None)
++        env["MAGICNET_TEST_FORCE_ANDROID"] = "1"
++        env["PATH"] = f"{self.base}:{env.get('PATH', '/usr/bin')}"
++        decoy = self.base / "curl"
++        decoy.write_text("#!/bin/sh\nexit 0\n")
++        decoy.chmod(0o755)
++        target = self.base / "targets.tsv"
++        target.write_text(self.row())
++        command = [PROBE_SHELL, str(probe), "--targets", str(target), "--path", "native",
++                   "--family", "4", "--jobs", "1", "--timeout", "3"]
++        result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=20)
++        self.assertEqual(result.returncode, 2, result.stderr)
++        env["MAGICNET_CURL"] = str(self.mock)
++        result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=20)
++        self.assertEqual(result.returncode, 2, result.stderr)
++
+     def test_catalog_is_validated_before_any_network(self):
+         args_file = self.base / "args.json"
+         invalid = ["", "# empty\n", self.row() * 2, self.row().replace("https://", "http://"),
+diff --git a/src/MagicNet/lib/magicnet/supervisors.sh b/src/MagicNet/lib/magicnet/supervisors.sh
+index 51a4df04..7a771557 100644
+--- a/src/MagicNet/lib/magicnet/supervisors.sh
++++ b/src/MagicNet/lib/magicnet/supervisors.sh
+@@ -406,16 +406,23 @@ magicnet_fswatch_start() {
+     _fswatch_busybox_bin="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
+     _fswatch_flock_bin="$(magicnet_trusted_flock 2>/dev/null || true)"
+     if [ -z "$_fswatch_busybox_bin" ] && [ -n "$_fswatch_flock_bin" ] &&
+-        ! flock -n -o /dev/null true >/dev/null 2>&1; then
++        ! "$_fswatch_flock_bin" -n -o /dev/null true >/dev/null 2>&1; then
+         magicnet_warn "$(i18n MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE | t "$_fswatch_flock_bin")"
+         set -- 1
+         unset _fswatch_name _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
+         return "$1"
+     fi
+     [ -n "$_fswatch_busybox_bin" ] && KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin"
++    # kamfw resolves worker commands through PATH. Preserve host fixtures but
++    # never reintroduce an untrusted Android PATH after selecting the tools.
++    _fswatch_exec_path="$PATH"
++    if magicnet_android_runtime; then
++        _fswatch_exec_path="${MODDIR}/bin:/system/bin:/system/xbin:/vendor/bin"
++    fi
+     # These intent files have dedicated controllers. Watching them here would
+     # race explicit activation or restart the core for an unrelated MCP edit.
+-    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
++    PATH="$_fswatch_exec_path" \
++        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
+         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+         fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+     _fswatch_rc=$?
+@@ -423,7 +430,7 @@ magicnet_fswatch_start() {
+         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
+     fi
+     set -- "$_fswatch_rc"
+-    unset _fswatch_name _fswatch_rc _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
++    unset _fswatch_name _fswatch_rc _fswatch_busybox_bin _fswatch_flock_bin _fswatch_exec_path _fw_rc
+     return "$1"
+ }
+ 
