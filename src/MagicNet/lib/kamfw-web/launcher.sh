@@ -2,9 +2,21 @@
 
 # No import-time side effects. Subshells keep caller variables and status intact.
 _launch_run() {
-    if [ -n "${KAM_LAUNCH_BUSYBOX:-}" ] && [ -x "$KAM_LAUNCH_BUSYBOX" ]; then
-        "$KAM_LAUNCH_BUSYBOX" timeout 5 "$@"
-    elif command -v timeout >/dev/null 2>&1; then
+    _launch_busybox="${KAM_LAUNCH_BUSYBOX:-}"
+    if [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]; then
+        case "$_launch_busybox" in
+        /data/adb/ap/bin/busybox | /data/adb/ksu/bin/busybox | /data/adb/magisk/busybox) ;;
+        *) _launch_busybox= ;;
+        esac
+    fi
+    if [ -n "$_launch_busybox" ] && [ -x "$_launch_busybox" ]; then
+        "$_launch_busybox" timeout 5 "$@"
+        _launch_rc=$?
+        unset _launch_busybox
+        return "$_launch_rc"
+    fi
+    unset _launch_busybox
+    if command -v timeout >/dev/null 2>&1; then
         timeout 5 "$@"
     else
         "$@"

@@ -37,6 +37,12 @@ output=$(
         NLSPATH=/tmp/evil-nls \
         HOSTALIASES=/tmp/evil-hosts \
         MAGICNET_LIB_DIR=/tmp/evil-lib \
+        MAGICNET_SINGBOX_PROC_ROOT=/tmp/evil-proc \
+        MAGICNET_PROC_ROOT=/tmp/evil-proc \
+        MAGICNET_PROCESS_CGROUP_ROOTS=/tmp/evil-cgroup \
+        MAGICNET_MEMINFO_PATH=/tmp/evil-meminfo \
+        KAM_FSWATCH_BUSYBOX_BIN=/tmp/evil-busybox \
+        KAM_LAUNCH_BUSYBOX=/tmp/evil-busybox \
         MAGICNET_SUB_CONFIG_FILE=/tmp/evil-config.json \
         MAGICNET_SUB_URL_FILE=/tmp/evil-url \
         MAGICNET_SUB_SOURCE_FILE=/tmp/evil-source \
@@ -52,10 +58,16 @@ output=$(
             [ -z "${NLSPATH+x}" ] || exit 22
             [ -z "${HOSTALIASES+x}" ] || exit 23
             [ -z "${MAGICNET_LIB_DIR+x}" ] || exit 16
+            [ -z "${MAGICNET_SINGBOX_PROC_ROOT+x}" ] || exit 24
+            [ -z "${MAGICNET_PROC_ROOT+x}" ] || exit 25
+            [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS+x}" ] || exit 26
+            [ -z "${MAGICNET_MEMINFO_PATH+x}" ] || exit 28
+            [ -z "${KAM_FSWATCH_BUSYBOX_BIN+x}" ] || exit 27
+            [ -z "${KAM_LAUNCH_BUSYBOX+x}" ] || exit 29
             [ -z "${MAGICNET_SUB_CONFIG_FILE+x}" ] || exit 17
             [ -z "${MAGICNET_SUB_URL_FILE+x}" ] || exit 18
             [ -z "${MAGICNET_SUB_SOURCE_FILE+x}" ] || exit 19
-            [ -z "${KAM_HOME+x}" ] || exit 24
+            [ -z "${KAM_HOME+x}" ] || exit 30
         ' entry-env "$ENTRY" 2>&1
 )
 status=$?

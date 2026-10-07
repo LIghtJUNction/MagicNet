@@ -264,6 +264,21 @@ class ProbeTests(unittest.TestCase):
         result = self.run_probe(["private|test|https://example.invalid/secret-token/200|200"])
         self.assertNotIn("secret-token", result.stdout + result.stderr)
 
+    def test_android_runtime_ignores_inherited_tmpdir(self):
+        state = self.script.parent / ".state"
+        state.mkdir()
+        module_bin = self.script.parent / "bin"
+        module_bin.mkdir()
+        (module_bin / "curl").write_text(MOCK)
+        (module_bin / "curl").chmod(0o755)
+        decoy = self.work / "not-a-dir-tmpdir"
+        decoy.write_text("file")
+        env = dict(self.env, MAGICNET_TEST_FORCE_ANDROID="1", TMPDIR=str(decoy))
+        result = self.run_probe(["probe|test|https://example.invalid/200|200"], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(list(self.work.glob(".network-check.*")))
+        self.assertFalse(list(state.glob(".network-check.*")))
+
 
 class FixtureHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_):

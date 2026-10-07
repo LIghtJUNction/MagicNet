@@ -46,6 +46,11 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 
 ## Unreleased
 
+- Ignore inherited Android `/proc` fixtures, cgroup roots, meminfo paths, and
+  BusyBox overrides so CLI/service lifecycle cannot be pointed at a forged
+  process tree or write probe artifacts outside module state.
+- Remove unused `magicnet_dns_capture_delete_jump` and
+  `magicnet_install_selected_core` leftovers after their callers were replaced.
 - Report configured and effective DNS capture port and TUN CIDRs from
   `cli network status` / `--json network.status` so a conflicting local VPN
   can be diagnosed without reading private policy files (#330).

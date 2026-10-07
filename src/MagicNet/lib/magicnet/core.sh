@@ -20,6 +20,13 @@ magicnet_singbox_runtime_memory_limit() {
     fi
 
     _singbox_meminfo="${MAGICNET_MEMINFO_PATH:-/proc/meminfo}"
+    # Android must not size the Go heap from a caller-injected meminfo file.
+    # Host fixtures still honor MAGICNET_MEMINFO_PATH unless they also force
+    # the Android runtime without MAGICNET_TEST_ALLOW_PROC_ROOT.
+    if { [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]; } &&
+        [ "${MAGICNET_TEST_ALLOW_PROC_ROOT:-0}" != 1 ]; then
+        _singbox_meminfo=/proc/meminfo
+    fi
     _singbox_mem_total_kib="$(
         awk '/^MemTotal:/ { print $2; exit }' "$_singbox_meminfo" 2>/dev/null || true
     )"
