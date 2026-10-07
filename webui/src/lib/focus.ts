@@ -1,16 +1,31 @@
 import { nextTick } from "vue";
 
 const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 
 export function trapFocusWithin(
   event: KeyboardEvent,
   root: HTMLElement | null,
 ): void {
   if (event.key !== "Tab" || !root) return;
-  const focusable = Array.from(
+  const candidates = Array.from(
     root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((element) => element.getClientRects().length > 0);
+  ).filter((element) => {
+    if (element.matches(":disabled, [hidden], input[type=hidden]") || element.closest("[inert]")) return false;
+    if (element.tabIndex < 0 && !(element.isContentEditable && !element.hasAttribute("tabindex"))) return false;
+    if (!element.getClientRects().length || getComputedStyle(element).visibility !== "visible") return false;
+    return true;
+  });
+  // Only the selected radio (or first visible option) is in the native Tab sequence.
+  const focusable = candidates.filter((element) => {
+    if (element instanceof HTMLInputElement && element.type === "radio" && element.name) {
+      const group = candidates.filter((radio): radio is HTMLInputElement =>
+        radio instanceof HTMLInputElement && radio.type === "radio" &&
+        radio.name === element.name && radio.form === element.form);
+      return element === (group.find((radio) => radio.checked) ?? group[0]);
+    }
+    return true;
+  });
   if (!focusable.length) {
     event.preventDefault();
     root.focus();
@@ -21,10 +36,11 @@ export function trapFocusWithin(
   const last = focusable.at(-1);
   if (!first || !last) return;
   const active = document.activeElement;
-  if (event.shiftKey && (active === first || !root.contains(active))) {
+  const outsideSequence = !root.contains(active) || !focusable.includes(active as HTMLElement);
+  if (event.shiftKey && (active === first || outsideSequence)) {
     event.preventDefault();
     last.focus();
-  } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+  } else if (!event.shiftKey && (active === last || outsideSequence)) {
     event.preventDefault();
     first.focus();
   }

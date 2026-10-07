@@ -186,9 +186,9 @@ assert.ok(logo.readUInt32BE(16) >= 512, "icon.png must be at least 512px");
 // --- App shell: lazy pages, no full remount key, branding asset ---
 const app = read(appPath);
 assert.match(
-  app,
+  read(join(src, "lib", "recoverablePage.ts")),
   /defineAsyncComponent/,
-  "App.vue must lazy-load pages via defineAsyncComponent",
+  "page wrappers must retain async component loading",
 );
 assert.match(
   app,

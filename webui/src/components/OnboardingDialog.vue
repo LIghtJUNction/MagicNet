@@ -4,6 +4,7 @@ import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { trapFocusWithin } from "@/lib/focus";
+import { useDialogViewport } from "@/composables/useDialogViewport";
 
 const emit = defineEmits<{
   dismiss: [];
@@ -12,16 +13,8 @@ const emit = defineEmits<{
 
 const dialog = ref<HTMLElement | null>(null);
 const value = ref("");
-const viewportStyle = ref<{ height: string; top: string }>();
+const { viewportStyle } = useDialogViewport();
 let previousBodyOverflow = "";
-
-function measureViewport(): void {
-  const viewport = window.visualViewport;
-  // Some WebViews resize only the visual viewport when the keyboard opens.
-  viewportStyle.value = viewport
-    ? { height: `${viewport.height}px`, top: `${viewport.offsetTop}px` }
-    : undefined;
-}
 
 function submit(): void {
   const trimmed = value.value.trim();
@@ -35,19 +28,12 @@ function trapFocus(event: KeyboardEvent): void {
 onMounted(() => {
   previousBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
-  measureViewport();
-  window.addEventListener("resize", measureViewport, { passive: true });
-  window.visualViewport?.addEventListener("resize", measureViewport, { passive: true });
-  window.visualViewport?.addEventListener("scroll", measureViewport, { passive: true });
   void nextTick(() => {
     dialog.value?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
   });
 });
 
 onUnmounted(() => {
-  window.removeEventListener("resize", measureViewport);
-  window.visualViewport?.removeEventListener("resize", measureViewport);
-  window.visualViewport?.removeEventListener("scroll", measureViewport);
   document.body.style.overflow = previousBodyOverflow;
 });
 </script>

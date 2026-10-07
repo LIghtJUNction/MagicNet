@@ -16,7 +16,7 @@ import {
   Sun,
   X,
 } from "lucide-vue-next";
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect, type Component } from "vue";
 import { t } from "@/i18n";
 import LanguageSelect from "@/components/LanguageSelect.vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
@@ -31,6 +31,7 @@ import { setPendingSubscriptionDraft } from "@/components/pages/subscriptionDraf
 import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
+import { createRecoverablePage, prefetchPage } from "@/lib/recoverablePage";
 
 type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "terminal" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
@@ -71,11 +72,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
 const asyncPages = Object.fromEntries(
   (Object.keys(pageLoaders) as TabKey[]).map((key) => [
     key,
-    defineAsyncComponent({
-      loader: pageLoaders[key],
-      delay: 80,
-      timeout: 20000,
-    }),
+    createRecoverablePage(pageLoaders[key]),
   ]),
 ) as Record<TabKey, Component>;
 
@@ -166,6 +163,19 @@ const showOnboarding = ref(false);
 const utilityDialog = ref<HTMLElement | null>(null);
 const utilityMenuTrigger = ref<HTMLElement | null>(null);
 const onboardingTrigger = ref<HTMLElement | null>(null);
+let issueReporterTrigger: HTMLElement | null = null;
+watch(() => state.issueReporter.open, (open) => {
+  if (open) {
+    const active = document.activeElement;
+    // A tool-sheet button is removed during the handoff; restore its visible trigger.
+    issueReporterTrigger = utilityDialog.value?.contains(active)
+      ? utilityMenuTrigger.value
+      : active instanceof HTMLElement ? active : null;
+  } else {
+    restoreFocusAfterUpdate(issueReporterTrigger);
+    issueReporterTrigger = null;
+  }
+}, { flush: "sync" });
 
 const easterEggVisitors = [
   {
@@ -205,6 +215,8 @@ let brandClickCount = 0;
 let brandClickWindowStartedAt = 0;
 let easterEggTimer: number | undefined;
 let bodyOverflowBeforeDialog = "";
+let idleWarmup: number | undefined;
+let delayedWarmup: number | undefined;
 
 const activeTabDefinition = computed(
   () => tabs.find((item) => item.key === activeTab.value) ?? tabs[0],
@@ -216,6 +228,11 @@ const activeSectionTabs = computed(() =>
   tabs.filter((item) => item.workspace === activeWorkspace.value.key),
 );
 const activeComponent = computed(() => asyncPages[activeTab.value]);
+watchEffect(() => { document.title = `${t(activeTabDefinition.value.label)} · MagicNet`; });
+
+function focusPageContent(): void {
+  document.getElementById("mn-main")?.focus();
+}
 
 const statusMessage = computed(() => (state.task ? t("正在执行：{task}", { task: t(state.task) }) : t(state.notice)));
 const serviceStatus = computed(() => servicePresentation(state.runtime, state.hasKsu));
@@ -388,7 +405,7 @@ function handleEscape(event: KeyboardEvent): void {
 }
 
 function prefetchTab(tab: TabKey): void {
-  void pageLoaders[tab]();
+  void prefetchPage(pageLoaders[tab]);
 }
 
 function warmActiveTab(tab: TabKey): void {
@@ -415,22 +432,23 @@ onMounted(() => {
   window.addEventListener("popstate", syncTabFromLocation);
   window.addEventListener("hashchange", syncTabFromLocation);
   writeTabToLocation(activeTab.value, true);
-  void pageLoaders[activeTab.value]();
   if (state.hasKsu && !readOnboardingPreference()) {
     void nextTick(() => {
       if (!showOnboarding.value) launchOnboarding();
     });
   }
   const warm = () => {
-    void pageLoaders.config();
-    void pageLoaders.apps();
-    void pageLoaders.health();
+    prefetchTab("config");
+    prefetchTab("apps");
+    prefetchTab("health");
   };
-  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2500 });
-  else window.setTimeout(warm, 800);
+  if (typeof requestIdleCallback === "function") idleWarmup = requestIdleCallback(warm, { timeout: 2500 });
+  else delayedWarmup = window.setTimeout(warm, 800);
 });
 
 onUnmounted(() => {
+  if (idleWarmup !== undefined) window.cancelIdleCallback?.(idleWarmup);
+  if (delayedWarmup !== undefined) window.clearTimeout(delayedWarmup);
   document.removeEventListener("keydown", handleEscape);
   document.removeEventListener("pointerdown", dismissActionMenus);
   window.removeEventListener("popstate", syncTabFromLocation);
@@ -442,6 +460,7 @@ onUnmounted(() => {
 
 <template>
   <div class="mn-shell" :class="{ 'mn-keyboard-open': keyboardOpen }">
+    <a class="mn-skip-link" href="#mn-main" @click.prevent="focusPageContent">{{ t('跳到页面内容') }}</a>
     <header class="mn-command-bar">
       <div class="mn-brand-lockup">
         <button
@@ -579,7 +598,7 @@ onUnmounted(() => {
         </nav>
       </aside>
 
-      <main class="mn-workspace-main">
+      <main id="mn-main" class="mn-workspace-main" tabindex="-1">
         <header class="mn-workspace-header">
           <nav class="mn-section-tabs" :aria-label="t('{workspace}分区', { workspace: t(activeWorkspace.label) })">
             <button
@@ -601,7 +620,7 @@ onUnmounted(() => {
         <!-- KeepAlive preserves form state across all four workspaces. -->
         <section class="page-surface" :data-page="activeTab">
           <Suspense>
-            <KeepAlive :max="12">
+            <KeepAlive :max="tabs.length">
               <component
                 :is="activeComponent"
                 @goto-output="setTab('output')"
