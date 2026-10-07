@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.vue";
 import Field from "@/components/ui/Field.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { trapFocusWithin } from "@/lib/focus";
+import { useDialogViewport } from "@/composables/useDialogViewport";
 import {
   ISSUE_KIND_OPTIONS,
   type IssueKind,
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>();
 
 const dialog = ref<HTMLElement | null>(null);
+const { viewportStyle } = useDialogViewport();
 const selected = ref<IssueKind>("route-feedback");
 const summary = ref("");
 const reproduction = ref("");
@@ -52,7 +54,7 @@ onMounted(() => {
   previousBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
   void nextTick(() => {
-    dialog.value?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+    dialog.value?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
   });
 });
 
@@ -62,7 +64,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[70] grid place-items-end p-3 sm:place-items-center sm:p-6">
+  <div class="fixed inset-0 z-[70] grid grid-rows-[minmax(0,1fr)] place-items-end p-3 sm:place-items-center sm:p-6" :style="viewportStyle">
     <button
       class="mn-overlay absolute inset-0 size-full"
       type="button"
@@ -71,7 +73,7 @@ onUnmounted(() => {
     />
     <section
       ref="dialog"
-      class="mn-chrome relative z-10 grid max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl gap-4 overflow-y-auto rounded-md p-1.5"
+      class="mn-chrome relative z-10 grid min-h-0 max-h-full overscroll-contain w-full max-w-2xl gap-4 overflow-y-auto rounded-md p-1.5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="issue-reporter-title"
@@ -87,7 +89,7 @@ onUnmounted(() => {
               <Bug :size="18" aria-hidden="true" />{{ t("你遇到了哪类问题？") }}</h2>
             <p id="issue-reporter-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("选择一项后，MagicNet 只收集与该问题最相关的诊断上下文，并在打开 GitHub 前完成脱敏。") }}</p>
           </div>
-          <Button variant="ghost" size="icon" :aria-label="t('取消创建 Issue')" @click="!loading && emit('cancel')">
+          <Button data-dialog-initial-focus variant="ghost" size="icon" :disabled="loading" :aria-label="t('取消创建 Issue')" @click="!loading && emit('cancel')">
             <X :size="18" />
           </Button>
         </div>
@@ -136,7 +138,8 @@ onUnmounted(() => {
           <p>{{ t("路由反馈会公开包含最近活动连接中的应用包名和目标域名，以及命中规则、路由链和相关错误；不会上传 IP、连接 ID、流量大小、订阅节点名、凭据或 URL 路径。") }}</p>
         </div>
 
-        <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
+        <fieldset :disabled="loading" class="mt-4 min-w-0 grid gap-3 border-0 border-t border-solid border-[var(--mn-border)] p-0 pt-4">
+          <legend class="sr-only">{{ t('问题概述') }}</legend>
           <template v-if="isRouteFeedback">
             <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("先复现故障，再立即收集。报告优先保留 Google Play/GMS 路由；没有样本会明确标注，不能代表应用可用。") }}</p>
             <Button variant="outline" size="sm" :disabled="loading" @click="summary = t('Google Play 商店加载失败')">{{ t("填写 Google Play 故障") }}</Button>
@@ -153,7 +156,7 @@ onUnmounted(() => {
                 maxlength="240"
                 :placeholder="t('例如：Gmail 打不开，但浏览器访问 Google 正常。')"
                 aria-describedby="route-feedback-summary-hint"
-                @keydown.ctrl.enter="confirm"
+                @keydown.ctrl.enter.prevent="confirm" @keydown.meta.enter.prevent="confirm"
               />
             </Field>
           </template>
@@ -173,7 +176,9 @@ onUnmounted(() => {
                 maxlength="240"
                 :placeholder="t('例如：更新订阅后节点数量变成 0，sing-box 没有启动')"
                 aria-describedby="issue-summary-hint"
-                @keydown.ctrl.enter="confirm"
+                required
+                minlength="3"
+                @keydown.ctrl.enter.prevent="confirm" @keydown.meta.enter.prevent="confirm"
               />
             </Field>
 
@@ -213,7 +218,7 @@ onUnmounted(() => {
               </Field>
             </div>
           </template>
-        </div>
+        </fieldset>
 
         <div class="mt-4 flex flex-col gap-3 border-t border-[var(--mn-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="inline-flex items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)]">
@@ -223,7 +228,7 @@ onUnmounted(() => {
               : t("描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。") }}
           </p>
           <div class="flex gap-2 sm:shrink-0">
-            <Button class="flex-1 sm:flex-none" variant="outline" @click="!loading && emit('cancel')">{{ t("取消") }}</Button>
+            <Button class="flex-1 sm:flex-none" variant="outline" :disabled="loading" @click="!loading && emit('cancel')">{{ t("取消") }}</Button>
             <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">
               {{ isRouteFeedback ? t("收集路由并创建") : t("收集并创建") }}
             </Button>

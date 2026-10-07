@@ -2,6 +2,8 @@
 import { computed } from "vue";
 import { cn } from "@/lib/utils";
 
+defineOptions({ inheritAttrs: false });
+
 const props = defineProps<{ class?: string }>();
 const model = defineModel<string>();
 const classes = computed(() =>

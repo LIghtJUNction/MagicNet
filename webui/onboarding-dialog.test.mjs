@@ -98,11 +98,11 @@ for (const forbidden of [
 
 assert.match(
   focus,
-  /if \(event\.shiftKey && \(active === first \|\| !root\.contains\(active\)\)\)/,
+  /if \(event\.shiftKey && \(active === first \|\| outsideSequence\)\)/,
 );
 assert.match(
   focus,
-  /else if \(!event\.shiftKey && \(active === last \|\| !root\.contains\(active\)\)\)/,
+  /else if \(!event\.shiftKey && \(active === last \|\| outsideSequence\)\)/,
 );
 assert.match(focus, /restoreFocusAfterUpdate/);
 assert.match(focus, /element\.isConnected/);

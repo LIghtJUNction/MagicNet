@@ -63,3 +63,27 @@
   .mn-disclosure > summary:focus-visible,
   .config-action-menu > summary:focus-visible { outline-color: Highlight; }
 }
+
+/* Keyboard navigation must not change the hash route or cover content at rest. */
+.mn-skip-link {
+  position: fixed;
+  inset-block-start: max(8px, env(safe-area-inset-top));
+  inset-inline-start: max(8px, env(safe-area-inset-left));
+  z-index: 100;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-surface-raised);
+  color: var(--mn-ink);
+  transform: translateY(calc(-100% - 32px));
+}
+.mn-skip-link:focus { transform: none; }
+.mn-field[readonly] { background: var(--mn-surface-sunken); }
+.mn-field:disabled { cursor: not-allowed; }
+@media (forced-colors: active) {
+  .mn-skip-link { border-color: ButtonText; }
+  .mn-field:disabled { color: GrayText; }
+}
