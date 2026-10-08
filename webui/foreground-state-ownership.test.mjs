@@ -21,14 +21,10 @@ function functionSource(name) {
 
 for (const name of [
   "refreshStatus",
-  "refreshHealth",
-  "refreshApps",
+  "refreshCliState",
   "refreshPackages",
-  "refreshBlock",
   "refreshSubs",
-  "refreshMcp",
   "refreshDns",
-  "refreshWarp",
   "refreshWifiPolicy",
   "refreshPing",
   "refreshTopology",
@@ -47,6 +43,14 @@ for (const name of [
     /foregroundUiGate\.owns|canUpdateRefreshUi/,
     `${name} must guard stale completion`,
   );
+}
+
+// Shared readers must delegate both the read and its foreground ownership.
+// refresh-cli-state.test.mjs also exercises stale/failed completion behavior.
+for (const name of ["refreshHealth", "refreshApps", "refreshBlock", "refreshMcp", "refreshWarp"]) {
+  const segment = functionSource(name);
+  assert.match(segment, /return refreshCliState\(/, `${name} must use the guarded reader`);
+  assert.match(segment, /quiet,\s*foregroundToken,\s*\);/, `${name} must forward ownership`);
 }
 
 const saveConfig = functionSource("saveConfig");
