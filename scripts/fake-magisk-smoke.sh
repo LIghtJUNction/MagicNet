@@ -123,6 +123,142 @@ fi
 
 cargo build -p magicnet-cli >/dev/null
 
+# Exercise the startup-only selector path with the real CLI and a loopback API.
+# A separate module root makes any accidental hotspot apply/restart observable
+# without starting the fake core used by the rest of this smoke test.
+python3 - "$CLI_BIN" "$TMP/startup-replay" <<'PY'
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
+
+cli, module = Path(sys.argv[1]), Path(sys.argv[2])
+(module / ".config/magicnet").mkdir(parents=True)
+(module / "lib/kamfw").mkdir(parents=True)
+(module / "lib/kamfw/.kamfwrc").write_text("import() { :; }\n")
+events = module / "shell-events"
+(module / "lib/magicnet.sh").write_text('''
+printf '%s\\n' loader >>"$MODDIR/shell-events"
+magicnet_hotspot_offload_enable() { printf '%s\\n' offload_enable >>"$MODDIR/shell-events"; }
+magicnet_hotspot_reconcile() { printf '%s\\n' hotspot_reconcile >>"$MODDIR/shell-events"; }
+magicnet_hotspot_watchdog_start() { printf '%s\\n' watchdog_start >>"$MODDIR/shell-events"; }
+magicnet_apply_runtime_config() { printf '%s\\n' config_apply >>"$MODDIR/shell-events"; }
+magicnet_start_kernel() { printf '%s\\n' core_start >>"$MODDIR/shell-events"; }
+magicnet_prepare_network_for_core_stop() { printf '%s\\n' core_stop >>"$MODDIR/shell-events"; }
+''')
+store = module / ".config/magicnet/selector-selections.json"
+store.write_text(json.dumps({
+    "proxy": "fixture-node", "hotspot": "proxy", "ai-chatgpt": "ai-proxy",
+    "gone-member": "removed-node", "deleted-selector": "fixture-node",
+}) + "\n")
+saved_bytes = store.read_bytes()
+groups = {
+    "proxy": {"all": ["fixture-node", "other-node"], "now": "other-node"},
+    "hotspot": {"all": ["direct", "proxy"], "now": "direct"},
+    "ai-chatgpt": {"all": ["fixture-node", "ai-chatgpt-auto"], "now": "fixture-node"},
+    "gone-member": {"all": ["fixture-node"], "now": "fixture-node"},
+}
+requests = []
+invalid_proxies = False
+
+class API(BaseHTTPRequestHandler):
+    def log_message(self, *_):
+        pass
+
+    def reply(self, status, value):
+        body = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        requests.append(("GET", self.path, None))
+        if self.path != "/proxies":
+            self.reply(404, {})
+            return
+        self.reply(200, {} if invalid_proxies else {"proxies": groups})
+
+    def do_PUT(self):
+        value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        requests.append(("PUT", self.path, value))
+        group = unquote(self.path.removeprefix("/proxies/"))
+        member = value.get("name")
+        if group not in groups or member not in groups[group]["all"]:
+            self.reply(400, {})
+            return
+        groups[group]["now"] = member
+        self.reply(200, {})
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), API)
+worker = threading.Thread(target=server.serve_forever, daemon=True)
+worker.start()
+env = dict(os.environ, MODDIR=str(module),
+           MAGICNET_API=f"http://127.0.0.1:{server.server_port}")
+# Even the real curl discovery request must stay on this loopback fixture.
+for name in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+    env.pop(name, None)
+env["NO_PROXY"] = env["no_proxy"] = "127.0.0.1"
+
+def run(*args):
+    return subprocess.run([str(cli), *args], env=env, capture_output=True,
+                          text=True, timeout=15)
+
+try:
+    result = run("api", "replay-startup")
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert "replayed 3 persisted selectors" in result.stdout, result.stdout
+    assert groups["proxy"]["now"] == "fixture-node"
+    assert groups["hotspot"]["now"] == "proxy"
+    assert groups["ai-chatgpt"]["now"] == "ai-chatgpt-auto"
+    assert groups["gone-member"]["now"] == "fixture-node"
+    assert [(method, path, body) for method, path, body in requests if method == "PUT"] == [
+        ("PUT", "/proxies/ai-chatgpt", {"name": "ai-chatgpt-auto"}),
+        ("PUT", "/proxies/hotspot", {"name": "proxy"}),
+        ("PUT", "/proxies/proxy", {"name": "fixture-node"}),
+    ], requests
+    assert store.read_bytes() == saved_bytes, "startup rewrote saved choices"
+    assert not events.exists(), "startup entered hotspot apply/restart shell path"
+
+    before = len(requests)
+    result = run("api", "replay-startup", "extra")
+    assert result.returncode != 0 and "Usage: cli api replay-startup" in result.stderr
+    assert len(requests) == before and not events.exists(), "invalid args replayed choices"
+
+    for args in (("--json", "api", "replay-startup"), ("api", "replay-startup", "--json")):
+        result = run(*args)
+        response = json.loads(result.stdout)
+        assert result.returncode != 0 and response["schema"] == 1 and response["ok"] is False
+        assert response["error"]["code"] == "machine.unsupported_command", response
+        assert len(requests) == before and not events.exists(), "machine mode performed replay"
+
+    invalid_proxies = True
+    result = run("api", "replay-startup")
+    assert result.returncode != 0 and "invalid proxies response" in result.stderr, result
+    assert not any(method == "PUT" for method, _, _ in requests[before:])
+    assert not events.exists() and store.read_bytes() == saved_bytes
+    invalid_proxies = False
+
+    # The normal WebUI replay continues to synchronize hotspot offload/routes.
+    result = run("api", "replay")
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert events.read_text().splitlines() == [
+        "loader", "offload_enable", "loader", "hotspot_reconcile", "loader", "watchdog_start",
+    ], events.read_text()
+    assert store.read_bytes() == saved_bytes
+finally:
+    server.shutdown()
+    server.server_close()
+    worker.join(timeout=5)
+
+print("Startup selector replay: valid choices restored, stale choices skipped, no hotspot restart, errors and machine rejection passed")
+PY
+
 mkdir -p "$MOCK_BIN"
 # This host fixture uses util-linux flock. Do not accidentally select the
 # distro BusyBox as if it were the Android root manager's private toolset.

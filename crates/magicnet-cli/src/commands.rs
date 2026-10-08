@@ -202,6 +202,16 @@ fn api_command(app: &App, args: &[String]) -> Result<(), String> {
         println!("{}", app.api);
         return Ok(());
     }
+    if matches!(args.first().map(String::as_str), Some("replay-startup")) {
+        if args.len() != 1 {
+            return Err("Usage: cli api replay-startup".to_string());
+        }
+        // Startup already materialized hotspot policy. Replaying selectors must
+        // not enter the ordinary replay's hotspot apply/restart path again.
+        let applied = crate::selector_store::replay(app)?;
+        println!("[info] replayed {applied} persisted selectors");
+        return Ok(());
+    }
     api_cmd(app, args)
 }
 
@@ -375,6 +385,7 @@ mod tests {
             "mcp rotate-secret",
             "mode global",
             "api select",
+            "api replay-startup",
             "app apply",
             "backup restore-file",
             "repair",
