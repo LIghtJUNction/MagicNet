@@ -193,6 +193,40 @@ def fixture_elf(machine, suffix=b""):
     return bytes(value) + suffix
 
 
+def fixture_android_curl(*, interpreter=b'/system/bin/linker64\x00', needed=('libc.so', 'libdl.so')):
+    """Synthetic ELF structure only; never claim these bytes execute Android curl."""
+    value = bytearray(1024)
+    value[:6] = b'\x7fELF\x02\x01'
+    struct.pack_into('<HHI', value, 16, 3, 62, 1)
+    struct.pack_into('<Q', value, 32, 64)
+    struct.pack_into('<HHH', value, 52, 64, 56, 3)
+    strings = b'\x00'.join(name.encode() for name in needed) + b'\x00'
+    offsets, offset = [], 0
+    for name in needed:
+        offsets.append(offset)
+        offset += len(name) + 1
+    records = [(5, 0x1000 + 512), (10, len(strings))] + [(1, n) for n in offsets] + [(0, 0)]
+    dynamic = b''.join(struct.pack('<qQ', *record) for record in records)
+    value[256:256 + len(interpreter)] = interpreter
+    value[512:512 + len(strings)] = strings
+    value[768:768 + len(dynamic)] = dynamic
+    segments = [(1, 5, 0, 0x1000, 0, len(value), len(value), 4096),
+                (3, 4, 256, 0x1100, 0, len(interpreter), len(interpreter), 1),
+                (2, 4, 768, 0x1300, 0, len(dynamic), len(dynamic), 8)]
+    for index, fields in enumerate(segments):
+        struct.pack_into('<IIQQQQQQ', value, 64 + index * 56, *fields)
+    return bytes(value)
+
+
+def bind_synthetic_curl_ca(runtime):
+    """Bind a local test CA, not the reviewed production/CI public CA pin."""
+    path = Path(os.environ['MAGICNET_PUBLIC_CURL_DIR']) / 'cacert.pem'
+    data = path.read_bytes()
+    runtime.CURL_SOURCES = runtime.CURL_SOURCES | {'ca': hashlib.sha256(data).hexdigest()}
+    runtime.CURL_CA_BYTES = len(data)
+    runtime.CURL_CA_CERTS = data.count(b'-----BEGIN CERTIFICATE-----')
+
+
 class RuntimeDevice:
     """An explicit device model: any unknown command fails instead of succeeding."""
 
@@ -217,9 +251,10 @@ class RuntimeDevice:
         self.live_hash = expected['payload_sha256']['bin/sing-box']
         self.apk_path = '/data/app/test-probe/base.apk'
         self.hashes = {runtime.SIM.MOD + '/' + path: value
-                       for section in ('payload_sha256', 'static_files_sha256')
+                       for section in ('payload_sha256', 'extra_payload_sha256', 'static_files_sha256')
                        for path, value in expected[section].items()}
         self.hashes[runtime.SIM.MOD + '/' + runtime.SIM.PROVENANCE] = expected['marker_sha256']
+        self.hashes[runtime.SIM.MOD + '/' + runtime.PUBLIC_PROVENANCE] = expected['public_marker_sha256']
         self.hashes[runtime.SIM.KSUD] = expected['ksud_sha256']
         self.hashes[self.apk_path] = expected['probe_apk_sha256']
         self.status = {'schema': 1, 'ok': True, 'command': 'service.status', 'data': {
@@ -287,6 +322,11 @@ class RuntimeDevice:
         elif command == f'if [ -d {sim.STAGED} ]; then echo {sim.STAGED}; else echo {sim.MOD}; fi':
             cp = self.cp((sim.STAGED if self.staged else sim.MOD) + '\n')
         elif command in seed_commands:
+            cp = self.cp()
+        elif command in {f'test -f {target}/bin/curl && test ! -L {target}/bin/curl && test -x {target}/bin/curl'
+                         for target in (sim.MOD, sim.STAGED)}:
+            cp = self.cp()
+        elif command == 'test -z "${CURL_CA_BUNDLE+x}" && test -z "${SSL_CERT_FILE+x}" && test -z "${SSL_CERT_DIR+x}"':
             cp = self.cp()
         else:
             responses = {
@@ -367,6 +407,16 @@ class PublicRuntimeContract(unittest.TestCase):
         self.ksud.write_bytes(fixture_elf(62, b"kernelsu-userspace"))
         self.probe = self.root / "probe.apk"
         self.probe.write_bytes(b"test-only-application-probe")
+        self.curl_dir = self.root / 'public-curl'
+        self.curl_dir.mkdir()
+        self.curl = self.curl_dir / 'curl'
+        self.curl.write_bytes(fixture_android_curl())
+        self.curl.chmod(0o755)
+        (self.curl_dir / 'cacert.pem').write_bytes(
+            b'-----BEGIN CERTIFICATE-----\nSYNTHETIC_TEST_CA\n-----END CERTIFICATE-----\n')
+        self.ndk = self.root / 'ndk'
+        self.ndk.mkdir()
+        (self.ndk / 'source.properties').write_text('Pkg.Revision = 30.0.16248370\n')
         self.source_entries = {
             "module.prop": b"id=MagicNet\nname=MagicNet\nversion=v1.5.22\nversionCode=22\n",
             "customize.sh": b"#!/system/bin/sh\nexport SKIPUNZIP=1\n",
@@ -391,16 +441,45 @@ class PublicRuntimeContract(unittest.TestCase):
             "MAGICNET_X86_SINGBOX": str(self.payloads["sing-box"]),
             "MAGICNET_X86_TOOLS": str(self.tools),
             "MAGICNET_NETWORK_PROBE_APK": str(self.probe),
+            "MAGICNET_PUBLIC_CURL_DIR": str(self.curl_dir),
+            "ANDROID_NDK_HOME": str(self.ndk),
         }
         self.environment = patch.dict(os.environ, self.env)
         self.environment.start()
         self.addCleanup(self.environment.stop)
         self.runtime = load_public_runtime()
+        bind_synthetic_curl_ca(self.runtime)
+        self.write_curl_metadata()
+        self.capabilities = dict(schema=1, status='verified', https=True, ssl=True,
+                                 resolve=True, gzip=True, tls_positive=True, hostname_reject=True,
+                                 default_trust_reject=True, embedded_ca_identity=True, cleanup=True,
+                                 embedded_ca_bytes=self.runtime.CURL_CA_BYTES)
+        self.fake_curl_proof = patch.object(self.runtime, 'verify_curl_capabilities',
+                                            return_value=self.capabilities)
+        self.fake_curl_proof.start()
+        self.addCleanup(self.fake_curl_proof.stop)
         self.no_real_processes = patch.object(
             self.runtime.SIM.subprocess, 'run',
             side_effect=AssertionError('unexpected real subprocess in public-runtime fixture'))
         self.no_real_processes.start()
         self.addCleanup(self.no_real_processes.stop)
+
+    def write_curl_metadata(self):
+        r = self.runtime
+        value = {'schema': 1, 'scope': r.CURL_SCOPE, 'status': 'built',
+                 'target': {'os': 'android', 'abi': 'x86_64', 'api': 35},
+                 'versions': r.CURL_VERSIONS.copy(),
+                 'sources': {name: {'url': 'https://example.invalid/' + name, 'sha256': digest}
+                             for name, digest in r.CURL_SOURCES.items()},
+                 'ca': {'mode': 'embedded', 'sha256': r.CURL_SOURCES['ca'],
+                        'bytes': r.CURL_CA_BYTES, 'cert_count': r.CURL_CA_CERTS,
+                        'runtime_bundle': False, 'system_store': False},
+                 'builder_sha256': r.SIM.digest(ROOT / 'scripts/prepare-android-public-curl.sh'),
+                 'curl_sha256': r.SIM.digest(self.curl), 'curl_bytes': self.curl.stat().st_size,
+                 'elf': r.curl_elf(self.curl),
+                 'toolchain': {'ndk_source_properties_sha256': r.SIM.digest(self.ndk / 'source.properties')}}
+        (self.curl_dir / 'build-provenance.json').write_text(json.dumps(value))
+        return value
 
     def write_archive(self):
         with zipfile.ZipFile(self.source, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -454,6 +533,147 @@ class PublicRuntimeContract(unittest.TestCase):
         optional.unlink()
         with self.assertRaises((RuntimeError, ValueError, FileNotFoundError)):
             self.runtime.manifest_for_current()
+
+    def test_public_supplement_preserves_complete_offline_payload_and_marker(self):
+        work = self.root / 'public-archive'
+        work.mkdir()
+        archive, expected = self.runtime.current_archive(work)
+        with zipfile.ZipFile(work / 'MagicNet-base-x86_64.zip') as baseline, zipfile.ZipFile(archive) as public:
+            self.assertEqual(set(public.namelist()) - set(baseline.namelist()),
+                             {'bin/curl', self.runtime.PUBLIC_PROVENANCE})
+            for name in baseline.namelist():
+                self.assertEqual(public.read(name), baseline.read(name))
+            original_marker = json.loads(public.read(self.runtime.SIM.PROVENANCE))
+            self.assertEqual(original_marker['payload_sha256'], expected['payload_sha256'])
+            self.assertNotIn('bin/curl', expected['payload_sha256'])
+            self.assertEqual(expected['extra_payload_sha256'], {'bin/curl': self.runtime.SIM.digest(self.curl)})
+            addon = public.read(self.runtime.PUBLIC_PROVENANCE).decode()
+            for private in ('://', 'compiler', str(self.root), 'config.json'):
+                self.assertNotIn(private, addon)
+            self.assertEqual(json.loads(addon)['base_marker_sha256'], expected['marker_sha256'])
+        self.assertEqual(expected['fixture_zip_sha256'], self.runtime.SIM.digest(archive))
+        self.assertEqual(expected['base_fixture_zip_sha256'],
+                         self.runtime.SIM.digest(work / 'MagicNet-base-x86_64.zip'))
+        self.assertNotEqual(expected['base_fixture_zip_sha256'], expected['fixture_zip_sha256'])
+        first_bytes = archive.read_bytes()
+        second, again = self.runtime.current_archive(work)
+        self.assertEqual(expected, again)
+        self.assertEqual(first_bytes, second.read_bytes())
+        offline, report = self.write_offline(expected)
+        report = copy.deepcopy(report)
+        report['provenance']['payload_sha256']['extra'] = 'f' * 64
+        offline.write_text(json.dumps(report))
+        with self.assertRaises(RuntimeError):
+            self.runtime.validate_offline(offline, expected)
+
+    def test_public_supplement_collisions_or_write_failure_leave_no_final_zip(self):
+        for name in ('bin/curl', self.runtime.PUBLIC_PROVENANCE):
+            with self.subTest(collision=name):
+                self.source_entries[name] = self.curl.read_bytes() if name == 'bin/curl' else b'{}'
+                self.write_archive()
+                work = self.root / ('collision-' + name.replace('/', '-'))
+                work.mkdir()
+                before = self.runtime.SIM.digest(self.source)
+                with self.assertRaisesRegex(RuntimeError, 'curl_fixture_collision'):
+                    self.runtime.current_archive(work)
+                self.assertFalse((work / 'MagicNet-public-x86_64.zip').exists())
+                self.assertFalse(list(work.glob('*.partial')))
+                self.assertEqual(self.runtime.SIM.digest(self.source), before)
+                del self.source_entries[name]
+        self.write_archive()
+        work = self.root / 'failed-augmentation'
+        work.mkdir()
+        base = work / 'base.zip'
+        with zipfile.ZipFile(base, 'w') as stream:
+            stream.writestr('original', b'unchanged')
+        destination = work / 'public.zip'
+        with patch.object(self.runtime.zipfile.ZipFile, 'writestr', side_effect=OSError('write unavailable')):
+            with self.assertRaises(OSError):
+                self.runtime.augment_public_archive(base, destination, self.curl, {'schema': 1})
+        self.assertFalse(destination.exists())
+        self.assertFalse(list(work.glob('*.partial')))
+
+    def test_public_curl_requires_android_interpreter_and_declared_static_dependencies(self):
+        valid = self.curl.read_bytes()
+        failures = (b'', fixture_elf(183), b'#!/bin/sh\nexit 0\n',
+                    fixture_android_curl(interpreter=b'/lib64/ld-linux-x86-64.so.2\x00'),
+                    fixture_android_curl(needed=('libc.so.6',)),
+                    fixture_android_curl(needed=('libc.so', 'libssl.so.3')),
+                    fixture_android_curl(needed=('libc.so', 'libc.so')))
+        for content in failures:
+            with self.subTest(digest=hashlib.sha256(content).hexdigest()):
+                self.curl.write_bytes(content)
+                with self.assertRaises((RuntimeError, ValueError)):
+                    self.runtime.public_curl()
+        self.curl.write_bytes(valid)
+        target = self.curl_dir / 'host-link-target'
+        target.write_bytes(valid)
+        target.chmod(0o755)
+        self.curl.unlink()
+        self.curl.symlink_to(target)
+        with self.assertRaises(RuntimeError):
+            self.runtime.public_curl()
+
+    def test_public_curl_refuses_stale_source_ca_builder_toolchain_and_metadata(self):
+        original = self.write_curl_metadata()
+        metadata_path = self.curl_dir / 'build-provenance.json'
+        mutations = [lambda x: x['versions'].update(curl='8.21.0'),
+                     lambda x: x['sources']['openssl'].update(sha256='f' * 64),
+                     lambda x: x['ca'].update(mode='file'),
+                     lambda x: x['ca'].update(cert_count=True),
+                     lambda x: x.update(builder_sha256='f' * 64),
+                     lambda x: x.update(curl_sha256='f' * 64),
+                     lambda x: x['toolchain'].update(ndk_source_properties_sha256='f' * 64),
+                     lambda x: x['elf'].update(rpath=0),
+                     lambda x: x.update(schema=True)]
+        for mutate in mutations:
+            record = copy.deepcopy(original)
+            mutate(record)
+            metadata_path.write_text(json.dumps(record))
+            with self.assertRaises(RuntimeError):
+                self.runtime.public_curl()
+        metadata_path.write_text(json.dumps(original))
+        ca = self.curl_dir / 'cacert.pem'
+        ca.write_bytes(ca.read_bytes() + b'changed')
+        with self.assertRaises(RuntimeError):
+            self.runtime.public_curl()
+
+    def test_public_curl_current_host_change_requires_fresh_build_and_handoff(self):
+        before = self.runtime.manifest_for_current()
+        self.curl.write_bytes(self.curl.read_bytes() + b'new-build-content')
+        with self.assertRaisesRegex(RuntimeError, 'curl_build_identity_mismatch'):
+            self.runtime.manifest_for_current()
+        self.write_curl_metadata()
+        after = self.runtime.manifest_for_current()
+        self.assertNotEqual(before, after)
+        self.assertEqual(before['payload_sha256'], after['payload_sha256'])
+        self.assertNotEqual(before['extra_payload_sha256'], after['extra_payload_sha256'])
+
+    def test_runtime_rejects_missing_curl_permissions_or_ca_override_before_capability_requests(self):
+        curl = self.runtime.SIM.MOD + '/bin/curl'
+        for command in (f'test -f {curl} && test ! -L {curl} && test -x {curl}',
+                        'test -z "${CURL_CA_BUNDLE+x}" && test -z "${SSL_CERT_FILE+x}" && test -z "${SSL_CERT_DIR+x}"'):
+            with self.subTest(command=command):
+                device = self.device()
+                device.overrides['kshell', command] = self.cp(rc=1)
+                with self.assertRaises(RuntimeError):
+                    self.runtime.observe_runtime(device, device.expected)
+
+    def test_failed_curl_capability_proof_invalidates_prior_ready_and_does_not_repeat_install(self):
+        device = self.device(installed=False)
+        offline, _ = self.write_offline(device.expected)
+        self.output.mkdir()
+        self.runtime.atomic_report(self.output / 'prepared-runtime.json', {'schema': 1, 'status': 'READY'})
+        with patch.object(self.runtime, 'verify_curl_capabilities', side_effect=RuntimeError('curl_tls_unknown')), \
+                patch.object(self.runtime.SIM, 'Device', return_value=device):
+            self.assertEqual(self.runtime.main(['prepare', '--output', str(self.output),
+                                               '--simulation-report', str(offline)]), 1)
+        report = json.loads((self.output / 'prepared-runtime.json').read_text())
+        self.assertEqual(report['status'], 'FAIL')
+        self.assertEqual(report['reason'], 'curl_tls_unknown')
+        self.assertEqual(sum(' module install ' in command for channel, command in device.calls
+                             if channel == 'kshell'), 1)
+        self.assertEqual(device.calls.count(('lifecycle', 'reboot')), 1)
 
     def device(self, *, installed=True):
         device = RuntimeDevice(self.runtime, self.runtime.manifest_for_current())
@@ -542,7 +762,8 @@ class PublicRuntimeContract(unittest.TestCase):
         device.live_hash = 'b' * 64
         with self.assertRaises(RuntimeError):
             self.runtime.observe_runtime(device, device.expected)
-        for path in ('bin/sing-box', 'bin/proxylink', 'service.sh', self.runtime.SIM.PROVENANCE):
+        for path in ('bin/sing-box', 'bin/proxylink', 'bin/curl', 'service.sh',
+                     self.runtime.SIM.PROVENANCE, self.runtime.PUBLIC_PROVENANCE):
             with self.subTest(changed_disk_path=path):
                 device = self.device()
                 device.hashes[self.runtime.SIM.MOD + '/' + path] = 'b' * 64
@@ -757,7 +978,7 @@ class PublicRuntimeContract(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.runtime.validate_offline(path, expected)
 
-    def test_successful_prepare_installs_once_and_verify_is_read_only(self):
+    def test_successful_prepare_installs_once_and_verify_preserves_module_state(self):
         device = self.device(installed=False)
         device.verified = False
         offline, _ = self.write_offline(device.expected)
@@ -820,6 +1041,8 @@ class PublicRuntimeContract(unittest.TestCase):
         for section, replacement in (
             ('source_sha', 'b' * 40), ('production_zip_sha256', 'b' * 64),
             ('fixture_zip_sha256', 'b' * 64), ('payload_sha256', {}),
+            ('base_fixture_zip_sha256', 'b' * 64), ('extra_payload_sha256', {}),
+            ('curl_build', {}), ('public_marker_sha256', 'b' * 64),
             ('static_files_sha256', {}), ('marker_sha256', 'b' * 64),
             ('ksud_sha256', 'b' * 64), ('probe_apk_sha256', 'b' * 64),
         ):
@@ -891,6 +1114,7 @@ spec = importlib.util.spec_from_file_location("runtime_contract_child", sys.argv
 test = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(test)
 runtime = test.load_public_runtime()
+test.bind_synthetic_curl_ca(runtime)
 expected = runtime.manifest_for_current()
 class PausedDevice(test.RuntimeDevice):
     def identify(self):
