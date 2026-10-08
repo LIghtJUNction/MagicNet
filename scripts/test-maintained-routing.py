@@ -53,6 +53,9 @@ assert definitions[WECHAT_DNS_TAG] == {
     "format": "binary", "path": "rules/service-wechat-dns.srs",
 }
 assert routes[0] == {"port": 53, "action": "hijack-dns"}
+# Protocol-only ICMP policy is checked separately from domain classifiers.
+assert {"protocol": "icmp", "outbound": "block"} in routes
+assert {"protocol": "icmp", "server": "doh-google"} in dns
 for tag in ("lyc-geoip-telegram", "lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"):
     assert index("metacubex-geosite-geolocation-not-cn") < index(tag)
 
@@ -133,7 +136,7 @@ expected = []
 for rule in routes:
     if "outbound" not in rule or any(
         k in rule
-        for k in ("network", "port", "package_name", "ip_cidr", "ip_is_private")
+        for k in ("network", "port", "package_name", "ip_cidr", "ip_is_private", "protocol")
     ):
         continue
     if any("geoip" in definitions[t].get("path", "") for t in rule.get("rule_set", [])):
@@ -158,7 +161,7 @@ expected_domains = [
     for rule in expand_rule_sets(expected)
 ]
 assert expected_domains == expand_rule_sets(
-    [{k: v for k, v in r.items() if k != "server"} for r in dns]
+    [{k: v for k, v in r.items() if k != "server"} for r in dns if "protocol" not in r]
 ), "DNS domain classifiers must retain routing order and the WeChat projection"
 
 if "--assets" not in sys.argv:
