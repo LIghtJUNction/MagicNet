@@ -46,6 +46,14 @@ assert_limit 512MiB 16777216
 [ "$(GOMEMLIMIT=off MAGICNET_MEMINFO_PATH="$WORK/missing" magicnet_singbox_runtime_memory_limit)" = off ] ||
     fail 'GOMEMLIMIT=off was not preserved'
 
+# Android must not honor a caller-injected meminfo fixture. Host tests still
+# use MAGICNET_MEMINFO_PATH above because they do not force the Android path.
+write_meminfo "$WORK/tiny-meminfo" 2097152
+[ "$(MAGICNET_TEST_FORCE_ANDROID=1 MAGICNET_MEMINFO_PATH="$WORK/tiny-meminfo" magicnet_singbox_runtime_memory_limit)" != 192MiB ] ||
+    fail 'Android runtime honored a caller-injected meminfo path'
+[ "$(MAGICNET_TEST_FORCE_ANDROID=1 MAGICNET_TEST_ALLOW_PROC_ROOT=1 MAGICNET_MEMINFO_PATH="$WORK/tiny-meminfo" magicnet_singbox_runtime_memory_limit)" = 192MiB ] ||
+    fail 'explicit Android meminfo fixture escape hatch was ignored'
+
 # Keep the launcher integration from regressing into a computed-but-unused
 # budget. The assignment is scoped to singbox_start, so it cannot leak to the
 # Rust CLI or other module helpers.

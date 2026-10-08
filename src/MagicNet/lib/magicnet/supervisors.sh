@@ -348,6 +348,14 @@ magicnet_trusted_flock() {
 
 magicnet_fswatch_busybox_bin() (
     _mfb_busybox_bin="${KAM_FSWATCH_BUSYBOX_BIN:-}"
+    if command -v magicnet_android_runtime >/dev/null 2>&1 && magicnet_android_runtime; then
+        case "$_mfb_busybox_bin" in
+        /data/adb/ap/bin/busybox | /data/adb/ksu/bin/busybox | /data/adb/magisk/busybox) ;;
+        *)
+            _mfb_busybox_bin=
+            ;;
+        esac
+    fi
     if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
         "$_mfb_busybox_bin" flock --help >/dev/null 2>&1; then
         printf '%s\n' "$_mfb_busybox_bin"

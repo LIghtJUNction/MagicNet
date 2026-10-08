@@ -14,6 +14,8 @@ MODDIR="$fixture/module"
 export MODDIR
 
 # shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+# shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"

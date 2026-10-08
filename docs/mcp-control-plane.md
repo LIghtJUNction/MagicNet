@@ -57,10 +57,13 @@ private config editor, override inspect or subscription tools when the user
 requests those contents.
 
 The generic `magicnet_cli` tool refuses the same private dumps: `mcp secret`,
-`sub get` / `list` / `file` / `copy-path`, `config-editor get` and repository
-getters, `backup export`, `override inspect`, and raw `service` / `mcp` logs.
-`magicnet_service_control` / `magicnet_mcp_control` log tails go through
-`magicnet_log_read` redaction. Use those named tools instead of generic argv.
+`sub get` / `list` / `file` / `copy-path` / `user-agent get`,
+`config-editor get` / `path` and repository getters, `backup export`,
+`override inspect`, raw `service` / `mcp` logs, and internal `__*`
+entrypoints. Child CLI processes also drop inherited proc/cgroup/meminfo
+and BusyBox overrides. `magicnet_service_control` / `magicnet_mcp_control`
+log tails go through `magicnet_log_read` redaction. Use those named tools
+instead of generic argv.
 
 ## Read-only resources
 

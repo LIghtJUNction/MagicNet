@@ -122,7 +122,17 @@ if ! "$CURL_BIN" --disable --version 2>/dev/null | awk '
 fi
 
 # Use a private working directory; only aggregate after every worker has finished.
-WORK=$(mktemp -d "${TMPDIR:-$MODDIR}/.network-check.XXXXXX") || exit 2
+# Android ignores inherited TMPDIR so probe artifacts stay in module state.
+if [ "$android_runtime" -eq 1 ]; then
+    if [ -d "$MODDIR/.state" ]; then
+        tmp_base="$MODDIR/.state"
+    else
+        tmp_base="$MODDIR"
+    fi
+else
+    tmp_base=${TMPDIR:-$MODDIR}
+fi
+WORK=$(mktemp -d "$tmp_base/.network-check.XXXXXX") || exit 2
 awk '/^[[:space:]]*#/ || /^[[:space:]]*$/ {next} {print}' "$TARGETS" > "$WORK/targets"
 PIDS=''
 cleanup() {
