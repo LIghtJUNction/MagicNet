@@ -81,6 +81,7 @@ check bash scripts/test-mcp-phase-config.sh
 # Workspace manifests are outside the host cache scope; always recheck this contract.
 CI_TEST_FORCE=1 check python3 scripts/test-android-acceptance-contract.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-network-benchmark.py
+CI_TEST_FORCE=1 check python3 scripts/test-android-network-soak.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-tun-proof.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-adb.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-utf8.py

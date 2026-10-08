@@ -118,6 +118,300 @@ magicnet_singbox_subscription_filter_file() {{ printf '/dev/null\\n'; }}
         invalid = self.file('invalid.json', '{"outbounds":[{"type":"direct","tag":"direct"}]}')
         self.convert([valid, invalid], converter, success=False)
 
+    def native_update(self, content, converter=False):
+        source = self.file('native-source', content)
+        captured = self.root / 'candidate-outbounds.json'
+        status = self.root / 'native-status'
+        active = self.root / 'module/.config/sing-box/config.json'
+        active.parent.mkdir(parents=True, exist_ok=True)
+        if not active.exists():
+            active.write_text('{"outbounds":[]}\n')
+        captured.unlink(missing_ok=True)
+        status.unlink(missing_ok=True)
+        previous = active.read_bytes()
+        converter_control = """
+magicnet_singbox_proxylink_bin() { printf '/fixture-converter\\n'; }
+magicnet_singbox_build_outbounds_with_proxylink() {
+  printf '%s\\n' '[{"type":"trojan","tag":"converted","server":"192.0.2.10","server_port":443,"password":"fixture","tls":{"enabled":true,"server_name":"tls.example.invalid","alpn":["h2"]},"transport":{"type":"ws","path":"/fixture"}}]' >"$2"
+  printf '1 0\\n'
+}
+""" if converter else ''
+        if converter == 'failed':
+            converter_control = '''
+magicnet_singbox_proxylink_bin() { printf '/fixture-converter\\n'; }
+magicnet_singbox_build_outbounds_with_proxylink() { return 1; }
+'''
+        self.shell(f"""
+info() {{ :; }}; warn() {{ :; }}; error() {{ :; }}; success() {{ :; }}
+magicnet_singbox_status_value() {{ printf '0\\n'; }}
+magicnet_singbox_is_running() {{ return 1; }}
+magicnet_singbox_transaction_begin() {{ return 0; }}
+magicnet_singbox_update_cleanup_stage() {{ :; }}
+magicnet_singbox_update_status() {{ printf '%s %s %s\\n' "$@" >>{shlex.quote(str(status))}; }}
+magicnet_singbox_fetch_subscription() {{
+  mkdir -p "${{1%/*}}/sources"
+  cp {shlex.quote(str(source))} "${{1%/*}}/sources/offline"
+  printf '%s\\n' "${{1%/*}}/sources/offline" >"$1"
+}}
+# Capture the real native result before any config install or core restart.
+magicnet_singbox_update_config_with_nodes() {{
+  cp "$1" {shlex.quote(str(captured))}
+  return 1
+}}
+MAGICNET_PROXYLINK_ENABLED={int(bool(converter))}
+MAGICNET_SUB_SOURCE_FILE={shlex.quote(str(source))}
+{converter_control}
+magicnet_singbox_update_subscription_unlocked
+""", success=False)
+        self.assertEqual(active.read_bytes(), previous)
+        nodes = json.loads(captured.read_text()) if captured.exists() else None
+        return nodes, status.read_text()
+
+    def test_native_literal_quoted_keys_preserve_tls_server_name(self):
+        for sni_key in ('sni', '"sni"', "'sni'", 'servername', '"servername"', "'servername'"):
+            for flow in (False, True):
+                with self.subTest(key=sni_key, flow=flow):
+                    fields = [('name', 'tls-fixture'), ('type', 'trojan'),
+                              ('server', '192.0.2.10'), ('port', '443'),
+                              ('password', 'fixture'), (sni_key, 'tls.example.invalid')]
+                    if flow:
+                        content = 'proxies:\n  - {' + ', '.join(k + ': ' + v for k, v in fields) + '}\n'
+                    else:
+                        content = 'proxies:\n  - ' + '\n    '.join(k + ': ' + v for k, v in fields) + '\n'
+                    nodes, _ = self.native_update(content)
+                    self.assertIsNotNone(nodes)
+                    node = next(n for n in nodes if n.get('server'))
+                    self.assertEqual(node['tls']['server_name'], 'tls.example.invalid')
+                    self.assertNotIn('insecure', node['tls'])
+
+    def test_native_literal_quoted_mapping_keys_and_spaced_colons(self):
+        content = """proxies:
+  - "name" : tls-fixture
+    'type' : trojan
+    "server" : 192.0.2.10
+    'port' : 443
+    "password" : fixture
+    'sni' : tls.example.invalid
+"""
+        nodes, _ = self.native_update(content)
+        self.assertIsNotNone(nodes)
+        node = next(n for n in nodes if n.get('server'))
+        self.assertEqual(node['tls']['server_name'], 'tls.example.invalid')
+        self.assertNotIn('insecure', node['tls'])
+
+    def test_native_quoted_password_preserves_mapping_punctuation(self):
+        values = [
+            ('"fixture, alpn: h2"', 'fixture, alpn: h2'),
+            ('"fixture#literal, sni: decoy.invalid"', 'fixture#literal, sni: decoy.invalid'),
+            ('fixture#literal', 'fixture#literal'),
+            (r"'fixture\path'", r'fixture\path'),
+            ("'can''t, alpn: h2'", "can't, alpn: h2"),
+            ("'fixture { alpn: h2 }, sni: decoy.invalid'", 'fixture { alpn: h2 }, sni: decoy.invalid'),
+        ]
+        for password, expected in values:
+            for flow in (False, True):
+                with self.subTest(password=password, flow=flow):
+                    fields = [('name', 'tls-fixture'), ('type', 'trojan'),
+                              ('server', '192.0.2.10'), ('port', '443'),
+                              ('password', password), ('sni', 'tls.example.invalid')]
+                    if flow:
+                        content = 'proxies:\n  - {' + ', '.join(k + ': ' + v for k, v in fields) + '}\n'
+                    else:
+                        content = 'proxies:\n  - ' + '\n    '.join(k + ': ' + v for k, v in fields) + '\n'
+                    nodes, _ = self.native_update(content)
+                    self.assertIsNotNone(nodes)
+                    node = next(n for n in nodes if n.get('server'))
+                    self.assertEqual(node['password'], expected)
+                    self.assertEqual(node['tls']['server_name'], 'tls.example.invalid')
+                    self.assertNotIn('insecure', node['tls'])
+
+    def test_native_complex_yaml_scalars_require_converter(self):
+        ordinary = '  - name: ordinary\n    type: trojan\n    server: 192.0.2.10\n    port: 443\n    password: fixture\n    sni: tls.example.invalid\n'
+        cases = [
+            ('sni', '|\n      tls.example.invalid'),
+            ('sni', '>-\n      tls.example.invalid'),
+            ('sni', '*tls_name'),
+            ('sni', '[tls.example.invalid]'),
+            ('sni', '{host: tls.example.invalid}'),
+            ('sni', r'"tls.example.\u0069nvalid"'),
+            ('sni', '!!str tls.example.invalid'),
+            ('servername', '&tls_name tls.example.invalid'),
+        ]
+        for value in ('!!bool true', '*tls_flag', '[true]', '|\n      true', 'unknown'):
+            cases.append(('tls', value))
+        for key in ('name', 'type', 'server', 'port', 'password', 'uuid', 'network',
+                    'tls', 'insecure', 'skip-cert-verify'):
+            cases.append((key, r'"tr\u0075e"'))
+        for key, value in cases:
+            for flow in (False, True):
+                if flow and '\n' in value:
+                    continue
+                with self.subTest(key=key, value=value, flow=flow):
+                    fields = {'name': 'advanced', 'type': 'vmess' if key == 'tls' else 'trojan',
+                              'server': '192.0.2.10', 'port': '443', 'password': 'fixture',
+                              'uuid': '00000000-0000-4000-8000-000000000001'}
+                    fields[key] = value
+                    if flow:
+                        content = 'proxies:\n  - {' + ', '.join('"' + k + '": ' + v for k, v in fields.items()) + '}\n' + ordinary
+                    else:
+                        content = 'proxies:\n  - ' + '\n    '.join('"' + k + '": ' + v for k, v in fields.items()) + '\n' + ordinary
+                    nodes, status = self.native_update(content)
+                    self.assertIsNone(nodes)
+                    self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_native_literal_boolean_tls_values_keep_their_intent(self):
+        for value, enabled in (('true', True), ('True', True), ('"true"', True),
+                               ("'true'", True), ('false', False), ('"false"', False)):
+            with self.subTest(value=value):
+                content = 'proxies:\n  - {name: fixture, type: vmess, server: 192.0.2.10, port: 443, uuid: 00000000-0000-4000-8000-000000000001, tls: ' + value + ', sni: tls.example.invalid}\n'
+                nodes, _ = self.native_update(content)
+                self.assertIsNotNone(nodes)
+                node = next(n for n in nodes if n.get('server'))
+                if enabled:
+                    self.assertEqual(node['tls']['server_name'], 'tls.example.invalid')
+                    self.assertNotIn('insecure', node['tls'])
+                else:
+                    self.assertNotIn('tls', node)
+
+    def test_converter_success_remains_available_for_complex_scalars(self):
+        content = 'proxies:\n  - {name: fixture, type: trojan, server: 192.0.2.10, port: 443, password: fixture, "sni": "tls.example.\\u0069nvalid"}\n'
+        nodes, _ = self.native_update(content, converter=True)
+        self.assertIsNotNone(nodes)
+        self.assertEqual(nodes[0]['tls']['server_name'], 'tls.example.invalid')
+        self.assertNotIn('insecure', nodes[0]['tls'])
+
+    def test_native_yaml_tls_and_transport_options_require_converter(self):
+        ordinary = '  - name: ordinary\n    type: trojan\n    server: 192.0.2.10\n    port: 443\n    password: fixture\n    sni: tls.example.invalid\n'
+        for field in ('network: ws', 'network: grpc', 'skip-cert-verify: true', 'insecure: true',
+                      'type: wireguard', 'alpn: [h2, http/1.1]',
+                      '"alpn": [h2]', "'ws-opts': {path: /fixture}",
+                      r'"\u0073ni": tls.example.invalid'):
+            with self.subTest(field=field):
+                content = 'proxies:\n' + ordinary.replace('ordinary', 'advanced') + '    ' + field + '\n' + ordinary
+                nodes, status = self.native_update(content)
+                self.assertIsNone(nodes)
+                self.assertIn('convert failed incomplete_conversion', status)
+        for key in ('alpn', '"alpn"', "'alpn'"):
+            with self.subTest(flow_key=key):
+                content = 'proxies:\n  - {name: advanced, type: trojan, server: 192.0.2.10, port: 443, password: fixture, sni: tls.example.invalid, ' + key + ': [h2, http/1.1]}\n' + ordinary
+                nodes, status = self.native_update(content)
+                self.assertIsNone(nodes)
+                self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_native_share_transport_cannot_be_silently_dropped(self):
+        valid = 'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid#ordinary\n'
+        cases = [
+            'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid&type=ws&path=%2Ffixture#advanced',
+            'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid&type=grpc&serviceName=fixture#advanced',
+            'vless://00000000-0000-4000-8000-000000000001@192.0.2.10:443?security=tls&sni=tls.example.invalid&type=ws#advanced',
+            'vless://00000000-0000-4000-8000-000000000001@192.0.2.10:443?security=tls&sni=tls.example.invalid&alpn=h2#advanced',
+        ]
+        vmess = {'ps': 'advanced', 'add': '192.0.2.10', 'port': '443',
+                 'id': '00000000-0000-4000-8000-000000000001', 'aid': '0',
+                 'net': 'grpc', 'path': 'fixture-service', 'tls': 'tls', 'sni': 'tls.example.invalid'}
+        cases.append('vmess://' + base64.b64encode(json.dumps(vmess).encode()).decode())
+        for advanced in cases:
+            with self.subTest(scheme=advanced.split(':')[0], index=cases.index(advanced)):
+                nodes, status = self.native_update(advanced + '\n' + valid)
+                self.assertIsNone(nodes)
+                self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_failed_converter_cannot_fall_back_to_incomplete_tls_config(self):
+        content = 'proxies:\n  - {name: fixture, type: trojan, server: 192.0.2.10, port: 443, password: fixture, "alpn": [h2]}\n'
+        nodes, status = self.native_update(content, converter='failed')
+        self.assertIsNone(nodes)
+        self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_native_share_unsupported_schemes_and_options_require_converter(self):
+        valid = 'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid#ordinary\n'
+        cases = [
+            'wireguard://fixture@192.0.2.10:443#unknown',
+            'ss://aes-128-gcm:fixture@192.0.2.10:443?plugin=obfs-local%3Bobfs%3Dtls#advanced',
+            'hy2://fixture@192.0.2.10:443?obfs=salamander&obfs-password=fixture#advanced',
+            'hysteria2://fixture@192.0.2.10:443?insecure=1#advanced',
+            'trojan://fixture@192.0.2.10:443?fp=chrome#advanced',
+            'trojan://fixture@192.0.2.10:443?sni|servername=tls.example.invalid#compound-key',
+            'anytls://fixture@192.0.2.10:443?skip-cert-verify=1#advanced',
+            'tuic://uuid:fixture@192.0.2.10:443?disable_sni=1#advanced',
+            'vless://uuid@192.0.2.10:443?security=xtls#advanced',
+            'vless://uuid@192.0.2.10:443?security=tls&insecure=1#advanced',
+            'vless://uuid@192.0.2.10:443?security=tls&pbk=fixture#advanced',
+        ]
+        vmess = {'ps': 'advanced', 'add': '192.0.2.10', 'port': '443',
+                 'id': '00000000-0000-4000-8000-000000000001', 'aid': '0',
+                 'net': 'tcp', 'tls': 'tls', 'sni': 'tls.example.invalid'}
+        for key, value in (('alpn', 'h2'), ('fp', 'chrome'), ('type', 'http'), ('path', '/fixture')):
+            node = dict(vmess, **{key: value})
+            cases.append('vmess://' + base64.b64encode(json.dumps(node).encode()).decode())
+        for advanced in cases:
+            for ordinary_first in (False, True):
+                with self.subTest(scheme=advanced.split(':')[0], index=cases.index(advanced), ordinary_first=ordinary_first):
+                    content = valid + advanced + '\n' if ordinary_first else advanced + '\n' + valid
+                    nodes, status = self.native_update(content)
+                    self.assertIsNone(nodes)
+                    self.assertIn('convert failed incomplete_conversion', status)
+        # Encoded sources must keep unknown URI lines for the same preflight.
+        content = base64.b64encode((valid + cases[0] + '\n').encode()).decode()
+        nodes, status = self.native_update(content)
+        self.assertIsNone(nodes)
+        self.assertIn('convert failed incomplete_conversion', status)
+        for converter in ('failed', True):
+            nodes, status = self.native_update(valid + cases[1] + '\n', converter=converter)
+            if converter == 'failed':
+                self.assertIsNone(nodes)
+                self.assertIn('convert failed incomplete_conversion', status)
+            else:
+                self.assertIsNotNone(nodes)
+                self.assertEqual(nodes[0]['tag'], 'converted')
+
+    def test_native_share_supported_options_remain_faithful(self):
+        vmess = {'v': '2', 'ps': 'ws', 'add': '192.0.2.10', 'port': '443',
+                 'id': '00000000-0000-4000-8000-000000000001', 'aid': '0',
+                 'net': 'ws', 'path': '/fixture', 'host': 'ws.example.invalid',
+                 'tls': 'tls', 'sni': 'tls.example.invalid'}
+        content = '\n'.join([
+            '# fixture metadata', 'information only',
+            'ss://aes-128-gcm:fixture@192.0.2.10:443#ss',
+            'socks5://fixture:password@192.0.2.10:1080#socks',
+            'hy2://fixture@192.0.2.10:443?sni=tls.example.invalid&alpn=h3#hy2',
+            'trojan://fixture@192.0.2.10:443?peer=tls.example.invalid&alpn=h2&type=tcp&network=tcp#trojan',
+            'anytls://fixture@192.0.2.10:443?fingerprint=chrome&sni=tls.example.invalid&alpn=h2#anytls',
+            'tuic://uuid:fixture@192.0.2.10:443?sni=tls.example.invalid&congestion-controller=bbr&udp-relay-mode=native&alpn=h3#tuic',
+            'vless://uuid@192.0.2.10:443?security=reality&sni=tls.example.invalid&fp=chrome&pbk=fixture&sid=abcd&flow=xtls-rprx-vision&type=tcp#vless',
+            'vmess://' + base64.b64encode(json.dumps(vmess).encode()).decode(),
+        ]) + '\n'
+        # Information and comments are not node URIs and do not affect counts.
+        # Keep a URI first because plain-text metadata is not base64 content.
+        lines = content.splitlines()
+        content = '\n'.join([lines[2], *lines[:2], *lines[3:]]) + '\n'
+        nodes, _ = self.native_update(content)
+        self.assertIsNotNone(nodes)
+        by_tag = {node['tag']: node for node in nodes if node.get('server')}
+        self.assertEqual(len(by_tag), 8)
+        self.assertEqual((by_tag['ss']['method'], by_tag['ss']['password']), ('aes-128-gcm', 'fixture'))
+        self.assertEqual((by_tag['socks']['username'], by_tag['socks']['password']), ('fixture', 'password'))
+        for tag in ('hy2', 'trojan', 'anytls', 'tuic'):
+            self.assertEqual(by_tag[tag]['tls']['server_name'], 'tls.example.invalid')
+            self.assertNotIn('insecure', by_tag[tag]['tls'])
+        self.assertEqual(by_tag['hy2']['tls']['alpn'], ['h3'])
+        self.assertEqual(by_tag['trojan']['tls']['alpn'], ['h2'])
+        self.assertEqual(by_tag['anytls']['tls']['utls']['fingerprint'], 'chrome')
+        self.assertEqual(by_tag['tuic']['congestion_control'], 'bbr')
+        self.assertEqual(by_tag['tuic']['udp_relay_mode'], 'native')
+        self.assertEqual(by_tag['tuic']['tls']['alpn'], ['h3'])
+        self.assertEqual(by_tag['vless']['tls']['reality'], {'enabled': True, 'public_key': 'fixture', 'short_id': 'abcd'})
+        self.assertEqual(by_tag['vless']['flow'], 'xtls-rprx-vision')
+        self.assertEqual(by_tag['ws']['transport'], {'type': 'ws', 'path': '/fixture', 'headers': {'Host': 'ws.example.invalid'}})
+        self.assertEqual(by_tag['ws']['tls']['server_name'], 'tls.example.invalid')
+
+    def test_converter_success_preserves_advanced_options_without_native_rejection(self):
+        content = 'proxies:\n  - {name: fixture, type: trojan, server: 192.0.2.10, port: 443, password: fixture, "alpn": [h2], network: ws}\n'
+        nodes, _ = self.native_update(content, converter=True)
+        self.assertIsNotNone(nodes)
+        self.assertEqual(nodes[0]['tls']['alpn'], ['h2'])
+        self.assertEqual(nodes[0]['transport']['path'], '/fixture')
+        self.assertNotIn('insecure', nodes[0]['tls'])
+
     def convert(self, files, converter, expected=0, success=True):
         sources = self.file('sources.txt', ''.join(str(p) + '\n' for p in files))
         out = self.root / 'out.json'

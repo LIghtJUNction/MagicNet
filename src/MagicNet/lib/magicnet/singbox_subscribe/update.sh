@@ -970,7 +970,7 @@ magicnet_singbox_update_subscription_unlocked() {
         [ "${_node_count:-0}" -gt 0 ] || _native_complete=0
         # Native parsing deliberately has a small grammar. Do not turn an
         # unavailable converter into a successful but incomplete network config.
-        if [ "$_native_kind" = clash ] && grep -Eq '^[[:space:]]*(<<|ws-opts|grpc-opts|http-opts|h2-opts|reality-opts|plugin|plugin-opts|obfs|alpn|client-fingerprint|fingerprint):' "$_source_file"; then
+        if [ "$_native_kind" = clash ] && ! magicnet_singbox_native_clash_complete "$_source_file"; then
             _native_complete=0
         fi
         _node_total=$((_node_total + ${_node_count:-0}))
@@ -996,6 +996,18 @@ magicnet_singbox_update_subscription_unlocked() {
             _skipped="$2"
             MAGICNET_SUB_CONVERTER_RESULT=success
         fi
+    fi
+    if [ "${MAGICNET_SUB_CONVERTER_RESULT:-not_attempted}" != success ] && [ "$_native_complete" = 1 ]; then
+        # Reject the whole fallback before building selectors. Skipping an
+        # unsupported node would otherwise hide the loss behind valid peers.
+        for _native_node_file in "$_nodes_dir"/node-*.yaml "$_nodes_dir"/node-*.link; do
+            [ -f "$_native_node_file" ] || continue
+            case "$_native_node_file" in
+            *.link) magicnet_singbox_native_share_complete "$_native_node_file" || _native_complete=0 ;;
+            *) magicnet_singbox_native_node_complete "$_native_node_file" || _native_complete=0 ;;
+            esac
+            [ "$_native_complete" = 1 ] || break
+        done
     fi
     if [ "${MAGICNET_SUB_CONVERTER_RESULT:-not_attempted}" != success ] && [ "$_native_complete" != 1 ]; then
         error "A subscription requires the bundled converter; refusing a partial import. The current configuration is unchanged."

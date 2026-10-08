@@ -32,6 +32,49 @@ and stalls. Test successes are not reused from the old host cache scope. CI also
 builds and verifies the real test APK; the exact compiled fork checks both sentinel
 route configurations.
 
+## Sustained device observations
+
+Short connectivity rounds and lifecycle acceptance do not establish stability.
+`scripts/android-network-soak.py` repeats application-UID HTTPS requests over a
+declared wall-clock window and samples the installed core's process generation,
+RSS, threads, file descriptors and machine-interface readiness every cycle.
+It never switches nodes or restarts the core. Every failed request, latency
+spike above the chosen budget, sampled readiness loss, process restart or excess
+resource growth fails the run. Missing evidence or an interrupted window is
+`INCOMPLETE`, never `PASS`; completed cycles are saved while the run continues.
+Measured latency from failed requests also counts toward the latency budget and
+summary; missing or non-finite elapsed measurements make the evidence incomplete.
+The host tool requires Linux and holds a kernel file lock for each output
+directory from initial invalidation through final publication. An overlapping
+invocation exits 2 without changing the owner's reports or contacting the device.
+Use different output directories for concurrent runs. The persistent `.soak.lock`
+file is intentional; the kernel releases its lock when the owning process exits.
+
+The opt-in public benchmark workflow now also requires a 600-second observation
+against three public domestic/global targets, with a 1500 ms full-request budget.
+The accounting tests run in the automatic harness. Public observations still do
+not run on every PR and do not certify a physical OEM phone.
+The AVD uses `--root-mode adb` after the existing root-adbd preflight; physical
+phones default to `su -M -c`. Both transports must report UID 0 before sampling.
+
+For a connected physical phone, build/install the test-only APK, then run:
+
+```sh
+ANDROID_SDK_ROOT=/path/to/sdk bash scripts/build-android-network-probe.sh /tmp/magicnet-probe.apk
+adb -s DEVICE_SERIAL install -t --no-incremental /tmp/magicnet-probe.apk
+python3 scripts/android-network-soak.py --serial DEVICE_SERIAL \
+  --targets tests/android-probe/soak-targets.tsv --output artifacts/device-soak \
+  --duration 1800 --interval 20 --max-latency-ms 1000
+adb -s DEVICE_SERIAL uninstall best.lmm.magicnet.probe
+```
+
+The latency includes DNS, TCP, TLS and the HTTP response; it is not ICMP ping.
+Record the active selectors before testing: a service-specific group may remain
+pinned to a different node when the main selector changes. Results contain target
+IDs rather than URLs or node names. Sampling cannot exclude failures between
+samples. The report deliberately does not claim TUN path proof, authenticated
+app usability, UDP/QUIC, IPv6, DNS privacy, handover or sleep/wake acceptance.
+
 ## TUN path proof
 
 Before public probes, the disposable AVD runs a positive/reject/positive control.

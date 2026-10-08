@@ -310,6 +310,18 @@ sys.exit(int(os.environ.get('MOCK_RC', '0')))
                 self.assertEqual(self.records(result)[0]["result"], expected)
                 self.assertEqual(result.returncode, 1)
 
+    def test_tls_errors_distinguish_local_ca_from_peer_certificate(self):
+        for rc, expected in ((51, "TLS_CERT_ERROR"), (60, "TLS_CERT_ERROR"), (77, "TLS_CA_ERROR")):
+            with self.subTest(rc=rc):
+                # The fake curl reports HTTP 200; the TLS failure must still
+                # take precedence without making a network request.
+                result = self.run_probe(env=dict(self.env, MAGICNET_CURL=str(self.mock), MOCK_RC=str(rc)))
+                rows = self.records(result)
+                self.assertEqual(len(rows), 1, result.stdout + result.stderr)
+                self.assertEqual(rows[0]["result"], expected, result.stdout)
+                self.assertEqual(rows[0]["curl_exit"], str(rc))
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
     def test_bad_metrics_never_pass(self):
         for metrics in ("", "200", "200\t0\t0\t0\t0\t0\t12\t0\nINJECTED", "200\t0\t0\t0\t0\t0\tNaN\t0"):
             with self.subTest(metrics=metrics):

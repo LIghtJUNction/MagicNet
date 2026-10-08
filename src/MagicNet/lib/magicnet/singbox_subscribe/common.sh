@@ -378,11 +378,14 @@ magicnet_singbox_tag_matches_filter() {
     return 1
 }
 
-magicnet_yaml_value() (
-    # This parser is called only from magicnet_singbox_emit_node_json, whose
-    # dynamically scoped _node_file is the current isolated node fixture.
-    # shellcheck disable=SC2154
-    LC_ALL=C awk -v key="$1:" '
+magicnet_singbox_native_yaml() (
+    # One bounded lexer backs both scalar lookup and fallback completeness.
+    # It handles flat block/flow mappings and literal quoted keys/scalars;
+    # YAML tags, aliases, collections, block scalars and double-quote escapes
+    # in consumed fields require the full converter instead of literal output.
+    LC_ALL=C awk -v mode="$1" -v wanted="${3:-}" '
+        # KernelSU BusyBox awk can crash when sub() trims UTF-8 strings.
+        # Byte scans preserve the same C-locale whitespace without that path.
         function ltrim(value) {
             while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
             return value
@@ -391,33 +394,124 @@ magicnet_yaml_value() (
             while (length(value) && index(ws, substr(value, length(value), 1))) value = substr(value, 1, length(value) - 1)
             return value
         }
-        BEGIN { ws = " \t\r\n\v\f"; quote = sprintf("%c", 39) }
-        {
-            line = ltrim($0)
-            if (substr(line, 1, length(key)) == key) block = ltrim(substr(line, length(key) + 1))
-            for (n = 1; n <= length($0); n++) {
-                c = substr($0, n, 1)
-                if (c != "{" && c != ",") continue
-                field = ltrim(substr($0, n + 1))
-                if (substr(field, 1, length(key)) != key) continue
-                value = ltrim(substr(field, length(key) + 1))
-                comma = index(value, ","); brace = index(value, "}")
-                end = comma && brace ? (comma < brace ? comma : brace) : comma + brace
-                flow = end ? substr(value, 1, end - 1) : value
+        function trim(value) { value = ltrim(value); return rtrim(value) }
+        function quoted_end(value, quote, i, c) {
+            quote = substr(value, 1, 1)
+            for (i = 2; i <= length(value); i++) {
+                c = substr(value, i, 1)
+                if (quote == "\"" && c == "\\") { i++; continue }
+                if (c != quote) continue
+                if (quote == apostrophe && substr(value, i + 1, 1) == quote) { i++; continue }
+                return i
+            }
+            return 0
+        }
+        function scalar(value, is_flow, quote, end, rest, i, c) {
+            scalar_ok = 1
+            value = trim(value)
+            quote = substr(value, 1, 1)
+            if (quote == "\"" || quote == apostrophe) {
+                end = quoted_end(value)
+                if (!end) { scalar_ok = 0; return "" }
+                rest = trim(substr(value, end + 1))
+                if (rest != "" && substr(rest, 1, 1) != "#") scalar_ok = 0
+                value = substr(value, 2, end - 2)
+                if (quote == "\"" && index(value, "\\")) scalar_ok = 0
+                if (quote == apostrophe) gsub(apostrophe apostrophe, apostrophe, value)
+                return value
+            }
+            # A hash is a YAML comment only at the start or after whitespace.
+            for (i = 1; i <= length(value); i++) {
+                if (substr(value, i, 1) == "#" && (i == 1 || index(ws, substr(value, i - 1, 1)))) {
+                    value = rtrim(substr(value, 1, i - 1)); break
+                }
+            }
+            if (value == "" || index("!&*|>[{", substr(value, 1, 1)) || value ~ /^(~|null|Null|NULL)$/) scalar_ok = 0
+            if (is_flow && (index(value, "[") || index(value, "]") ||
+                            index(value, "{") || index(value, "}"))) scalar_ok = 0
+            if (value ~ /:[[:space:]]/) scalar_ok = 0
+            return value
+        }
+        function field(text, is_flow, quote, end, key, raw, value) {
+            text = ltrim(text)
+            quote = substr(text, 1, 1)
+            if (quote == "\"" || quote == apostrophe) {
+                end = quoted_end(text)
+                if (!end) { bad = 1; return }
+                key = substr(text, 2, end - 2)
+                text = ltrim(substr(text, end + 1))
+                if (substr(text, 1, 1) != ":") return
+                if (index(key, "\\") || index(key, apostrophe apostrophe)) { bad = 1; return }
+                raw = ltrim(substr(text, 2))
+            } else {
+                end = index(text, ":")
+                if (!end) return
+                key = rtrim(substr(text, 1, end - 1))
+                raw = ltrim(substr(text, end + 1))
+            }
+            if (mode == "source" && key ~ /^(<<|ws-opts|grpc-opts|http-opts|h2-opts|reality-opts|plugin|plugin-opts|obfs|alpn|client-fingerprint|fingerprint)$/) bad = 1
+            if ((mode == "value" && key == wanted) ||
+                (mode == "node" && key ~ /^(name|type|server|port|cipher|password|version|username|uuid|alterId|network|tls|servername|sni|flow|client-fingerprint|fingerprint|skip-cert-verify|insecure|congestion-controller|congestion_control|udp-relay-mode|udp_relay_mode)$/)) {
+                value = scalar(raw, is_flow)
+                if (mode == "node" && !scalar_ok) bad = 1
+                if (mode == "node" && key ~ /^(tls|skip-cert-verify|insecure)$/ &&
+                    tolower(value) !~ /^(1|0|true|false|yes|no|on|off)$/) bad = 1
+                if (mode == "value") result = value
             }
         }
-        END {
-            value = block != "" ? block : flow
-            comment = index(value, "#")
-            if (comment) value = substr(value, 1, comment - 1)
-            value = rtrim(ltrim(value))
-            if (substr(value, 1, 1) == "\"") value = substr(value, 2)
-            if (substr(value, length(value), 1) == "\"") value = substr(value, 1, length(value) - 1)
-            if (substr(value, 1, 1) == quote) value = substr(value, 2)
-            if (substr(value, length(value), 1) == quote) value = substr(value, 1, length(value) - 1)
-            printf "%s\n", value
+        function flow(line, i, c, quote, depth, begin, significant, rest) {
+            depth = 0; begin = 2; significant = ""
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (quote != "") {
+                    if (quote == "\"" && c == "\\") { i++; continue }
+                    if (c != quote) continue
+                    if (quote == apostrophe && substr(line, i + 1, 1) == quote) { i++; continue }
+                    quote = ""; significant = c; continue
+                }
+                if ((c == "\"" || c == apostrophe) && (significant == "" || index(":{[,", significant))) {
+                    quote = c; continue
+                }
+                if (c == "{" || c == "[") depth++
+                else if (c == "}" || c == "]") {
+                    depth--
+                    if (depth == 0) {
+                        field(substr(line, begin, i - begin), 1)
+                        rest = trim(substr(line, i + 1))
+                        if (rest != "" && substr(rest, 1, 1) != "#") bad = 1
+                        return
+                    }
+                } else if (c == "," && depth == 1) {
+                    field(substr(line, begin, i - begin), 1); begin = i + 1
+                }
+                if (!index(ws, c)) significant = c
+            }
+            # Multiline/unterminated flow mappings exceed the native grammar.
+            bad = 1
         }
-    ' "$_node_file"
+        BEGIN { ws = " \t\r\n\v\f"; apostrophe = sprintf("%c", 39) }
+        {
+            line = ltrim($0)
+            if (substr(line, 1, 1) == "-") line = ltrim(substr(line, 2))
+            if (line == "" || substr(line, 1, 1) == "#") next
+            if (substr(line, 1, 1) == "{") flow(line)
+            else field(line, 0)
+        }
+        END {
+            if (bad) exit 1
+            if (mode == "value") printf "%s\n", result
+        }
+    ' "$2"
+)
+
+magicnet_yaml_value() (
+    # Dynamically scoped by the current isolated node parser/completeness check.
+    # shellcheck disable=SC2154
+    magicnet_singbox_native_yaml value "$_node_file" "$1"
+)
+
+magicnet_singbox_native_clash_complete() (
+    magicnet_singbox_native_yaml source "$1"
 )
 
 magicnet_truthy() {
