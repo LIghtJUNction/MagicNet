@@ -26,6 +26,9 @@ MODDIR = '/data/adb/modules/MagicNet'
 CLI = MODDIR + '/cli'
 MARKER = MODDIR + '/.config/sing-box/standalone-config'
 SENTINEL = '198.18.0.42'
+MAX_OUTPUT_BYTES = 1024 * 1024
+MAX_SERVICE_STATUS_BYTES = 64 * 1024
+SERVICE_OBSERVATION_TIMEOUT = 5
 STARTUP_STAGES = frozenset({
     'subscription', 'chain', 'transparent', 'hotspot', 'dns', 'tailscale', 'apps',
     'warp', 'overrides', 'auth', 'config-check', 'route-baseline', 'core-launch',
@@ -42,6 +45,32 @@ def sanitized_failure(output: str, *, operation: str) -> dict:
     )
     if operation == 'core_restart':
         messages += (
+            ('Timed out waiting for config lock:', 'config_lock_timeout'),
+            ('create config apply lock directory:', 'config_apply_lock_error'),
+            ('open config apply lock:', 'config_apply_lock_error'),
+            ('lock config apply:', 'config_apply_lock_error'),
+            ('managed sing-box process set changed during stop', 'core_generation_changed'),
+            ('managed sing-box did not stop after SIGKILL:', 'core_stop_timeout'),
+            ('cannot signal managed process', 'core_signal_failed'),
+            ('cannot bind sing-box ownership to ', 'core_identity_unknown'),
+            ('read sing-box candidate ', 'core_identity_unknown'),
+            ('cannot verify executable identity for live sing-box candidate ', 'core_identity_unknown'),
+            ('trusted Android pidof is unavailable', 'core_identity_unknown'),
+            ('pid lookup deadline exceeded for sing-box', 'core_identity_unknown'),
+            ('pid lookup timed out for sing-box', 'core_identity_unknown'),
+            ('pid lookup output was truncated for sing-box', 'core_identity_unknown'),
+            ('pid lookup failed for sing-box', 'core_identity_unknown'),
+            ('pid lookup was terminated for sing-box', 'core_identity_unknown'),
+            ('pid lookup returned non-UTF-8 output for sing-box', 'core_identity_unknown'),
+            ('pid lookup returned malformed output for sing-box', 'core_identity_unknown'),
+            ('pid lookup returned an empty success for sing-box', 'core_identity_unknown'),
+            ('unable to read supervisor PID file', 'supervisor_identity_unknown'),
+            ('unable to inspect supervisor PID file', 'supervisor_identity_unknown'),
+            ('invalid supervisor PID file', 'supervisor_identity_unknown'),
+            ('unable to inspect live supervisor ownership', 'supervisor_identity_unknown'),
+            ('unable to remove stopped supervisor PID file', 'supervisor_identity_unknown'),
+            ('managed supervisor survived stop verification', 'supervisor_stop_failed'),
+            ('cannot signal managed supervisor:', 'supervisor_signal_failed'),
             ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
             ('managed supervisor did not stop after SIGKILL', 'supervisor_stop_timeout'),
             ('managed supervisor force-stop is unavailable', 'supervisor_force_unavailable'),
@@ -76,6 +105,95 @@ def sanitized_failure(output: str, *, operation: str) -> dict:
                 diagnostic['kind'] = 'startup_step_failed'
             break
     return diagnostic
+
+
+def output_counts(stdout, stderr) -> dict:
+    """Record bounded UTF-8 byte counts without retaining command output."""
+    result = {}
+    for label, output in (('stdout', stdout), ('stderr', stderr)):
+        text = output if isinstance(output, str) else ''
+        encoded = text[:MAX_OUTPUT_BYTES].encode('utf-8', errors='replace')
+        result[label + '_present'] = bool(text)
+        result[label + '_bytes'] = min(len(encoded), MAX_OUTPUT_BYTES)
+        result[label + '_bytes_capped'] = len(text) > MAX_OUTPUT_BYTES or len(encoded) > MAX_OUTPUT_BYTES
+    return result
+
+
+def service_observation(adb) -> dict:
+    """One best-effort machine observation before failure cleanup, never a retry.
+
+    This observes service state after the failed command, not the command's
+    internal stage or the later restoration outcome. Unknown fields stay unknown.
+    """
+    observation = {'status': 'unknown', 'capture_phase': 'before_failure_cleanup'}
+    try:
+        cp = adb(CLI + ' --json service status', timeout=SERVICE_OBSERVATION_TIMEOUT)
+        observation.update(output_counts(cp.stdout, cp.stderr))
+        observation['exit_code'] = (cp.returncode if type(cp.returncode) is int
+                                    and -255 <= cp.returncode <= 255 else None)
+        if type(cp.returncode) is not int or cp.returncode != 0:
+            return observation
+        if (not isinstance(cp.stdout, str) or len(cp.stdout) > MAX_SERVICE_STATUS_BYTES
+                or len(cp.stdout.encode('utf-8')) > MAX_SERVICE_STATUS_BYTES):
+            return observation
+        envelope = json.loads(cp.stdout)
+        if (not isinstance(envelope, dict) or type(envelope.get('schema')) is not int
+                or envelope.get('schema') != 1 or envelope.get('ok') is not True
+                or envelope.get('command') != 'service.status'
+                or not isinstance(envelope.get('data'), dict)):
+            return observation
+
+        def obj(value):
+            return value if isinstance(value, dict) else {}
+
+        def token(value, allowed):
+            return value if isinstance(value, str) and value in allowed else 'unknown'
+
+        def boolean(value):
+            return value if type(value) is bool else None
+
+        data = envelope['data']
+        core = obj(data.get('core'))
+        singbox = obj(core.get('sing_box'))
+        api = obj(data.get('api'))
+        readiness = obj(data.get('readiness'))
+        transparent = obj(data.get('transparent'))
+        count = transparent.get('shared_interface_count')
+        observation['service'] = {
+            'lifecycle': token(data.get('lifecycle'), {
+                'stopped', 'unknown', 'reconfiguring', 'ready', 'not_ready', 'running_unknown'}),
+            'core': {
+                'selected': token(core.get('selected'), {'sing-box'}),
+                'running': boolean(singbox.get('running')),
+                'process_state': token(singbox.get('process_state'), {'running', 'stopped', 'unknown'}),
+            },
+            'api_ready': boolean(api.get('ready')),
+            'readiness': {'dataplane': boolean(readiness.get('dataplane')),
+                          'overall': boolean(readiness.get('overall'))},
+            'transparent': {
+                'configured_mode': token(transparent.get('configured_mode'), {'tun', 'ebpf'}),
+                'effective_type': token(transparent.get('effective_type'), {'tun', 'ebpf'}),
+                'effective_mode': token(transparent.get('effective_mode'), {'tun', 'local', 'shared', 'hybrid'}),
+                'capability': token(transparent.get('capability'), {'not_required', 'ok', 'failed', 'unknown'}),
+                'local_cgroup': token(transparent.get('local_cgroup'), {
+                    'inactive', 'configured', 'unknown', 'attached', 'missing'}),
+                'shared_tc': token(transparent.get('shared_tc'), {
+                    'inactive', 'pending', 'configured', 'unknown', 'attached', 'missing'}),
+                'shared_interface_count': count if type(count) is int and 0 <= count <= 4096 else None,
+                'dataplane_ready': boolean(transparent.get('dataplane_ready')),
+                'transition': token(transparent.get('transition'), {
+                    'idle', 'prepared', 'target-written', 'preflight', 'candidate-prepared',
+                    'stopping-old', 'old-stopped', 'candidate-starting', 'verified',
+                    'rolling-back', 'old-restored'}),
+                'has_recent_error': boolean(transparent.get('has_recent_error')),
+            },
+        }
+        observation['status'] = 'observed'
+    except Exception:
+        # Observation must never replace the primary failure or prevent restore.
+        # Exception strings can contain argv/config text and are not report data.
+        pass
+    return observation
 
 
 def fixture_config(original: dict, uid: int, port: int, *, blocked: bool) -> dict:
@@ -144,10 +262,14 @@ def verify(adb, instrument, component) -> dict:
             # Keep the first failure even if restoration also fails. Never
             # retain argv, payloads or raw output from a user configuration.
             failure = {'operation': operation, 'exit_code': cp.returncode,
-                       **sanitized_failure(cp.stdout + '\n' + (cp.stderr or ''), operation=operation)}
+                       **sanitized_failure(cp.stdout + '\n' + (cp.stderr or ''), operation=operation),
+                       **output_counts(cp.stdout, cp.stderr)}
             if 'failure_control' not in report:
                 report['failure_control'] = control
                 report.update({'failure_' + key: value for key, value in failure.items()})
+                # Direct read with its own short deadline, before payload cleanup
+                # and restoration can erase the failed activation's observations.
+                report['failure_service_observation'] = service_observation(adb)
             # A secondary restore failure must not overwrite the original
             # cause, or lend its startup stage to the original failure record.
             if control == 'restore' and 'restore_failure_operation' not in report:

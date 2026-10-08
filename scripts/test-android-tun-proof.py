@@ -24,6 +24,48 @@ spec.loader.exec_module(proof)
 BASE = {'inbounds': [{'type': 'tun', 'tag': 'tun-in', 'interface_name': 'magicnet0',
                      'address': ['172.19.0.1/30'], 'auto_route': True, 'exclude_uid': [0]}],
         'outbounds': [{'type': 'direct', 'tag': 'direct'}], 'route': {'rules': []}}
+SERVICE = {'schema': 1, 'ok': True, 'command': 'service.status', 'data': {
+    'lifecycle': 'not_ready',
+    'core': {'selected': 'sing-box', 'sing_box': {'running': False, 'process_state': 'stopped',
+                                              'pid_summary': 'private-pid', 'rss_kib': 12345}},
+    'api': {'ready': False, 'url': 'https://private.invalid/?token=private-value'},
+    'readiness': {'dataplane': False, 'overall': False},
+    'transparent': {'configured_mode': 'tun', 'effective_type': 'tun', 'effective_mode': 'tun',
+                    'capability': 'not_required', 'local_cgroup': 'inactive', 'shared_tc': 'inactive',
+                    'shared_interface_count': 0, 'dataplane_ready': False, 'transition': 'idle',
+                    'has_recent_error': True, 'reason': 'private-reason'},
+    'supervisors': {'fswatch': 'private-pid', 'wifi_policy': 'private-pid'},
+    'subscription': {'source': 'remote_url', 'url': 'private-subscription'},
+    'webui': 'private-webui', 'unknown_field': 'private-extension',
+}}
+RESTART_FAILURES = (
+    ('Timed out waiting for config lock: private-path', 'config_lock_timeout'),
+    ('create config apply lock directory: private-path', 'config_apply_lock_error'),
+    ('open config apply lock: private-path', 'config_apply_lock_error'),
+    ('lock config apply: private-error', 'config_apply_lock_error'),
+    ('managed sing-box process set changed during stop', 'core_generation_changed'),
+    ('managed sing-box did not stop after SIGKILL: private-pid', 'core_stop_timeout'),
+    ('cannot signal managed process private-pid: private-error', 'core_signal_failed'),
+    ('cannot bind sing-box ownership to private-path', 'core_identity_unknown'),
+    ('read sing-box candidate private-pid cmdline: private-error', 'core_identity_unknown'),
+    ('cannot verify executable identity for live sing-box candidate private-pid', 'core_identity_unknown'),
+    ('trusted Android pidof is unavailable', 'core_identity_unknown'),
+    ('pid lookup deadline exceeded for sing-box', 'core_identity_unknown'),
+    ('pid lookup timed out for sing-box', 'core_identity_unknown'),
+    ('pid lookup output was truncated for sing-box', 'core_identity_unknown'),
+    ('pid lookup failed for sing-box with status 1', 'core_identity_unknown'),
+    ('pid lookup was terminated for sing-box', 'core_identity_unknown'),
+    ('pid lookup returned non-UTF-8 output for sing-box', 'core_identity_unknown'),
+    ('pid lookup returned malformed output for sing-box', 'core_identity_unknown'),
+    ('pid lookup returned an empty success for sing-box', 'core_identity_unknown'),
+    ('unable to read supervisor PID file', 'supervisor_identity_unknown'),
+    ('unable to inspect supervisor PID file', 'supervisor_identity_unknown'),
+    ('invalid supervisor PID file', 'supervisor_identity_unknown'),
+    ('unable to inspect live supervisor ownership', 'supervisor_identity_unknown'),
+    ('unable to remove stopped supervisor PID file', 'supervisor_identity_unknown'),
+    ('managed supervisor survived stop verification', 'supervisor_stop_failed'),
+    ('cannot signal managed supervisor: private-error', 'supervisor_signal_failed'),
+)
 
 
 class TunProofTests(unittest.TestCase):
@@ -78,7 +120,7 @@ class TunProofTests(unittest.TestCase):
 
     def test_known_cli_failure_categories_discard_raw_diagnostics(self):
         noise = 'subscription=https://private.invalid/?token=private-value node=private-node'
-        cases = (
+        cases = RESTART_FAILURES + (
             ('managed supervisor did not stop after SIGTERM', 'supervisor_stop_timeout'),
             ('managed supervisor did not stop after SIGKILL', 'supervisor_stop_timeout'),
             ('managed supervisor force-stop is unavailable', 'supervisor_force_unavailable'),
@@ -135,10 +177,116 @@ class TunProofTests(unittest.TestCase):
                         'supervisor PID file changed during read'):
             self.assertEqual(proof.sanitized_failure(message, operation='config_save'),
                              {'kind': 'command_failed'})
+        for message, _ in RESTART_FAILURES:
+            with self.subTest(message=message):
+                self.assertEqual(proof.sanitized_failure(message, operation='config_save'),
+                                 {'kind': 'command_failed'})
+                for operation in ('config_save', 'core_restart'):
+                    malicious = ('config validation failed\n' + message + '\n'
+                                 'Startup step failed: stage=core-launch exit=2 private-secret')
+                    self.assertEqual(proof.sanitized_failure(malicious, operation=operation),
+                                     {'kind': 'config_validation'})
+
+    def observe(self, envelope=SERVICE, *, returncode=0, stdout=None):
+        calls = []
+        def adb(command, **kwargs):
+            calls.append((command, kwargs))
+            return subprocess.CompletedProcess(['adb'], returncode,
+                                               json.dumps(envelope) if stdout is None else stdout,
+                                               'private-observation-stderr')
+        observation = proof.service_observation(adb)
+        self.assertEqual(calls, [(proof.CLI + ' --json service status',
+                                 {'timeout': proof.SERVICE_OBSERVATION_TIMEOUT})])
+        self.assertNotIn('private-', json.dumps(observation))
+        self.assertEqual(observation['capture_phase'], 'before_failure_cleanup')
+        return observation
+
+    def test_service_observation_projects_only_safe_machine_fields(self):
+        observed = self.observe()
+        self.assertEqual(observed['status'], 'observed')
+        self.assertEqual(observed['service']['lifecycle'], 'not_ready')
+        self.assertEqual(observed['service']['core'], {
+            'selected': 'sing-box', 'running': False, 'process_state': 'stopped'})
+        self.assertEqual(observed['service']['api_ready'], False)
+        self.assertEqual(observed['service']['readiness'], {'dataplane': False, 'overall': False})
+        self.assertEqual(observed['service']['transparent']['shared_interface_count'], 0)
+        for key in ('pid_summary', 'rss_kib', 'supervisors', 'subscription', 'webui', 'url', 'reason'):
+            self.assertNotIn('"' + key + '"', json.dumps(observed))
+
+    def test_service_observation_rejects_invalid_envelopes_and_failed_green_output(self):
+        invalid = []
+        for key, values in (('schema', (True, 1.0, '1', 2)), ('ok', (False, 1, 'true')),
+                            ('command', ('private-command', 'service.restart', None)),
+                            ('data', (None, [], 'private-data'))):
+            for value in values:
+                envelope = copy.deepcopy(SERVICE)
+                envelope[key] = value
+                invalid.append(envelope)
+        for envelope in invalid + [[], None]:
+            with self.subTest(envelope=envelope):
+                observed = self.observe(envelope)
+                self.assertEqual(observed['status'], 'unknown')
+                self.assertNotIn('service', observed)
+        for rc in (1, 124, True, 1.0, 1000000):
+            observed = self.observe(returncode=rc)
+            self.assertEqual(observed['status'], 'unknown')
+            self.assertNotIn('service', observed)
+        for output in ('private-malformed', json.dumps(SERVICE) + '\nprivate-trailing',
+                       'private-budget' * proof.MAX_SERVICE_STATUS_BYTES):
+            observed = self.observe(stdout=output)
+            self.assertEqual(observed['status'], 'unknown')
+            self.assertNotIn('service', observed)
+
+    def test_service_unknown_fields_do_not_turn_into_successful_values(self):
+        for value in ('private-value', [], {}, True, 1, 1.0, -1, 1000000, None):
+            with self.subTest(value=value):
+                envelope = copy.deepcopy(SERVICE)
+                data = envelope['data']
+                data['lifecycle'] = value
+                data['core']['selected'] = value
+                data['core']['sing_box']['process_state'] = value
+                for key in ('configured_mode', 'effective_type', 'effective_mode', 'capability',
+                            'local_cgroup', 'shared_tc', 'transition'):
+                    data['transparent'][key] = value
+                projected = self.observe(envelope)['service']
+                self.assertEqual(projected['lifecycle'], 'unknown')
+                self.assertEqual(projected['core']['selected'], 'unknown')
+                self.assertEqual(projected['core']['process_state'], 'unknown')
+                for key in ('configured_mode', 'effective_type', 'effective_mode', 'capability',
+                            'local_cgroup', 'shared_tc', 'transition'):
+                    self.assertEqual(projected['transparent'][key], 'unknown')
+        for value in ('true', 1, 0, [], {}, None):
+            envelope = copy.deepcopy(SERVICE)
+            envelope['data']['core']['sing_box']['running'] = value
+            envelope['data']['api']['ready'] = value
+            envelope['data']['readiness'] = {'dataplane': value, 'overall': value}
+            envelope['data']['transparent']['dataplane_ready'] = value
+            envelope['data']['transparent']['has_recent_error'] = value
+            projected = self.observe(envelope)['service']
+            self.assertIsNone(projected['core']['running'])
+            self.assertIsNone(projected['api_ready'])
+            self.assertEqual(projected['readiness'], {'dataplane': None, 'overall': None})
+            self.assertIsNone(projected['transparent']['dataplane_ready'])
+            self.assertIsNone(projected['transparent']['has_recent_error'])
+        for value in (True, 1.0, '1', -1, 4097, 10**100, [], None):
+            envelope = copy.deepcopy(SERVICE)
+            envelope['data']['transparent']['shared_interface_count'] = value
+            projected = self.observe(envelope)['service']
+            self.assertIsNone(projected['transparent']['shared_interface_count'])
+
+    def test_failure_output_counts_are_bounded_utf8_counts(self):
+        counts = proof.output_counts('🌍', '')
+        self.assertEqual(counts, {'stdout_present': True, 'stdout_bytes': 4, 'stdout_bytes_capped': False,
+                                  'stderr_present': False, 'stderr_bytes': 0, 'stderr_bytes_capped': False})
+        counts = proof.output_counts('', '🌍' * proof.MAX_OUTPUT_BYTES)
+        self.assertEqual(counts['stderr_bytes'], proof.MAX_OUTPUT_BYTES)
+        self.assertTrue(counts['stderr_bytes_capped'])
+        self.assertNotIn('🌍', json.dumps(counts))
 
     def transaction(self, *, reject_timeout=False, failed_save=False, failed_restore=False,
                     failed_reverse_cleanup=False, failed_restart=False,
-                    save_error='', restart_error='', restore_error=''):
+                    save_error='', restart_error='', restore_error='', restart_output='',
+                    observation_result=None, observation_error=None, events=None):
         # This executes restoration/accounting with an in-memory device and a
         # real local marker server. It is NOT evidence of Android TUN capture.
         active = copy.deepcopy(BASE)
@@ -147,7 +295,10 @@ class TunProofTests(unittest.TestCase):
         removed_marker = []
         sentinel_operations = []
 
-        def adb(command, **_):
+        if events is None:
+            events = []
+
+        def adb(command, **kwargs):
             nonlocal active
             rc, output, error = 0, '', ''
             args = shlex.split(command)
@@ -167,20 +318,32 @@ class TunProofTests(unittest.TestCase):
             elif args[1:5] == ['webui', 'payload', 'append', 'tmp']:
                 payloads[args[5]] += args[6]
             elif args[1:5] == ['webui', 'payload', 'remove', 'tmp']:
+                events.append(('payload_remove', active == BASE))
                 del payloads[args[5]]
             elif args[1:4] == ['config-editor', 'save-file', 'sing-box']:
                 active = json.loads(base64.b64decode(payloads[Path(args[4]).name]))
                 saves.append(copy.deepcopy(active))
+                events.append(('config_save', active == BASE))
                 if failed_save and len(saves) == 1:
                     rc = 1  # Activation may change the file before reporting failure.
                     error = save_error
             elif args[1:] == ['service', 'restart', 'sing-box']:
+                events.append(('core_restart', active == BASE))
                 if failed_restore and active == BASE:
                     rc = 1
                     error = restore_error
                 elif failed_restart and active != BASE:
                     rc = 1
                     error = restart_error
+                    output = restart_output
+            elif args[1:] == ['--json', 'service', 'status']:
+                events.append(('service_observation', active == BASE, bool(payloads)))
+                self.assertEqual(kwargs, {'timeout': proof.SERVICE_OBSERVATION_TIMEOUT})
+                if observation_error is not None:
+                    raise observation_error
+                if observation_result is not None:
+                    return observation_result
+                output = json.dumps(SERVICE)
             elif command == 'rm -f ' + proof.MARKER:
                 removed_marker.append(True)
             else:
@@ -216,10 +379,54 @@ class TunProofTests(unittest.TestCase):
         return report, saves
 
     def test_full_transaction_requires_both_positive_controls_and_restoration(self):
-        report, saves = self.transaction()
+        events = []
+        report, saves = self.transaction(events=events)
         self.assertEqual(report['status'], 'verified', report)
         self.assertEqual(len(saves), 4)
         self.assertEqual(saves[-1], BASE)
+        self.assertFalse(any(event[0] == 'service_observation' for event in events))
+
+    def test_first_failure_observation_precedes_cleanup_and_is_not_replaced_by_restore(self):
+        events = []
+        report, _ = self.transaction(failed_restart=True, failed_restore=True,
+                                    restart_error='managed sing-box process set changed during stop\nprivate-first',
+                                    restore_error='private-restore', restart_output='🌍', events=events)
+        self.assertEqual(report['failure_kind'], 'core_generation_changed')
+        self.assertEqual(report['restore_failure_kind'], 'command_failed')
+        self.assertFalse(report['restored'])
+        self.assertEqual(report['failure_stdout_bytes'], 4)
+        self.assertTrue(report['failure_stdout_present'])
+        self.assertTrue(report['failure_stderr_present'])
+        self.assertEqual(report['failure_service_observation']['status'], 'observed')
+        observations = [event for event in events if event[0] == 'service_observation']
+        self.assertEqual(observations, [('service_observation', False, True)])
+        observed_at = events.index(observations[0])
+        self.assertEqual(events[observed_at - 1], ('core_restart', False))
+        self.assertEqual(events[observed_at + 1], ('payload_remove', False))
+        self.assertGreater(events.index(('config_save', True)), observed_at)
+        self.assertNotIn('private-', json.dumps(report))
+
+    def test_unknown_observation_never_changes_failure_or_obstructs_restore(self):
+        cases = (
+            {'observation_error': subprocess.TimeoutExpired(['private-command'], 5,
+                                                           output='private-timeout', stderr='private-stderr')},
+            {'observation_error': RuntimeError('private-observation-error')},
+            {'observation_result': subprocess.CompletedProcess(['adb'], 124, 'private-timeout', '')},
+            {'observation_result': subprocess.CompletedProcess(['adb'], 0, 'private-malformed', '')},
+        )
+        for options in cases:
+            with self.subTest(options=options):
+                events = []
+                report, _ = self.transaction(failed_restart=True, restart_error='private-original',
+                                            events=events, **options)
+                self.assertEqual(report['failure_control'], 'positive')
+                self.assertEqual(report['failure_operation'], 'core_restart')
+                self.assertEqual(report['failure_kind'], 'command_failed')
+                self.assertEqual(report['failure_exit_code'], 1)
+                self.assertEqual(report['failure_service_observation']['status'], 'unknown')
+                self.assertTrue(report['restored'])
+                self.assertEqual(sum(event[0] == 'service_observation' for event in events), 1)
+                self.assertNotIn('private-', json.dumps(report))
 
     def test_timeout_is_not_a_verified_reject_and_original_is_restored(self):
         report, _ = self.transaction(reject_timeout=True)
