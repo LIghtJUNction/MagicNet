@@ -1,0 +1,80 @@
+name: Integrate reviewed routing pins
+on:
+  push:
+    branches: [fix/routing-lmm-best-20261008]
+    paths: [.github/workflows/routing-maintenance-20261008.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/routing-lmm-best-20261008
+          persist-credentials: false
+      - name: Update the template and all default entry points
+        run: |
+          set -euo pipefail
+          git submodule update --init -- src/MagicNet/.config/sing-box rules
+          git -C src/MagicNet/.config/sing-box fetch origin e4ecf47499c35bf25e10d04257a21a4f7975ebad
+          git -C src/MagicNet/.config/sing-box checkout --detach e4ecf47499c35bf25e10d04257a21a4f7975ebad
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          old_ref = '7533d101472e934bf22b8be9305720408c343e25'
+          new_ref = 'e4ecf47499c35bf25e10d04257a21a4f7975ebad'
+          old_hash = '5dc12703fcb8d13da61a6122005eb6520dc67ac9d47cf74204ab2729a6ef07c7'
+          new_hash = 'eeffe5b7540c6a2f92629ba95a2488efcbcde553d9f70035d3e2ae8ecb65edbf'
+          assert hashlib.sha256(Path('src/MagicNet/.config/sing-box/config.json').read_bytes()).hexdigest() == new_hash
+          for name in ('src/MagicNet/.config/magicnet/singbox-config-repo.conf',
+                       'src/MagicNet/customize.sh', 'crates/magicnet-cli/src/config_editor.rs',
+                       'webui/src/components/pages/ConfigPage.vue'):
+              path = Path(name)
+              text = path.read_text(encoding='utf-8')
+              assert old_ref in text and old_hash in text, name
+              path.write_text(text.replace(old_ref, new_ref).replace(old_hash, new_hash), encoding='utf-8')
+          path = Path('rules-release.json')
+          pin = json.loads(path.read_text(encoding='utf-8'))
+          assert pin['tag'] == 'rules-20260922-9790edd534ce087d'
+          assert pin['recipe_commit'] == '363b419d2c3d1a6eb3f8511440b6ea0c0426c883'
+          pin.update(tag='rules-20261007-5b64697852303979',
+                     manifest_sha256='a55f4dfd6f7cb7be801ff251a2e730af44563f2948225f74824edb62b6fbbf6e')
+          path.write_text(json.dumps(pin, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add src/MagicNet/.config/sing-box src/MagicNet/.config/magicnet/singbox-config-repo.conf src/MagicNet/customize.sh crates/magicnet-cli/src/config_editor.rs webui/src/components/pages/ConfigPage.vue rules-release.json
+      - name: Check policy, normalization, pin agreement and rule download regressions
+        run: |
+          set -euo pipefail
+          python3 scripts/test-routing-template.py -v
+          python3 -m unittest discover -s src/MagicNet/.config/sing-box/tests -v
+          python3 scripts/test-bundled-rules.py -v
+          bash scripts/test-rule-hash-retry.sh
+          git diff --cached --check
+      - name: Validate the real release against the complete template inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAM_PROJECT_ROOT: ${{ github.workspace }}
+          KAM_HOOKS_ROOT: ${{ github.workspace }}/hooks
+          KAM_MODULE_ROOT: ${{ runner.temp }}/routing-pin-module
+        run: |
+          set -euo pipefail
+          mkdir -p "$KAM_MODULE_ROOT/.config/sing-box"
+          cp src/MagicNet/.config/sing-box/config.json "$KAM_MODULE_ROOT/.config/sing-box/config.json"
+          bash hooks/pre-build/5450.update_sing_box_rules.sh
+          expected=$(jq '[.route.rule_set[] | select(.type == "local" and (.path | endswith(".srs"))) | .path] | unique | length' "$KAM_MODULE_ROOT/.config/sing-box/config.json")
+          test "$(find "$KAM_MODULE_ROOT/.config/sing-box/rules" -name '*.srs' | wc -l)" -eq "$expected"
+          printf 'Verified %s required binary rule sets\n' "$expected"
+      - name: Commit only the six reviewed dependency and default changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          test "$(git diff --cached --name-only | wc -l)" -eq 6
+          git commit -m 'fix(routing): pin LMM proxy policy and verified October rule data'
+          git push origin HEAD:refs/heads/fix/routing-lmm-best-20261008
