@@ -150,7 +150,7 @@ magicnet_singbox_chain_apply() {
                {"type":"urltest", "tag":"chain-auto", "outbounds":$chain_exit_tags,
                 "url":"https://www.gstatic.com/generate_204", "interval":"3m",
                 "tolerance":30, "idle_timeout":"10m",
-                "interrupt_exist_connections":false},
+                "interrupt_exist_connections":false, "lazy_start":true},
                {"type":"selector", "tag":"chain",
                 "outbounds":(["chain-exit", "chain-auto", "block"]),
                 "default":(if $mode == "auto" then "chain-auto" else "chain-exit" end)}

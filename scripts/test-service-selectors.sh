@@ -3,9 +3,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
-export MODDIR="$ROOT/src/MagicNet"
-. "$MODDIR/lib/magicnet/singbox_subscribe/common.sh"
-. "$MODDIR/lib/magicnet/singbox_subscribe/config.sh"
+export MODDIR="$fixture/module"
+mkdir -p "$MODDIR/bin" "$MODDIR/.config/magicnet"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
+. "$MODDIR/lib/magicnet_singbox_subscribe.sh"
 magicnet_singbox_subscription_filter_file() { printf '%s\n' "$fixture/filters"; }
 printf '%s\n' '[{"type":"socks","tag":"US-test","server":"127.0.0.1","server_port":1080,"version":"5"},{"type":"socks","tag":"google-proxy","server":"127.0.0.1","server_port":1081,"version":"5"}]' > "$fixture/nodes"
 printf '%s\n' US-test google-proxy > "$fixture/tags"
@@ -23,6 +25,17 @@ for service in google youtube github discord netflix spotify twitter whatsapp te
     ' "$fixture/outbounds" >/dev/null
 done
 jq -e '[.[].tag] | length == (unique | length)' "$fixture/outbounds" >/dev/null
+# The main and four AI auto choices remain optional; manual defaults must not
+# turn their presence into background startup probes.
+jq -e '
+  [.[] | select(.type == "urltest")] as $auto
+  | ($auto | map(.tag) | sort) == ["ai-chatgpt-auto", "ai-claude-auto", "ai-gemini-auto", "ai-grok-auto", "proxy-auto"]
+    and all($auto[]; .lazy_start == true and .idle_timeout == "10m"
+      and .interrupt_exist_connections == false and .outbounds == ["US-test"])
+    and all(.[] | select(.tag == "proxy" or .tag == "ai-chatgpt"
+      or .tag == "ai-claude" or .tag == "ai-gemini" or .tag == "ai-grok");
+      .default == "US-test" and (.outbounds | index("US-test")) != null)
+' "$fixture/outbounds" >/dev/null
 # Every maintained selector must retain a usable proxy default after regeneration.
 for service in google youtube github discord netflix spotify twitter whatsapp telegram; do
     jq -e --arg tag "$service-proxy" '
@@ -34,7 +47,32 @@ printf 'Service selectors: node choices, reserved collisions, defaults and prese
 # Exercise the real sanitizer, not just the builder: it used to silently
 # replace each maintained service default with the first subscription node.
 jq -n --slurpfile out "$fixture/outbounds" '{inbounds:[{type:"mixed",listen:"127.0.0.1",listen_port:7892}],outbounds:$out[0],route:{rules:[]}}' >"$fixture/config.json"
+# Sanitization upgrades only maintained groups, including an older converter
+# result. Preserve a custom URLTest and its operator-selected timing fields.
+jq '.outbounds |= (map(if .type == "urltest" then del(.lazy_start) else . end)
+  + [{type:"urltest",tag:"custom-auto",outbounds:["US-test"],
+      url:"https://custom.fixture.invalid/204",interval:"17m",tolerance:81,
+      idle_timeout:"23m",lazy_start:false,interrupt_exist_connections:true}])' \
+  "$fixture/config.json" >"$fixture/legacy-auto.json"
+jq '.outbounds[] | select(.tag == "custom-auto")' "$fixture/legacy-auto.json" >"$fixture/custom-before.json"
+cp "$fixture/legacy-auto.json" "$fixture/config.json"
+# Runtime selector choices are persisted separately from generated defaults.
+# Their bytes and every still-valid choice must survive normalization.
+selections="$MODDIR/.config/magicnet/selector-selections.json"
+printf '%s\n' '{"proxy":"US-test","ai-chatgpt":"ai-chatgpt-auto","ai-claude":"block","google-proxy":"US-test"}' >"$selections"
+cp "$selections" "$fixture/selections-before.json"
 magicnet_singbox_sanitize_generated_config "$fixture/config.json"
+jq '.outbounds[] | select(.tag == "custom-auto")' "$fixture/config.json" >"$fixture/custom-after.json"
+cmp "$fixture/custom-before.json" "$fixture/custom-after.json"
+cmp "$fixture/selections-before.json" "$selections"
+jq -e --slurpfile selections "$selections" '
+  .outbounds as $groups
+  | [$groups[] | select(.type == "urltest" and .tag != "custom-auto")] as $auto
+  | ($auto | length) == 5 and all($auto[]; .lazy_start == true)
+    and all($selections[0] | to_entries[];
+      . as $saved | any($groups[]; .tag == $saved.key
+        and ((.outbounds // []) | index($saved.value)) != null))
+' "$fixture/config.json" >/dev/null
 for service in google youtube github discord netflix spotify twitter whatsapp telegram; do
     jq -e --arg tag "$service-proxy" '.outbounds[] | select(.tag==$tag) | .default=="proxy" and (.outbounds | index("proxy")) != null' "$fixture/config.json" >/dev/null
 done
@@ -57,6 +95,21 @@ for choice in US-test direct block; do
     )
     jq -e --arg choice "$choice" '.outbounds[] | select(.tag=="google-proxy") | .default==$choice' "$fixture/pinned.json" >/dev/null
 done
+# An older core can reject the new option. Exercise the validation-failure
+# boundary without replacing the active file or erasing saved user choices.
+cp "$fixture/config.json" "$fixture/rejected.json"
+cp "$fixture/rejected.json" "$fixture/before-rejection.json"
+(
+    sing-box() { return 1; }
+    if MAGICNET_SUB_CONFIG_FILE="$fixture/rejected.json" \
+        magicnet_singbox_update_config_with_nodes "$fixture/outbounds"; then
+        printf '%s\n' 'core validation rejection unexpectedly published the candidate' >&2
+        exit 1
+    fi
+)
+cmp "$fixture/before-rejection.json" "$fixture/rejected.json"
+test ! -e "$fixture/rejected.json.new"
+cmp "$fixture/selections-before.json" "$selections"
 cp "$fixture/config.json" "$fixture/once.json"
 magicnet_singbox_sanitize_generated_config "$fixture/config.json"
 cmp "$fixture/once.json" "$fixture/config.json"
@@ -65,7 +118,27 @@ jq '(.outbounds[] | select(.tag=="google-proxy")).default="removed-node"' "$fixt
 magicnet_singbox_sanitize_generated_config "$fixture/stale.json"
 jq -e '.outbounds[] | select(.tag=="google-proxy") | .default=="proxy"' "$fixture/stale.json" >/dev/null
 printf 'Service sanitizer migration, explicit selection, refresh and idempotence passed\n'
+# Empty subscriptions remain fail-closed and never create empty auto groups.
+printf '%s\n' '[]' >"$fixture/empty-nodes"
+: >"$fixture/empty-tags"
+magicnet_singbox_build_outbounds_file_with_jq "$fixture/empty-nodes" "$fixture/empty-tags" "$fixture/empty-outbounds"
+jq -n --slurpfile out "$fixture/empty-outbounds" \
+  '{outbounds:$out[0],route:{rules:[]}}' >"$fixture/empty.json"
+magicnet_singbox_sanitize_generated_config "$fixture/empty.json"
+jq -e '
+  ([.outbounds[] | select(.type == "urltest")] | length) == 0
+    and all(.outbounds[] | select(.tag == "proxy" or .tag == "ai-proxy"
+      or .tag == "ai-chatgpt" or .tag == "ai-claude"
+      or .tag == "ai-gemini" or .tag == "ai-grok");
+      .default == "block" and .outbounds == ["block"])
+' "$fixture/empty.json" >/dev/null
+cmp "$fixture/selections-before.json" "$selections"
+printf 'Lazy auto-group generation, normalization, custom groups and saved choices passed\n'
 if command -v sing-box >/dev/null 2>&1; then
+    # Validate the new field using the real bundled-fork candidate. An older
+    # host core must reject it rather than silently remove config validation.
+    sing-box check -c "$fixture/config.json" -D "$fixture" >/dev/null
+    sing-box check -c "$fixture/empty.json" -D "$fixture" >/dev/null
     python3 "$ROOT/scripts/test-service-selector-routing.py" "$fixture/config.json"
 else
     printf 'Real-core service routing probe skipped: sing-box not installed on this host\n'

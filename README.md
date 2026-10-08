@@ -27,7 +27,7 @@ MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 A
 
 - **订阅内容不限定为 sing-box 格式**：支持一行一个公网 HTTPS 订阅链接，最多五个来源。下载内容可识别 Clash/Mihomo YAML、base64、常见分享链接集合、sing-box JSON 和纯文本。
 - **直接兼容 Clash/Mihomo 订阅**：无需先找“sing-box 专用订阅”。把同一个合法 Clash/Mihomo 订阅 URL 交给 MagicNet，模块会解析节点并生成受控的 sing-box 配置。
-- **覆盖常见节点协议**：原生导入 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可处理额外格式。
+- **覆盖常见节点协议**：原生导入 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可处理额外格式。 原生备用解析支持常见字面量字段和普通引号值；不支持的协议、复杂 TLS/传输选项、别名、块标量及需要转义解析的字段值需要完整转换器。转换器不可用或失败时，这些输入会被明确拒绝并保留当前配置。
 - **自带 sing-box fork 内核**：仓库固定内核子模块和 Android arm64 构建，包含 MagicNet 使用的 eBPF inbound、Android 兼容修复与回归测试，不调用系统中来源不明的 sing-box。
 - **TUN 与 eBPF 两套透明数据面**：TUN 创建 `magicnet0`；eBPF 默认使用 hybrid，同时启用 local cgroup，并在确认下游接口后通过 shared TC 接管热点流量；没有下游接口时 shared 保持 pending。两种模式显式、互斥、原子切换，失败会回滚。
 - **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。

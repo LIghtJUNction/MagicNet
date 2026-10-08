@@ -41,6 +41,7 @@ cat >"$config" <<'EOF'
     {"type":"selector","tag":"ai-grok","outbounds":["node-us","node-jp","block","ai-grok-auto"],"default":"node-us"},
     {"type":"urltest","tag":"ai-claude-auto","outbounds":["node-us","node-jp"],"url":"https://claude.ai/","interval":"10m","tolerance":30,"idle_timeout":"10m","interrupt_exist_connections":false},
     {"type":"selector","tag":"ai-claude","outbounds":["node-us","node-jp","block","ai-claude-auto"],"default":"node-us"},
+    {"type":"urltest","tag":"custom-auto","outbounds":["node-jp"],"url":"https://custom.fixture.invalid/204","interval":"17m","tolerance":81,"idle_timeout":"23m","lazy_start":false,"interrupt_exist_connections":true},
     {"type":"direct","tag":"direct"},
     {"type":"block","tag":"block"}
   ]
@@ -56,12 +57,16 @@ cat >"$policy" <<'EOF'
 }
 EOF
 
+jq '.outbounds[] | select(.tag == "custom-auto")' "$config" >"$tmp/custom-before.json"
 magicnet_singbox_chain_apply "$config"
 jq -e '
   ([.outbounds[].tag] | index("chain")) != null
   and ([.outbounds[].tag] | index("chain-hop1")) != null
   and ([.outbounds[].tag] | index("chain-exit")) != null
   and ([.outbounds[].tag] | index("chain-auto")) != null
+  and (any(.outbounds[]; .tag == "chain-auto" and .lazy_start == true
+      and .interval == "3m" and .idle_timeout == "10m"
+      and .interrupt_exist_connections == false))
   and ([.outbounds[].tag] | index("magicnet-chain-exit::node-us")) != null
   and (any(.outbounds[]; .tag == "proxy" and .default == "chain"))
   and (any(.outbounds[]; .tag == "ai-proxy" and .outbounds == ["chain","block"]))
@@ -75,6 +80,25 @@ if command -v sing-box >/dev/null 2>&1; then
 fi
 
 sha256sum "$config" | cut -d' ' -f1 >"$tmp/enabled.sha256"
+jq '.outbounds[] | select(.tag == "custom-auto")' "$config" >"$tmp/custom-after.json"
+cmp "$tmp/custom-before.json" "$tmp/custom-after.json"
+
+# A failed materialization cannot replace the previously usable config.
+jq '.upstream = ["missing-node"]' "$policy" >"$tmp/invalid-policy.json"
+cp "$tmp/invalid-policy.json" "$policy"
+if magicnet_singbox_chain_apply "$config"; then
+  printf '%s\n' 'invalid chain policy unexpectedly replaced the active config' >&2
+  exit 1
+fi
+sha256sum "$config" | cut -d' ' -f1 >"$tmp/after-rejection.sha256"
+cmp "$tmp/enabled.sha256" "$tmp/after-rejection.sha256"
+
+# Auto chain mode keeps the same lazy group and selects it explicitly.
+jq '.upstream = ["node-jp"] | .mode = "auto"' "$policy" >"$tmp/auto-policy.json"
+cp "$tmp/auto-policy.json" "$policy"
+magicnet_singbox_chain_apply "$config"
+jq -e 'any(.outbounds[]; .tag == "chain" and .default == "chain-auto")
+  and any(.outbounds[]; .tag == "chain-auto" and .lazy_start == true)' "$config" >/dev/null
 
 cat >"$policy" <<'EOF'
 {
@@ -98,6 +122,7 @@ jq -e '
   and (any(.outbounds[]; .tag == "ai-chatgpt"
       and .outbounds == ["node-us","node-jp","block","ai-chatgpt-auto"]
       and .default == "node-us"))
+  and (all(.outbounds[]; .tag != "chain-auto"))
 ' "$config" >/dev/null
 
 if command -v sing-box >/dev/null 2>&1; then
@@ -108,5 +133,7 @@ sha256sum "$config" | cut -d' ' -f1 >"$tmp/disabled-before.sha256"
 magicnet_singbox_chain_apply "$config"
 sha256sum "$config" | cut -d' ' -f1 >"$tmp/disabled-after.sha256"
 cmp "$tmp/disabled-before.sha256" "$tmp/disabled-after.sha256"
+jq '.outbounds[] | select(.tag == "custom-auto")' "$config" >"$tmp/custom-disabled.json"
+cmp "$tmp/custom-before.json" "$tmp/custom-disabled.json"
 
 printf '%s\n' 'sing-box chain materialization and rollback test passed'

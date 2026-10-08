@@ -1092,7 +1092,7 @@ fi
         $proxy_auto == [{
           type: "urltest", tag: "proxy-auto", outbounds: $node_tags,
           url: "https://www.gstatic.com/generate_204", interval: "3m", tolerance: 30,
-          idle_timeout: "10m", interrupt_exist_connections: false
+          idle_timeout: "10m", lazy_start: true, interrupt_exist_connections: false
         }]
           and $by_tag.proxy.type == "selector"
           and $by_tag.proxy.outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
@@ -1125,6 +1125,7 @@ fi
         and $by_tag[$auto].interval == "10m"
         and $by_tag[$auto].tolerance == 30
         and $by_tag[$auto].idle_timeout == "10m"
+        and $by_tag[$auto].lazy_start == true
         and $by_tag[$auto].interrupt_exist_connections == false
     ))
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null

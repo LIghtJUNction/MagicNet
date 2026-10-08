@@ -1,3 +1,33 @@
+# v1.5.22 (2026-10-08)
+
+- Defer automatic probes for generated idle URL-test groups until first traffic;
+  keep manual forced tests and active-group network-reset testing. The opt-in
+  core option preserves the default behavior of custom groups.
+- Avoid one temporary heap allocation per Linux/Android socket-owner request,
+  preserving byte-identical IPv4/IPv6 TCP/UDP messages and lookup behavior.
+- Preserve quoted SNI keys in native imports; refuse unsupported TLS/transport
+  fallback imports and preserve the active configuration. Distinguish local CA
+  read failures from peer certificate verification failures in website probes.
+- Merge failed stream-sniff probe errors once per round to reduce repeated
+  error-tree expansion and allocation, preserving protocol, timeout and retry
+  semantics. Microbenchmarks measure local CPU/GC overhead, not device latency.
+- Add sustained ordinary-app Android HTTPS checks that retain failed and
+  incomplete observations, and report latency, core restarts, readiness losses,
+  memory growth and file-descriptor growth.
+- Add regressions for interrupted observations, unknown state, process
+  replacement and resource-budget failures.
+- Document independent service-selector diagnosis and explicit persisted exit
+  selection when changing the main proxy leaves a service on a slow node.
+- Retire obsolete embedded-list routing tests and the duplicate WeChat entry;
+  validate maintained classifiers and real packaged rule assets without a
+  legacy fallback.
+- Consolidate runtime architecture documentation while preserving explicit
+  `tun|ebpf`, canonical state and rollback boundaries.
+
+See [the release notes](docs/releases/v1.5.22.md) for installation and validation
+scope. Module-manager installation requires a reboot before the new payload can
+be treated as effective.
+
 # v1.5.5 (2026-09-16)
 
 - Recover stalled installer component downloads and enforce the intended

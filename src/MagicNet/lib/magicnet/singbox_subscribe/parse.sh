@@ -107,8 +107,71 @@ magicnet_singbox_extract_share_links() {
     printf '%s\n' "$_idx"
 }
 
+magicnet_singbox_native_node_complete() (
+    _node_file="$1"
+    magicnet_singbox_native_yaml node "$_node_file" || return 1
+    _type=$(magicnet_yaml_value type)
+    case "$_type" in
+    ss | shadowsocks | socks | socks5 | vmess | vless | trojan | hysteria2 | hy2 | anytls | tuic) ;;
+    *) return 1 ;;
+    esac
+    case "$_type" in
+    anytls | tuic) ;;
+    *)
+        # Other YAML emitters do not implement these explicit TLS options.
+        # Preserve their requested semantics through the full converter.
+        for _key in skip-cert-verify insecure; do
+            _value=$(magicnet_yaml_value "$_key") || return 1
+            magicnet_truthy "$_value" && return 1
+        done
+        ;;
+    esac
+    _network=$(magicnet_yaml_value network)
+    case "$_type:$_network" in
+    *: | *:tcp | vmess:ws | vless:ws) return 0 ;;
+    *) return 1 ;;
+    esac
+)
+
+magicnet_singbox_native_share_complete() (
+    _link=$(sed -n '1p' "$1" | tr -d '\r')
+    _scheme=$(printf '%s' "${_link%%://*}" | tr '[:upper:]' '[:lower:]')
+    _body=${_link#*://}
+    _body=${_body%%\#*}
+    _query=""
+    case "$_body" in *\?*) _query=${_body#*\?} ;; esac
+    case "$_scheme" in
+    vless | trojan)
+        # These emitters only implement plain TCP. Do not silently discard
+        # a sharing link transport, its endpoint options, or VLESS ALPN.
+        for _key in type network; do
+            _value=$(magicnet_uri_query_value "$_key" "$_query") || return 1
+            case "$_value" in '' | tcp) ;; *) return 1 ;; esac
+        done
+        for _key in path host serviceName service_name; do
+            _value=$(magicnet_uri_query_value "$_key" "$_query") || return 1
+            [ -z "$_value" ] || return 1
+        done
+        if [ "$_scheme" = vless ]; then
+            _value=$(magicnet_uri_query_value alpn "$_query") || return 1
+            [ -z "$_value" ] || return 1
+        fi
+        ;;
+    vmess)
+        # WS path/Host are implemented; gRPC and other transport options are
+        # not. A generic {type:grpc} would lose the requested service name.
+        _decoded=$(magicnet_b64_decode "$_body") || return 1
+        printf '%s' "$_decoded" | jq -e '
+          (.net // "tcp") as $network
+          | $network == "" or $network == "tcp" or $network == "ws"
+        ' >/dev/null 2>&1 || return 1
+        ;;
+    esac
+)
+
 magicnet_singbox_emit_node_json() {
     _node_file="$1"
+    magicnet_singbox_native_node_complete "$_node_file" || return 1
     _name=$(magicnet_yaml_value name)
     _type=$(magicnet_yaml_value type)
     _server=$(magicnet_yaml_value server)
@@ -278,6 +341,7 @@ magicnet_singbox_emit_node_json() {
 
 magicnet_singbox_emit_share_link_json() {
     _node_file="$1"
+    magicnet_singbox_native_share_complete "$_node_file" || return 1
     _link=$(sed -n '1p' "$_node_file" | tr -d '\r')
     _scheme=${_link%%://*}
     _scheme=$(printf '%s' "$_scheme" | tr '[:upper:]' '[:lower:]')

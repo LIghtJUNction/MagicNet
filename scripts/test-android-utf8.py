@@ -66,6 +66,58 @@ magicnet_singbox_source_is_clash "$MODDIR/source.yaml"
 test "$(magicnet_singbox_extract_clash_nodes "$MODDIR/source.yaml" "$MODDIR/yaml-nodes")" = 1
 magicnet_singbox_emit_node_json "$MODDIR/yaml-nodes/node-1.yaml" >"$MODDIR/yaml-node.json"
 "$MODDIR/bin/jq" -e '.tag == "测试🌍" and .server_port == 443 and .password == "fixture"' "$MODDIR/yaml-node.json" >/dev/null
+# Quoted flow fields must use real mapping boundaries on Android awk too.
+cat >"$MODDIR/scalar-flow.yaml" <<'YAML'
+{"name": "测试🌍", "type": trojan, "server": example.invalid, "port": 443, "password": "fixture#literal, alpn: h2", "sni": tls.example.invalid}
+YAML
+magicnet_singbox_native_clash_complete "$MODDIR/scalar-flow.yaml"
+magicnet_singbox_emit_node_json "$MODDIR/scalar-flow.yaml" >"$MODDIR/scalar-flow.json"
+"$MODDIR/bin/jq" -e '.tag == "测试🌍" and .password == "fixture#literal, alpn: h2" and .tls.server_name == "tls.example.invalid" and (.tls | has("insecure") | not)' "$MODDIR/scalar-flow.json" >/dev/null
+# A literal backslash is valid in a plain scalar, not an ERE escape.
+cat >"$MODDIR/scalar-plain.yaml" <<'YAML'
+{name: plain, type: trojan, server: example.invalid, port: 443, password: \fixture, sni: tls.example.invalid}
+YAML
+magicnet_singbox_emit_node_json "$MODDIR/scalar-plain.yaml" >"$MODDIR/scalar-plain.json"
+"$MODDIR/bin/jq" -e '.password == "\\fixture" and .tls.server_name == "tls.example.invalid"' "$MODDIR/scalar-plain.json" >/dev/null
+# Exercise the whole native fallback: a valid peer cannot conceal an unsupported
+# SNI sequence or an escaped TLS boolean that would otherwise disable TLS.
+. "$MODDIR/lib/magicnet/singbox_subscribe/fetch.sh"
+. "$MODDIR/lib/magicnet/singbox_subscribe/proxylink.sh"
+. "$MODDIR/lib/magicnet/singbox_subscribe/config.sh"
+. "$MODDIR/lib/magicnet/singbox_subscribe/update.sh"
+(
+    info() { :; }; warn() { :; }; error() { :; }; success() { :; }
+    magicnet_singbox_status_value() { printf '0\n'; }
+    magicnet_singbox_is_running() { return 1; }
+    magicnet_singbox_transaction_begin() { return 0; }
+    magicnet_singbox_update_cleanup_stage() { :; }
+    magicnet_singbox_update_status() { printf '%s %s %s\n' "$@" >>"$MODDIR/scalar-status"; }
+    magicnet_singbox_subscription_filter_file() { printf '/dev/null\n'; }
+    magicnet_singbox_fetch_subscription() {
+        mkdir -p "${1%/*}/sources"
+        cp "$MODDIR/scalar-source.yaml" "${1%/*}/sources/offline.yaml"
+        printf '%s\n' "${1%/*}/sources/offline.yaml" >"$1"
+    }
+    magicnet_singbox_update_config_with_nodes() { cp "$1" "$MODDIR/scalar-candidate.json"; return 1; }
+    MAGICNET_PROXYLINK_ENABLED=0
+    MAGICNET_SUB_SOURCE_FILE="$MODDIR/scalar-source.yaml"
+    printf '%s\n' '{"outbounds":[]}' >"$MODDIR/.config/sing-box/config.json"
+    cp "$MODDIR/.config/sing-box/config.json" "$MODDIR/scalar-active-before.json"
+    for kind in sequence escaped_bool; do
+        rm -rf "$MODDIR/.state/sing-box"
+        rm -f "$MODDIR/scalar-candidate.json" "$MODDIR/scalar-status"
+        if [ "$kind" = sequence ]; then
+            printf '%s\n' 'proxies:' '  - {name: bad, type: trojan, server: example.invalid, port: 443, password: fixture, "sni": [tls.example.invalid]}' >"$MODDIR/scalar-source.yaml"
+        else
+            printf '%s\n' 'proxies:' '  - {name: bad, type: vmess, server: example.invalid, port: 443, uuid: 00000000-0000-4000-8000-000000000001, tls: "tr\u0075e", sni: tls.example.invalid}' >"$MODDIR/scalar-source.yaml"
+        fi
+        printf '%s\n' '  - {name: ordinary, type: trojan, server: example.invalid, port: 443, password: fixture, sni: tls.example.invalid}' >>"$MODDIR/scalar-source.yaml"
+        if magicnet_singbox_update_subscription_unlocked; then exit 93; fi
+        test ! -e "$MODDIR/scalar-candidate.json"
+        grep -q '^convert failed incomplete_conversion$' "$MODDIR/scalar-status"
+        cmp "$MODDIR/scalar-active-before.json" "$MODDIR/.config/sing-box/config.json"
+    done
+)
 test "$(magicnet_singbox_extract_share_links "$MODDIR/share-links" "$MODDIR/link-nodes")" = 1
 magicnet_singbox_emit_share_link_json "$MODDIR/link-nodes/node-1.link" >"$MODDIR/link-node.json"
 "$MODDIR/bin/jq" -e '.tag == "测试🌍" and .server_port == 443' "$MODDIR/link-node.json" >/dev/null

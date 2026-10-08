@@ -95,6 +95,7 @@ jobs:
           python3 scripts/test-android-adb.py
           python3 scripts/test-android-tun-proof.py
           python3 scripts/test-android-network-benchmark.py
+          python3 scripts/test-android-network-soak.py
 
       - name: Test UTF-8 parsers with the unmodified KernelSU BusyBox
         shell: bash
@@ -484,6 +485,19 @@ jobs:
           MAGICNET_RUN_SPEED: ${{ inputs.run_speed == true && '1' || '0' }}
         shell: bash
         run: scripts/android-kernelsu-acceptance.sh
+
+      - name: Observe sustained application networking and core stability
+        if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          serial="$(adb get-serialno)"
+          python3 scripts/android-network-soak.py \
+            --serial "$serial" \
+            --targets tests/android-probe/soak-targets.tsv \
+            --output artifacts/android-public-benchmark/soak \
+            --duration 600 --interval 20 --max-latency-ms 1500 --root-mode adb
 
       - name: Stop emulator
         if: always()

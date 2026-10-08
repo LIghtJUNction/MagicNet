@@ -143,7 +143,7 @@ magicnet_singbox_build_outbounds_file_with_jq() (
     def urltest($tag; $url; $interval; $tags):
       {"type": "urltest", "tag": $tag, "outbounds": $tags,
        "url": $url, "interval": $interval, "tolerance": 30, "idle_timeout": "10m",
-       "interrupt_exist_connections": false};
+       "interrupt_exist_connections": false, "lazy_start": true};
     def proxy_selector($tags):
       if ($tags | length) > 0
         then {"type": "selector", "tag": "proxy",
@@ -373,7 +373,7 @@ magicnet_singbox_sanitize_generated_config() {
       def proxy_urltest($tags):
         {"type": "urltest", "tag": "proxy-auto", "outbounds": $tags,
          "url": "https://www.gstatic.com/generate_204", "interval": "3m", "tolerance": 30,
-         "idle_timeout": "10m", "interrupt_exist_connections": false};
+         "idle_timeout": "10m", "interrupt_exist_connections": false, "lazy_start": true};
       def proxy_selector($tags):
         if ($tags | length) > 0
         then {"type": "selector", "tag": "proxy",
@@ -405,7 +405,7 @@ magicnet_singbox_sanitize_generated_config() {
       def ai_urltest($tag; $url; $tags):
         {"type": "urltest", "tag": ($tag + "-auto"), "outbounds": $tags,
          "url": $url, "interval": "10m", "tolerance": 30, "idle_timeout": "10m",
-         "interrupt_exist_connections": false};
+         "interrupt_exist_connections": false, "lazy_start": true};
       # Manual-first AI service selectors
       def pinned_ai_selector($tag; $tags):
         if ($tags | length) > 0

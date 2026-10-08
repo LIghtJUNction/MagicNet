@@ -89,6 +89,7 @@ jq -e '
       interval: "3m",
       tolerance: 30,
       idle_timeout: "10m",
+      lazy_start: true,
       interrupt_exist_connections: false
     }])
     and ($by_tag.proxy == {
@@ -127,6 +128,7 @@ jq -e '
           interval: "10m",
           tolerance: 30,
           idle_timeout: "10m",
+          lazy_start: true,
           interrupt_exist_connections: false
         }
     ))
@@ -520,7 +522,7 @@ jq -e '
   | ([.outbounds[] | select(.tag == "proxy-auto")] == [{
       type: "urltest", tag: "proxy-auto", outbounds: $node_tags,
       url: "https://www.gstatic.com/generate_204", interval: "3m", tolerance: 30,
-      idle_timeout: "10m", interrupt_exist_connections: false
+      idle_timeout: "10m", lazy_start: true, interrupt_exist_connections: false
     }])
     and ($by_tag.proxy == {
       type: "selector", tag: "proxy",
@@ -573,6 +575,7 @@ jq -e '
         and $by_tag[$auto].interval == "10m"
         and $by_tag[$auto].tolerance == 30
         and $by_tag[$auto].idle_timeout == "10m"
+        and $by_tag[$auto].lazy_start == true
         and $by_tag[$auto].interrupt_exist_connections == false
     ))
 ' "$tmp_dir/legacy-cached.json" >/dev/null || fail "legacy cached config AI selector repair mismatch"
@@ -609,6 +612,7 @@ jq -e '
         and $by_tag[$auto].interval == "10m"
         and $by_tag[$auto].tolerance == 30
         and $by_tag[$auto].idle_timeout == "10m"
+        and $by_tag[$auto].lazy_start == true
         and $by_tag[$auto].interrupt_exist_connections == false
     ))
 ' "$tmp_dir/malformed-cached.json" >/dev/null || fail "malformed or duplicate AI selectors not canonicalized"

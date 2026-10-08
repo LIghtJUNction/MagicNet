@@ -1,0 +1,4 @@
+# Public, credential-free target corpus for sustained device observations.
+gstatic|global|https://www.gstatic.com/generate_204|204
+cloudflare|global|https://cp.cloudflare.com/generate_204|204
+baidu|domestic|https://www.baidu.com/|200

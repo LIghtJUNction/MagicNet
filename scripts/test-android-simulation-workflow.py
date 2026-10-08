@@ -74,6 +74,20 @@ class WorkflowTests(unittest.TestCase):
                         names.index('Install and benchmark MagicNet in KernelSU AVD'))
         self.assertIn('android-public-benchmark', benchmark['env']['MAGICNET_ANDROID_REPORT_DIR'])
 
+    def test_public_stability_observation_cannot_be_short_success_only(self):
+        soak = self.step('Observe sustained application networking and core stability')
+        self.assertIn("github.event_name == 'workflow_dispatch'", soak['if'])
+        self.assertIn('inputs.public_benchmark == true', soak['if'])
+        self.assertNotIn('continue-on-error', soak)
+        self.assertIn('--duration 600', soak['run'])
+        self.assertIn('--interval 20', soak['run'])
+        self.assertIn('--root-mode adb', soak['run'])
+        names = [s.get('name') for s in self.steps]
+        self.assertLess(names.index('Install and benchmark MagicNet in KernelSU AVD'), names.index(soak['name']))
+        self.assertLess(names.index(soak['name']), names.index('Stop emulator'))
+        self.assertTrue(any('test-android-network-soak.py' in s.get('run', '')
+                            for s in self.jobs['harness']['steps']))
+
     def test_only_pristine_vm_is_cached_and_runtime_inputs_are_verified_fresh(self):
         names = [s.get('name') for s in self.steps]
         boot = names.index('Boot pristine Android 15 AVD')
