@@ -6,12 +6,15 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('benchmark', ROOT / 'scripts/android-network-benchmark.py')
@@ -126,6 +129,183 @@ class AndroidBenchmarkTests(unittest.TestCase):
     def test_requested_speed_failure_is_not_ignored(self):
         code, report = self.run_main(None, speed=True)
         self.assertNotEqual(code, 0, report)
+
+
+class PreparedRuntimeBenchmarkTests(unittest.TestCase):
+    VERIFIED = dict(status='verified', positive=True, reject=True, positive_after=True, restored=True)
+    DEFAULT_PROOF = object()
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.targets = self.root / 'targets.tsv'
+        self.targets.write_text('one|global|https://example.invalid/private-path?token=private-value|200\n')
+        self.output = self.root / 'out'
+        self.runtime_dir = self.root / 'runtime'
+        self.expected = {'payload_sha256': {'bin/sing-box': 'a' * 64}}
+        self.observation = dict(ready=True, identity_verified=True, generation_sha256='b' * 64)
+        self.device = Mock()
+        self.device.kshell.return_value = subprocess.CompletedProcess(['adb'], 0, '', '')
+        self.runtime = SimpleNamespace(
+            verify_prepared=Mock(return_value=(self.device, self.expected, self.observation)),
+            observe_runtime=Mock(return_value=self.observation))
+        self.probe = dict(ok=True, complete=True, rc=0, elapsed_ms=10, uid=10123,
+                          http=200, redirects=0, reason='https_response', received_bytes=5)
+        self.speed = self.probe | dict(name='test-speed', requested_bytes=bench.SPEED_LIMIT, mbps=1)
+
+    def run_main(self, *, proof=DEFAULT_PROOF, argv=None, identity=None, proof_effect=None):
+        args = ['benchmark', '--targets', str(self.targets), '--output', str(self.output),
+                '--rounds', '1', '--speed']
+        args += argv if argv is not None else [
+            '--verify-tun', '--root-mode', 'ksud', '--prepared-runtime-dir', str(self.runtime_dir)]
+        with patch.object(sys, 'argv', args), \
+             patch.object(bench, 'load_prepared_runtime', return_value=self.runtime) as loader, \
+             patch.object(bench, 'instrument', return_value=identity or dict(ok=True, uid=10123)) as instrument, \
+             patch.object(bench, 'verify_tun_path', return_value=self.VERIFIED if proof is self.DEFAULT_PROOF else proof,
+                          side_effect=proof_effect) as verify, \
+             patch.object(bench, 'fetch_probe', return_value=self.probe) as fetch, \
+             patch.object(bench, 'speed_probe', return_value=self.speed) as speed, \
+             patch.object(bench, 'collect_processes', return_value={'processes': {}}), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = bench.main()
+        return SimpleNamespace(code=code, report=json.loads((self.output / 'results.json').read_text()),
+                               markdown=(self.output / 'summary.md').read_text(), loader=loader,
+                               instrument=instrument, verify=verify, fetch=fetch, speed=speed)
+
+    def assert_blocked(self, result, phase):
+        self.assertEqual(result.code, 2)
+        self.assertEqual(result.report['verdict'], 'INCOMPLETE')
+        self.assertEqual(result.report['prepared_runtime']['status'], 'INCOMPLETE')
+        self.assertEqual(result.report['prepared_runtime']['phase'], phase)
+        result.fetch.assert_not_called()
+        result.speed.assert_not_called()
+        self.assertIn('INCOMPLETE', result.markdown)
+        self.assertNotIn('private-value', json.dumps(result.report))
+        self.assertNotIn('private-path', result.markdown)
+
+    def test_verified_handoff_and_restoration_precede_public_requests(self):
+        events = []
+        self.runtime.verify_prepared.side_effect = lambda *args, **kwargs: (
+            events.append('preflight') or (self.device, self.expected, self.observation))
+        self.runtime.observe_runtime.side_effect = lambda *args: events.append('after_restore') or self.observation
+        def proof(command):
+            events.append('proof')
+            for operation in ('positive', 'reject', 'positive_after', 'restore'):
+                command('/data/adb/modules/MagicNet/cli service restart sing-box', timeout=90)
+            return self.VERIFIED
+        result = self.run_main(proof_effect=proof)
+        self.assertEqual(result.code, 0)
+        self.assertEqual(events, ['preflight', 'proof', 'after_restore'])
+        self.runtime.verify_prepared.assert_called_once_with(self.runtime_dir, strict_generation=False)
+        self.runtime.observe_runtime.assert_called_once_with(self.device, self.expected)
+        self.assertEqual(result.report['prepared_runtime']['status'], 'verified')
+        self.assertEqual(self.device.kshell.call_count, 4)
+        for call in self.device.kshell.call_args_list:
+            self.assertEqual(call.kwargs, dict(timeout=90, check=False))
+        result.fetch.assert_called_once()
+        self.assertEqual(result.speed.call_count, 2)
+        result.instrument.assert_called_once_with(bench.COMPONENT, 'identity', 5)
+
+    def test_failed_preflight_never_uses_default_adb_or_probe(self):
+        self.runtime.verify_prepared.side_effect = RuntimeError('core_payload_mismatch')
+        result = self.run_main()
+        self.assert_blocked(result, 'preflight')
+        result.instrument.assert_not_called()
+        result.verify.assert_not_called()
+        self.runtime.observe_runtime.assert_not_called()
+        self.assertEqual(result.report['prepared_runtime']['error_code'], 'core_payload_mismatch')
+
+    def test_missing_handoff_or_proof_refuses_without_loading_runtime(self):
+        for args in (['--root-mode', 'ksud', '--verify-tun'],
+                     ['--root-mode', 'ksud', '--prepared-runtime-dir', str(self.runtime_dir)]):
+            with self.subTest(args=args):
+                result = self.run_main(argv=args)
+                self.assert_blocked(result, 'preflight')
+                result.loader.assert_not_called()
+                result.instrument.assert_not_called()
+                result.verify.assert_not_called()
+
+    def test_each_control_and_restoration_must_be_true_before_probes(self):
+        for key in ('status', 'positive', 'reject', 'positive_after', 'restored'):
+            for value in (None, False, 'true'):
+                with self.subTest(key=key, value=value):
+                    result = self.run_main(proof=self.VERIFIED | {key: value})
+                    self.assert_blocked(result, 'tun_proof')
+                    self.runtime.observe_runtime.assert_not_called()
+                    self.assertEqual(result.report['tun_proof'][key], value)
+
+    def test_proof_diagnostic_survives_failed_control(self):
+        proof = self.VERIFIED | dict(status='not_verified', positive=False,
+                                    failure_operation='core_restart', failure_exit_code=1)
+        result = self.run_main(proof=proof)
+        self.assert_blocked(result, 'tun_proof')
+        self.assertEqual(result.report['tun_proof']['failure_operation'], 'core_restart')
+        self.assertEqual(result.report['tun_proof']['failure_exit_code'], 1)
+
+    def test_proof_exception_blocks_requests_and_keeps_report(self):
+        result = self.run_main(proof_effect=RuntimeError('private-path private-value'))
+        self.assert_blocked(result, 'tun_proof')
+        self.assertEqual(result.report['prepared_runtime']['error_code'], 'observation_unknown')
+
+    def test_unknown_proof_shape_replaces_prior_pass_with_incomplete(self):
+        for proof in (None, [], ['verified']):
+            with self.subTest(proof=proof):
+                self.output.mkdir(parents=True, exist_ok=True)
+                (self.output / 'results.json').write_text(json.dumps({'verdict': 'PASS'}))
+                result = self.run_main(proof=proof)
+                self.assert_blocked(result, 'tun_proof')
+                self.assertEqual(result.report['tun_proof'], {'status': 'not_verified'})
+                self.assertEqual(result.report['prepared_runtime']['error_code'], 'tun_proof_not_verified')
+                self.runtime.observe_runtime.assert_not_called()
+
+    def test_post_restore_identity_generation_or_readiness_failure_blocks_requests(self):
+        for code in ('core_domain_unknown', 'core_payload_mismatch', 'core_generation_changed',
+                     'runtime_not_ready', 'probe_payload_mismatch'):
+            with self.subTest(code=code):
+                self.runtime.observe_runtime.side_effect = RuntimeError(code)
+                result = self.run_main()
+                self.assert_blocked(result, 'after_tun_restore')
+                self.assertEqual(result.report['prepared_runtime']['error_code'], code)
+                self.assertEqual(result.report['tun_proof']['status'], 'verified')
+
+    def test_app_identity_failure_cannot_start_proof_or_public_probes(self):
+        result = self.run_main(identity=dict(ok=False, uid=None))
+        self.assert_blocked(result, 'preflight')
+        result.verify.assert_not_called()
+        self.runtime.observe_runtime.assert_not_called()
+
+    def test_default_adb_keeps_existing_transport_without_prepared_helper(self):
+        result = self.run_main(argv=['--verify-tun'])
+        self.assertEqual(result.code, 0)
+        result.loader.assert_not_called()
+        result.verify.assert_called_once_with()
+        self.assertNotIn('prepared_runtime', result.report)
+
+    def test_proof_callback_executes_real_device_kshell_stdin_semantics(self):
+        spec = importlib.util.spec_from_file_location('benchmark_transport_simulation',
+                                                      ROOT / 'scripts/android-device-simulation.py')
+        simulation = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(simulation)
+        with patch.dict(os.environ, MAGICNET_DISPOSABLE_AVD='1', ANDROID_SERIAL='emulator-5554'):
+            self.device = simulation.Device()
+        self.device.verified = True  # The mocked verify_prepared is the tested handoff boundary.
+        self.runtime.verify_prepared.return_value = self.device, self.expected, self.observation
+        command = "/data/adb/modules/MagicNet/cli config-editor save-file sing-box '/a path/file.json'"
+        def proof(root_shell):
+            root_shell(command, timeout=90)
+            return self.VERIFIED
+        with patch.object(simulation.subprocess, 'run',
+                          return_value=subprocess.CompletedProcess(['adb'], 0, '', '')) as transport:
+            result = self.run_main(proof_effect=proof)
+        self.assertEqual(result.code, 0)
+        transport.assert_called_once()
+        self.assertEqual(transport.call_args.args[0], ['adb', '-s', 'emulator-5554', 'shell', '-T',
+                                                      '/data/adb/ksud debug su'])
+        self.assertEqual(transport.call_args.kwargs['input'],
+                         'export KSU=true ASH_STANDALONE=1\nexec /data/adb/ksu/bin/busybox sh -c '
+                         + shlex.quote(command) + '\n')
+        self.assertEqual(transport.call_args.kwargs['timeout'], 90)
 
 
 if __name__ == '__main__':

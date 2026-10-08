@@ -104,6 +104,23 @@ when bundled. The production ARM64 archive remains unchanged; fixture preparatio
 and lifecycle checks reject missing or incompatible runtime payloads. `ksud` is staged under `/sdcard/Download/MagicNet`, then copied to its
 actual executable userspace destination; `/sdcard` is not used as executable storage.
 
+The opt-in public phase requires all 12 offline lifecycle cases to pass, including
+module uninstall. `android-public-runtime.py prepare` then performs the necessary
+single installation and boot of the current complete x86_64 fixture through the
+same real KernelSU installer and lifecycle. The public wrapper verifies that
+prepared runtime before changing the anonymous feed; it does not install again,
+replace executable payloads after installation, attempt stock-kernel KMI/LKM
+initialization, reinstall the probe APK, or replay `service.sh`. Module CLI calls
+run through real `ksud debug su` and BusyBox standalone semantics; one explicit
+CLI restart after the feed update must become machine-ready before health/TUN
+checks and probes. The benchmark explicitly selects `--root-mode ksud` with the
+prepared report directory, so sentinel configuration changes and restarts use
+the same KernelSU transport. All three controls and restoration must pass, then
+current executable identity, core generation, domain and readiness are checked
+again before any public HTTPS or throughput request. Invalid preparation or
+live evidence fails without a fallback and leaves an `INCOMPLETE` summary.
+The preparation report is temporary CI evidence, not device canonical state.
+
 All ADB calls, including `wait-for-device`, have deadlines. Exit diagnostics have
 an overall budget and preserve the original test exit code. Process memory that
 could not be read is `null`, not an invented zero. No custom corpus URL, config,

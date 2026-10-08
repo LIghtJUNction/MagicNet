@@ -216,13 +216,30 @@ def process_rss_kb(snapshot: dict[str, Any], name: str) -> int | None:
     return sum(values)
 
 
-def verify_tun_path() -> dict[str, Any]:
+def verify_tun_path(root_shell=None) -> dict[str, Any]:
     path = Path(__file__).with_name('android-tun-proof.py')
     spec = importlib.util.spec_from_file_location('tun_proof', path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.verify(adb_shell, instrument, COMPONENT)
+    return module.verify(root_shell if root_shell is not None else adb_shell, instrument, COMPONENT)
+
+
+def load_prepared_runtime():
+    path = Path(__file__).with_name('android-public-runtime.py')
+    spec = importlib.util.spec_from_file_location('benchmark_public_runtime', path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError('runtime_helper_unavailable')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def runtime_error_code(error: BaseException) -> str:
+    # Runtime guards emit bounded tokens. Arbitrary exceptions can contain
+    # commands, config paths or raw device output and are never persisted.
+    code = str(error) if isinstance(error, RuntimeError) else ''
+    return code if re.fullmatch(r'[a-z_]{1,64}', code) else 'observation_unknown'
 
 
 def main() -> int:
@@ -234,6 +251,10 @@ def main() -> int:
                         help='Compatibility flag; every failed target/round now fails, with or without this flag')
     parser.add_argument('--speed', action='store_true')
     parser.add_argument('--verify-tun', action='store_true', help='Run emulator-only, reversible TUN sentinel proof')
+    parser.add_argument('--root-mode', choices=('adb', 'ksud'), default='adb',
+                        help='TUN proof transport; ksud requires a verified disposable prepared AVD')
+    parser.add_argument('--prepared-runtime-dir', type=Path,
+                        help='Prepared CI handoff directory required by --root-mode ksud')
     parser.add_argument('--timeout', type=int, default=20)
     args = parser.parse_args()
     if not 1 <= args.rounds <= 10 or not 1 <= args.timeout <= 60:
@@ -243,13 +264,61 @@ def main() -> int:
     except (OSError, ValueError):
         parser.error('invalid or unreadable target corpus (URLs are not printed)')
     args.output.mkdir(parents=True, exist_ok=True)
-    identity = instrument(COMPONENT, 'identity', 5)
-    proof = verify_tun_path() if args.verify_tun and identity['ok'] else {'status': 'not_verified'}
-    before = collect_processes('/data/adb/ksu/bin/busybox')
+    runtime = device = expected = None
+    runtime_report = None
+    runtime_ok = args.root_mode == 'adb'
+    if args.root_mode == 'ksud':
+        runtime_report = {'root_mode': 'ksud', 'status': 'INCOMPLETE', 'phase': 'preflight'}
+        if args.prepared_runtime_dir is None or not args.verify_tun:
+            runtime_report['error_code'] = 'prepared_handoff_and_tun_proof_required'
+        else:
+            try:
+                runtime = load_prepared_runtime()
+                device, expected, observation = runtime.verify_prepared(
+                    args.prepared_runtime_dir, strict_generation=False)
+                runtime_report['preflight'] = observation
+                runtime_ok = True
+            except (Exception, KeyboardInterrupt) as error:
+                runtime_report['error_code'] = runtime_error_code(error)
+    identity = instrument(COMPONENT, 'identity', 5) if runtime_ok else failure('prepared_runtime_unavailable')
+    proof = {'status': 'not_verified'}
+    if args.verify_tun and identity['ok']:
+        if args.root_mode == 'ksud':
+            runtime_report['phase'] = 'tun_proof'
+            # Return child failures to the proof so it can record the original
+            # operation before restoration; do not raise in the transport.
+            def proof_command(command, timeout=30):
+                return device.kshell(command, timeout=timeout, check=False)
+            try:
+                proof = verify_tun_path(proof_command)
+                if not isinstance(proof, dict):
+                    proof = {'status': 'not_verified'}
+                    raise RuntimeError('tun_proof_not_verified')
+                if proof.get('status') != 'verified' or not all(proof.get(key) is True for key in
+                        ('positive', 'reject', 'positive_after', 'restored')):
+                    raise RuntimeError('tun_proof_not_verified')
+                runtime_report['phase'] = 'after_tun_restore'
+                # The controls and restoration restart the core. Check current
+                # inode/bytes/domain/generation/readiness again before HTTPS.
+                runtime_report['after_tun_restore'] = runtime.observe_runtime(device, expected)
+                runtime_report['status'] = 'verified'
+            except (Exception, KeyboardInterrupt) as error:
+                runtime_ok = False
+                runtime_report['error_code'] = runtime_error_code(error)
+        else:
+            proof = verify_tun_path()
+    if args.root_mode == 'ksud' and runtime_report['status'] != 'verified':
+        runtime_ok = False
+        runtime_report.setdefault('error_code', 'probe_app_unavailable')
+    probes_allowed = identity['ok'] and runtime_ok
+    before = (collect_processes('/data/adb/ksu/bin/busybox') if runtime_ok
+              else {'processes': {'sing-box': None, 'magicnet-cli': None}})
     records = []
     for target in targets:
         for round_no in range(1, args.rounds + 1):
-            result = fetch_probe(COMPONENT, target['url'], args.timeout, target['expected']) if identity['ok'] else failure('probe_app_unavailable')
+            result = (fetch_probe(COMPONENT, target['url'], args.timeout, target['expected']) if probes_allowed
+                      else failure('prepared_runtime_unavailable' if args.root_mode == 'ksud'
+                                   else 'probe_app_unavailable'))
             if result['uid'] is not None and result['uid'] != identity.get('uid'):
                 result = failure('app_uid_changed')
             # A user-supplied URL may include a private path; only IDs are persisted.
@@ -262,11 +331,15 @@ def main() -> int:
             ('global-cloudflare-8MiB', 'https://speed.cloudflare.com/__down?bytes=8388608'),
             ('domestic-tuna-8MiB', 'https://mirrors.tuna.tsinghua.edu.cn/iina/IINA.v1.4.4.dmg'),
         ):
-            result = speed_probe(COMPONENT, name, url, SPEED_LIMIT, 45) if identity['ok'] else failure('probe_app_unavailable') | dict(name=name, requested_bytes=SPEED_LIMIT, mbps=None)
+            result = (speed_probe(COMPONENT, name, url, SPEED_LIMIT, 45) if probes_allowed
+                      else failure('prepared_runtime_unavailable' if args.root_mode == 'ksud'
+                                   else 'probe_app_unavailable')
+                      | dict(name=name, requested_bytes=SPEED_LIMIT, mbps=None))
             if result.get('uid') is not None and result['uid'] != identity.get('uid'):
                 result.update(ok=False, complete=False, reason='app_uid_changed')
             speed_records.append(result)
-    after = collect_processes('/data/adb/ksu/bin/busybox')
+    after = (collect_processes('/data/adb/ksu/bin/busybox') if runtime_ok
+             else {'processes': {'sing-box': None, 'magicnet-cli': None}})
     per_target = []
     for target in targets:
         rows = [row for row in records if row['id'] == target['id']]
@@ -279,6 +352,8 @@ def main() -> int:
     passed = all(row['ok'] for row in records + speed_records)
     if args.verify_tun and proof.get('status') != 'verified':
         complete = passed = False
+    if not runtime_ok:
+        complete = passed = False
     verdict = 'PASS' if passed else ('FAIL' if complete else 'INCOMPLETE')
     summary = dict(schema=1, scope='anonymous_app_uid_https', verdict=verdict,
                    rounds=args.rounds, strict_external=True, target_count=len(targets),
@@ -290,6 +365,8 @@ def main() -> int:
                    sing_box_rss_kb_before=process_rss_kb(before, 'sing-box'),
                    sing_box_rss_kb_after=process_rss_kb(after, 'sing-box'),
                    speed=speed_records, targets=per_target)
+    if runtime_report is not None:
+        summary['prepared_runtime'] = runtime_report
     source = os.environ.get('GITHUB_SHA', '')
     if re.fullmatch('[0-9a-f]{40}', source):
         summary['source_commit'] = source
@@ -304,6 +381,8 @@ def main() -> int:
           f"Result: **{verdict}**. TUN sentinel: **{proof.get('status', 'not_verified')}**.",
           'Every target and every round counts. A later success never erases a failure.', '',
           '| Target | Class | Success | Median latency |', '|---|---|---:|---:|']
+    if runtime_report is not None:
+        md[3:3] = [f"Prepared runtime: **{runtime_report['status']}** ({runtime_report['phase']}).", '']
     for row in per_target:
         latency = str(row['median_latency_ms']) + ' ms' if row['median_latency_ms'] is not None else 'unknown'
         md.append(f"| {row['id']} | {row['category']} | {row['successes']}/{row['rounds']} | {latency} |")

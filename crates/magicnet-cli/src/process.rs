@@ -311,42 +311,62 @@ pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
     let mut pids = Vec::new();
     for pid in candidates {
         let proc_dir = Path::new("/proc").join(&pid);
-        match proc_pid_is_live(&proc_dir)? {
-            true => {}
-            false => continue,
-        }
-        let Some(comm) = read_live_proc_text(&proc_dir, "comm", MAX_PROC_COMM_BYTES)? else {
-            continue;
-        };
-        if comm.trim() != "sing-box" {
-            continue;
-        }
-        let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
-            Ok(argv) => argv,
-            // A process can become a zombie between the stat and cmdline
-            // reads. Only a second liveness observation can prove that this
-            // error is an exit race. Empty/invalid argv can also belong to a
-            // live process and must keep ownership indeterminate.
-            Err(_) if matches!(proc_pid_is_live(&proc_dir), Ok(false)) => continue,
-            Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
-        };
-        if !singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir)
-        {
-            continue;
-        }
-        match singbox_executable_owned(&proc_dir, &expected_binary) {
-            Some(true) => pids.push(pid),
-            Some(false) if singbox_script_arg_owned(&argv, &expected_binary) => pids.push(pid),
-            Some(false) => {}
-            None if singbox_script_arg_owned(&argv, &expected_binary) => pids.push(pid),
-            None => {
-                return Err(format!(
-                    "cannot verify executable identity for live sing-box candidate {pid}"
-                ));
-            }
+        if singbox_candidate_owned_with(
+            &pid,
+            &proc_dir,
+            &expected_binary,
+            &expected_config,
+            &expected_workdir,
+            singbox_executable_owned,
+        )? {
+            pids.push(pid);
         }
     }
     Ok(pids)
+}
+
+fn singbox_candidate_owned_with(
+    pid: &str,
+    proc_dir: &Path,
+    expected_binary: &Path,
+    expected_config: &Path,
+    expected_workdir: &Path,
+    inspect_executable: impl FnOnce(&Path, &Path) -> Option<bool>,
+) -> Result<bool, String> {
+    if !proc_pid_is_live(proc_dir)? {
+        return Ok(false);
+    }
+    let Some(comm) = read_live_proc_text(proc_dir, "comm", MAX_PROC_COMM_BYTES)? else {
+        return Ok(false);
+    };
+    if comm.trim() != "sing-box" {
+        return Ok(false);
+    }
+    let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
+        Ok(argv) => argv,
+        // A process can become a zombie between the stat and cmdline
+        // reads. Only a second liveness observation can prove that this
+        // error is an exit race. Empty/invalid argv can also belong to a
+        // live process and must keep ownership indeterminate.
+        Err(_) if matches!(proc_pid_is_live(proc_dir), Ok(false)) => return Ok(false),
+        Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
+    };
+    if !singbox_commandline_owned(&argv, expected_binary, expected_config, expected_workdir) {
+        return Ok(false);
+    }
+    match inspect_executable(proc_dir, expected_binary) {
+        Some(true) => Ok(true),
+        Some(false) if singbox_script_arg_owned(&argv, expected_binary) => Ok(true),
+        Some(false) => Ok(false),
+        // TERM can finish after the owned argv read but before /proc/PID/exe.
+        // Ignore this missing executable only after a confirmed exit. Otherwise
+        // preserve the existing ownership decision and its script argv exception.
+        None if matches!(proc_pid_is_live(proc_dir), Ok(false)) => Ok(false),
+        None if singbox_script_arg_owned(&argv, expected_binary) => Ok(true),
+        None => Err(format!(
+            "cannot verify executable identity for live sing-box candidate {pid}"
+        )),
+    }
 }
 
 fn read_live_proc_text(

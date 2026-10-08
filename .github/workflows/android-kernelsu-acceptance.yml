@@ -468,8 +468,25 @@ jobs:
           MAGICNET_NETWORK_PROBE_APK: ${{ runner.temp }}/magicnet-network-probe.apk
         run: python3 scripts/android-device-simulation.py
 
+      # Offline acceptance must finish all cases, including uninstall, first.
+      # Reinstall the complete x86 fixture once through the same KernelSU lifecycle.
+      - name: Prepare public benchmark runtime
+        id: public_prepare
+        if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
+        timeout-minutes: 10
+        env:
+          MAGICNET_DISPOSABLE_AVD: "1"
+          MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
+          MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
+          MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
+          MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools
+          MAGICNET_NETWORK_PROBE_APK: ${{ runner.temp }}/magicnet-network-probe.apk
+        run: |
+          python3 scripts/android-public-runtime.py prepare \
+            --output artifacts/android-public-benchmark/runtime \
+            --simulation-report artifacts/android-kernelsu/simulation.json
+
       # This is an observation, not a substitute for the deterministic phase above.
-      # It installs its own module after the simulation has verified uninstall.
       - name: Install and benchmark MagicNet in KernelSU AVD
         if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
         timeout-minutes: 20
@@ -479,6 +496,9 @@ jobs:
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
           MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools
           MAGICNET_NETWORK_PROBE_APK: ${{ runner.temp }}/magicnet-network-probe.apk
+          MAGICNET_DISPOSABLE_AVD: "1"
+          MAGICNET_PUBLIC_RUNTIME: prepared
+          MAGICNET_PREPARED_RUNTIME_DIR: ${{ github.workspace }}/artifacts/android-public-benchmark/runtime
           MAGICNET_ANDROID_REPORT_DIR: ${{ github.workspace }}/artifacts/android-public-benchmark
           MAGICNET_PROXY_REGION: ${{ inputs.proxy_region }}
           MAGICNET_BENCHMARK_ROUNDS: ${{ inputs.rounds }}

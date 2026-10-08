@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 import re
+import shlex
+import shutil
 import stat
 import struct
 import subprocess
@@ -65,19 +67,40 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('continue-on-error', self.jobs['android-kernelsu'])
 
     def test_public_proxy_is_explicit_opt_in_after_simulation(self):
+        preparation = self.step('Prepare public benchmark runtime')
         benchmark = self.step('Install and benchmark MagicNet in KernelSU AVD')
         self.assertIn("github.event_name == 'workflow_dispatch'", benchmark['if'])
         self.assertIn('inputs.public_benchmark == true', benchmark['if'])
         self.assertEqual(self.flow['on']['workflow_dispatch']['inputs']['public_benchmark']['default'], 'false')
         names = [s.get('name') for s in self.steps]
         self.assertLess(names.index('Exercise offline Android KernelSU lifecycle'),
+                        names.index(preparation['name']))
+        self.assertLess(names.index(preparation['name']),
                         names.index('Install and benchmark MagicNet in KernelSU AVD'))
         self.assertIn('android-public-benchmark', benchmark['env']['MAGICNET_ANDROID_REPORT_DIR'])
+        self.assertEqual(preparation['id'], 'public_prepare')
+        self.assertEqual(preparation['if'], benchmark['if'])
+        self.assertNotIn('continue-on-error', preparation)
+        self.assertNotIn('continue-on-error', benchmark)
+        self.assertEqual(preparation['env']['MAGICNET_DISPOSABLE_AVD'], '1')
+        self.assertEqual(benchmark['env']['MAGICNET_DISPOSABLE_AVD'], '1')
+        self.assertEqual(benchmark['env']['MAGICNET_PUBLIC_RUNTIME'], 'prepared')
+        self.assertIn('artifacts/android-public-benchmark/runtime',
+                      benchmark['env']['MAGICNET_PREPARED_RUNTIME_DIR'])
+        for key, value in self.step('Exercise offline Android KernelSU lifecycle')['env'].items():
+            self.assertEqual(preparation['env'][key], value)
+            self.assertEqual(benchmark['env'][key], value)
+        self.assertIn('scripts/android-public-runtime.py prepare', preparation['run'])
+        self.assertIn('--output artifacts/android-public-benchmark/runtime', preparation['run'])
+        self.assertIn('--simulation-report artifacts/android-kernelsu/simulation.json', preparation['run'])
 
     def test_public_stability_observation_cannot_be_short_success_only(self):
         soak = self.step('Observe sustained application networking and core stability')
         self.assertIn("github.event_name == 'workflow_dispatch'", soak['if'])
         self.assertIn('inputs.public_benchmark == true', soak['if'])
+        self.assertEqual(soak['if'], self.step('Install and benchmark MagicNet in KernelSU AVD')['if'])
+        self.assertNotIn('always()', soak['if'])
+        self.assertNotIn('!cancelled()', soak['if'])
         self.assertNotIn('continue-on-error', soak)
         self.assertIn('--duration 600', soak['run'])
         self.assertIn('--interval 20', soak['run'])
@@ -240,6 +263,171 @@ class WorkflowTests(unittest.TestCase):
                         recorded = json.loads(z.read(simulation.PROVENANCE))
                         self.assertEqual(recorded['excluded_build_cache_sha256'], report['excluded_build_cache_sha256'])
                 self.assertEqual(source.read_bytes(), before)
+
+
+class PublicRuntimeShellTests(unittest.TestCase):
+    """Exercise branch/transport boundaries without an emulator or network."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        scripts = self.root / 'scripts'
+        (scripts / 'lib').mkdir(parents=True)
+        for name in ('android-kernelsu-acceptance.sh', 'android-device-simulation.py',
+                     'lib/android-adb.sh'):
+            shutil.copyfile(ROOT / 'scripts' / name, scripts / name)
+        self.trace = self.root / 'trace.jsonl'
+        self.out = self.root / 'output'
+        self.bin = self.root / 'bin'
+        self.bin.mkdir()
+        (scripts / 'android-public-runtime.py').write_text('''import json, os, sys
+with open(os.environ['PUBLIC_TEST_TRACE'], 'a') as f:
+    f.write(json.dumps({'helper': sys.argv[1:]}) + '\\n')
+raise SystemExit(int(os.environ.get('PUBLIC_TEST_VERIFY_EXIT', '0')))
+''')
+        (scripts / 'android-network-benchmark.py').write_text('''import json, os, sys
+from pathlib import Path
+with open(os.environ['PUBLIC_TEST_TRACE'], 'a') as f:
+    f.write(json.dumps({'benchmark': sys.argv[1:]}) + '\\n')
+out = Path(sys.argv[sys.argv.index('--output') + 1])
+out.mkdir(parents=True, exist_ok=True)
+(out / 'summary.md').write_text('test benchmark\\n')
+raise SystemExit(int(os.environ.get('PUBLIC_TEST_BENCHMARK_EXIT', '0')))
+''')
+        fake = self.bin / 'adb'
+        fake.write_text('''#!/usr/bin/env python3
+import json, os, shlex, sys
+from pathlib import Path
+args = sys.argv[1:]
+stdin = sys.stdin.read() if args == ['shell', '-T', '/data/adb/ksud debug su'] else ''
+entry = {'adb': args, 'stdin': stdin}
+with open(os.environ['PUBLIC_TEST_TRACE'], 'a') as f:
+    f.write(json.dumps(entry) + '\\n')
+if stdin:
+    lines = stdin.splitlines()
+    assert lines[0] == 'export KSU=true ASH_STANDALONE=1'
+    words = shlex.split(lines[1])
+    assert words[:4] == ['exec', '/data/adb/ksu/bin/busybox', 'sh', '-c']
+    cli = shlex.split(words[4])
+    assert cli[0] == '/data/adb/modules/MagicNet/cli'
+    if cli[1:] == ['service', 'restart', 'sing-box']:
+        raise SystemExit(int(os.environ.get('PUBLIC_TEST_RESTART_EXIT', '0')))
+    if cli[1:] == ['health'] and os.environ.get('PUBLIC_TEST_HEALTH_EXIT'):
+        raise SystemExit(int(os.environ['PUBLIC_TEST_HEALTH_EXIT']))
+    if cli[1:] == ['--json', 'service', 'status']:
+        count = Path(os.environ['PUBLIC_TEST_TRACE'] + '.status-count')
+        before = int(count.read_text()) if count.exists() else 0
+        count.write_text(str(before + 1))
+        ready = not (os.environ.get('PUBLIC_TEST_NOT_READY_FIRST') == '1' and before == 0)
+        print(json.dumps({'schema': 1, 'ok': True, 'command': 'service.status', 'data': {
+            'core': {'sing_box': {'process_state': 'running'}}, 'api': {'ready': True},
+            'readiness': {'dataplane': ready, 'overall': ready}}}))
+    else:
+        print('test CLI status')
+    raise SystemExit(0)
+if args and args[0] in ('push', 'install', 'root', 'reboot', 'wait-for-device'):
+    raise SystemExit('prepared path performed a stock installation operation')
+if args == ['get-state']:
+    print('device')
+elif args == ['shell', 'ip link show magicnet0']:
+    if os.environ.get('PUBLIC_TEST_TUN_EXIT'):
+        raise SystemExit(int(os.environ['PUBLIC_TEST_TUN_EXIT']))
+    print('magicnet0: UP')
+''')
+        fake.chmod(0o755)
+        self.env = {key: value for key, value in os.environ.items()
+                    if not key.startswith(('MAGICNET_', 'PUBLIC_TEST_')) and key != 'GITHUB_STEP_SUMMARY'}
+        self.env.update(PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
+                        MAGICNET_PUBLIC_RUNTIME='prepared', MAGICNET_DISPOSABLE_AVD='1',
+                        MAGICNET_PREPARED_RUNTIME_DIR=str(self.root / 'runtime'),
+                        MAGICNET_ANDROID_REPORT_DIR=str(self.out), MAGICNET_RUN_SPEED='0',
+                        PUBLIC_TEST_TRACE=str(self.trace))
+
+    def run_shell(self, **extra):
+        return subprocess.run(['bash', str(self.root / 'scripts/android-kernelsu-acceptance.sh')],
+                              env=self.env | extra, text=True, capture_output=True, timeout=15)
+
+    def events(self):
+        return [json.loads(line) for line in self.trace.read_text().splitlines()] if self.trace.exists() else []
+
+    def cli_calls(self):
+        return [shlex.split(shlex.split(event['stdin'].splitlines()[1])[4])[1:]
+                for event in self.events() if event.get('stdin')]
+
+    def test_prepared_skips_stock_install_and_uses_one_ksu_cli_restart(self):
+        result = self.run_shell()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.events()
+        self.assertEqual(events[0], {'helper': ['verify', '--output', str(self.root / 'runtime')]})
+        calls = self.cli_calls()
+        self.assertEqual(calls.count(['service', 'restart', 'sing-box']), 1)
+        self.assertEqual(calls[:3], [
+            ['setup', 'https://github.com/Au1rxx/free-vpn-subscriptions/raw/main/output/clash.yaml'],
+            ['sub', 'update-all'], ['sub', 'status']])
+        for command in (['--json', 'service', 'status'], ['health'], ['transparent', 'status'],
+                        ['service', 'status', 'sing-box'], ['config-editor', 'validate', 'sing-box']):
+            self.assertIn(command, calls)
+        self.assertEqual(sum('benchmark' in event for event in events), 1)
+        benchmark = next(event['benchmark'] for event in events if 'benchmark' in event)
+        self.assertEqual(benchmark[benchmark.index('--root-mode') + 1], 'ksud')
+        self.assertEqual(benchmark[benchmark.index('--prepared-runtime-dir') + 1],
+                         str(self.root / 'runtime'))
+        self.assertFalse(any('service.sh' in ' '.join(event.get('adb', [])) for event in events))
+        self.assertFalse(any(event.get('adb', [''])[0] in ('push', 'install', 'root', 'reboot', 'wait-for-device')
+                             for event in events if 'adb' in event))
+
+    def test_failed_live_verification_cannot_fall_back_or_mutate(self):
+        result = self.run_shell(PUBLIC_TEST_VERIFY_EXIT='23')
+        self.assertEqual(result.returncode, 23)
+        self.assertEqual(self.cli_calls(), [])
+        self.assertFalse(any('benchmark' in event for event in self.events()))
+        self.assertFalse(any(event.get('adb', [''])[0] in ('push', 'install', 'root', 'reboot', 'wait-for-device')
+                             for event in self.events() if 'adb' in event))
+
+    def test_failed_restart_is_not_replayed_or_benchmarked(self):
+        result = self.run_shell(PUBLIC_TEST_RESTART_EXIT='37')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('CLI restart failed', result.stderr)
+        self.assertEqual(self.cli_calls().count(['service', 'restart', 'sing-box']), 1)
+        self.assertNotIn(['--json', 'service', 'status'], self.cli_calls())
+        self.assertFalse(any('benchmark' in event for event in self.events()))
+
+    def test_dataplane_false_is_polled_without_restarting_again(self):
+        result = self.run_shell(PUBLIC_TEST_NOT_READY_FIRST='1')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.cli_calls().count(['--json', 'service', 'status']), 2)
+        self.assertEqual(self.cli_calls().count(['service', 'restart', 'sing-box']), 1)
+
+    def test_unknown_runtime_and_non_disposable_prepared_refuse_before_cli(self):
+        for extra in ({'MAGICNET_PUBLIC_RUNTIME': 'auto'}, {'MAGICNET_DISPOSABLE_AVD': '0'},
+                      {'MAGICNET_PREPARED_RUNTIME_DIR': ''}):
+            with self.subTest(extra=extra):
+                result = self.run_shell(**extra)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(self.cli_calls(), [])
+                self.assertFalse(any('benchmark' in event for event in self.events()))
+
+    def test_benchmark_failure_is_retained(self):
+        result = self.run_shell(PUBLIC_TEST_BENCHMARK_EXIT='42')
+        self.assertEqual(result.returncode, 42)
+        self.assertEqual(sum('benchmark' in event for event in self.events()), 1)
+
+    def test_health_and_tun_failure_do_not_reach_benchmark(self):
+        for extra, code in (({'PUBLIC_TEST_HEALTH_EXIT': '31'}, 31),
+                            ({'PUBLIC_TEST_TUN_EXIT': '32'}, 32)):
+            with self.subTest(extra=extra):
+                result = self.run_shell(**extra)
+                self.assertEqual(result.returncode, code)
+                self.assertFalse(any('benchmark' in event for event in self.events()))
+
+    def test_default_remains_stock_late_load(self):
+        del self.env['MAGICNET_PUBLIC_RUNTIME']
+        result = self.run_shell()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('MAGICNET_KSUD_HOST is required', result.stderr)
+        self.assertFalse(any('helper' in event for event in self.events()))
+        self.assertEqual(self.cli_calls(), [])
 
 
 if __name__ == '__main__':
