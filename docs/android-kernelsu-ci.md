@@ -42,6 +42,13 @@ It never switches nodes or restarts the core. Every failed request, latency
 spike above the chosen budget, sampled readiness loss, process restart or excess
 resource growth fails the run. Missing evidence or an interrupted window is
 `INCOMPLETE`, never `PASS`; completed cycles are saved while the run continues.
+Measured latency from failed requests also counts toward the latency budget and
+summary; missing or non-finite elapsed measurements make the evidence incomplete.
+The host tool requires Linux and holds a kernel file lock for each output
+directory from initial invalidation through final publication. An overlapping
+invocation exits 2 without changing the owner's reports or contacting the device.
+Use different output directories for concurrent runs. The persistent `.soak.lock`
+file is intentional; the kernel releases its lock when the owning process exits.
 
 The opt-in public benchmark workflow now also requires a 600-second observation
 against three public domestic/global targets, with a 1500 ms full-request budget.

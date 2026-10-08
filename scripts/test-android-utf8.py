@@ -79,6 +79,37 @@ cat >"$MODDIR/scalar-plain.yaml" <<'YAML'
 YAML
 magicnet_singbox_emit_node_json "$MODDIR/scalar-plain.yaml" >"$MODDIR/scalar-plain.json"
 "$MODDIR/bin/jq" -e '.password == "\\fixture" and .tls.server_name == "tls.example.invalid"' "$MODDIR/scalar-plain.json" >/dev/null
+# Plain UTF-8 must not send partial multibyte characters into awk regex classes.
+cat >"$MODDIR/scalar-block.yaml" <<'YAML'
+name: 测试🌍
+type: trojan
+server: example.invalid
+port: 443
+password: 密码🌍#literal
+sni: tls.example.invalid
+YAML
+magicnet_singbox_emit_node_json "$MODDIR/scalar-block.yaml" >"$MODDIR/scalar-block.json"
+"$MODDIR/bin/jq" -e '.tag == "测试🌍" and .password == "密码🌍#literal" and .tls.server_name == "tls.example.invalid"' "$MODDIR/scalar-block.json" >/dev/null
+cat >"$MODDIR/scalar-unquoted.yaml" <<'YAML'
+{name: 测试🌍, type: trojan, server: example.invalid, port: 443, password: 密码🌍#literal, sni: tls.example.invalid}
+YAML
+magicnet_singbox_emit_node_json "$MODDIR/scalar-unquoted.yaml" >"$MODDIR/scalar-unquoted.json"
+"$MODDIR/bin/jq" -e '.tag == "测试🌍" and .password == "密码🌍#literal" and .tls.server_name == "tls.example.invalid"' "$MODDIR/scalar-unquoted.json" >/dev/null
+# Invalid UTF-8-bearing mappings must fail normally, not by crashing awk.
+for invalid in '{name: 测试🌍, type: trojan, password: fixture' '{name: 测试🌍, type: trojan, password: fixture, sni: [测试🌍.invalid]}'; do
+    printf '%s\n' "$invalid" >"$MODDIR/scalar-invalid.yaml"
+    if magicnet_singbox_native_yaml node "$MODDIR/scalar-invalid.yaml"; then
+        exit 94
+    else
+        test "$?" = 1
+    fi
+done
+# Single-quoted UTF-8 also exercises apostrophe decoding in the pinned awk.
+cat >"$MODDIR/scalar-single.yaml" <<'YAML'
+{name: '测''试🌍', type: trojan, server: example.invalid, port: 443, password: '密''码🌍', sni: tls.example.invalid}
+YAML
+magicnet_singbox_emit_node_json "$MODDIR/scalar-single.yaml" >"$MODDIR/scalar-single.json"
+"$MODDIR/bin/jq" -e ".tag == \"测'试🌍\" and .password == \"密'码🌍\" and .tls.server_name == \"tls.example.invalid\"" "$MODDIR/scalar-single.json" >/dev/null
 # Exercise the whole native fallback: a valid peer cannot conceal an unsupported
 # SNI sequence or an escaped TLS boolean that would otherwise disable TLS.
 . "$MODDIR/lib/magicnet/singbox_subscribe/fetch.sh"

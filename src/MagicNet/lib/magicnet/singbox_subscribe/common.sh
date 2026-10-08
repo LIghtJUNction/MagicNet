@@ -384,9 +384,17 @@ magicnet_singbox_native_yaml() (
     # YAML tags, aliases, collections, block scalars and double-quote escapes
     # in consumed fields require the full converter instead of literal output.
     LC_ALL=C awk -v mode="$1" -v wanted="${3:-}" '
-        function ltrim(value) { sub(/^[[:space:]]+/, "", value); return value }
-        function rtrim(value) { sub(/[[:space:]]+$/, "", value); return value }
-        function trim(value) { return rtrim(ltrim(value)) }
+        # KernelSU BusyBox awk can crash when sub() trims UTF-8 strings.
+        # Byte scans preserve the same C-locale whitespace without that path.
+        function ltrim(value) {
+            while (length(value) && index(ws, substr(value, 1, 1))) value = substr(value, 2)
+            return value
+        }
+        function rtrim(value) {
+            while (length(value) && index(ws, substr(value, length(value), 1))) value = substr(value, 1, length(value) - 1)
+            return value
+        }
+        function trim(value) { value = ltrim(value); return rtrim(value) }
         function quoted_end(value, quote, i, c) {
             quote = substr(value, 1, 1)
             for (i = 2; i <= length(value); i++) {
@@ -414,7 +422,7 @@ magicnet_singbox_native_yaml() (
             }
             # A hash is a YAML comment only at the start or after whitespace.
             for (i = 1; i <= length(value); i++) {
-                if (substr(value, i, 1) == "#" && (i == 1 || substr(value, i - 1, 1) ~ /[[:space:]]/)) {
+                if (substr(value, i, 1) == "#" && (i == 1 || index(ws, substr(value, i - 1, 1)))) {
                     value = rtrim(substr(value, 1, i - 1)); break
                 }
             }
@@ -476,12 +484,12 @@ magicnet_singbox_native_yaml() (
                 } else if (c == "," && depth == 1) {
                     field(substr(line, begin, i - begin), 1); begin = i + 1
                 }
-                if (c !~ /[[:space:]]/) significant = c
+                if (!index(ws, c)) significant = c
             }
             # Multiline/unterminated flow mappings exceed the native grammar.
             bad = 1
         }
-        BEGIN { apostrophe = sprintf("%c", 39) }
+        BEGIN { ws = " \t\r\n\v\f"; apostrophe = sprintf("%c", 39) }
         {
             line = ltrim($0)
             if (substr(line, 1, 1) == "-") line = ltrim(substr(line, 2))

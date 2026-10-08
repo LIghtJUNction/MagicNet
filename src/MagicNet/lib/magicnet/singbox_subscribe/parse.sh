@@ -65,23 +65,26 @@ magicnet_singbox_extract_share_links() {
         }
     ' "$_source_file")
     _first_line_lc=$(printf '%s' "$_first_line" | tr '[:upper:]' '[:lower:]')
+    # Keep unsupported URI schemes until completeness validation. Dropping them
+    # here would let a valid peer hide a partially imported source.
+    _share_pattern='^[[:space:]]*[A-Za-z][A-Za-z0-9+.-]*://'
     case "$_first_line_lc" in
-    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://* | socks://* | socks5://*)
+    *://*)
         tr -d '\r' <"$_source_file" |
-            grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+            grep -E "$_share_pattern" |
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
-                grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                grep -E "$_share_pattern" |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
             if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
-                    grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                    grep -E "$_share_pattern" |
                     sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
@@ -140,6 +143,25 @@ magicnet_singbox_native_share_complete() (
     _body=${_body%%\#*}
     _query=""
     case "$_body" in *\?*) _query=${_body#*\?} ;; esac
+    # Only query options consumed by each native emitter can retain their
+    # requested semantics. Everything else requires the full converter.
+    case "$_scheme" in
+    ss | socks | socks5 | vmess) _allowed='|' ;;
+    vless) _allowed='|flow|security|sni|servername|fp|pbk|sid|type|network|path|host|serviceName|service_name|' ;;
+    trojan) _allowed='|sni|servername|peer|insecure|allowInsecure|skip-cert-verify|alpn|type|network|path|host|serviceName|service_name|' ;;
+    hysteria2 | hy2) _allowed='|sni|servername|alpn|' ;;
+    anytls) _allowed='|sni|servername|peer|fp|fingerprint|insecure|allowInsecure|alpn|' ;;
+    tuic) _allowed='|sni|servername|congestion_control|congestion-controller|udp_relay_mode|udp-relay-mode|insecure|allowInsecure|alpn|' ;;
+    *) return 1 ;;
+    esac
+    printf '%s\n' "$_query" | tr '&' '\n' |
+        while IFS= read -r _parameter || [ -n "$_parameter" ]; do
+            [ -n "$_parameter" ] || continue
+            case "$_parameter" in *=*) ;; *) return 1 ;; esac
+            _key=${_parameter%%=*}
+            case "$_key" in '' | *'|'*) return 1 ;; esac
+            case "$_allowed" in *"|$_key|"*) ;; *) return 1 ;; esac
+        done || return 1
     case "$_scheme" in
     vless | trojan)
         # These emitters only implement plain TCP. Do not silently discard
@@ -153,6 +175,25 @@ magicnet_singbox_native_share_complete() (
             [ -z "$_value" ] || return 1
         done
         if [ "$_scheme" = vless ]; then
+            _value=$(magicnet_uri_query_value security "$_query") || return 1
+            _security=$(printf '%s' "$_value" | tr '[:upper:]' '[:lower:]')
+            case "$_security" in
+            '' | none | tls | reality) ;;
+            *) return 1 ;;
+            esac
+            if [ "$_security" != reality ]; then
+                for _key in pbk sid; do
+                    _value=$(magicnet_uri_query_value "$_key" "$_query") || return 1
+                    [ -z "$_value" ] || return 1
+                done
+            fi
+            case "$_security" in
+            tls | reality) ;;
+            *)
+                _value=$(magicnet_uri_query_value fp "$_query") || return 1
+                [ -z "$_value" ] || return 1
+                ;;
+            esac
             _value=$(magicnet_uri_query_value alpn "$_query") || return 1
             [ -z "$_value" ] || return 1
         fi
@@ -163,7 +204,12 @@ magicnet_singbox_native_share_complete() (
         _decoded=$(magicnet_b64_decode "$_body") || return 1
         printf '%s' "$_decoded" | jq -e '
           (.net // "tcp") as $network
-          | $network == "" or $network == "tcp" or $network == "ws"
+          | ($network == "" or $network == "tcp" or $network == "ws")
+            and ((.tls // "") == "" or .tls == "tls")
+            and ((.alpn // "") == "") and ((.fp // "") == "")
+            and ((.type // "none") | . == "" or . == "none")
+            and (if $network == "ws" then true
+                 else ((.path // "") == "") and ((.host // "") == "") end)
         ' >/dev/null 2>&1 || return 1
         ;;
     esac

@@ -9,6 +9,7 @@ select the physical device; this is deliberately separate from offline CI.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import importlib.util
 import json
 import math
@@ -16,6 +17,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import time
 
 spec = importlib.util.spec_from_file_location(
@@ -78,10 +80,24 @@ def telemetry(root_mode: str = 'su') -> dict:
         return dict(known=False)
 
 
+def finite_nonnegative(value: object) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False
+
+
 def evaluate(probes: list[dict], snapshots: list[dict], *, duration: float,
              elapsed: float, max_latency_ms: int, max_rss_growth_kib: int,
              max_fd_growth: int) -> dict:
-    latencies = sorted(row['elapsed_ms'] for row in probes if row['ok'])
+    # A failed request can still have a measured timeout or handshake latency.
+    # Keep that evidence separate from the failure counter; unknown is not zero.
+    latencies = sorted(row['elapsed_ms'] for row in probes
+                       if finite_nonnegative(row.get('elapsed_ms')))
+    unknown_elapsed = len(probes) - len(latencies)
+    elapsed_known = finite_nonnegative(elapsed)
     known = [s for s in snapshots if s.get('known')]
     failures = sum(not row['ok'] for row in probes)
     slow = sum(value > max_latency_ms for value in latencies)
@@ -90,14 +106,16 @@ def evaluate(probes: list[dict], snapshots: list[dict], *, duration: float,
                            or s['transition'] != 'idle' for s in known)
     rss_growth = max((s['rss_kib'] for s in known), default=0) - known[0]['rss_kib'] if known else None
     fd_growth = max((s['fds'] for s in known), default=0) - known[0]['fds'] if known else None
-    incomplete = (not probes or elapsed < duration or len(known) != len(snapshots)
+    incomplete = (not probes or unknown_elapsed or not elapsed_known or elapsed < duration
+                  or len(known) != len(snapshots)
                   or not known or any(not row['complete'] for row in probes))
     degraded = (failures or slow or readiness_losses or len(identities) != 1
                 or (rss_growth is not None and rss_growth > max_rss_growth_kib)
                 or (fd_growth is not None and fd_growth > max_fd_growth))
     return dict(verdict='INCOMPLETE' if incomplete else ('FAIL' if degraded else 'PASS'),
-                elapsed_s=round(elapsed, 2), requested_duration_s=duration,
+                elapsed_s=round(elapsed, 2) if elapsed_known else None, requested_duration_s=duration,
                 probes=len(probes), failures=failures, slow_probes=slow,
+                unknown_elapsed_probes=unknown_elapsed,
                 max_latency_ms=max(latencies, default=None),
                 p95_latency_ms=latencies[math.ceil(len(latencies) * .95) - 1] if latencies else None,
                 unknown_snapshots=len(snapshots) - len(known),
@@ -120,6 +138,19 @@ def main() -> int:
     parser.add_argument('--max-fd-growth', type=int, default=256)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    # Linux flock owns the whole observation, including initial invalidation
+    # and final publication. Keep the lock inode: unlinking could split writers
+    # across different locks. Closing the fd also releases it after a crash.
+    with (args.output / '.soak.lock').open('a') as output_lock:
+        try:
+            fcntl.flock(output_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('Output directory is already in use; its reports are unchanged.', file=sys.stderr)
+            return 2
+        return observe(args, parser)
+
+
+def observe(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     # Invalidate both artifacts before input validation or device calls. A
     # failed new attempt must not retain an old PASS or an old sample window.
     (args.output / 'results.json').write_text(json.dumps(
@@ -159,6 +190,10 @@ def main() -> int:
                 result = bench.fetch_probe(bench.COMPONENT, target['url'], args.timeout, target['expected'])
                 if result.get('uid') != identity['uid']:
                     result = bench.failure('app_uid_changed')
+                # The APK reports measured HTTPS time as at least 1 ms. Zero
+                # from a host fallback is a placeholder, not a measured latency.
+                if result.get('elapsed_ms') == 0:
+                    result = result | {'elapsed_ms': None}
                 row = {'id': target['id'], 'cycle': cycle,
                        'elapsed_s': round(time.monotonic() - started, 2)} | result
                 rows.append(row)

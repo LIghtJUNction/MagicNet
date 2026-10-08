@@ -322,6 +322,88 @@ magicnet_singbox_update_subscription_unlocked
         self.assertIsNone(nodes)
         self.assertIn('convert failed incomplete_conversion', status)
 
+    def test_native_share_unsupported_schemes_and_options_require_converter(self):
+        valid = 'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid#ordinary\n'
+        cases = [
+            'wireguard://fixture@192.0.2.10:443#unknown',
+            'ss://aes-128-gcm:fixture@192.0.2.10:443?plugin=obfs-local%3Bobfs%3Dtls#advanced',
+            'hy2://fixture@192.0.2.10:443?obfs=salamander&obfs-password=fixture#advanced',
+            'hysteria2://fixture@192.0.2.10:443?insecure=1#advanced',
+            'trojan://fixture@192.0.2.10:443?fp=chrome#advanced',
+            'trojan://fixture@192.0.2.10:443?sni|servername=tls.example.invalid#compound-key',
+            'anytls://fixture@192.0.2.10:443?skip-cert-verify=1#advanced',
+            'tuic://uuid:fixture@192.0.2.10:443?disable_sni=1#advanced',
+            'vless://uuid@192.0.2.10:443?security=xtls#advanced',
+            'vless://uuid@192.0.2.10:443?security=tls&insecure=1#advanced',
+            'vless://uuid@192.0.2.10:443?security=tls&pbk=fixture#advanced',
+        ]
+        vmess = {'ps': 'advanced', 'add': '192.0.2.10', 'port': '443',
+                 'id': '00000000-0000-4000-8000-000000000001', 'aid': '0',
+                 'net': 'tcp', 'tls': 'tls', 'sni': 'tls.example.invalid'}
+        for key, value in (('alpn', 'h2'), ('fp', 'chrome'), ('type', 'http'), ('path', '/fixture')):
+            node = dict(vmess, **{key: value})
+            cases.append('vmess://' + base64.b64encode(json.dumps(node).encode()).decode())
+        for advanced in cases:
+            for ordinary_first in (False, True):
+                with self.subTest(scheme=advanced.split(':')[0], index=cases.index(advanced), ordinary_first=ordinary_first):
+                    content = valid + advanced + '\n' if ordinary_first else advanced + '\n' + valid
+                    nodes, status = self.native_update(content)
+                    self.assertIsNone(nodes)
+                    self.assertIn('convert failed incomplete_conversion', status)
+        # Encoded sources must keep unknown URI lines for the same preflight.
+        content = base64.b64encode((valid + cases[0] + '\n').encode()).decode()
+        nodes, status = self.native_update(content)
+        self.assertIsNone(nodes)
+        self.assertIn('convert failed incomplete_conversion', status)
+        for converter in ('failed', True):
+            nodes, status = self.native_update(valid + cases[1] + '\n', converter=converter)
+            if converter == 'failed':
+                self.assertIsNone(nodes)
+                self.assertIn('convert failed incomplete_conversion', status)
+            else:
+                self.assertIsNotNone(nodes)
+                self.assertEqual(nodes[0]['tag'], 'converted')
+
+    def test_native_share_supported_options_remain_faithful(self):
+        vmess = {'v': '2', 'ps': 'ws', 'add': '192.0.2.10', 'port': '443',
+                 'id': '00000000-0000-4000-8000-000000000001', 'aid': '0',
+                 'net': 'ws', 'path': '/fixture', 'host': 'ws.example.invalid',
+                 'tls': 'tls', 'sni': 'tls.example.invalid'}
+        content = '\n'.join([
+            '# fixture metadata', 'information only',
+            'ss://aes-128-gcm:fixture@192.0.2.10:443#ss',
+            'socks5://fixture:password@192.0.2.10:1080#socks',
+            'hy2://fixture@192.0.2.10:443?sni=tls.example.invalid&alpn=h3#hy2',
+            'trojan://fixture@192.0.2.10:443?peer=tls.example.invalid&alpn=h2&type=tcp&network=tcp#trojan',
+            'anytls://fixture@192.0.2.10:443?fingerprint=chrome&sni=tls.example.invalid&alpn=h2#anytls',
+            'tuic://uuid:fixture@192.0.2.10:443?sni=tls.example.invalid&congestion-controller=bbr&udp-relay-mode=native&alpn=h3#tuic',
+            'vless://uuid@192.0.2.10:443?security=reality&sni=tls.example.invalid&fp=chrome&pbk=fixture&sid=abcd&flow=xtls-rprx-vision&type=tcp#vless',
+            'vmess://' + base64.b64encode(json.dumps(vmess).encode()).decode(),
+        ]) + '\n'
+        # Information and comments are not node URIs and do not affect counts.
+        # Keep a URI first because plain-text metadata is not base64 content.
+        lines = content.splitlines()
+        content = '\n'.join([lines[2], *lines[:2], *lines[3:]]) + '\n'
+        nodes, _ = self.native_update(content)
+        self.assertIsNotNone(nodes)
+        by_tag = {node['tag']: node for node in nodes if node.get('server')}
+        self.assertEqual(len(by_tag), 8)
+        self.assertEqual((by_tag['ss']['method'], by_tag['ss']['password']), ('aes-128-gcm', 'fixture'))
+        self.assertEqual((by_tag['socks']['username'], by_tag['socks']['password']), ('fixture', 'password'))
+        for tag in ('hy2', 'trojan', 'anytls', 'tuic'):
+            self.assertEqual(by_tag[tag]['tls']['server_name'], 'tls.example.invalid')
+            self.assertNotIn('insecure', by_tag[tag]['tls'])
+        self.assertEqual(by_tag['hy2']['tls']['alpn'], ['h3'])
+        self.assertEqual(by_tag['trojan']['tls']['alpn'], ['h2'])
+        self.assertEqual(by_tag['anytls']['tls']['utls']['fingerprint'], 'chrome')
+        self.assertEqual(by_tag['tuic']['congestion_control'], 'bbr')
+        self.assertEqual(by_tag['tuic']['udp_relay_mode'], 'native')
+        self.assertEqual(by_tag['tuic']['tls']['alpn'], ['h3'])
+        self.assertEqual(by_tag['vless']['tls']['reality'], {'enabled': True, 'public_key': 'fixture', 'short_id': 'abcd'})
+        self.assertEqual(by_tag['vless']['flow'], 'xtls-rprx-vision')
+        self.assertEqual(by_tag['ws']['transport'], {'type': 'ws', 'path': '/fixture', 'headers': {'Host': 'ws.example.invalid'}})
+        self.assertEqual(by_tag['ws']['tls']['server_name'], 'tls.example.invalid')
+
     def test_converter_success_preserves_advanced_options_without_native_rejection(self):
         content = 'proxies:\n  - {name: fixture, type: trojan, server: 192.0.2.10, port: 443, password: fixture, "alpn": [h2], network: ws}\n'
         nodes, _ = self.native_update(content, converter=True)
