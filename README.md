@@ -141,7 +141,7 @@ kam build
 - [构建与发布包说明](docs/build.md)：发布 ZIP、依赖锁和包验收。
 - [本机仿真、AVD 和真机验收](docs/local-simulation.md)：分层测试与安全传输目录。
 - [MCP 自动化说明](docs/mcp.md)：认证、端口转发、日志和启动故障检查。
-- [架构概览](ARCHITECTURE.md)：仓库模块、依赖方向和稳定边界；详细运行架构见 [当前架构](docs/next-gen-architecture.md)。
+- [架构说明](ARCHITECTURE.md)：仓库模块、运行架构、状态归属和故障边界。
 - [贡献指南](CONTRIBUTING.md)：开发环境、质量检查和改动边界。
 - [安全策略](SECURITY.md)：私密漏洞报告方式和需要保持的安全属性。
 - [kamfw 本地文档](src/MagicNet/lib/kamfw/README.md)：模块内嵌运行时；上游项目见 [MemDeco-WG/kamfw](https://github.com/MemDeco-WG/kamfw)。

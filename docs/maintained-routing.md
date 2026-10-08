@@ -44,7 +44,15 @@ ordering and DNS/route classifier parity without requiring downloads.
 `--assets` additionally calls the sing-box matcher on actual bundled upstream
 files for TCP/UDP first-match cases, DNS ownership, explicit modes, LAN,
 advertising, voice ports, foreign-service/CN-IP overlap and keyword false positives.
-Legacy embedded-list tests remain available for legacy templates.
+
+The host suite runs this policy check once: structural by default, or including
+real assets with `bash scripts/test-host.sh --with-routing-assets`. Packaging uses
+`bash scripts/test-default-routing-policy.sh`, a thin entry to the same asset
+check. `MAGICNET_ROUTING_CONFIG_DIR` selects the extracted package configuration.
+Missing classifiers must fail validation, not select an obsolete embedded-list
+suite. The retired standalone WeChat test is covered by the maintained policy.
+`python3 scripts/test-routing-entrypoints.py` checks dispatch and failure handling
+with fake tools; it is not a network or rule-set acceptance test.
 
 ## Independent service selectors
 

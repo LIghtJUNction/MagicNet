@@ -58,8 +58,11 @@ check bash scripts/test-install-config-template.sh
 check bash scripts/test-install-config-refresh.sh
 check sh scripts/test-kamfw-i18n.sh
 check sh scripts/test-magicnet-i18n.sh
+check python3 scripts/test-routing-entrypoints.py
 if [ "$with_routing_assets" -eq 1 ]; then
     check bash scripts/test-default-routing-policy.sh
+else
+    check python3 scripts/test-maintained-routing.py
 fi
 check bash scripts/test-policy-architecture.sh
 check python3 scripts/test-routing-optimizer.py
@@ -68,7 +71,6 @@ check bash scripts/test-ad-routing.sh
 check bash scripts/test-app-routing-policy.sh
 check bash scripts/test-block-conf-safety.sh
 check bash scripts/test-block-apply-safety.sh
-check bash scripts/test-wechat-routing.sh
 check bash scripts/test-action-routing.sh
 check bash scripts/test-route-apply-safety.sh
 check bash scripts/test-hotspot-routing.sh
