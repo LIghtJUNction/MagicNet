@@ -70,9 +70,12 @@ for rule in routes + dns:
             "tailscale.net",
             "ts.net",
             "cn",
-            "中国",
-            "公司",
-            "网络",
+            # DNS uses IDNA ASCII labels for these Chinese TLDs.
+            "xn--fiqs8s",
+            "xn--55qx5d",
+            "xn--io0a7i",
+            # Explicitly proxy lmm.best and all of its subdomains.
+            "lmm.best",
         }
     if "ip_cidr" in rule:
         assert rule.get("outbound") in ("lan", "block"), (
