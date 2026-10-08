@@ -1,9 +1,147 @@
 use super::{
-    signal_owned_singbox_with, signal_pid, stop_singbox_with, SINGBOX_STOP_GRACE,
-    SINGBOX_STOP_POLL_INTERVAL,
+    proc_pid_is_live, signal_owned_singbox_with, signal_pid, singbox_candidate_owned_with,
+    singbox_executable_owned, stop_singbox_with, SINGBOX_STOP_GRACE, SINGBOX_STOP_POLL_INTERVAL,
 };
 use std::cell::Cell;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+fn write_candidate_stat(proc_dir: &Path, state: &str, starttime: u64) {
+    fs::write(
+        proc_dir.join("stat"),
+        format!("42 (sing-box) {state} {}{starttime}\n", "1 ".repeat(18)),
+    )
+    .unwrap();
+}
+
+fn owned_candidate_fixture() -> (crate::test_support::TempApp, PathBuf) {
+    use std::os::unix::fs::symlink;
+    let app = crate::test_support::temp_app();
+    fs::create_dir_all(app.moddir.join("bin")).unwrap();
+    fs::write(app.moddir.join("bin/sing-box"), "fixture core\n").unwrap();
+    let proc_dir = app.moddir.join("proc/42");
+    fs::create_dir_all(&proc_dir).unwrap();
+    write_candidate_stat(&proc_dir, "S", 100);
+    fs::write(proc_dir.join("comm"), "sing-box\n").unwrap();
+    // The production launcher invokes `nohup sing-box run`, so exercise its
+    // basename argv rather than the host script's absolute-path exception.
+    fs::write(
+        proc_dir.join("cmdline"),
+        format!(
+            "sing-box\0run\0-c\0{}\0-D\0{}\0",
+            app.moddir.join(".config/sing-box/config.json").display(),
+            app.moddir.join(".config/sing-box").display(),
+        ),
+    )
+    .unwrap();
+    symlink(app.moddir.join("bin/sing-box"), proc_dir.join("exe")).unwrap();
+    (app, proc_dir)
+}
+
+fn inspect_candidate(
+    app: &crate::App,
+    proc_dir: &Path,
+    inspect_executable: impl FnOnce(&Path, &Path) -> Option<bool>,
+) -> Result<bool, String> {
+    singbox_candidate_owned_with(
+        "42",
+        proc_dir,
+        &app.moddir.join("bin/sing-box"),
+        &app.moddir.join(".config/sing-box/config.json"),
+        &app.moddir.join(".config/sing-box"),
+        inspect_executable,
+    )
+}
+
+#[test]
+fn exit_between_owned_argv_and_executable_read_completes_stop_without_kill() {
+    for state in ["Z", "X", "x", "gone"] {
+        let (app, proc_dir) = owned_candidate_fixture();
+        assert!(inspect_candidate(&app, &proc_dir, singbox_executable_owned).unwrap());
+        let mut discoveries = 0;
+        let mut signals = Vec::new();
+        let result = stop_singbox_with(
+            &["42".to_string()],
+            || {
+                discoveries += 1;
+                inspect_candidate(&app, &proc_dir, |dir, expected| {
+                    assert!(proc_pid_is_live(dir).unwrap());
+                    fs::remove_file(dir.join("exe")).unwrap();
+                    if state == "gone" {
+                        fs::remove_dir_all(dir).unwrap();
+                    } else {
+                        write_candidate_stat(dir, state, 100);
+                    }
+                    singbox_executable_owned(dir, expected)
+                })
+                .map(|owned| {
+                    if owned {
+                        vec!["42".to_string()]
+                    } else {
+                        vec![]
+                    }
+                })
+            },
+            |_, force| {
+                signals.push(force);
+                Ok(())
+            },
+            SINGBOX_STOP_GRACE,
+            Duration::ZERO,
+            Duration::ZERO,
+        );
+        assert!(result.is_ok(), "{state}: {result:?}");
+        assert_eq!(discoveries, 1);
+        assert_eq!(signals, vec![false]);
+    }
+}
+
+#[test]
+fn unreadable_executable_for_live_unknown_or_reused_pid_still_blocks_stop() {
+    for observation in ["live", "unknown", "unreadable_stat", "reused_live"] {
+        let (app, proc_dir) = owned_candidate_fixture();
+        let mut signals = Vec::new();
+        let result = stop_singbox_with(
+            &["42".to_string()],
+            || {
+                inspect_candidate(&app, &proc_dir, |dir, expected| {
+                    fs::remove_file(dir.join("exe")).unwrap();
+                    match observation {
+                        "unknown" => fs::write(dir.join("stat"), "malformed\n").unwrap(),
+                        "unreadable_stat" => {
+                            fs::remove_file(dir.join("stat")).unwrap();
+                            fs::create_dir(dir.join("stat")).unwrap();
+                        }
+                        "reused_live" => write_candidate_stat(dir, "R", 200),
+                        _ => {}
+                    }
+                    singbox_executable_owned(dir, expected)
+                })
+                .map(|owned| {
+                    if owned {
+                        vec!["42".to_string()]
+                    } else {
+                        vec![]
+                    }
+                })
+            },
+            |_, force| {
+                signals.push(force);
+                Ok(())
+            },
+            SINGBOX_STOP_GRACE,
+            Duration::ZERO,
+            Duration::ZERO,
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            "cannot verify executable identity for live sing-box candidate 42",
+            "{observation}",
+        );
+        assert_eq!(signals, vec![false]);
+    }
+}
 
 #[test]
 fn slow_firewall_teardown_is_not_interrupted_by_sigkill() {
