@@ -5,7 +5,14 @@ on:
     paths:
       - rules
       - rules-release.json
+      - src/MagicNet/.config/sing-box
+      - src/MagicNet/.config/magicnet/singbox-config-repo.conf
+      - src/MagicNet/customize.sh
+      - crates/magicnet-cli/src/config_editor.rs
+      - webui/src/components/pages/ConfigPage.vue
       - hooks/pre-build/5450.update_sing_box_rules.sh
+      - scripts/optimize-sing-box-routing.py
+      - scripts/test-routing-template.py
       - scripts/test-bundled-rules.py
       - scripts/test-rule-hash-retry.sh
       - .github/workflows/rules-release.yml
@@ -13,7 +20,14 @@ on:
     paths:
       - rules
       - rules-release.json
+      - src/MagicNet/.config/sing-box
+      - src/MagicNet/.config/magicnet/singbox-config-repo.conf
+      - src/MagicNet/customize.sh
+      - crates/magicnet-cli/src/config_editor.rs
+      - webui/src/components/pages/ConfigPage.vue
       - hooks/pre-build/5450.update_sing_box_rules.sh
+      - scripts/optimize-sing-box-routing.py
+      - scripts/test-routing-template.py
       - scripts/test-bundled-rules.py
       - scripts/test-rule-hash-retry.sh
       - .github/workflows/rules-release.yml
@@ -31,10 +45,10 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Initialize rewritten source-only rules submodule
+      - name: Initialize source-only rules and pinned configuration
         run: |
           set -euo pipefail
-          git submodule update --init -- rules
+          git submodule update --init -- rules src/MagicNet/.config/sing-box
           git -C rules rev-list --objects --all | awk '
             $2 ~ /^(dist|sources|sources_binary)(\/|$)/ { bad=1; print }
             END { exit bad }
@@ -43,9 +57,11 @@ jobs:
       - name: Regression tests
         run: |
           set -euo pipefail
+          python3 scripts/test-routing-template.py -v
+          python3 -m unittest discover -s src/MagicNet/.config/sing-box/tests -v
           python3 scripts/test-bundled-rules.py -v
           bash scripts/test-rule-hash-retry.sh
-      - name: Download a real Release and install configured rules
+      - name: Download the pinned Release and verify every configured binary rule
         env:
           GH_TOKEN: ${{ github.token }}
           KAM_PROJECT_ROOT: ${{ github.workspace }}
@@ -54,16 +70,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$KAM_MODULE_ROOT/.config/sing-box"
-          cat > "$KAM_MODULE_ROOT/.config/sing-box/config.json" <<'JSON'
-          {"route":{"rule_set":[
-            {"type":"local","path":"rules/ddch-direct.srs"},
-            {"type":"local","path":"rules/magicnet-cn-domain.srs"},
-            {"type":"local","path":"rules/service-google-play.srs"},
-            {"type":"local","path":"rules/hagezi-light.srs"}
-          ]}}
-          JSON
+          cp src/MagicNet/.config/sing-box/config.json "$KAM_MODULE_ROOT/.config/sing-box/config.json"
           bash hooks/pre-build/5450.update_sing_box_rules.sh
-          test "$(find "$KAM_MODULE_ROOT/.config/sing-box/rules" -name '*.srs' | wc -l)" -eq 4
-          test "$(find "$KAM_MODULE_ROOT/.local/state/sing-box-rules" -name '*.hash' | wc -l)" -eq 4
+          expected=$(jq '[.route.rule_set[] | select(.type == "local" and (.path | endswith(".srs"))) | .path] | unique | length' "$KAM_MODULE_ROOT/.config/sing-box/config.json")
+          test "$expected" -gt 4
+          test "$(find "$KAM_MODULE_ROOT/.config/sing-box/rules" -name '*.srs' | wc -l)" -eq "$expected"
+          test "$(find "$KAM_MODULE_ROOT/.local/state/sing-box-rules" -name '*.hash' | wc -l)" -eq "$expected"
           git diff --exit-code
           test -z "$(git status --porcelain)"
