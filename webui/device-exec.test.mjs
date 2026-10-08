@@ -76,3 +76,30 @@ test("missing spawn rejects without falling back to blocking exec", async () => 
   assert.equal(hasAsyncExec(), false);
   await assert.rejects(execAsync("unused"), /异步执行接口/);
 });
+
+
+test("malformed native exit events fail without retaining callbacks", async () => {
+  let callbackName;
+  globalThis.ksu = { spawn: (_, __, ___, name) => { callbackName = name; } };
+  for (const value of [undefined, null, "", "0", false, NaN, Infinity, 0.5]) {
+    const pending = execAsync("unused");
+    window[callbackName].emit("exit", value);
+    assert.equal((await pending).errno, -1, `invalid exit ${String(value)}`);
+    assert.equal(window[callbackName], undefined);
+  }
+});
+
+test("repeated completion and duplicate events leave no registered callbacks", async () => {
+  const before = Object.keys(window).filter((name) => name.startsWith("magicnet_spawn_"));
+  globalThis.ksu = { spawn: (_, __, ___, name) => {
+    const callback = window[name];
+    callback.stdout.emit("data", "one result");
+    callback.emit("exit", 0);
+    callback.stdout.emit("data", "late output");
+    callback.emit("error", new Error("late error"));
+  } };
+  for (let iteration = 0; iteration < 500; iteration += 1) {
+    assert.deepEqual(await execAsync("unused"), { errno: 0, stdout: "one result", stderr: "" });
+  }
+  assert.deepEqual(Object.keys(window).filter((name) => name.startsWith("magicnet_spawn_")), before);
+});

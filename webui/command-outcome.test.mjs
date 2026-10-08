@@ -35,4 +35,12 @@ assert.match(unavailable.text, /^\[error\] unavailable:/);
 assert.match(unavailable.text, /command was not run/);
 assert.equal(execFailed(unavailable.text), true);
 
+// A missing or malformed status is not proof that a command succeeded.
+for (const errno of [undefined, null, "", "0", false, NaN, Infinity, -Infinity, 0.5]) {
+  const result = normalizeExecOutcome({ errno, stdout: "partial output" });
+  assert.equal(result.ok, false, `invalid status ${String(errno)} must fail`);
+  assert.equal(result.errno, -1);
+  assert.equal(execFailed(result.text), true, "text callers must see the same failure");
+}
+
 console.log("command outcome tests passed");

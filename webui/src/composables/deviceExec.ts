@@ -1,5 +1,6 @@
 import { t } from "@/i18n";
 import type { ExecResult } from "../types.ts";
+import { normalizeExitCode } from "../utils.ts";
 
 type SpawnBridge = {
   spawn(command: string, args: string, options: string, callback: string): void;
@@ -48,7 +49,7 @@ export function execAsync(command: string): Promise<ExecResult> {
         if (!settled && event === "data") stderr.push(line);
       } },
       emit: (event: string, value: unknown) => {
-        if (event === "exit") finish(undefined, Number(value));
+        if (event === "exit") finish(undefined, normalizeExitCode(value));
         else if (event === "error") finish(value ?? new Error(t("KernelSU 启动命令失败。")));
       },
     };

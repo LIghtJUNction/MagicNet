@@ -15,7 +15,6 @@ export type BackgroundTaskState = {
   subscriptionBaselineKnown: boolean;
   subscriptionBaselineAttemptEpoch: number;
   subscriptionBaselineGenerationId: string;
-  subscriptionBaselineResult: string;
 };
 
 export const backgroundTaskDefaults: BackgroundTaskState = {
@@ -30,7 +29,6 @@ export const backgroundTaskDefaults: BackgroundTaskState = {
   subscriptionBaselineKnown: false,
   subscriptionBaselineAttemptEpoch: 0,
   subscriptionBaselineGenerationId: "none",
-  subscriptionBaselineResult: "never",
 };
 
 let operationCounter = 0;
@@ -74,24 +72,22 @@ export function backgroundLaunchCommand(
   label: string,
   log: string,
   operationId: string,
-  cleanupCommand = "",
 ): string {
-  const cleanup = cleanupCommand
-    ? `cleanup() { if ! { ${cleanupCommand}; }; then echo "[warning] background cleanup failed"; fi; }`
-    : "cleanup() { :; }";
+  // One exit path records both normal completion and handled interruption.
+  // Private payloads are consumed and removed by the CLI, not this launcher.
+  const finish = [
+    `status=$?`,
+    `trap - EXIT HUP INT TERM`,
+    `echo "[exit] id=${operationId} status=$status"`,
+    `exit $status`,
+  ].join("; ");
   const body = [
-    cleanup,
-    `trap 'cleanup' EXIT`,
+    `trap ${shellQuote(finish)} EXIT`,
     `trap 'exit 129' HUP`,
     `trap 'exit 130' INT`,
     `trap 'exit 143' TERM`,
     `echo ${shellQuote(`[launch] id=${operationId} label=${label}`)}`,
     `${CLI} ${args}`,
-    `status=$?`,
-    `trap - EXIT HUP INT TERM`,
-    `cleanup`,
-    `echo "[exit] id=${operationId} status=$status"`,
-    `exit $status`,
   ].join("; ");
   const logDir = shellQuote(`${MODULE_DIR}/.log`);
   const logFile = shellQuote(log);
@@ -148,7 +144,7 @@ export function parseBackgroundCompletion(logs: string, operationId: string): Ba
 }
 
 export function reconcileSubscriptionCompletion(
-  task: Pick<BackgroundTaskState, "subscriptionBaselineKnown" | "subscriptionBaselineAttemptEpoch" | "subscriptionBaselineGenerationId" | "subscriptionBaselineResult">,
+  task: Pick<BackgroundTaskState, "subscriptionBaselineKnown" | "subscriptionBaselineAttemptEpoch" | "subscriptionBaselineGenerationId">,
   current: { lastAttemptEpoch: number; lastGenerationId: string; lastResult: string },
 ): BackgroundCompletion {
   if (!task.subscriptionBaselineKnown) return "running";
