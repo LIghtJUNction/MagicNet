@@ -121,6 +121,15 @@ again before any public HTTPS or throughput request. Invalid preparation or
 live evidence fails without a fallback and leaves an `INCOMPLETE` summary.
 The preparation report is temporary CI evidence, not device canonical state.
 
+Only the opt-in public runtime adds a test-only Android x86_64 curl before
+installation. Its curl, OpenSSL, zlib and dated Mozilla CA bundle inputs are
+fixed by SHA-256. TLS, gzip and libcurl are statically linked; only the Android
+linker and permitted Bionic system libraries remain dynamic. The fixed CA bundle
+is embedded in the executable, without a runtime CA path or system-store fallback.
+Build provenance records the actual NDK and final ELF identity; a successful
+cross-build does not establish Android HTTPS capability. The original production
+archive and all 12 offline lifecycle cases remain the acceptance source.
+
 All ADB calls, including `wait-for-device`, have deadlines. Exit diagnostics have
 an overall budget and preserve the original test exit code. Process memory that
 could not be read is `null`, not an invented zero. No custom corpus URL, config,

@@ -96,6 +96,7 @@ jobs:
           python3 scripts/test-android-tun-proof.py
           python3 scripts/test-android-network-benchmark.py
           python3 scripts/test-android-network-soak.py
+          python3 scripts/test-android-public-curl-proof.py
 
       - name: Test UTF-8 parsers with the unmodified KernelSU BusyBox
         shell: bash
@@ -468,6 +469,14 @@ jobs:
           MAGICNET_NETWORK_PROBE_APK: ${{ runner.temp }}/magicnet-network-probe.apk
         run: python3 scripts/android-device-simulation.py
 
+      - name: Build verified Android curl for public runtime
+        if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
+        timeout-minutes: 15
+        env:
+          MAGICNET_PUBLIC_CURL_DIR: ${{ runner.temp }}/magicnet-public-curl
+          MAGICNET_PUBLIC_CURL_NDK_SHA256: ${{ steps.toolchain.outputs.ndk }}
+        run: bash scripts/prepare-android-public-curl.sh "$MAGICNET_PUBLIC_CURL_DIR"
+
       # Offline acceptance must finish all cases, including uninstall, first.
       # Reinstall the complete x86 fixture once through the same KernelSU lifecycle.
       - name: Prepare public benchmark runtime
@@ -475,6 +484,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
         timeout-minutes: 10
         env:
+          MAGICNET_PUBLIC_CURL_DIR: ${{ runner.temp }}/magicnet-public-curl
           MAGICNET_DISPOSABLE_AVD: "1"
           MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
@@ -491,6 +501,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
         timeout-minutes: 20
         env:
+          MAGICNET_PUBLIC_CURL_DIR: ${{ runner.temp }}/magicnet-public-curl
           MAGICNET_KSUD_HOST: ${{ env.KSU_RUNTIME }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box

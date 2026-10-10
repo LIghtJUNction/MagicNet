@@ -67,6 +67,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('continue-on-error', self.jobs['android-kernelsu'])
 
     def test_public_proxy_is_explicit_opt_in_after_simulation(self):
+        curl_build = self.step('Build verified Android curl for public runtime')
         preparation = self.step('Prepare public benchmark runtime')
         benchmark = self.step('Install and benchmark MagicNet in KernelSU AVD')
         self.assertIn("github.event_name == 'workflow_dispatch'", benchmark['if'])
@@ -74,12 +75,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.flow['on']['workflow_dispatch']['inputs']['public_benchmark']['default'], 'false')
         names = [s.get('name') for s in self.steps]
         self.assertLess(names.index('Exercise offline Android KernelSU lifecycle'),
+                        names.index(curl_build['name']))
+        self.assertLess(names.index(curl_build['name']),
                         names.index(preparation['name']))
         self.assertLess(names.index(preparation['name']),
                         names.index('Install and benchmark MagicNet in KernelSU AVD'))
         self.assertIn('android-public-benchmark', benchmark['env']['MAGICNET_ANDROID_REPORT_DIR'])
         self.assertEqual(preparation['id'], 'public_prepare')
         self.assertEqual(preparation['if'], benchmark['if'])
+        self.assertEqual(curl_build['if'], preparation['if'])
+        self.assertNotIn('continue-on-error', curl_build)
+        self.assertEqual(curl_build['timeout-minutes'], '15')
+        self.assertEqual(curl_build['run'], 'bash scripts/prepare-android-public-curl.sh "$MAGICNET_PUBLIC_CURL_DIR"')
+        self.assertEqual(curl_build['env']['MAGICNET_PUBLIC_CURL_NDK_SHA256'], '${{ steps.toolchain.outputs.ndk }}')
+        for step in (curl_build, preparation, benchmark):
+            self.assertEqual(step['env']['MAGICNET_PUBLIC_CURL_DIR'], '${{ runner.temp }}/magicnet-public-curl')
+        self.assertNotIn('MAGICNET_PUBLIC_CURL_DIR', self.step('Exercise offline Android KernelSU lifecycle')['env'])
+        self.assertTrue(any('test-android-public-curl-proof.py' in step.get('run', '')
+                            for step in self.jobs['harness']['steps']))
         self.assertNotIn('continue-on-error', preparation)
         self.assertNotIn('continue-on-error', benchmark)
         self.assertEqual(preparation['env']['MAGICNET_DISPOSABLE_AVD'], '1')
@@ -101,20 +114,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(soak['if'], self.step('Install and benchmark MagicNet in KernelSU AVD')['if'])
         self.assertNotIn('always()', soak['if'])
         self.assertNotIn('!cancelled()', soak['if'])
-        self.assertNotIn('continue-on-error', soak)
-        self.assertIn('--duration 600', soak['run'])
-        self.assertIn('--interval 20', soak['run'])
-        self.assertIn('--root-mode adb', soak['run'])
-        names = [s.get('name') for s in self.steps]
-        self.assertLess(names.index('Install and benchmark MagicNet in KernelSU AVD'), names.index(soak['name']))
-        self.assertLess(names.index(soak['name']), names.index('Stop emulator'))
-        self.assertTrue(any('test-android-network-soak.py' in s.get('run', '')
-                            for s in self.jobs['harness']['steps']))
-
-    def test_public_stability_observation_cannot_be_short_success_only(self):
-        soak = self.step('Observe sustained application networking and core stability')
-        self.assertIn("github.event_name == 'workflow_dispatch'", soak['if'])
-        self.assertIn('inputs.public_benchmark == true', soak['if'])
         self.assertNotIn('continue-on-error', soak)
         self.assertIn('--duration 600', soak['run'])
         self.assertIn('--interval 20', soak['run'])
@@ -215,6 +214,41 @@ class WorkflowTests(unittest.TestCase):
     def test_reports_and_cleanup_run_on_failure(self):
         for name in ('Stop emulator', 'Upload Android acceptance report'):
             self.assertIn('always()', self.step(name)['if'])
+
+    def test_public_curl_failure_invalidates_old_outputs_before_preparation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'curl-output'
+            output.mkdir()
+            for name in ('curl', 'cacert.pem', 'build-provenance.json'):
+                (output / name).write_text('old successful output must not survive')
+            environment = dict(os.environ, ANDROID_NDK_HOME=str(root / 'missing-ndk'),
+                               MAGICNET_PUBLIC_CURL_JOBS='0', TMPDIR=str(root))
+            result = subprocess.run(['bash', str(ROOT / 'scripts/prepare-android-public-curl.sh'), str(output)],
+                                    env=environment, text=True, capture_output=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(list(output.iterdir()), [])
+            self.assertEqual(list(root.iterdir()), [output])
+            self.assertNotIn('ELF built', result.stdout)
+
+    def test_public_curl_build_cannot_inherit_make_flag_overrides(self):
+        source = (ROOT / 'scripts/prepare-android-public-curl.sh').read_text()
+        block = 'unset CFLAGS' + source.split('unset CFLAGS', 1)[1].split('export ANDROID_NDK_ROOT', 1)[0]
+        names = block.replace('\\\n', ' ').split()
+        self.assertEqual(names.pop(0), 'unset')
+        self.assertTrue(all(re.fullmatch(r'[A-Z_0-9]+', name) for name in names))
+        makefile = 'CFLAGS = configured-target-flags\nall:\n\t@printf "%s\\n" "$(CFLAGS)"\n'
+        for flag in ('MAKEFLAGS', 'MAKEOVERRIDES', 'MFLAGS', 'GNUMAKEFLAGS'):
+            with self.subTest(flag=flag):
+                environment = {key: value for key, value in os.environ.items()
+                               if key not in ('MAKEFLAGS', 'MAKEOVERRIDES', 'MFLAGS', 'GNUMAKEFLAGS')}
+                environment[flag] = 'CFLAGS=inherited-override'
+                for name in names:
+                    environment.pop(name, None)
+                result = subprocess.run(['make', '-s', '-f', '-'], input=makefile, env=environment,
+                                        text=True, capture_output=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, 'configured-target-flags\n')
 
     def test_modified_workflow_shell_syntax(self):
         for name in ('android-kernelsu-acceptance.yml', 'network-regression.yml', 'webui-preview.yml'):
