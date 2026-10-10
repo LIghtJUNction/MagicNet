@@ -268,8 +268,13 @@ export async function removePrivatePayload(
   }
 }
 
+/** Only an explicit integer exit code is evidence of command completion. */
+export function normalizeExitCode(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : -1;
+}
+
 export function normalizeExecOutcome(result: ExecResult): ExecOutcome {
-  const errno = typeof result.errno === "number" ? result.errno : 0;
+  const errno = normalizeExitCode(result.errno);
   const stdout = result.stdout || result.out || "";
   const stderr = result.stderr || result.err || "";
   const text = [stdout, stderr].filter(Boolean).join("\n").trim();

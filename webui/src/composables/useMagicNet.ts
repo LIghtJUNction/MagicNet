@@ -456,7 +456,6 @@ async function startBackgroundCli(
   label = args,
   previewOverride = "",
   displayArgs = args,
-  cleanupCommand = "",
   lifecycleArgs = displayArgs,
 ): Promise<string> {
   if (backgroundTaskBlocksLaunch(state.backgroundTask)) {
@@ -500,7 +499,6 @@ async function startBackgroundCli(
     subscriptionBaselineKnown,
     subscriptionBaselineAttemptEpoch: state.subscriptions.lastAttemptEpoch,
     subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
-    subscriptionBaselineResult: state.subscriptions.lastResult,
   };
   const operationSequence = trackRedactedOperation(
     previewOverride || redactedCliPreview(displayArgs),
@@ -513,7 +511,6 @@ async function startBackgroundCli(
     label,
     log,
     operationId,
-    cleanupCommand,
   );
   const outcome = await runShellOutcome(
     command,
@@ -570,22 +567,13 @@ async function startBackgroundCli(
     : `[error] errno=-1 background accepted marker missing`;
 }
 
-async function startPrivateBackgroundCli(
+const startPrivateBackgroundCli: (
   args: string,
   label: string,
   redactedPreview: string,
   displayArgs: string,
-  lifecycleArgs = displayArgs,
-): Promise<string> {
-  return startBackgroundCli(
-    args,
-    label,
-    redactedPreview,
-    displayArgs,
-    "",
-    lifecycleArgs,
-  );
-}
+  lifecycleArgs?: string,
+) => Promise<string> = startBackgroundCli;
 
 function stopBackgroundLogFollow(): void {
   if (!backgroundLogTimer) return;
@@ -796,25 +784,31 @@ async function refreshAll(): Promise<void> {
   }
 }
 
+/** Legacy text readers share failure handling and foreground ownership. */
+async function refreshCliState(
+  args: string,
+  label: string,
+  apply: (text: string) => void,
+  quiet: boolean,
+  foregroundToken?: number,
+): Promise<boolean> {
+  const command = startForegroundCommand(args, label, quiet, "", foregroundToken);
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure(t(label), text, command.token, allowBusy)) return false;
+  if (canUpdateRefreshUi(command.token, allowBusy)) apply(text);
+  return true;
+}
+
 async function refreshHealth(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "health",
-    "运行诊断",
-    quiet,
-    "",
-    foregroundToken,
+  return refreshCliState(
+    "health", "运行诊断",
+    (text) => { state.health = parseHealth(text); },
+    quiet, foregroundToken,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("运行诊断"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.health = parseHealth(text);
-  }
-  return true;
 }
 
 async function refreshPing(): Promise<void> {
@@ -827,21 +821,11 @@ async function refreshApps(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "app list",
-    "读取应用规则",
-    quiet,
-    "",
-    foregroundToken,
+  return refreshCliState(
+    "app list", "读取应用规则",
+    (text) => { state.appPolicy = parseApps(text); },
+    quiet, foregroundToken,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取应用规则"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.appPolicy = parseApps(text);
-  }
-  return true;
 }
 
 async function refreshPackages(
@@ -871,21 +855,11 @@ async function refreshBlock(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "block list",
-    "读取黑名单",
-    quiet,
-    "",
-    foregroundToken,
+  return refreshCliState(
+    "block list", "读取黑名单",
+    (text) => { state.blocklist = parseBlock(text, state.blocklist); },
+    quiet, foregroundToken,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取黑名单"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.blocklist = parseBlock(text, state.blocklist);
-  }
-  return true;
 }
 
 let subscriptionReadSequence = 0;
@@ -927,21 +901,11 @@ async function refreshMcp(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "mcp status",
-    "读取 MCP",
-    quiet,
-    "",
-    foregroundToken,
+  return refreshCliState(
+    "mcp status", "读取 MCP",
+    (text) => { state.mcp = parseMcp(text, state.mcp); },
+    quiet, foregroundToken,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取 MCP"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.mcp = parseMcp(text, state.mcp);
-  }
-  return true;
 }
 
 async function refreshDns(
@@ -993,21 +957,11 @@ async function refreshWarp(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "warp status",
-    "读取 WARP",
-    quiet,
-    "",
-    foregroundToken,
+  return refreshCliState(
+    "warp status", "读取 WARP",
+    (text) => { state.warp = parseWarp(text, state.warp); },
+    quiet, foregroundToken,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取 WARP"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.warp = parseWarp(text, state.warp);
-  }
-  return true;
 }
 
 async function refreshWifiPolicy(

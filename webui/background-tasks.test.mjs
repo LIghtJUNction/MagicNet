@@ -156,7 +156,6 @@ const command = backgroundLaunchCommand(
   "refresh",
   "/module/.log/task.log",
   firstId,
-  "rm -f '/module/.state/payload.b64'",
 );
 for (const token of [
   "trap",
@@ -165,30 +164,14 @@ for (const token of [
   "HUP",
   "INT",
   "TERM",
-  "background cleanup failed",
   "status=$?",
   "trap - EXIT HUP INT TERM",
-  "rm -f",
   `[accepted] id=${firstId}`,
   `[launch] id=${firstId}`,
   `[exit] id=${firstId} status=$status`,
   "exit $status",
 ])
   assert.ok(command.includes(token), `background launch missing ${token}`);
-const statusIndex = command.indexOf("status=$?");
-const clearTrapIndex = command.indexOf("trap - EXIT HUP INT TERM", statusIndex);
-const cleanupInvokeIndex = command.indexOf("cleanup; echo", clearTrapIndex);
-const exitMarkerIndex = command.indexOf(
-  `[exit] id=${firstId} status=$status`,
-  cleanupInvokeIndex,
-);
-assert.ok(
-  statusIndex < clearTrapIndex &&
-    clearTrapIndex < cleanupInvokeIndex &&
-    cleanupInvokeIndex < exitMarkerIndex,
-  "cleanup must run after CLI status capture and before exit marker",
-);
-
 // The launch command must not claim acceptance when its log directory cannot
 // be prepared. Execute the generated shell rather than relying on string
 // shape alone so a storage/permission failure cannot become a false success.
@@ -260,7 +243,6 @@ const lifecycleBaseline = {
   subscriptionBaselineKnown: true,
   subscriptionBaselineAttemptEpoch: 100,
   subscriptionBaselineGenerationId: "generation-old",
-  subscriptionBaselineResult: "success",
 };
 assert.equal(
   reconcileSubscriptionCompletion(
