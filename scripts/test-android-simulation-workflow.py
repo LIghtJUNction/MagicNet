@@ -107,13 +107,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('--output artifacts/android-public-benchmark/runtime', preparation['run'])
         self.assertIn('--simulation-report artifacts/android-kernelsu/simulation.json', preparation['run'])
 
-    def test_public_stability_observation_cannot_be_short_success_only(self):
+    def test_public_soak_survives_benchmark_failure_only_after_preparation(self):
         soak = self.step('Observe sustained application networking and core stability')
-        self.assertIn("github.event_name == 'workflow_dispatch'", soak['if'])
-        self.assertIn('inputs.public_benchmark == true', soak['if'])
-        self.assertEqual(soak['if'], self.step('Install and benchmark MagicNet in KernelSU AVD')['if'])
-        self.assertNotIn('always()', soak['if'])
-        self.assertNotIn('!cancelled()', soak['if'])
+        # A status function removes implicit success(), but cancelled or
+        # unprepared runs must not reach the device observation.
+        self.assertEqual(soak['if'],
+                         "${{ !cancelled() && github.event_name == 'workflow_dispatch' && "
+                         "inputs.public_benchmark == true && steps.public_prepare.outcome == 'success' }}")
         self.assertNotIn('continue-on-error', soak)
         self.assertIn('--duration 600', soak['run'])
         self.assertIn('--interval 20', soak['run'])
