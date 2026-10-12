@@ -517,8 +517,10 @@ jobs:
         shell: bash
         run: scripts/android-kernelsu-acceptance.sh
 
+      # Keep evidence after benchmark failure, but never use an unprepared VM.
+      # Do not mask the benchmark failure or continue after cancellation.
       - name: Observe sustained application networking and core stability
-        if: github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.public_benchmark == true && steps.public_prepare.outcome == 'success' }}
         timeout-minutes: 15
         shell: bash
         run: |
