@@ -62,6 +62,20 @@ offload restoration compares the current value, refuses conflicting external
 changes, and keeps its journal until the restored value is read back correctly.
 Repeated enable/restore of the already-correct value does not write settings.
 
+Stopping the core restores only MagicNet's owned tether-offload change; it does
+not clear the persisted hotspot selector in `.config`. Before the next launch
+materializes hotspot source policy, startup restores offload ownership from
+that selection. The legacy selector file is a migration input only when the
+primary store is absent. Unreadable or invalid intent aborts the startup phase
+without guessing Direct or rewriting Android settings.
+
+Hotspot IPv6 exemption inspection verifies ordering, not just rule membership:
+all downstream-specific exemptions must precede potentially intercepting global
+PREROUTING hooks. An upstream-triggered core hook rebuild is repaired on the
+next reconciliation. Several downstreams converge without reordering on every
+poll. A failed inspection of an existing installation remains unknown and must
+not trigger route cleanup; failed new installations still roll back owned writes.
+
 ## Regression evidence and limits
 
 `test-kernel-route-lifecycle.sh` executes stateful netlink/firewall fixtures under

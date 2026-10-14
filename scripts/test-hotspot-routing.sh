@@ -10,6 +10,7 @@ RULES="$WORK/ip-rules"
 JQ_BIN=$(command -v jq)
 mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box" "$MODDIR/bin"
 ln -s "$JQ_BIN" "$MODDIR/bin/jq"
+ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
 printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
 printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
 HOTSPOT_CIDR=10.199.43.0/24
@@ -137,6 +138,8 @@ import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/transparent.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 : >"$WORK/forward-rules"
 magicnet_iptables_cmd() {
   action=$1
@@ -298,6 +301,10 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
       awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
       mv "$ipv6_rules.new" "$ipv6_rules"
       ;;
+    -S)
+      [ "${HOTSPOT_IPV6_LIST_FAIL:-0}" -eq 0 ] || return 2
+      awk '{ print "-A " $0 }' "$ipv6_rules"
+      ;;
     *) return 2 ;;
     esac
   }
@@ -314,6 +321,39 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
   magicnet_hotspot_reconcile
   grep -Fqx 'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' "$ipv6_rules"
   magicnet_hotspot_forward_access status wlan2
+
+  # The core can re-prepend its hooks when the upstream network changes.
+  # Membership alone must not let reconcile keep an exemption below them.
+  { printf '%s\n' 'PREROUTING -j sing-box-prerouting-prematch'; cat "$ipv6_rules"; } >"$ipv6_rules.new"
+  mv "$ipv6_rules.new" "$ipv6_rules"
+  if magicnet_hotspot_forward_access status wlan2; then
+    printf '%s\n' 'IPv6 exemption below a core hook was reported ready' >&2
+    exit 1
+  fi
+  magicnet_hotspot_reconcile
+  [ "$(head -n 1 "$ipv6_rules")" = 'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' ]
+  grep -Fqx 'PREROUTING -j sing-box-prerouting-prematch' "$ipv6_rules"
+
+  # Several downstream exemptions may precede one another; they must not
+  # trigger an endless reinstall on every watchdog poll.
+  HOTSPOT_SECONDARY_CIDR=10.88.0.0/24
+  magicnet_hotspot_reconcile
+  magicnet_hotspot_forward_access status wlan2
+  magicnet_hotspot_forward_access status usb0
+  cp "$ipv6_rules" "$WORK/ipv6-before-noop"
+  cp "$RULES" "$WORK/routes-before-noop"
+  magicnet_hotspot_reconcile
+  cmp -s "$ipv6_rules" "$WORK/ipv6-before-noop"
+  cmp -s "$RULES" "$WORK/routes-before-noop"
+  HOTSPOT_IPV6_LIST_FAIL=1
+  if magicnet_hotspot_reconcile; then actual=0; else actual=$?; fi
+  [ "$actual" -eq 2 ]
+  cmp -s "$ipv6_rules" "$WORK/ipv6-before-noop"
+  cmp -s "$RULES" "$WORK/routes-before-noop"
+  HOTSPOT_IPV6_LIST_FAIL=0
+  HOTSPOT_SECONDARY_CIDR=
+  magicnet_hotspot_reconcile
+
   if magicnet_hotspot_ipv6_exempt ensure 'wlan2;id'; then
     printf '%s\n' 'IPv6 exemption accepted a metacharacter interface name' >&2
     exit 1
@@ -325,7 +365,7 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
 
   printf '1\n' >"$WORK/offload"
   magicnet_hotspot_offload_restore
-  [ ! -s "$ipv6_rules" ]
+  [ "$(cat "$ipv6_rules")" = 'PREROUTING -j sing-box-prerouting-prematch' ]
   [ ! -s "$WORK/forward-rules" ]
   [ ! -e "$MODDIR/.state/hotspot/tun-rules.list" ]
 )
@@ -365,6 +405,7 @@ assert_hotspot_ipv6_exempt_is_reprepended_above_tproxy() (
       awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
       mv "$ipv6_rules.new" "$ipv6_rules"
       ;;
+    -S) awk '{ print "-A " $0 }' "$ipv6_rules" ;;
     *) return 2 ;;
     esac
   }
@@ -591,5 +632,96 @@ assert_hotspot_probe_errors_preserve_config
   fi
   [ ! -e "$WORK/standalone-rendered.json" ]
 )
+
+# Run the real startup materializer after stop has restored offload and
+# removed its ownership evidence. The persisted selector is still intent.
+assert_startup_restores_persisted_hotspot() (
+  source_config="$MODDIR/.config/sing-box/config.json"
+  WORK="$WORK/startup"
+  MODDIR="$WORK/module"
+  RULES="$WORK/ip-rules"
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/.state/hotspot" "$MODDIR/bin"
+  ln -s "$JQ_BIN" "$MODDIR/bin/jq"
+  cp "$source_config" "$MODDIR/.config/sing-box/config.json"
+  printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
+  printf '%s\n' '{"hotspot":"proxy","proxy":"private-node"}' >"$MODDIR/.config/magicnet/selector-selections.json"
+  cp "$MODDIR/.config/magicnet/selector-selections.json" "$WORK/saved-intent"
+  printf '0\n' >"$WORK/offload"
+  : >"$WORK/forward-rules"
+  HOTSPOT_CIDR=192.168.52.0/24
+  HOTSPOT_SECONDARY_CIDR=
+  magicnet_module_disabled() { return 1; }
+  magicnet_cmd_exists() { case "$1" in sing-box | ip | dumpsys) return 0 ;; *) return 1 ;; esac; }
+  is_singbox_running() { return 1; }
+  magicnet_prepare_singbox_nodes_unlocked() { :; }
+  magicnet_singbox_chain_apply() { :; }
+  magicnet_singbox_apply_transparent_mode() { :; }
+  magicnet_dns_apply_unlocked() { :; }
+  magicnet_tailscale_apply_unlocked() { :; }
+  magicnet_app_policy_apply_unlocked() { :; }
+  magicnet_warp_apply_unlocked() { :; }
+  magicnet_singbox_apply_zashboard() { :; }
+  magicnet_tailscale_inject_auth_key() { :; }
+  magicnet_tailscale_scrub_auth_key() { :; }
+  magicnet_validate_singbox_transparent_config() { :; }
+  magicnet_singbox_running_has_nodes() { return 0; }
+  singbox_start() {
+    [ "$(cat "$WORK/offload")" = 1 ] &&
+      [ -f "$(magicnet_hotspot_offload_state_file)" ] &&
+      jq -e '[.route.rules[] | select(.outbound == "hotspot" and (has("network") | not))][0].source_ip_cidr == ["192.168.52.0/24"]' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  }
+
+  magicnet_start_singbox_unlocked
+  cmp -s "$MODDIR/.config/magicnet/selector-selections.json" "$WORK/saved-intent"
+  magicnet_hotspot_offload_restore
+  [ "$(cat "$WORK/offload")" = 0 ]
+  [ ! -e "$(magicnet_hotspot_offload_state_file)" ]
+  magicnet_start_singbox_unlocked
+  cmp -s "$MODDIR/.config/magicnet/selector-selections.json" "$WORK/saved-intent"
+
+  # Primary intent wins over the migration input; Direct must restore only
+  # our own offload change instead of silently re-enabling Proxy.
+  mkdir -p "$MODDIR/.state/sing-box"
+  printf '%s\n' '{"hotspot":"proxy"}' >"$MODDIR/.state/sing-box/selector-selections.json"
+  printf '%s\n' '{"hotspot":"direct"}' >"$MODDIR/.config/magicnet/selector-selections.json"
+  magicnet_hotspot_offload_prepare
+  [ "$(cat "$WORK/offload")" = 0 ]
+  [ ! -e "$(magicnet_hotspot_offload_state_file)" ]
+  rm "$MODDIR/.config/magicnet/selector-selections.json"
+  magicnet_hotspot_offload_prepare
+  [ "$(cat "$WORK/offload")" = 1 ]
+
+  # Invalid intent is unknown, never permission to change the Android setting
+  # or launch a core with a different hotspot policy.
+  for invalid in '{broken' '{"hotspot":"other"}' '{"hotspot":null}' '{"hotspot":"proxy","proxy":3}' '[]'; do
+    printf '%s\n' "$invalid" >"$MODDIR/.config/magicnet/selector-selections.json"
+    if magicnet_hotspot_offload_prepare; then actual=0; else actual=$?; fi
+    [ "$actual" -eq 2 ]
+    [ "$(cat "$WORK/offload")" = 1 ]
+    [ -f "$(magicnet_hotspot_offload_state_file)" ]
+  done
+  # A bad intent must also stop the full ready-start path without restoring
+  # settings or trying to launch/tear down a core from incomplete evidence.
+  magicnet_rollback_failed_start_unlocked() { printf '%s\n' 'unknown intent authorized cleanup' >&2; exit 99; }
+  singbox_start() { printf '%s\n' 'unknown intent authorized launch' >&2; exit 99; }
+  if magicnet_start_singbox_ready_unlocked; then actual=0; else actual=$?; fi
+  [ "$actual" -eq 2 ]
+  [ "$(cat "$WORK/offload")" = 1 ]
+
+  # The default Direct choice is authoritative when the primary store exists
+  # without a hotspot entry; an old legacy Proxy choice must not override it.
+  printf '%s\n' '{"proxy":"private-node"}' >"$MODDIR/.config/magicnet/selector-selections.json"
+  magicnet_hotspot_offload_prepare
+  [ "$(cat "$WORK/offload")" = 0 ]
+  [ ! -e "$(magicnet_hotspot_offload_state_file)" ]
+  rm "$MODDIR/.config/magicnet/selector-selections.json"
+  ln -s "$WORK/saved-intent" "$MODDIR/.config/magicnet/selector-selections.json"
+  if magicnet_hotspot_offload_prepare; then actual=0; else actual=$?; fi
+  [ "$actual" -eq 2 ]
+  [ "$(cat "$WORK/offload")" = 0 ]
+  [ ! -e "$(magicnet_hotspot_offload_state_file)" ]
+)
+
+assert_startup_restores_persisted_hotspot
 
 printf '%s\n' 'hotspot routing test passed'

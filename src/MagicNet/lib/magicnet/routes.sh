@@ -293,7 +293,33 @@ magicnet_hotspot_ipv6_exempt() (
     status)
         _rc=0
         magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
-        case "$_rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac ;;
+        case "$_rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+        # auto_redirect may rebuild its hooks without restarting the core.
+        # An exemption that still exists below those hooks is not effective.
+        # Other exact interface-scoped exemptions are harmless predecessors,
+        # so several downstreams can converge without reinstalling each poll.
+        _rules="$(magicnet_ip6tables_cmd -t mangle -S PREROUTING 2>/dev/null)" || return 2
+        printf '%s\n' "$_rules" | awk -v iface="$_iface" '
+            $1 != "-A" || $2 != "PREROUTING" { next }
+            {
+                gsub(/"/, "")
+                if (NF == 10 && $3 == "-i" && $5 == "-m" && $6 == "comment" &&
+                    $7 == "--comment" && $8 == "magicnet-hotspot-ipv6-exempt" &&
+                    $9 == "-j" && $10 == "ACCEPT") {
+                    if ($4 == iface && !found) {
+                        found = 1
+                        effective = !preceded
+                    }
+                    next
+                }
+                if (!found) preceded = 1
+            }
+            END {
+                if (!found) exit 2
+                exit effective ? 0 : 1
+            }
+        '
+        ;;
     cleanup)
         _attempt=0
         while :; do
@@ -341,12 +367,14 @@ magicnet_hotspot_forward_access() (
         *) return 1 ;;
         esac
     done
-    magicnet_hotspot_ipv6_exempt "$_mode" "$_iface" || {
+    _ipv6_rc=0
+    magicnet_hotspot_ipv6_exempt "$_mode" "$_iface" || _ipv6_rc=$?
+    if [ "$_ipv6_rc" -ne 0 ]; then
         if [ "$_mode" = ensure ]; then
             magicnet_hotspot_forward_access cleanup "$_iface" || true
         fi
-        return 1
-    }
+        return "$_ipv6_rc"
+    fi
 )
 
 # Private write-ahead journal: publication of tun-rules.list alone is the
@@ -618,6 +646,33 @@ magicnet_hotspot_offload_value() (
     _value="$(settings get global tether_offload_disabled 2>/dev/null)" || return 1
     _value="$(printf '%s' "$_value" | tr -d '\r')"
     case "$_value" in '' | null | 0 | 1) printf '%s\n' "$_value" ;; *) return 1 ;; esac
+)
+
+# Service stop restores Android offload and removes only our ownership
+# evidence. Before the next core snapshots its policy, recover the user's
+# existing selector intent; replaying the API selector alone is too late.
+magicnet_hotspot_offload_prepare() (
+    _selections="${MODDIR}/.config/magicnet/selector-selections.json"
+    if [ ! -e "$_selections" ] && [ ! -L "$_selections" ]; then
+        _selections="${MODDIR}/.state/sing-box/selector-selections.json"
+        # Preserve the migration-era enable path if no selector was ever saved.
+        [ -e "$_selections" ] || [ -L "$_selections" ] || return 0
+    fi
+    [ -f "$_selections" ] && [ ! -L "$_selections" ] || return 2
+    _size="$(wc -c <"$_selections")" || return 2
+    [ "$_size" -le 4194304 ] 2>/dev/null || return 2
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || return 2
+    _member="$("$_jq" -er '
+        select(type == "object" and all(.[]; type == "string"))
+        | if has("hotspot") then .hotspot else "direct" end
+        | select(. == "direct" or . == "proxy")
+    ' "$_selections" 2>/dev/null)" || return 2
+    case "$_member" in
+    proxy) magicnet_hotspot_offload_enable ;;
+    direct) magicnet_hotspot_offload_restore ;;
+    *) return 2 ;;
+    esac
 )
 
 magicnet_hotspot_offload_enable() {

@@ -119,6 +119,7 @@ magicnet_start_singbox_unlocked() {
         return 2
         ;;
     esac
+    magicnet_startup_step hotspot-offload magicnet_hotspot_offload_prepare || return $?
     if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
         magicnet_startup_step subscription magicnet_prepare_singbox_nodes_unlocked || return $?
         magicnet_startup_step chain magicnet_singbox_chain_apply || return $?

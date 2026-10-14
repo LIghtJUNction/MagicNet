@@ -226,6 +226,7 @@ SH
     import() { :; }
     is_singbox_running() { return 1; }
     magicnet_validate_singbox_transparent_config() { :; }
+    magicnet_hotspot_offload_prepare() { :; }
     singbox_start() { printf '%s\n' "$MAGICNET_SINGBOX_START_ATTEMPTS" >"$WORK/core-start-attempts"; }
     magicnet_singbox_running_has_nodes() { return 0; }
     MAGICNET_TRANSPARENT_RESTORED_CONFIG=1 magicnet_start_singbox_unlocked || fail 'core start retry wrapper failed'

@@ -7,7 +7,7 @@ trap 'rm -rf "$WORK"' EXIT
 CORE_SOURCE="${MAGICNET_CORE_TEST_SOURCE:-$ROOT/src/MagicNet/lib/magicnet/core.sh}"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-for stage in subscription chain transparent hotspot dns tailscale apps warp auth config-check route-baseline core-launch; do
+for stage in hotspot-offload subscription chain transparent hotspot dns tailscale apps warp auth config-check route-baseline core-launch; do
     for code in 1 2; do
         (
             # shellcheck disable=SC1090
@@ -26,6 +26,7 @@ for stage in subscription chain transparent hotspot dns tailscale apps warp auth
             magicnet_warn() { printf '%s\n' "$*"; }
             import() { :; }
             is_singbox_running() { return 1; }
+            magicnet_hotspot_offload_prepare() { test_step hotspot-offload; }
             magicnet_prepare_singbox_nodes_unlocked() { test_step subscription; }
             magicnet_singbox_chain_apply() { test_step chain; }
             magicnet_singbox_apply_transparent_mode() { test_step transparent; }
@@ -100,4 +101,4 @@ done
     if magicnet_start_singbox_ready_unlocked; then fail 'unknown identity became ready'; else rc=$?; fi
     [ "$rc" -eq 2 ] || fail 'ready entrypoint collapsed unknown identity'
 )
-printf '%s\n' 'startup diagnostics: 24 failure-stage cases and 3 safety cases passed'
+printf '%s\n' 'startup diagnostics: 26 failure-stage cases and 3 safety cases passed'
