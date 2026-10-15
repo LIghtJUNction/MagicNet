@@ -801,7 +801,7 @@ onMounted(() => {
 .mn-control-shortcuts > button { padding-inline: 6px; border-radius: 999px; }
 .mn-service-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 20px 0 0; }
 .mn-service-facts > div { min-width: 0; padding: 10px 12px; border-radius: var(--mn-radius-md); background: var(--mn-surface-sunken); }
-.mn-service-facts dt { color: var(--mn-ink-muted); font-size: 11px; }
+.mn-service-facts dt { color: var(--mn-ink-muted); font-size: 11px; overflow-wrap: anywhere; }
 .mn-service-facts dd { margin: 4px 0 0; color: var(--mn-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .mn-control-notice { margin-top: 20px; border: 1px solid var(--mn-current-tone-border, var(--mn-border)); border-radius: var(--mn-radius-md); padding: 16px; font-size: 13px; }
 .mn-control-notice h3 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }

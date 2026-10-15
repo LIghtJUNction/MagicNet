@@ -1039,6 +1039,7 @@ a {
   color: var(--mn-ink);
   font-size: 15px;
   font-weight: 550;
+  overflow-wrap: anywhere;
 }
 
 .mn-disclosure > summary::-webkit-details-marker {
@@ -1090,6 +1091,10 @@ a {
 /* Arbitrary disclosure content (text, panels) shares the summary's inset. */
 .mn-disclosure > :not(summary, .magic-card, .mn-disclosure__body) {
   margin: 0 20px 20px;
+}
+
+.mn-disclosure > input.mn-field {
+  max-width: calc(100% - 40px);
 }
 
 .grid:not([class*="gap-"]) > .mn-disclosure + .mn-disclosure {
@@ -1824,8 +1829,7 @@ a {
   }
 
   .mn-mobile-action,
-  .mobile-nav,
-  .mn-more-action {
+  .mobile-nav {
     display: none;
   }
 
