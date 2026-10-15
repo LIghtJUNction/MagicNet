@@ -23,7 +23,7 @@ Protocol reference: [MCP tools, 2025-06-18](https://modelcontextprotocol.io/spec
 
 - Redacted state: `magicnet_capabilities`, `magicnet_transparent_status`,
   `magicnet_dns_status`, `magicnet_network_status`, `magicnet_subscription_status`,
-  `magicnet_wifi_status`. `magicnet_network_status` reports configured and
+  `magicnet_wifi_status`, `magicnet_hotspot_status`. `magicnet_network_status` reports configured and
   effective IPv6 mode, MTU, UDP timeout, DNS capture port and TUN CIDRs.
 - Persistent overrides: `magicnet_override_status`, `magicnet_override_inspect`,
   `magicnet_override_preview`, `magicnet_override_set`, `magicnet_override_reset`,

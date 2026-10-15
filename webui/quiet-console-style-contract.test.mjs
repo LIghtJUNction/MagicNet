@@ -10,21 +10,21 @@ const button = read("./src/components/ui/Button.vue");
 const pageHeader = read("./src/components/ui/PageHeader.vue");
 const design = read("./DESIGN.md");
 
-void test("mobile paper uses quiet surfaces and restrained action emphasis", () => {
-  assert.match(styles, /--mn-ivory:\s*#fafaf7/i);
-  assert.match(styles, /--mn-surface-raised:\s*#252823/i);
-  assert.match(styles, /--mn-primary:\s*#30382f/i);
-  assert.match(styles, /--mn-primary:\s*#dee3d4/i);
-  assert.match(styles, /--mn-radius-lg:\s*16px/i);
-  assert.match(styles, /--mn-shadow-card:\s*none/i);
-  assert.match(
-    styles,
-    /\.magic-card\s*\{[^}]*border-radius:\s*0[^}]*background:\s*transparent/,
-  );
-  assert.doesNotMatch(
-    styles,
-    /linear-gradient|radial-gradient|backdrop-filter:\s*blur/i,
-  );
+void test("constellation palette derives from the logo and keeps one restrained accent", () => {
+  assert.match(styles, /--mn-ivory:\s*#f7f2e8/i, "light canvas is the logo's cream paper");
+  assert.match(styles, /--mn-ink:\s*#1f1b16/i, "light ink is the logo's line work");
+  assert.match(styles, /--mn-primary:\s*#b9502b/i, "terracotta primary keeps white text above 4.5:1");
+  assert.match(styles, /--mn-ivory:\s*#14120f/i, "dark canvas is a warm night sky");
+  assert.match(styles, /--mn-primary:\s*#f08a5d/i);
+  assert.match(styles, /--font-serif:/, "display type uses the system serif stack, no downloaded fonts");
+  assert.doesNotMatch(styles, /@font-face|fonts\.googleapis/);
+  assert.match(styles, /--mn-radius-lg:\s*20px/i);
+  // The star field is static paint, removed for high contrast and forced colors.
+  assert.match(styles, /--mn-sky-field:\s*none/);
+  assert.match(styles, /@media \(prefers-contrast: more\)[\s\S]*--mn-sky-field: none/);
+  assert.match(styles, /@media \(forced-colors: active\)\s*\{\s*body\s*\{\s*background-image: none/);
+  assert.doesNotMatch(styles, /backdrop-filter:\s*blur/i, "WebView chrome avoids blur compositing");
+  assert.doesNotMatch(styles, /@keyframes[^{]*\{[^}]*\b(?:body|html)\b/, "the page canvas never animates");
 });
 
 void test("shell is outcome-led rather than terminal-themed", () => {
@@ -59,9 +59,10 @@ void test("shared primitives preserve labels and reduce decorative copy", () => 
 });
 
 void test("design baseline records the implemented mobile brief", () => {
-  assert.match(design, /name:\s*"MagicNet Paper"/);
-  assert.match(design, /primary:\s*"#30382F"/i);
+  assert.match(design, /name:\s*"MagicNet Constellation"/);
+  assert.match(design, /primary:\s*"#B9502B"/i);
   assert.match(design, /移动端优先/);
-  assert.match(design, /Signature Mechanism:\s*Precision Editor Rail/);
+  assert.match(design, /Signature Mechanism:\s*Live Constellation Path/);
+  assert.match(design, /Precision Editor Rail/);
   assert.doesNotMatch(design, /Phosphor Grid|Live Route Stack/);
 });

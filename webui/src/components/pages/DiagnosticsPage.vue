@@ -221,7 +221,7 @@ const healthLabels: Record<string, string> = { fail: "失败", warn: "注意", i
           <span class="min-w-0 break-words">{{ item.key }}</span>
           <Badge :tone="item.status === 'ok' ? 'success' : item.status === 'fail' ? 'danger' : 'warning'">{{ t(healthLabels[item.status] || item.status) }}</Badge>
         </summary>
-        <p class="break-words pb-6 text-sm leading-6 text-[var(--mn-ink-soft)]">{{ item.detail }}</p>
+        <p class="break-words text-sm leading-6 text-[var(--mn-ink-soft)]">{{ item.detail }}</p>
       </details>
     </div>
 

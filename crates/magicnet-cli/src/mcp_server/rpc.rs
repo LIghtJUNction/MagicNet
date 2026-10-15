@@ -94,6 +94,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_network_status" => run_cli(server, &["--json", "network", "status"]),
         "magicnet_subscription_status" => run_cli(server, &["--json", "sub", "status"]),
         "magicnet_wifi_status" => run_cli(server, &["--json", "wifi", "status"]),
+        "magicnet_hotspot_status" => run_cli(server, &["--json", "hotspot", "status"]),
         "magicnet_node_list" => run_cli(server, &["node", "list"]),
         "magicnet_node_current" => run_cli(server, &["node", "current"]),
         "magicnet_override_status" => super::extended::override_tool(server, "status", args),

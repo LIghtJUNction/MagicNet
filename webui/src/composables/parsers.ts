@@ -105,6 +105,7 @@ export const runtimeDefaults: RuntimeState = {
   singBox: "unknown",
   singBoxRssKib: null,
   serviceReady: null,
+  transparentDataplaneReady: null,
   fswatch: "unknown",
   transparentMode: "unknown",
   transparentEffectiveMode: "unknown",

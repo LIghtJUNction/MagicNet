@@ -28,6 +28,7 @@ import RemovableTag from "@/components/ui/RemovableTag.vue";
 import StatTile from "@/components/ui/StatTile.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import ModuleUpdateCard from "./ModuleUpdateCard.vue";
+import ConstellationPath from "./ConstellationPath.vue";
 import {
   applyConfigAction,
   applyTransparentModeAction,
@@ -40,6 +41,7 @@ import {
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { servicePresentation } from "@/lib/servicePresentation";
+import { machineFailureText, parseMachineHotspot, type HotspotRouteState } from "@/composables/machineStatus";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 import type { TransparentMode } from "@/types";
@@ -74,13 +76,13 @@ const snapshotCopied = ref(false);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
 const hotspotProxyEnabled = ref(false);
-const hotspotRouteStatus = ref("");
+const hotspotRouteStatus = ref<HotspotRouteState>("unknown");
 const hotspotForwardingLabel = computed(() => {
   switch (hotspotRouteStatus.value) {
-    case "ready": return t("热点转发规则已就绪");
-    case "waiting-for-hotspot": return t("已启用，等待热点开启");
-    case "degraded": return t("已启用，但转发规则异常");
-    case "shared-tc-unverified": return t("eBPF 共享转发待核实");
+    case "active": return t("热点转发规则已就绪");
+    case "waiting": return t("已启用，等待热点开启");
+    case "pending": return t("已启用，转发规则正在应用或待核实");
+    case "shared": return t("eBPF 共享转发待核实");
     default: return t("已设置，转发状态未确认");
   }
 });
@@ -305,24 +307,24 @@ async function toggleWifiPolicy(): Promise<void> {
 async function refreshHotspotPolicy(): Promise<boolean> {
   hotspotPolicyPhase.value = "loading";
   hotspotPolicyError.value = "";
-  const output = await runCli("hotspot status", t("读取热点代理策略"), true);
+  const output = await runCli("--json hotspot status", t("读取热点代理策略"), true);
   if (execFailed(output)) {
     hotspotPolicyPhase.value = "error";
     hotspotPolicyError.value =
       t("MagicNet 没读到当前热点设置。设备设置没变，请重新读取。");
-    state.output = t("读取热点代理策略失败：\n{output}", { output: output });
+    state.output = t("读取热点代理策略失败：\n{output}", { output: machineFailureText(output) });
     return false;
   }
-  const matched = output.match(/^enabled=([01])$/m);
-  if (!matched) {
+  const hotspot = parseMachineHotspot(output);
+  if (!hotspot || hotspot.enabled === null) {
     hotspotPolicyPhase.value = "error";
     hotspotPolicyError.value =
       t("MagicNet 没认出设备返回的热点状态。设备设置没变，请重新读取。");
     state.output = t("读取热点代理策略失败：设备返回了无法解析的状态。");
     return false;
   }
-  hotspotProxyEnabled.value = matched[1] === "1";
-  hotspotRouteStatus.value = output.match(/^route_status=([a-z-]+)$/m)?.[1] ?? "";
+  hotspotProxyEnabled.value = hotspot.enabled;
+  hotspotRouteStatus.value = hotspot.routeState;
   hotspotPolicyPhase.value = "ready";
   return true;
 }
@@ -453,7 +455,7 @@ onMounted(() => {
       <div class="mn-control-overview">
         <div class="mn-control-status" role="status" aria-live="polite">
           <div class="mn-control-state-heading">
-            <p class="mn-control-eyebrow"><StatusDot :tone="serviceStatus.tone" />{{ t("代理服务") }}</p>
+            <p class="mn-control-eyebrow"><StatusDot :tone="serviceStatus.tone" />{{ t("代理服务") }}<span v-if="state.hasKsu && state.runtime.transparentMode !== 'unknown'" class="mn-control-mode">{{ transparentModeLabel }}</span></p>
             <h2>{{ controlTitle }}</h2>
             <p class="mn-control-description">{{ controlDescription }}</p>
           </div>
@@ -466,7 +468,7 @@ onMounted(() => {
           </dl>
         </div>
         <div class="mn-control-actions">
-          <Button class="mn-control-power" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('toggle-sing-box')" @click="toggleSingBox">
+          <Button class="mn-control-power" :data-running="state.runtime.singBoxState === 'sing-box'" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('toggle-sing-box')" @click="toggleSingBox">
             <Power :size="18" />{{ state.runtime.singBoxState === 'sing-box' ? t("停止服务") : t("启动服务") }}
           </Button>
           <div class="mn-control-shortcuts">
@@ -479,6 +481,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
+      <ConstellationPath :runtime="state.runtime" :has-device="state.hasKsu" />
       <dl class="mn-service-facts" :aria-label="t('运行证据')">
         <div><dt>sing-box</dt><dd>{{ coreFact }}</dd></div>
         <div><dt>{{ t("服务检查") }}</dt><dd>{{ readinessFact }}</dd></div>
@@ -772,52 +775,64 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.mn-control { max-width: 960px; margin-inline: auto; }
-.mn-control-hero { padding: clamp(20px, 4vw, 36px); border: 1px solid var(--mn-border); border-radius: 24px; background: var(--mn-surface-raised); }
-.mn-control-overview { display: grid; gap: 28px; }
-.mn-control-status { display: grid; gap: 22px; min-width: 0; }
+.mn-control { max-width: 1040px; margin-inline: auto; }
+.mn-control-hero { position: relative; overflow: hidden; padding: clamp(20px, 4vw, 36px); border: 1px solid var(--mn-border); border-radius: var(--mn-radius-xl); background: var(--mn-surface-raised); box-shadow: var(--mn-shadow-card); }
+.mn-control-hero::before { position: absolute; z-index: 0; top: -62%; right: -24%; width: 58%; aspect-ratio: 1; border: 1.5px dashed color-mix(in srgb, var(--mn-accent) 30%, transparent); border-radius: 50%; content: ""; pointer-events: none; }
+.mn-control-hero[data-service-state="ready"]::before { border-color: color-mix(in srgb, var(--mn-accent) 55%, transparent); }
+.mn-control-hero > * { position: relative; z-index: 1; }
+.mn-control-overview { display: grid; gap: 24px; }
+.mn-control-status { display: grid; gap: 18px; min-width: 0; }
 .mn-control-state-heading { min-width: 0; }
-.mn-control-eyebrow { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; color: var(--mn-ink-muted); font-size: 12px; letter-spacing: .04em; }
-.mn-control-status h2 { margin: 0; color: var(--mn-ink); font-size: clamp(30px, 7vw, 44px); font-weight: 500; line-height: 1.22; letter-spacing: -.035em; overflow-wrap: anywhere; }
-.mn-control-description { margin: 14px 0 0; max-width: 42ch; color: var(--mn-ink-muted); font-size: 13px; line-height: 1.8; }
-.mn-control-memory { display: flex; align-items: baseline; gap: 14px; margin: 0; }
+.mn-control-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 0 0 12px; color: var(--mn-ink-muted); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.mn-control-mode { padding: 1px 8px; border: 1px solid var(--mn-border); border-radius: 999px; color: var(--mn-ink-soft); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; text-transform: none; }
+.mn-control-status h2 { margin: 0; color: var(--mn-ink); font-family: var(--font-serif); font-size: clamp(36px, 9vw, 56px); font-weight: 500; line-height: 1.08; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.mn-control-hero[data-service-state="ready"] .mn-control-status h2 { color: var(--mn-ink); }
+.mn-control-description { margin: 12px 0 0; max-width: 46ch; color: var(--mn-ink-muted); font-size: 13.5px; line-height: 1.75; }
+.mn-control-memory { display: inline-flex; width: fit-content; align-items: baseline; gap: 12px; margin: 0; padding: 8px 14px; border-radius: 999px; background: var(--mn-surface-sunken); }
 .mn-control-memory dt { color: var(--mn-ink-muted); font-size: 12px; }
-.mn-control-memory dd { margin: 0; color: var(--mn-ink); font-size: 18px; font-variant-numeric: tabular-nums; }
-.mn-control-memory dd > span { color: var(--mn-ink-muted); font-size: 12px; }
-.mn-control-memory dd[data-unavailable="true"] { color: var(--mn-ink-muted); font-size: 13px; }
+.mn-control-memory dd { margin: 0; color: var(--mn-ink); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mn-control-memory dd > span { color: var(--mn-ink-muted); font-size: 12px; font-weight: 400; }
+.mn-control-memory dd[data-unavailable="true"] { color: var(--mn-ink-muted); font-size: 13px; font-weight: 400; }
 .mn-control-actions { align-self: center; min-width: 0; }
-.mn-control-power { width: 100%; min-height: 54px; font-size: 14px; }
+.mn-control-power { width: 100%; min-height: 58px; border-radius: 999px; font-size: 15px; font-weight: 600; }
+.mn-control-power[data-running="true"] { border-color: var(--mn-ink); background: var(--mn-ink); color: var(--mn-ivory); box-shadow: none; }
+.mn-control-power[data-running="true"]:hover { border-color: var(--mn-ink-soft); background: var(--mn-ink-soft); }
 .mn-control-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
-.mn-control-shortcuts > button { padding-inline: 6px; }
-.mn-service-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 28px 0 0; padding-top: 22px; border-top: 1px solid var(--mn-border); }
-.mn-service-facts > div { min-width: 0; }
+.mn-control-shortcuts > button { padding-inline: 6px; border-radius: 999px; }
+.mn-service-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 20px 0 0; }
+.mn-service-facts > div { min-width: 0; padding: 10px 12px; border-radius: var(--mn-radius-md); background: var(--mn-surface-sunken); }
 .mn-service-facts dt { color: var(--mn-ink-muted); font-size: 11px; }
-.mn-service-facts dd { margin: 7px 0 0; color: var(--mn-ink); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.mn-control-notice { margin-top: 24px; border-radius: 14px; padding: 16px; font-size: 13px; }
-.mn-control-notice h3 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.mn-control-notice p { margin: 10px 0 0; line-height: 1.8; overflow-wrap: anywhere; }
+.mn-service-facts dd { margin: 4px 0 0; color: var(--mn-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.mn-control-notice { margin-top: 20px; border: 1px solid var(--mn-current-tone-border, var(--mn-border)); border-radius: var(--mn-radius-md); padding: 16px; font-size: 13px; }
+.mn-control-notice h3 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.mn-control-notice p { margin: 8px 0 0; line-height: 1.75; overflow-wrap: anywhere; }
 .mn-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.mn-control-destinations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 32px; }
-.mn-control-destinations > button { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 84px; padding: 16px; border: 1px solid var(--mn-border); border-radius: 16px; background: transparent; color: var(--mn-ink); text-align: left; cursor: pointer; }
-.mn-control-destinations > button:hover:not(:disabled) { background: var(--mn-surface-raised); border-color: var(--mn-border-strong); }
+.mn-control-destinations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 28px; }
+.mn-control-destinations > button { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 80px; padding: 16px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface-raised); box-shadow: var(--mn-shadow-card); color: var(--mn-ink); text-align: left; cursor: pointer; transition: border-color 160ms ease-out, transform 160ms var(--mn-motion-spring); }
+.mn-control-destinations > button:hover:not(:disabled) { border-color: var(--mn-primary); transform: translateY(-1px); }
 .mn-control-destinations > button:focus-visible { outline: 2px solid var(--mn-focus); outline-offset: 3px; }
 .mn-control-destinations > button:disabled { cursor: not-allowed; opacity: .55; }
 .mn-control-destinations svg { flex-shrink: 0; }
-.mn-control-destinations span { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
-.mn-control-destinations small { display: block; margin-top: 5px; color: var(--mn-ink-muted); font-size: 11px; line-height: 1.6; }
-.mn-control-section-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
-.mn-control-section-title h3 { margin: 0; color: var(--mn-ink); font-size: 15px; font-weight: 500; }
+.mn-control-destinations > button > svg:first-child { box-sizing: content-box; padding: 9px; border-radius: 12px; background: var(--mn-accent-soft); color: var(--mn-primary-strong); }
+.mn-control-destinations span { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.mn-control-destinations small { display: block; margin-top: 4px; color: var(--mn-ink-muted); font-size: 11.5px; font-weight: 400; line-height: 1.5; }
+.mn-control-section-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+.mn-control-section-title h3 { margin: 0; color: var(--mn-ink); font-family: var(--font-serif); font-size: 22px; font-weight: 500; letter-spacing: -.02em; }
 .mn-control-section-title > span { color: var(--mn-ink-muted); font-size: 12px; }
-.mn-control-settings { display: grid; gap: 16px; }
+.mn-control-settings { display: grid; gap: 14px; }
 @media (min-width: 760px) {
-  .mn-control-overview { grid-template-columns: minmax(0, 1fr) minmax(200px, .6fr); gap: 36px; }
+  .mn-control-overview { grid-template-columns: minmax(0, 1fr) minmax(220px, .55fr); gap: 36px; }
   .mn-control-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 }
 @media (max-width: 420px) {
-  .mn-control-hero { padding: 18px; border-radius: 18px; }
-  .mn-control-destinations { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 28px; }
+  .mn-control-hero { padding: 20px 16px; border-radius: var(--mn-radius-lg); }
+  .mn-control-destinations { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 24px; }
   .mn-control-destinations > button { min-height: 72px; }
-  .mn-service-facts { gap: 8px; }
+  .mn-service-facts { gap: 6px; }
+  .mn-service-facts > div { padding: 8px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mn-control-destinations > button { transition: none; }
 }
 
 .mn-control-details > summary {

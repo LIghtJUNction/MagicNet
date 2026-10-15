@@ -13,6 +13,7 @@ MagicNet manages Android network traffic through a root-controlled [sing-box for
 - Inspect subscriptions, proxy groups, node latency, traffic and diagnostics from the WebUI.
 - Switch explicitly between TUN and eBPF, with rollback on failure. TUN uses `magicnet0`; eBPF reports capability, cgroup and TC attachment state.
 - Manage the same operations through the CLI and optional authenticated MCP server.
+- The WebUI overview draws a live traffic constellation (device → dataplane → sing-box → exit) from verified status only; press `Ctrl/⌘ + K` or `/` to jump to any page.
 
 ## Install and configure
 

@@ -41,7 +41,7 @@ test("mobile status details wrap and high-contrast tabs retain selection", () =>
   );
   assert.match(
     css,
-    /@media \(forced-colors: active\)[\s\S]*border-bottom-color: Highlight;/,
+    /@media \(forced-colors: active\)[\s\S]*\.mn-section-tabs button\.is-active\s*\{\s*outline: 2px solid Highlight;/,
   );
 });
 

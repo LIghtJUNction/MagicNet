@@ -17,7 +17,7 @@ assert.match(styles, /touch-action:\s*manipulation/);
 
 assert.match(
   button,
-  /active:translate-y-px/,
+  /active:scale-\[0\.985\]/,
   "buttons need immediate physical press feedback",
 );
 assert.match(button, /duration-150/, "button feedback must stay short");
@@ -27,8 +27,10 @@ assert.match(
   "button targets must remain at least 48px tall",
 );
 assert.match(card, /magic-card/, "shared sections retain their semantic surface class");
-assert.match(styles, /\.magic-card\s*\{[^}]*border-top: 1px solid var\(--mn-border\);[^}]*border-radius: 0;/,
-  "top-level sections use a continuous layout with a visible divider");
+assert.match(styles, /\.magic-card\s*\{[^}]*border: 1px solid var\(--mn-border\);[^}]*border-radius: var\(--mn-radius-lg\);[^}]*background: var\(--mn-surface-raised\);/,
+  "top-level sections are bordered paper surfaces");
+assert.match(styles, /\.magic-card \.magic-card\s*\{[^}]*background: var\(--mn-surface-sunken\);/,
+  "nested sections sink instead of stacking raised cards");
 
 assert.match(
   app,

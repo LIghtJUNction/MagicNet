@@ -50,8 +50,13 @@ for tool in bash cargo chmod cp env find grep ln mkdir mv python3 readlink rm se
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 HOST_ENV="$(command -v env)"
+MAGICNET_TEST_HOST_UNZIP="$(command -v unzip)"
+MAGICNET_TEST_HOST_CP="$(command -v cp)"
+MAGICNET_TEST_HOST_JQ="$(command -v jq)"
+MAGICNET_TEST_HOST_SINGBOX="$(command -v sing-box)"
+export MAGICNET_TEST_HOST_UNZIP MAGICNET_TEST_HOST_CP MAGICNET_TEST_HOST_JQ MAGICNET_TEST_HOST_SINGBOX
 
-bash "$ROOT/scripts/test-install-config-template.sh"
+MAGICNET_TEST_REAL_CORE="$MAGICNET_TEST_HOST_SINGBOX" bash "$ROOT/scripts/test-install-config-template.sh"
 "$ROOT/scripts/package-smoke.sh" "$ZIP_PATH"
 
 mkdir -p "$MODPATH" "$MANAGER_MODPATH" "$MOCK_BIN"
@@ -102,6 +107,9 @@ install_host_tool_fixtures() {
         [[ ! -e "$fixture_module/bin/$tool" ]] || fail "host tool fixture collides with package binary: $tool"
         ln -s "$host_tool" "$fixture_module/bin/$tool"
     done
+    rm "$fixture_module/bin/unzip"
+    cp "$ROOT/scripts/host-install-unzip.sh" "$fixture_module/bin/unzip"
+    chmod 0755 "$fixture_module/bin/unzip"
     for name in chcon restorecon getevent am cmd settings; do
         [[ ! -e "$fixture_module/bin/$name" ]] || fail "Android mock collides with package binary: $name"
         ln -s "$MOCK_BIN/$name" "$fixture_module/bin/$name"

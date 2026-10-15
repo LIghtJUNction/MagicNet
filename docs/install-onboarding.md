@@ -18,6 +18,17 @@ API links are optional navigation; no login, tracking or automatic starring.
 
 ## Configuration and fallback
 
+Before publishing a template, both fresh installation and upgrade run the
+bundled `bin/jq` and `bin/sing-box check`, including upgrades with no
+saved subscription nodes. A nonempty but malformed or incompatible template,
+or a missing checker, aborts before replacing `config.json`. Validation failure
+also leaves the previous-config backup and standalone marker untouched. Core
+diagnostics are suppressed here because they may contain private node values.
+This check does not start sing-box or fetch subscriptions.
+Manager installs extract the bundled checkers before migration. Rule sets are
+unpacked into the private candidate tree for validation; checking a template
+does not overwrite the previous configuration's live rule files.
+
 - Existing subscription URLs are prefilled through an authenticated, no-store
   local endpoint. Users can replace URLs or add one per line, up to five URLs.
   Local-subscription files remain unchanged. Existing subscribers may keep their

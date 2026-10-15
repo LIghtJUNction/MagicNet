@@ -4,12 +4,16 @@
 # -----------------------------------------------------------------------------------
 
 export SKIPUNZIP=1
+for _magicnet_binary_path in "$MODPATH/bin" "$MODPATH/bin/jq" "$MODPATH/bin/sing-box"; do
+  [ ! -L "$_magicnet_binary_path" ] || abort "! unsafe installer binary path"
+done
+unset _magicnet_binary_path
 # KernelSU/Magisk may point MODPATH at an empty `modules_update` directory
 # while SKIPUNZIP is set. Extract every install-time helper before migration;
 # the upgrade path sources install_config.sh and its subscription dependencies
 # before the manager has copied the rest of the payload.
 if unzip -o "$ZIPFILE" \
-  ".config/kamfw/.envrc" \
+  ".config/kamfw/.envrc" "bin/jq" "bin/sing-box" \
   "lib/kamfw/*" "lib/kamfw-web/*" "lib/magicnet/*" \
   "lib/magicnet_singbox_subscribe.sh" -d "$MODPATH" >&2 &&
   [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
@@ -265,6 +269,19 @@ set_i18n "SET_MODULE_ENTRY_PERMS" \
   "ja" "モジュール入口スクリプトの権限を設定しています" \
   "ko" "모듈 진입 스크립트 권한 설정 중"
 
+set_i18n "INSTALL_NEW_SUMMARY" \
+  "zh" "首次安装：校验配置模板后安装；订阅可在安装引导或 WebUI 中填写。" \
+  "en" "New installation: validate the template before installing; add subscriptions in setup or WebUI." \
+  "ru" "Первая установка: шаблон будет проверен; добавьте подписку в мастере или WebUI." \
+  "ja" "初回インストール: テンプレートを検証します。購読はセットアップまたは WebUI で追加できます。" \
+  "ko" "최초 설치: 템플릿 검증 후 설치합니다. 구독은 설정 안내 또는 WebUI에서 추가하세요."
+set_i18n "INSTALL_UPGRADE_SUMMARY" \
+  "zh" "升级：保留订阅来源和用户选项，使用新模板重建并校验配置；校验失败将停止安装。" \
+  "en" "Upgrade: keep subscription sources and user settings, rebuild and validate with the new template; validation failure stops installation." \
+  "ru" "Обновление сохранит источники и настройки, пересоберёт конфигурацию по новому шаблону; ошибка проверки остановит установку." \
+  "ja" "更新: 購読元とユーザー設定を保持し、新テンプレートで再構築・検証します。検証失敗時はインストールを停止します。" \
+  "ko" "업그레이드: 구독 소스와 사용자 설정을 유지하고 새 템플릿으로 재구성 및 검증합니다. 검증 실패 시 설치를 중단합니다."
+
 magicnet_set_default_core() {
   case "$1" in
   sing-box) ;;
@@ -288,7 +305,12 @@ magicnet_install_selected_core() {
 magicnet_print_install_summary() {
   newline
   print "MagicNet"
-  print "sing-box · TUN · WebUI"
+  print "sing-box · TUN / eBPF · WebUI"
+  if [ "${MAGICNET_BACKUP_READY:-0}" = 1 ]; then
+    print "$(i18n INSTALL_UPGRADE_SUMMARY)"
+  else
+    print "$(i18n INSTALL_NEW_SUMMARY)"
+  fi
   newline
 }
 
@@ -480,10 +502,18 @@ magicnet_install_config_template() (
   (umask 077; mkdir "$_stage") || return 1
   trap 'rm -rf "$_stage"' 0
   trap 'exit 1' 1 2 3 15
-  unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_stage/config.json" || return 1
-  [ -s "$_stage/config.json" ] && chmod 600 "$_stage/config.json" || return 1
+  # Validate against this release's rule sets in a private candidate tree.
+  # Never overwrite rules used by the previous config just to run a check.
+  unzip -o "$ZIPFILE" '.config/sing-box/rules/*' -d "$_stage" >/dev/null 2>&1 || return 1
+  _candidate_root="$_stage/.config/sing-box"
+  unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_candidate_root/config.json" || return 1
+  [ -s "$_candidate_root/config.json" ] && chmod 600 "$_candidate_root/config.json" || return 1
+  # First installs need the same validation boundary as upgrades. Use the
+  # shipped executables rather than an unrelated core from the manager PATH.
+  "${MODPATH}/bin/jq" -e 'type == "object"' "$_candidate_root/config.json" >/dev/null 2>&1 || return 1
+  "${MODPATH}/bin/sing-box" check -c "$_candidate_root/config.json" -D "$_candidate_root" >/dev/null 2>&1 || return 1
   [ ! -e "$_config_dir/config.json" ] || [ -f "$_config_dir/config.json" ] || return 1
-  mv -f "$_stage/config.json" "$_config_dir/config.json" || return 1
+  mv -f "$_candidate_root/config.json" "$_config_dir/config.json" || return 1
   # A stale standalone marker would bypass subscription/cache replay entirely.
   if [ -s "$_config_dir/subscription.url" ] || [ -s "$_config_dir/subscription.local" ]; then
     rm -f "$_config_dir/standalone-config" || return 1

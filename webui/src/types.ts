@@ -38,6 +38,8 @@ export type RuntimeState = {
   singBox: string;
   singBoxRssKib: number | null;
   serviceReady: boolean | null;
+  /** Selected dataplane proven present (TUN interface or required eBPF attachments); null when unproven. */
+  transparentDataplaneReady: boolean | null;
   fswatch: string;
   transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;

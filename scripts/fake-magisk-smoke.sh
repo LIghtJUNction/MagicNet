@@ -109,6 +109,11 @@ need timeout
 python3 "$ROOT/scripts/test-fake-magisk-curl.py" -v
 
 HOST_JQ="$(command -v jq)"
+MAGICNET_TEST_HOST_UNZIP="$(command -v unzip)"
+MAGICNET_TEST_HOST_CP="$(command -v cp)"
+MAGICNET_TEST_HOST_JQ="$HOST_JQ"
+MAGICNET_TEST_HOST_SINGBOX="$(command -v sing-box)"
+export MAGICNET_TEST_HOST_UNZIP MAGICNET_TEST_HOST_CP MAGICNET_TEST_HOST_JQ MAGICNET_TEST_HOST_SINGBOX
 MAGICNET_FAKE_PYTHON="$(command -v python3)"
 export MAGICNET_FAKE_PYTHON
 export MAGICNET_FAKE_KERNEL="$ROOT/scripts/fake-magisk-kernel.py"
@@ -297,6 +302,9 @@ SH
             }
             ln -s "$host_tool" "$MODDIR/bin/$tool"
         done
+        rm "$MODDIR/bin/unzip"
+        cp "$ROOT/scripts/host-install-unzip.sh" "$MODDIR/bin/unzip"
+        chmod 0755 "$MODDIR/bin/unzip"
         for tool in chcon restorecon getevent am cmd settings chown; do
             [[ ! -e "$MODDIR/bin/$tool" ]] || {
                 echo "customize fixture collides with package binary: $tool" >&2

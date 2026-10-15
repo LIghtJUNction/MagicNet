@@ -32,9 +32,25 @@ class InstallTemplate(unittest.TestCase):
         self.active.write_bytes(b'{"old_template":true}\n')
         self.archive = self.root / 'release.zip'
         self.write_zip(template)
+        self.install_tools()
+
+    def install_tools(self):
+        tools = self.mod / 'bin'
+        core = self.mod / 'bin'
+        tools.mkdir(parents=True, exist_ok=True)
+        core.mkdir(parents=True, exist_ok=True)
+        (tools / 'jq').symlink_to(shutil.which('jq'))
+        binary = core / 'sing-box'
+        binary.write_text('''#!/bin/sh
+[ "${REJECT_CONFIG:-0}" != 1 ] || { echo "fixture-secret" >&2; exit 1; }
+[ "$1" = check ] && [ "$2" = -c ] && [ "$4" = -D ] || exit 1
+"${MODPATH}/bin/jq" -e 'type == "object"' "$3" >/dev/null
+''')
+        binary.chmod(0o755)
 
     def write_zip(self, content):
         with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.writestr('.config/sing-box/rules/fixture.srs', b'fixture')
             if content is not None:
                 archive.writestr('.config/sing-box/config.json', content)
 
@@ -45,8 +61,60 @@ class InstallTemplate(unittest.TestCase):
                  'MAGICNET_BACKUP_READY': '0', **(extra_env or {})},
             capture_output=True, timeout=10,
         )
-        self.assertEqual(result.returncode == 0, success, result.stderr.decode())
+        self.assertEqual(result.returncode == 0, success, result.stderr.decode() + ((self.mod / 'core-test.log').read_text() if (self.mod / 'core-test.log').exists() else ''))
+        self.assertNotIn(b'fixture-secret', result.stderr + result.stdout)
         self.assertEqual(list(self.config.glob('.install-template.*')), [])
+
+    def test_empty_manager_directory_extracts_checkers_before_validation(self):
+        bootstrap = source[source.index('export SKIPUNZIP=1'):source.index('\nimport __customize__')]
+        core = (self.mod / 'bin/sing-box').read_bytes()
+        self.mod = self.root / 'MagicNet'
+        self.mod.mkdir()
+        self.config = self.mod / '.config/sing-box'
+        self.active = self.config / 'config.json'
+        with zipfile.ZipFile(self.archive, 'a') as archive:
+            payloads = {
+                'bin/jq': ('#!/bin/sh\nexec "' + shutil.which('jq') + '" "$@"\n').encode(),
+                'bin/sing-box': core,
+                '.config/kamfw/.envrc': b'',
+                'lib/kamfw/.kamfwrc': b'',
+                'lib/kamfw/helper.sh': b'',
+                'lib/kamfw-web/helper.sh': b'',
+                'lib/magicnet/helper.sh': b'',
+                'lib/magicnet_singbox_subscribe.sh': b'',
+            }
+            for name, content in payloads.items():
+                entry = zipfile.ZipInfo(name)
+                entry.external_attr = 0o100755 << 16
+                archive.writestr(entry, content)
+        for shell in shells:
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.mod)
+                self.mod.mkdir()
+                self.run_helper(shell, prefix='abort() { exit 1; }\n' + bootstrap,
+                                extra_env={'MAGICNET_CACHE_ROOT': str(self.root / 'cache')})
+                self.assertEqual(self.active.read_bytes(), template)
+                self.assertTrue((self.mod / 'bin/sing-box').is_file())
+
+    @unittest.skipUnless(os.environ.get('MAGICNET_TEST_REAL_CORE'), 'real-core acceptance is opt-in')
+    def test_release_template_with_real_core_and_rule_sets(self):
+        release = Path(sys.argv[1]) / 'src/MagicNet/.config/sing-box'
+        rules = [rule for rule in (release / 'rules').rglob('*') if rule.is_file()]
+        self.assertTrue(rules, 'prepared release rule sets are required')
+        with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.write(release / 'config.json', '.config/sing-box/config.json')
+            for rule in rules:
+                archive.write(rule, '.config/sing-box/rules/' + rule.relative_to(release / 'rules').as_posix())
+        binary = self.mod / 'bin/sing-box'
+        binary.unlink()
+        binary.write_text('#!/bin/sh\n"' + os.environ['MAGICNET_TEST_REAL_CORE'] + '" "$@" >"$MODPATH/core-test.log" 2>&1\n')
+        binary.chmod(0o755)
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.run_helper(shell)
+                self.assertEqual(self.active.read_bytes(), (release / 'config.json').read_bytes())
+                # A checker must not install/modify live rule files as a side effect.
+                self.assertFalse((self.config / 'rules').exists())
 
     def test_upgrade_preserves_subscription_inputs_and_cache(self):
         work = self.mod / '.state/sing-box/subscription-work'
@@ -111,6 +179,7 @@ class InstallTemplate(unittest.TestCase):
         for shell in shells:
             with self.subTest(shell=shell):
                 shutil.rmtree(self.mod)
+                self.install_tools()
                 self.run_helper(shell)
                 self.assertEqual(self.active.read_bytes(), template)
 
@@ -121,6 +190,20 @@ class InstallTemplate(unittest.TestCase):
                 with self.subTest(shell=shell, content=content):
                     self.run_helper(shell, success=False)
                     self.assertEqual(self.active.read_bytes(), b'{"old_template":true}\n')
+
+    def test_invalid_or_rejected_template_keeps_previous_config(self):
+        for content, env in ((b'{', {}), (b'[]', {}), (template, {'REJECT_CONFIG': '1'})):
+            self.write_zip(content)
+            for shell in shells:
+                with self.subTest(shell=shell, content=content):
+                    self.run_helper(shell, success=False, extra_env=env)
+                    self.assertEqual(self.active.read_bytes(), b'{"old_template":true}\n')
+
+    def test_missing_core_keeps_previous_config(self):
+        (self.mod / 'bin/sing-box').unlink()
+        for shell in shells:
+            self.run_helper(shell, success=False)
+            self.assertEqual(self.active.read_bytes(), b'{"old_template":true}\n')
 
     def test_corrupt_archive_keeps_previous_config(self):
         self.archive.write_bytes(b'not a zip')

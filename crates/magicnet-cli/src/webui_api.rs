@@ -237,7 +237,7 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn hotspot_member(app: &App) -> String {
+pub(crate) fn hotspot_member(app: &App) -> String {
     let runtime = curl_get_json(app, "/proxies").ok();
     runtime
         .as_ref()

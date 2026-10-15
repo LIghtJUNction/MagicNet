@@ -204,6 +204,9 @@ export function parseMachineRuntime(text: string): RuntimeState | null {
     singBox: core.pid_summary as string,
     singBoxRssKib: running ? core.rss_kib as number | null : null,
     serviceReady: data.readiness.overall as boolean | null,
+    // A stopped core cannot keep a proven dataplane; never carry a stale true.
+    transparentDataplaneReady: running ? transparent.dataplane_ready as boolean | null
+      : transparent.dataplane_ready === true ? null : transparent.dataplane_ready as boolean | null,
     fswatch: data.supervisors.fswatch as string,
     transparentMode: enumValue(transparent.configured_mode, ["tun", "ebpf"])
       ? transparent.configured_mode as "tun" | "ebpf" : "unknown",
@@ -304,5 +307,34 @@ export function parseMachineWifi(text: string): WifiPolicyState | null {
     desiredMode: network.desired_mode as WifiPolicyState["desiredMode"],
     currentMode: data.current_mode as WifiPolicyState["currentMode"],
     ssids: configuration.ssids.slice(), bssids: configuration.bssids.slice(),
+  };
+}
+
+export type HotspotRouteState = "disabled" | "waiting" | "pending" | "active" | "shared" | "unknown";
+export type HotspotStatus = {
+  enabled: boolean | null;
+  transparentMode: "tun" | "ebpf";
+  routeState: HotspotRouteState;
+  offloadOwned: boolean;
+  tunRuleCount: number;
+};
+
+/** Hotspot intent plus the state-plane reconcile; no interface or client identities. */
+export function parseMachineHotspot(text: string): HotspotStatus | null {
+  const data = decodeMachineData(text, "hotspot.status");
+  if (!data || !isRecord(data.configured) || !isRecord(data.effective)) return null;
+  const { configured, effective } = data;
+  const outbound = configured.outbound;
+  if (!["proxy", "direct", "unknown"].includes(outbound as string) ||
+    configured.enabled !== (outbound === "proxy" ? true : outbound === "direct" ? false : null) ||
+    !["tun", "ebpf"].includes(configured.transparent_mode as string) ||
+    !["disabled", "waiting", "pending", "active", "shared", "unknown"].includes(effective.route_state as string) ||
+    typeof effective.offload_owned !== "boolean" || !safeCount(effective.tun_rule_count)) return null;
+  return {
+    enabled: configured.enabled as boolean | null,
+    transparentMode: configured.transparent_mode as HotspotStatus["transparentMode"],
+    routeState: effective.route_state as HotspotRouteState,
+    offloadOwned: effective.offload_owned,
+    tunRuleCount: effective.tun_rule_count,
   };
 }

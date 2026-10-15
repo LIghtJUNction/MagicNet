@@ -16,6 +16,7 @@ export CONFIG
 python3 - "$ZIPFILE" <<'PY'
 import sys, zipfile
 with zipfile.ZipFile(sys.argv[1], 'w') as z:
+    z.writestr('.config/sing-box/rules/fixture.srs', 'fixture')
     z.writestr('.config/sing-box/config.json', '{"dns":{"tag":"new"},"route":{"final":"proxy"},"inbounds":[{"type":"tun"}],"outbounds":[]}')
 PY
 cat >"$MODPATH/lib/magicnet_singbox_subscribe.sh" <<'FIXTURE'
@@ -31,10 +32,11 @@ magicnet_singbox_update_config_with_nodes() (
     mv "${MAGICNET_SUB_CONFIG_FILE}.new" "$MAGICNET_SUB_CONFIG_FILE"
 )
 FIXTURE
+ln -s "$(command -v jq)" "$MODPATH/bin/jq"
 cat >"$MODPATH/bin/sing-box" <<'FIXTURE'
 #!/bin/sh
 [ "${REJECT_CONFIG:-0}" != 1 ] || exit 1
-[ "$1" = check ] && [ "$2" = -c ] && [ "$4" = -D ] && [ "$5" = "${CONFIG%/*}" ] || exit 1
+[ "$1" = check ] && [ "$2" = -c ] && [ "$4" = -D ] && [ "$5" = "${3%/*}" ] || exit 1
 jq -e 'type == "object"' "$3" >/dev/null
 FIXTURE
 chmod +x "$MODPATH/bin/sing-box"
@@ -116,6 +118,19 @@ printf '{"outbounds":[]}\n' >"$PREVIOUS"
 rm "$CACHE"
 expect_failure
 cmp "$CONFIG" "$TMP/before"
+no_temporary_files
+# An upgrade without saved nodes still validates before publishing. Rejection
+# must not replace the active config, backup, or standalone marker.
+rm "$PREVIOUS"
+cp "$CONFIG" "$TMP/before-no-nodes"
+printf 'private rollback fixture\n' >"$CONFIG.pre-upgrade"
+cp "$CONFIG.pre-upgrade" "$TMP/backup-before-no-nodes"
+rm "$MARKER"
+export REJECT_CONFIG=1
+expect_failure
+unset REJECT_CONFIG
+cmp "$CONFIG" "$TMP/before-no-nodes"
+cmp "$CONFIG.pre-upgrade" "$TMP/backup-before-no-nodes"
 no_temporary_files
 # The installer snapshots the old file, restores subscriptions, then rebuilds.
 python3 - "$ROOT/src/MagicNet/customize.sh" <<'PY'

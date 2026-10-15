@@ -8,38 +8,38 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>MagicNet · 谢谢你来过</title>
   <style>
-    :root { font-family: system-ui, -apple-system, sans-serif; color: #232522; background: #f7f7f3; color-scheme: light; }
+    :root { font-family: system-ui, -apple-system, sans-serif; color: #1f1b16; background: #f7f2e8; color-scheme: light; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; min-height: 100svh; }
     header, main, footer { width: min(100% - 48px, 540px); margin-inline: auto; }
     header { display: flex; justify-content: space-between; align-items: center; padding-top: max(28px, env(safe-area-inset-top)); gap: 20px; }
     .brand { font-weight: 650; letter-spacing: -.025em; }
-    select { font: inherit; font-size: 13px; background: transparent; color: inherit; border: 1px solid #d7d9d0; border-radius: 10px; padding: 8px; max-width: 48%; }
+    select { font: inherit; font-size: 13px; background: transparent; color: inherit; border: 1px solid #e5dccb; border-radius: 10px; padding: 8px; max-width: 48%; }
     main { padding: clamp(48px, 13vh, 108px) 0 40px; }
-    .mark { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #c9cebe; border-radius: 50%; margin-bottom: 28px; font-size: 22px; color: #626e54; }
-    h1 { font-size: clamp(28px, 7vw, 38px); letter-spacing: -.045em; line-height: 1.25; font-weight: 600; margin: 0 0 16px; outline: none; }
+    .mark { display: grid; place-items: center; width: 52px; height: 52px; border: 1.5px dashed #c9bca6; border-radius: 50%; margin-bottom: 28px; font-size: 22px; color: #b9502b; }
+    h1 { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", Georgia, serif; font-size: clamp(28px, 7vw, 40px); letter-spacing: -.035em; line-height: 1.22; font-weight: 500; margin: 0 0 16px; outline: none; }
     p { line-height: 1.8; margin: 0; }
-    .intro, .note, footer { color: #6b7067; }
+    .intro, .note, footer { color: #675e52; }
     .question { margin-top: 36px; font-size: 17px; }
     .actions { display: flex; gap: 10px; margin: 20px 0 16px; flex-wrap: wrap; }
-    button, .button { font: inherit; text-decoration: none; display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 18px; border: 1px solid #d2d6ca; border-radius: 14px; color: inherit; background: transparent; cursor: pointer; }
-    .primary { background: #343e2e; color: #fff; border-color: #343e2e; }
+    button, .button { font: inherit; text-decoration: none; display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 18px; border: 1px solid #c9bca6; border-radius: 999px; color: inherit; background: transparent; cursor: pointer; }
+    .primary { background: #b9502b; color: #fff; border-color: #b9502b; }
     .note { font-size: 13px; line-height: 1.7; }
-    #thanks { margin-top: 30px; padding-top: 26px; border-top: 1px solid #dedfd8; }
+    #thanks { margin-top: 30px; padding-top: 26px; border-top: 1px dashed #c9bca6; }
     #status { font-size: 17px; margin-bottom: 12px; }
     #retry { display: inline-block; margin-top: 16px; color: inherit; text-underline-offset: 4px; }
     .promise { margin-top: 36px; }
     footer { padding-bottom: max(28px, env(safe-area-inset-bottom)); font-size: 12px; line-height: 1.7; }
     #version { display: block; margin-top: 8px; }
-    :focus-visible { outline: 3px solid #80936c; outline-offset: 4px; }
+    :focus-visible { outline: 3px solid #b9502b; outline-offset: 4px; }
     [hidden] { display: none !important; }
     @media (max-width: 360px) { header, main, footer { width: calc(100% - 36px); } .actions > * { flex: 1 1 100%; } }
     @media (prefers-color-scheme: dark) {
-      :root { background: #181b17; color: #eef0e9; color-scheme: dark; }
-      .intro, .note, footer { color: #b1b8aa; }
-      select, button, .button, #thanks { border-color: #434a3b; }
-      .mark { border-color: #546149; color: #c0ceb3; }
-      .primary { background: #d1dcc5; color: #20271a; border-color: #d1dcc5; }
+      :root { background: #14120f; color: #f4ede1; color-scheme: dark; }
+      .intro, .note, footer { color: #aea392; }
+      select, button, .button, #thanks { border-color: #4b4337; }
+      .mark { border-color: #4b4337; color: #f08a5d; }
+      .primary { background: #f08a5d; color: #2a1309; border-color: #f08a5d; }
     }
   </style>
 </head>
@@ -51,7 +51,7 @@
     </select>
   </header>
   <main id="farewell">
-    <div class="mark" aria-hidden="true">M</div>
+    <div class="mark" aria-hidden="true">✦</div>
     <h1 id="heading" tabindex="-1">谢谢你用过 MagicNet。</h1>
     <p class="intro" id="intro">很遗憾，这次没能一直陪你走下去。谢谢你愿意试一试。</p>
     <section id="choices" aria-labelledby="question">

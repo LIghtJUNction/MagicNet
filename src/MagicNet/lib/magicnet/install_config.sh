@@ -52,8 +52,8 @@ magicnet_refresh_install_config() (
     _refresh_config="${MODDIR}/.config/sing-box/config.json"
     _refresh_previous="${MAGICNET_BACKUP_DIR}/.config/sing-box/config.json"
     _refresh_backup="${_refresh_config}.pre-upgrade"
-    _refresh_candidate="${_refresh_config}.install-new.$$"
     _refresh_work="${MODDIR}/.state/install-config.$$"
+    _refresh_candidate="$_refresh_work/.config/sing-box/config.json"
     for _refresh_path in "${MODDIR}/.config" "${MODDIR}/.config/sing-box" \
         "${MODDIR}/.state" "$_refresh_config" "$_refresh_backup"; do
         [ ! -L "$_refresh_path" ] || return 1
@@ -64,6 +64,7 @@ magicnet_refresh_install_config() (
     mkdir -p "${MODDIR}/.state" || return 1
     mkdir "$_refresh_work" || return 1
     trap 'rm -rf "$_refresh_work"' 0
+    unzip -o "$ZIPFILE" '.config/sing-box/rules/*' -d "$_refresh_work" >/dev/null 2>&1 || return 1
     (set -C; : >"$_refresh_candidate") || return 1
     trap 'rm -rf "$_refresh_work"; rm -f "$_refresh_candidate"' 0
     trap 'exit 1' 1 2 3 15
@@ -106,6 +107,12 @@ magicnet_refresh_install_config() (
         error "Cannot migrate standalone nodes to the new template; the previous config was not replaced."
         return 1
     fi
+
+    # Validate even when there were no saved nodes to import. A nonempty ZIP
+    # entry is not evidence of a usable config. Keep diagnostics private: core
+    # errors can contain node addresses and credentials.
+    "${MODDIR}/bin/jq" -e 'type == "object"' "$_refresh_candidate" >/dev/null 2>&1 || return 1
+    "${MODDIR}/bin/sing-box" check -c "$_refresh_candidate" -D "${_refresh_candidate%/*}" >/dev/null 2>&1 || return 1
 
     # Keep one private, recoverable copy, not an ever-growing credential history.
     if [ -f "$_refresh_previous" ]; then

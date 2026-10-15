@@ -45,6 +45,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "sub.inspect",
     "wifi.status",
     "wifi.inspect",
+    "hotspot.status",
     "machine.capabilities",
     "tailscale.status",
     "override.status",
@@ -154,6 +155,9 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         }
         [command, action] if *command == "wifi" && *action == "status" => {
             Ok(wifi_status_value(app))
+        }
+        [command, action] if *command == "hotspot" && *action == "status" => {
+            Ok(hotspot_status_value(app))
         }
         _ => Err(MachineError {
             code: "machine.unsupported_command",
@@ -517,6 +521,41 @@ fn sub_status_data(app: &App, urls: &[String]) -> Value {
     })
 }
 
+fn hotspot_status_value(app: &App) -> Value {
+    let outbound = crate::webui_api::hotspot_member(app);
+    hotspot_status_value_with_outbound(app, &outbound)
+}
+
+/// Hotspot intent and reconciled forwarding state. Interface names, subnets
+/// and client identities stay out of the stable machine contract.
+fn hotspot_status_value_with_outbound(app: &App, outbound: &str) -> Value {
+    let outbound = match outbound {
+        "proxy" | "direct" => outbound,
+        _ => "unknown",
+    };
+    let enabled = match outbound {
+        "proxy" => Some(true),
+        "direct" => Some(false),
+        _ => None,
+    };
+    let observation = crate::state::hotspot_observation(app);
+    envelope(
+        "hotspot.status",
+        json!({
+            "configured": {
+                "enabled": enabled,
+                "outbound": outbound,
+                "transparent_mode": transparent_mode(app),
+            },
+            "effective": {
+                "route_state": observation.state,
+                "offload_owned": observation.offload_owned,
+                "tun_rule_count": observation.tun_rule_count,
+            },
+        }),
+    )
+}
+
 fn wifi_status_value(app: &App) -> Value {
     let current_mode = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
     wifi_status_value_with_current(app, &current_mode)
@@ -768,10 +807,10 @@ fn parse_rss_kib(status: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        capabilities_value, combine_readiness, dns_status_value, machine_value,
-        network_status_value, parse_rss_kib, process_state, service_lifecycle,
-        service_status_value, sub_status_value, transparent_status_value,
-        wifi_status_value_with_current,
+        capabilities_value, combine_readiness, dns_status_value,
+        hotspot_status_value_with_outbound, machine_value, network_status_value, parse_rss_kib,
+        process_state, service_lifecycle, service_status_value, sub_status_value,
+        transparent_status_value, wifi_status_value_with_current,
     };
     use crate::App;
     use std::fs;
@@ -825,6 +864,44 @@ mod tests {
             );
         }
         assert!(!root.join(".state/network-access-recovery").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn hotspot_status_separates_intent_from_reconciled_route_state() {
+        let (root, app) = fixture();
+        let value = hotspot_status_value_with_outbound(&app, "direct");
+        assert_eq!(value["command"], "hotspot.status");
+        assert_eq!(value["data"]["configured"]["enabled"], false);
+        assert_eq!(value["data"]["configured"]["transparent_mode"], "tun");
+        assert_eq!(value["data"]["effective"]["route_state"], "disabled");
+        assert_eq!(value["data"]["effective"]["offload_owned"], false);
+
+        // Intent alone is not proof of forwarding: an owned offload without
+        // rules waits for a downstream hotspot instead of reporting active.
+        fs::create_dir_all(root.join(".state/hotspot")).unwrap();
+        fs::write(root.join(".state/hotspot/tether-offload.previous"), "0\n").unwrap();
+        let value = hotspot_status_value_with_outbound(&app, "proxy");
+        assert_eq!(value["data"]["configured"]["enabled"], true);
+        assert_eq!(value["data"]["effective"]["route_state"], "waiting");
+
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )
+        .unwrap();
+        let value = hotspot_status_value_with_outbound(&app, "proxy");
+        assert_eq!(value["data"]["configured"]["transparent_mode"], "ebpf");
+        assert_eq!(value["data"]["effective"]["route_state"], "shared");
+
+        let value = hotspot_status_value_with_outbound(&app, "node-name");
+        assert_eq!(
+            value["data"]["configured"]["enabled"],
+            serde_json::Value::Null
+        );
+        assert_eq!(value["data"]["configured"]["outbound"], "unknown");
+        let encoded = value.to_string();
+        assert!(!encoded.contains("node-name") && !encoded.contains("wlan"));
         fs::remove_dir_all(root).unwrap();
     }
 

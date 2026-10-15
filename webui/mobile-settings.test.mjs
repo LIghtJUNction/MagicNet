@@ -11,7 +11,7 @@ test("five clicks reveal GPT-6, retain previous visitors, and wrap the rotation"
   );
   assert.equal(
     visitors.map(({ name }) => name).join(","),
-    "GPT-6,SOL,Grok 4.5,Kimi K3,Fable 5",
+    "GPT-6,SOL,Grok 4.5,Kimi K3,Fable 5,Opus 5.5",
   );
   let now = 1000;
   const scope = {

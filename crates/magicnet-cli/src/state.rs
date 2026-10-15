@@ -726,7 +726,15 @@ fn wifi_record_with_supervisor(app: &App, wifi_supervisor: &str) -> StateRecord 
         )
 }
 
-fn hotspot_record(app: &App) -> StateRecord {
+/// Reconciled hotspot dataplane facts shared by the canonical state record and
+/// the `hotspot.status` machine command. Only normalized tokens and counts.
+pub(crate) struct HotspotObservation {
+    pub(crate) state: &'static str,
+    pub(crate) offload_owned: bool,
+    pub(crate) tun_rule_count: usize,
+}
+
+pub(crate) fn hotspot_observation(app: &App) -> HotspotObservation {
     let owned = app.moddir.join(HOTSPOT_OFFLOAD_OWNER).is_file();
     let rule_count = clean_line_count(&app.moddir.join(HOTSPOT_TUN_RULES));
     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
@@ -753,10 +761,19 @@ fn hotspot_record(app: &App) -> StateRecord {
     } else {
         "waiting"
     };
+    HotspotObservation {
+        state,
+        offload_owned: owned,
+        tun_rule_count: rule_count,
+    }
+}
+
+fn hotspot_record(app: &App) -> StateRecord {
+    let observation = hotspot_observation(app);
     StateRecord::new(Domain::Hotspot)
-        .field("state", state)
-        .bool("offload_owned", owned)
-        .field("tun_rule_count", rule_count.to_string())
+        .field("state", observation.state)
+        .bool("offload_owned", observation.offload_owned)
+        .field("tun_rule_count", observation.tun_rule_count.to_string())
 }
 
 fn dns_record(app: &App) -> StateRecord {

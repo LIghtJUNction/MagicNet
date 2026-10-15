@@ -107,6 +107,20 @@ async function loadConfigForEditing(): Promise<void> {
   if (!state.config.dirty && state.config.text) issueBaseline.value = state.config.text;
 }
 
+function requestLoadConfig(): void {
+  if (!state.config.dirty) {
+    void withAction("load-config", loadConfigForEditing);
+    return;
+  }
+  requestConfigAction({
+    key: "load-config",
+    title: t("重新加载并丢弃编辑？"),
+    detail: t("当前有未保存的修改。重新加载会用设备上的配置替换编辑器内容。取消可继续编辑。"),
+    command: "",
+    run: () => withAction("load-config", loadConfigForEditing),
+  });
+}
+
 async function saveRepository(): Promise<void> {
   repositoryStatus.value = "";
   const saved = await withAction("save-config-repository", () => saveConfigRepository({
@@ -131,7 +145,9 @@ function requestSyncTemplate(): void {
   requestConfigAction({
     key: "sync-template",
     title: t("同步配置仓库模板"),
-    detail: t("用配置仓库模板更新当前目标配置。"),
+    detail: state.config.dirty
+      ? t("当前有未保存的修改。同步会更新设备配置并替换编辑器内容。取消可继续编辑。")
+      : t("用配置仓库模板更新当前目标配置。"),
     command: `config-editor sync-template ${state.config.target}`,
     run: () => withAction("sync-template", () => syncConfigTemplate()),
   });
@@ -166,18 +182,33 @@ async function importLocalConfig(event: Event): Promise<void> {
       throw new Error(t("文件超过 4 MiB 限制。"));
     }
     const imported = parseLocalConfigFile(file.name, new Uint8Array(await file.arrayBuffer()));
-    state.config.text = imported.text;
-    state.config.dirty = true;
-    state.config.status = t("已导入 {value}，尚未保存", { value: imported.fileName });
-    state.config.validation = {
-      status: "idle",
-      summary: t("本地 JSON 已导入编辑器，点击“校验并保存”后才会写入运行配置。"),
-      checkedAt: "",
+    // Reading a file can take time. Ask at commit time so edits made while the
+    // file picker/read was pending cannot disappear without confirmation.
+    const applyImport = async (): Promise<void> => {
+      state.config.text = imported.text;
+      state.config.dirty = true;
+      state.config.status = t("已导入 {value}，尚未保存", { value: imported.fileName });
+      state.config.validation = {
+        status: "idle",
+        summary: t("本地 JSON 已导入编辑器，点击“校验并保存”后才会写入运行配置。"),
+        checkedAt: "",
+      };
+      configSyntaxValid.value = true;
+      localJsonStatus.value = t("{value} 已导入（{value2} KiB），尚未保存。", { value: imported.fileName, value2: (imported.sizeBytes / 1024).toFixed(1) });
+      state.notice = t("本地 JSON 已导入编辑器");
+      state.output = t("导入完成，运行配置没有被修改；请检查内容后点击“校验并保存”。");
     };
-    configSyntaxValid.value = true;
-    localJsonStatus.value = t("{value} 已导入（{value2} KiB），尚未保存。", { value: imported.fileName, value2: (imported.sizeBytes / 1024).toFixed(1) });
-    state.notice = t("本地 JSON 已导入编辑器");
-    state.output = t("导入完成，运行配置没有被修改；请检查内容后点击“校验并保存”。");
+    if (state.config.dirty) {
+      requestConfigAction({
+        key: "import-config",
+        title: t("导入并替换编辑内容？"),
+        detail: t("当前有未保存的修改。导入会替换编辑器内容，运行配置要在校验并保存后才会改变。"),
+        command: "",
+        run: applyImport,
+      });
+    } else {
+      await applyImport();
+    }
   } catch (error) {
     localJsonError.value = true;
     localJsonStatus.value = t("导入错误：{value}", { value: error instanceof Error ? error.message : String(error) });
@@ -248,7 +279,7 @@ async function openConfigIssue(): Promise<void> {
     <PageHeader :overline="t('编辑器')" :title="t('配置文件')">
       <div v-show="configView === 'full'" class="flex flex-wrap items-center gap-2">
         <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
-        <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? t("加载中") : t("加载配置") }}</Button>
+        <Button variant="outline" :loading="isRunning('load-config')" @click="requestLoadConfig"><RefreshCw :size="17" />{{ isRunning('load-config') ? t("加载中") : t("加载配置") }}</Button>
         <Button :disabled="!state.hasKsu || !state.config.text.trim() || !configSyntaxValid" :loading="isRunning('save-config')" :aria-label="t('校验并保存配置')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? t("校验中") : t("保存") }}</Button>
         <details class="config-action-menu">
           <summary :aria-label="t('更多配置操作')"><MoreHorizontal :size="18" aria-hidden="true" />{{ t("更多") }}</summary>

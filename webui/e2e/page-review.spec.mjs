@@ -86,3 +86,56 @@ test("empty configuration never reports valid JSON and recovers after edits", as
   await editor.blur();
   await page.screenshot({ path: info.outputPath("editor-unvalidated.png"), fullPage: true });
 });
+
+test("configuration draft survives reload and import cancellation", async ({ page }, info) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
+    window.ksu = { spawn(command, _args, _options, callbackName) {
+      setTimeout(() => {
+        const callback = window[callbackName];
+        if (command.includes("config-editor get sing-box")) {
+          callback.stdout.emit("data", '{"outbounds":[],"route":{"final":"direct"}}');
+        }
+        callback.emit("exit", 0);
+      }, 0);
+    } };
+  });
+  await page.goto("/#/config", { waitUntil: "networkidle" });
+  const editor = page.locator(".json-editor__textarea");
+  const draft = '{"outbounds":[],"draft":true}';
+  await editor.fill(draft);
+  await page.getByRole("button", { name: "加载配置", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "重新加载并丢弃编辑？" })).toBeVisible();
+  await expect(editor).toHaveValue(draft);
+  await page.screenshot({ path: info.outputPath("config-unsaved-reload.png"), fullPage: true });
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(editor).toHaveValue(draft);
+  const file = { name: "config.json", mimeType: "application/json", buffer: Buffer.from('{"imported":true}') };
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await expect(page.getByRole("heading", { name: "导入并替换编辑内容？" })).toBeVisible();
+  await expect(editor).toHaveValue(draft);
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(editor).toHaveValue(draft);
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await page.getByRole("button", { name: "确认执行", exact: true }).click();
+  await expect(editor).toHaveValue('{\n  "imported": true\n}\n');
+  expect(await page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })).toBe(true);
+  // Navigation retains the in-memory draft; only leaving the document warns.
+  await page.evaluate(() => { location.hash = "/control"; });
+  await expect(page.locator('.page-surface[data-page="control"]')).toBeVisible();
+  await page.evaluate(() => { location.hash = "/config"; });
+  await expect(editor).toHaveValue('{\n  "imported": true\n}\n');
+  await page.getByRole("button", { name: "加载配置", exact: true }).click();
+  await page.getByRole("button", { name: "确认执行", exact: true }).click();
+  await expect(editor).toHaveValue('{"outbounds":[],"route":{"final":"direct"}}');
+  expect(await page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+});

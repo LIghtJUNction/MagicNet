@@ -1,4 +1,9 @@
 export default {
+  "重新加载并丢弃编辑？": ["Reload and discard edits?", "Перезагрузить и отменить правки?"],
+  "当前有未保存的修改。重新加载会用设备上的配置替换编辑器内容。取消可继续编辑。": ["You have unsaved changes. Reloading replaces the editor contents with the device configuration. Cancel to keep editing.", "Есть несохранённые изменения. Перезагрузка заменит содержимое редактора конфигурацией устройства. Отмените, чтобы продолжить редактирование."],
+  "当前有未保存的修改。同步会更新设备配置并替换编辑器内容。取消可继续编辑。": ["You have unsaved changes. Syncing updates the device configuration and replaces the editor contents. Cancel to keep editing.", "Есть несохранённые изменения. Синхронизация обновит конфигурацию устройства и заменит содержимое редактора. Отмените, чтобы продолжить редактирование."],
+  "导入并替换编辑内容？": ["Import and replace editor contents?", "Импортировать и заменить содержимое редактора?"],
+  "当前有未保存的修改。导入会替换编辑器内容，运行配置要在校验并保存后才会改变。": ["You have unsaved changes. Importing replaces the editor contents. The active configuration changes only after validation and saving.", "Есть несохранённые изменения. Импорт заменит содержимое редактора. Рабочая конфигурация изменится только после проверки и сохранения."],
   "最多支持 {value} 个订阅来源，请删减后保存；不会截断链接。": ["Up to {value} subscription sources are supported. Remove extra lines before saving; no links will be truncated.", "Поддерживается до {value} источников. Удалите лишние строки перед сохранением; ссылки не будут обрезаны."],
   "网页登录": ["Sign in with browser", "Войти через браузер"],
   "在浏览器中授权，也可用其他设备扫码。": ["Authorize in your browser, or scan the QR code on another device.", "Подтвердите вход в браузере или отсканируйте QR-код другим устройством."],

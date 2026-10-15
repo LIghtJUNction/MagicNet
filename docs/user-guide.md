@@ -31,6 +31,14 @@ su -c /data/adb/modules/MagicNet/cli transparent status
 
 前两项确认整体健康与 configured/effective 数据面；TUN 再确认 `magicnet0`，eBPF 则确认 local cgroup 与 shared attached/pending。只看到进程运行不代表流量已经进入当前数据面。
 
+## 模块操作菜单
+
+在终端运行模块的 `action.sh`，输入菜单编号后回车；空输入退出。
+管理器内使用音量减键选择、音量加键确认，默认项是只读诊断。
+启动和停止是独立选项；停止服务会释放网络接管，更新订阅可能短暂中断连接，
+两者都会再次确认，默认取消。`MAGICNET_NONINTERACTIVE=1` 时只显示状态。
+操作失败会保留 CLI 的退出码，不会被状态刷新覆盖。
+
 ## URL 与本地订阅
 
 ### URL 来源
@@ -51,6 +59,13 @@ WebUI 的“导入本地文件”支持完整 sing-box JSON、Clash YAML、base6
 导入成功后，本地文件成为持久来源；后续刷新继续使用它。保存新 URL 会原子切回 URL 来源。导入或切换失败时，WebUI 会报告失败阶段，当前有效配置继续运行，不应手工覆盖 `.config/sing-box/config.json` 来绕过校验。
 
 原生分享链接覆盖 VLESS、VMess、Trojan、Shadowsocks、SOCKS/SOCKS5、Hysteria2、AnyTLS 和 TUIC。VMess WebSocket 会分别保留服务器地址、Host、SNI 与 path；SOCKS 认证要求用户名和密码同时有效。
+
+## 配置编辑与草稿
+
+配置文件页的修改在“校验并保存”成功前只留在编辑器里。重新加载、导入
+JSON 或同步模板会明确提示可能丢弃的修改，可以取消并继续编辑。切换页面
+会保留草稿；刷新或离开 WebUI 时，支持该功能的浏览器会提醒未保存的修改。
+草稿不写入浏览器存储，关闭 WebUI 后不能恢复，请及时保存。
 
 ## 节点测试与自动组
 

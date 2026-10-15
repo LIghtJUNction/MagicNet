@@ -12,6 +12,7 @@ import machineStatus from "./catalogs/machine-status.ts";
 
 import tailscale from "./catalogs/tailscale.ts";
 import terminal from "./catalogs/terminal.ts";
+import constellation from "./catalogs/constellation.ts";
 
 export const messages: Record<string, readonly string[]> = {
   ...frontend,
@@ -27,4 +28,5 @@ export const messages: Record<string, readonly string[]> = {
   ...terminal,
   ...overrides,
   ...moduleUpdate,
+  ...constellation,
 };

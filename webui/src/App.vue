@@ -1,28 +1,43 @@
 <script setup lang="ts">
 import {
+  Activity,
+  AppWindow,
   Bug,
   Coffee,
+  DownloadCloud,
+  FileCode2,
   Gauge,
   GitBranch,
   Github,
+  HeartPulse,
+  Link2,
   MessageCircle,
   Monitor,
   Moon,
   MoreHorizontal,
+  Network,
+  PanelsTopLeft,
   RefreshCw,
+  Route,
   ScrollText,
+  Search,
   Settings,
+  ShieldBan,
+  SquareTerminal,
   Stethoscope,
   Sun,
+  Wrench,
   X,
 } from "lucide-vue-next";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect, type Component } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch, watchEffect, type Component } from "vue";
 import { t } from "@/i18n";
 import LanguageSelect from "@/components/LanguageSelect.vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import OnboardingDialog from "@/components/OnboardingDialog.vue";
 import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
+import type { PaletteItem } from "@/components/CommandPalette.vue";
+import { isPaletteShortcut } from "@/components/commandPalette";
 import Button from "@/components/ui/Button.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import { servicePresentation } from "@/lib/servicePresentation";
@@ -41,6 +56,9 @@ type TabDefinition = {
   key: TabKey;
   label: string;
   workspace: WorkspaceKey;
+  icon: Component;
+  hint: string;
+  keywords?: readonly string[];
 };
 
 type WorkspaceDefinition = {
@@ -51,6 +69,8 @@ type WorkspaceDefinition = {
 };
 
 const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
+/** The palette is opened on demand; keep it off the first-load critical path. */
+const CommandPalette = defineAsyncComponent(() => import("@/components/CommandPalette.vue"));
 
 const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   control: () => import("@/components/pages/ControlPage.vue"),
@@ -77,19 +97,19 @@ const asyncPages = Object.fromEntries(
 ) as Record<TabKey, Component>;
 
 const tabs: readonly TabDefinition[] = [
-  { key: "control", label: "概览", workspace: "run" },
-  { key: "about", label: "流量路径", workspace: "run" },
-  { key: "apps", label: "应用", workspace: "route" },
-  { key: "block", label: "拦截规则", workspace: "route" },
-  { key: "chain", label: "链式代理", workspace: "route" },
-  { key: "subs", label: "订阅", workspace: "configure" },
-  { key: "tailscale", label: "Tailscale", workspace: "configure" },
-  { key: "config", label: "配置文件", workspace: "configure" },
-  { key: "webui", label: "管理面板", workspace: "configure" },
-  { key: "health", label: "健康检查", workspace: "diagnose" },
-  { key: "terminal", label: "终端", workspace: "diagnose" },
-  { key: "tools", label: "工具", workspace: "diagnose" },
-  { key: "output", label: "最近输出", workspace: "diagnose" },
+  { key: "control", label: "概览", workspace: "run", icon: Gauge, hint: "服务状态、代理模式与热点", keywords: ["overview", "home", "tun", "ebpf"] },
+  { key: "about", label: "流量路径", workspace: "run", icon: Route, hint: "流量如何经过 MagicNet", keywords: ["path", "flow"] },
+  { key: "apps", label: "应用", workspace: "route", icon: AppWindow, hint: "Proxy、Direct 与 Bypass 名单", keywords: ["apps", "uid", "bypass"] },
+  { key: "block", label: "拦截规则", workspace: "route", icon: ShieldBan, hint: "广告与域名拦截", keywords: ["block", "ads"] },
+  { key: "chain", label: "链式代理", workspace: "route", icon: Link2, hint: "前置节点与出口组合", keywords: ["chain", "relay"] },
+  { key: "subs", label: "订阅", workspace: "configure", icon: DownloadCloud, hint: "来源、用量与自动更新", keywords: ["subscription", "nodes", "clash"] },
+  { key: "tailscale", label: "Tailscale", workspace: "configure", icon: Network, hint: "Tailscale 端点", keywords: ["tailnet"] },
+  { key: "config", label: "配置文件", workspace: "configure", icon: FileCode2, hint: "sing-box 配置与覆写", keywords: ["config", "json", "override"] },
+  { key: "webui", label: "管理面板", workspace: "configure", icon: PanelsTopLeft, hint: "节点面板与 API", keywords: ["zashboard", "dashboard", "api"] },
+  { key: "health", label: "健康检查", workspace: "diagnose", icon: HeartPulse, hint: "诊断、日志与支持包", keywords: ["health", "doctor", "logs"] },
+  { key: "terminal", label: "终端", workspace: "diagnose", icon: SquareTerminal, hint: "运行 MagicNet 命令", keywords: ["terminal", "cli", "shell"] },
+  { key: "tools", label: "工具", workspace: "diagnose", icon: Wrench, hint: "DNS、MCP、WARP 与抓包", keywords: ["tools", "dns", "mcp", "warp"] },
+  { key: "output", label: "最近输出", workspace: "diagnose", icon: Activity, hint: "最近命令与后台任务", keywords: ["output", "log"] },
 ];
 
 const workspaces: readonly WorkspaceDefinition[] = [
@@ -159,6 +179,8 @@ const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   diagnose: "health",
 });
 const showUtilityMenu = ref(false);
+const showPalette = ref(false);
+const paletteTrigger = ref<HTMLElement | null>(null);
 const showOnboarding = ref(false);
 const utilityDialog = ref<HTMLElement | null>(null);
 const utilityMenuTrigger = ref<HTMLElement | null>(null);
@@ -203,6 +225,11 @@ const easterEggVisitors = [
     title: "Fable 5 到此一游 📖",
     body: "Claude Fable 5 翻过这页 · 故事继续，彩蛋已签收。",
   },
+  {
+    name: "Opus 5.5",
+    title: "Opus 5.5 到此一游 ✦",
+    body: "Claude Opus 5.5 连起了这片星座 · 虚线是路，星星是你的数据包。",
+  },
 ] as const;
 
 const easterEggVisible = ref(false);
@@ -244,6 +271,39 @@ const transparentRouteData = computed(() => {
   return "unknown";
 });
 const statusDotTone = computed(() => serviceStatus.value.tone);
+const transparentModeShort = computed(() =>
+  state.runtime.transparentMode === "unknown" ? t("模式未知")
+    : state.runtime.transparentMode === "ebpf" ? "eBPF" : "TUN",
+);
+const coreMemoryLabel = computed(() =>
+  state.runtime.singBoxState === "sing-box" && state.runtime.singBoxRssKib != null
+    ? `${(state.runtime.singBoxRssKib / 1024).toFixed(1)} MiB`
+    : "",
+);
+const tabsByWorkspace = computed(() =>
+  workspaces.map((workspace) => ({
+    workspace,
+    items: tabs.filter((tab) => tab.workspace === workspace.key),
+  })),
+);
+
+const paletteItems = computed<PaletteItem[]>(() => [
+  ...tabs.map((tab) => ({
+    id: `tab:${tab.key}`,
+    label: tab.label,
+    hint: tab.hint,
+    group: workspaces.find((workspace) => workspace.key === tab.workspace)?.label ?? "",
+    keywords: tab.keywords,
+    icon: tab.icon,
+    run: () => setTab(tab.key),
+  })),
+  { id: "action:refresh", label: "刷新面板", hint: "重新读取全部状态，不会重启服务", group: "操作", keywords: ["refresh", "reload"], icon: RefreshCw, run: () => void refreshAll() },
+  { id: "action:theme", label: "切换外观", hint: "亮色 → 暗色 → 跟随系统", group: "操作", keywords: ["theme", "dark", "light"], icon: themePreference.value === "dark" ? Moon : themePreference.value === "light" ? Sun : Monitor, run: cycleTheme },
+  { id: "action:onboarding", label: "新手引导", hint: "导入订阅的首次设置", group: "操作", keywords: ["guide", "onboarding"], icon: ScrollText, run: () => launchOnboarding(paletteTrigger.value) },
+  { id: "action:issue", label: "反馈问题", hint: "生成脱敏的 GitHub Issue", group: "操作", keywords: ["issue", "bug", "feedback"], icon: Bug, run: () => void createIssue() },
+  { id: "link:github", label: "GitHub", hint: "LIghtJUNction/MagicNet", group: "链接", keywords: ["repo", "source"], icon: Github, run: () => openExternal(REPO, "GitHub") },
+  { id: "link:donate", label: "捐赠", hint: "支持 MagicNet 持续维护", group: "链接", keywords: ["donate", "sponsor"], icon: Coffee, run: () => openExternal("https://donate.lmm.best/?project=magicnet", "捐赠") },
+]);
 
 function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
   if (tab !== activeTab.value) {
@@ -355,6 +415,30 @@ function trapUtilityMenuFocus(event: KeyboardEvent): void {
   trapFocusWithin(event, utilityDialog.value);
 }
 
+function openPalette(event?: Event): void {
+  const trigger = event?.currentTarget instanceof HTMLElement
+    ? event.currentTarget
+    : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (showUtilityMenu.value) closeUtilityMenu(false);
+  paletteTrigger.value = trigger;
+  showPalette.value = true;
+}
+
+function closePalette(): void {
+  if (!showPalette.value) return;
+  showPalette.value = false;
+  const trigger = paletteTrigger.value;
+  paletteTrigger.value = null;
+  restoreFocusAfterUpdate(trigger);
+}
+
+function handlePaletteShortcut(event: KeyboardEvent): void {
+  if (showPalette.value || showOnboarding.value || state.issueReporter.open) return;
+  if (!isPaletteShortcut(event)) return;
+  event.preventDefault();
+  openPalette();
+}
+
 function closeEasterEgg(): void {
   easterEggVisible.value = false;
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
@@ -423,14 +507,22 @@ function warmActiveTab(tab: TabKey): void {
   }
 }
 
+function warnBeforeDiscardingConfig(event: BeforeUnloadEvent): void {
+  if (!state.config.dirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
 onMounted(() => {
   void refreshStatus();
   // A deep link is already the active tab, so setTab would not warm it.
   warmActiveTab(activeTab.value);
   document.addEventListener("keydown", handleEscape);
+  document.addEventListener("keydown", handlePaletteShortcut);
   document.addEventListener("pointerdown", dismissActionMenus);
   window.addEventListener("popstate", syncTabFromLocation);
   window.addEventListener("hashchange", syncTabFromLocation);
+  window.addEventListener("beforeunload", warnBeforeDiscardingConfig);
   writeTabToLocation(activeTab.value, true);
   if (state.hasKsu && !readOnboardingPreference()) {
     void nextTick(() => {
@@ -450,9 +542,11 @@ onUnmounted(() => {
   if (idleWarmup !== undefined) window.cancelIdleCallback?.(idleWarmup);
   if (delayedWarmup !== undefined) window.clearTimeout(delayedWarmup);
   document.removeEventListener("keydown", handleEscape);
+  document.removeEventListener("keydown", handlePaletteShortcut);
   document.removeEventListener("pointerdown", dismissActionMenus);
   window.removeEventListener("popstate", syncTabFromLocation);
   window.removeEventListener("hashchange", syncTabFromLocation);
+  window.removeEventListener("beforeunload", warnBeforeDiscardingConfig);
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
   if (showUtilityMenu.value) document.body.style.overflow = bodyOverflowBeforeDialog;
 });
@@ -480,10 +574,23 @@ onUnmounted(() => {
         </button>
         <div class="mn-brand-copy">
           <h1>MagicNet</h1>
+          <p>{{ t("透明网络工作台") }}</p>
         </div>
       </div>
 
       <div class="mn-global-actions">
+        <button
+          class="mn-palette-trigger"
+          type="button"
+          :aria-label="t('快速跳转')"
+          aria-haspopup="dialog"
+          :aria-expanded="showPalette"
+          @click="openPalette"
+        >
+          <Search :size="17" aria-hidden="true" />
+          <span>{{ t("跳转到…") }}</span>
+          <kbd aria-hidden="true">/</kbd>
+        </button>
         <LanguageSelect class="mn-language-header" />
         <Button
           variant="ghost"
@@ -561,7 +668,7 @@ onUnmounted(() => {
         <StatusDot :tone="statusDotTone" />
         <strong>{{ runtimeStateLabel }}</strong>
       </div>
-      <span class="mn-runtime-mode" :title="t('数据面：{mode}', { mode: transparentRouteData })">{{ state.runtime.transparentMode === 'unknown' ? t('模式未知') : state.runtime.transparentMode === 'ebpf' ? 'eBPF' : 'TUN' }}</span>
+      <span class="mn-runtime-mode" :title="t('数据面：{mode}', { mode: transparentRouteData })">{{ transparentModeShort }}</span>
       <p v-if="statusMessage">{{ statusMessage }}</p>
       <Button
         v-if="state.backgroundTask.log"
@@ -576,13 +683,12 @@ onUnmounted(() => {
     <div class="mn-workspace-frame">
       <aside class="desktop-rail" :aria-label="t('MagicNet 工作区')">
         <nav :aria-label="t('全部页面')">
-          <div v-for="workspace in workspaces" :key="workspace.key" class="mn-nav-group">
+          <div v-for="group in tabsByWorkspace" :key="group.workspace.key" class="mn-nav-group">
             <div class="mn-rail-label">
-              <component :is="workspace.icon" :size="15" aria-hidden="true" />
-              <span>{{ t(workspace.label) }}</span>
+              <span>{{ t(group.workspace.label) }}</span>
             </div>
             <button
-              v-for="item in tabs.filter((tab) => tab.workspace === workspace.key)"
+              v-for="item in group.items"
               :key="item.key"
               :data-tab="item.key"
               :class="activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle'"
@@ -592,10 +698,29 @@ onUnmounted(() => {
               @focus="prefetchTab(item.key)"
               @click="setTab(item.key)"
             >
+              <component :is="item.icon" :size="17" aria-hidden="true" />
               <span>{{ t(item.label) }}</span>
             </button>
           </div>
         </nav>
+        <button
+          v-if="state.hasKsu"
+          class="mn-rail-status"
+          type="button"
+          :data-state="routeStackState"
+          :aria-label="t('MagicNet 运行状态：{state}，打开概览', { state: runtimeStateLabel })"
+          @click="setTab('control')"
+        >
+          <span class="mn-rail-status__line">
+            <StatusDot :tone="statusDotTone" />
+            <strong>{{ runtimeStateLabel }}</strong>
+          </span>
+          <span class="mn-rail-status__meta">
+            <span>{{ transparentModeShort }}</span>
+            <span v-if="coreMemoryLabel">{{ coreMemoryLabel }}</span>
+          </span>
+          <span v-if="statusMessage" class="mn-rail-status__task">{{ statusMessage }}</span>
+        </button>
       </aside>
 
       <main id="mn-main" class="mn-workspace-main" tabindex="-1">
@@ -689,10 +814,17 @@ onUnmounted(() => {
             <Button variant="outline" @click="openExternal('https://donate.lmm.best/?project=magicnet', '捐赠')">
               <Coffee :size="18" aria-hidden="true" />{{ t('捐赠') }}
             </Button>
+            <Button variant="outline" @click="openPalette">
+              <Search :size="18" aria-hidden="true" />{{ t('快速跳转') }}
+            </Button>
           </div>
           <OpenSourceSupportNote />
         </div>
       </div>
+    </Transition>
+
+    <Transition name="sheet">
+      <CommandPalette v-if="showPalette" :items="paletteItems" @close="closePalette" />
     </Transition>
 
     <OnboardingDialog
@@ -731,3 +863,59 @@ onUnmounted(() => {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.mn-rail-status {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px dashed var(--mn-border-strong);
+  border-radius: 16px;
+  background: var(--mn-surface-sunken);
+  color: var(--mn-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mn-rail-status:hover {
+  border-color: var(--mn-primary);
+}
+
+.mn-rail-status__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mn-rail-status__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mn-rail-status__meta > span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--mn-surface-raised);
+  color: var(--mn-ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.mn-rail-status__task {
+  overflow: hidden;
+  color: var(--mn-ink-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mn-rail-status[data-state="active"] .mn-rail-status__line {
+  color: var(--mn-success);
+}
+</style>

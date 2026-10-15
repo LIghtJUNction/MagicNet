@@ -1,8 +1,8 @@
 :root {
   color-scheme: light dark;
-  --paper: #faf9f6; --ink: #232322; --muted: #6e6a65; --line: #dedad4;
-  --field: #fff; --accent: #a44d22; --on-accent: #fff; --hover: #f0ede7;
-  --focus: #976240; --error: #b32e28; --image-shadow: #65412712;
+  --paper: #f7f2e8; --ink: #1f1b16; --muted: #675e52; --line: #e5dccb;
+  --field: #fffcf6; --accent: #b9502b; --on-accent: #fff; --hover: #efe7d8;
+  --focus: #b9502b; --error: #ad2e2a; --image-shadow: #9c3f1d26;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif;
   color: var(--ink); background: var(--paper); font-synthesis: none;
 }
@@ -33,7 +33,7 @@ main { flex: 1; display: grid; grid-template-columns: 1.12fr 1fr; align-items: c
 .artwork { width: min(100%, 390px); aspect-ratio: 1; border-radius: 36%; overflow: hidden; box-shadow: 0 26px 60px var(--image-shadow); animation: float 16s ease-in-out infinite; transform: rotate(-6deg); }
 .artwork img { display: block; width: 100%; height: auto; }
 .intro { min-width: 0; width: 100%; max-width: 400px; }
-h1 { margin: 0 0 35px; font-size: clamp(28px, 3vw, 38px); line-height: 1.28; font-weight: 530; letter-spacing: -1.1px; text-wrap: balance; }
+h1 { margin: 0 0 35px; font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", Georgia, serif; font-size: clamp(28px, 3vw, 40px); line-height: 1.24; font-weight: 500; letter-spacing: -1.1px; text-wrap: balance; }
 :lang(ru) h1 { font-size: 34px; }
 form { margin: 0; }
 .input-wrap { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 15px; background: var(--field); padding-left: 18px; color: var(--muted); transition: border-color .2s; }
@@ -80,7 +80,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 @keyframes float { 50% { transform: translateY(-9px) rotate(-3deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-color-scheme: dark) {
-  :root { --paper: #191a1b; --ink: #f0ece6; --muted: #b4aea5; --line: #3c3b39; --field: #212224; --accent: #efb186; --on-accent: #282019; --hover: #292a2a; --focus: #ddb698; --error: #ffaba2; --image-shadow: #00000030; }
+  :root { --paper: #14120f; --ink: #f4ede1; --muted: #aea392; --line: #2f2a23; --field: #1d1a16; --accent: #f08a5d; --on-accent: #2a1309; --hover: #26221c; --focus: #f6a07b; --error: #f2988a; --image-shadow: #00000059; }
   .artwork img { filter: brightness(.88) saturate(.83); }
   .telegram > svg:first-child { color: #7dbdd6; }
   .discord > svg:first-child { color: #b2b7ef; }

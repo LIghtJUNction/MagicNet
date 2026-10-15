@@ -33,7 +33,7 @@ MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 A
 - **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。
 - **配置模板仓库**：默认使用固定 commit 和 SHA-256 的 `MagicSingBox` 配置，也可改为自己的 GitHub/GitLab fork，在仓库中维护规则后原子同步。
 - **DNS 与故障边界可见**：拦截物理出口上的明文 DNS/DoT，`cli health` 和 `cli transparent status` 分别按 TUN 接口或 eBPF capability/cgroup/TC 报告真实状态。
-- **WebUI、CLI 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。
+- **WebUI、CLI 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。WebUI 概览以“流量星座”实时展示 设备 → 数据面 → sing-box → 出口 的已证实状态，按 `Ctrl/⌘ + K` 或 `/` 可快速跳转到任意页面。
 
 ## 安装与首次成功运行
 

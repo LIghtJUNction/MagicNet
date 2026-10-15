@@ -25,16 +25,16 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-sm font-medium transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
+  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-sm font-medium transition-[transform,color,background-color,border-color,box-shadow,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:scale-100",
   {
     variants: {
       variant: {
         default:
-          "border-[var(--mn-primary)] bg-[var(--mn-primary)] text-[var(--mn-on-accent)] hover:border-[var(--mn-primary-strong)] hover:bg-[var(--mn-primary-strong)]",
+          "border-[var(--mn-primary)] bg-[var(--mn-primary)] text-[var(--mn-on-accent)] shadow-[0_8px_20px_-12px_var(--mn-primary)] hover:border-[var(--mn-primary-strong)] hover:bg-[var(--mn-primary-strong)]",
         secondary:
-          "border-transparent bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:text-[var(--mn-primary-strong)]",
+          "border-transparent bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-border-strong)] hover:bg-[var(--mn-carrier-deep)]",
         outline:
-          "border-[var(--mn-border-strong)] bg-transparent text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:bg-[color-mix(in_srgb,var(--mn-primary)_9%,transparent)]",
+          "border-[var(--mn-border-strong)] bg-[var(--mn-surface-raised)] text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:bg-[color-mix(in_srgb,var(--mn-primary)_7%,var(--mn-surface-raised))]",
         ghost:
           "border-transparent bg-transparent text-[var(--mn-ink-muted)] hover:border-[var(--mn-border)] hover:bg-[var(--mn-surface-sunken)] hover:text-[var(--mn-ink)]",
         destructive:

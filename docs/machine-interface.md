@@ -69,6 +69,7 @@ network-access.reapply
 network-access.rollback
 sub.status
 wifi.status
+hotspot.status
 machine.capabilities
 module-update.status
 module-update.check
@@ -84,6 +85,7 @@ Examples:
 /data/adb/modules/MagicNet/cli --json network status
 /data/adb/modules/MagicNet/cli --json sub status
 /data/adb/modules/MagicNet/cli --json wifi status
+/data/adb/modules/MagicNet/cli --json hotspot status
 ```
 
 ## Readiness semantics
@@ -193,6 +195,27 @@ the policy watcher. Failure to detect a network is an error, not a confirmed
 disconnect. Detected policy/list edits during probing reject the observation.
 On failed refresh the WebUI retains editable configuration, clears live identity
 and quota displays, and reports unknown rather than keeping an old green state.
+
+### Hotspot status
+
+`hotspot.status` separates intent from reconciled forwarding facts:
+
+```json
+{
+  "configured": { "enabled": true, "outbound": "proxy", "transparent_mode": "tun" },
+  "effective": { "route_state": "waiting", "offload_owned": true, "tun_rule_count": 0 }
+}
+```
+
+`configured.outbound` is the `hotspot` selector member (`proxy`, `direct` or
+`unknown`); `enabled` is `null` when the member cannot be classified.
+`effective.route_state` is the same reconcile used for
+`.state/machines/hotspot.state`: `disabled`, `waiting` (no downstream hotspot
+yet), `pending` (write-ahead record or rules not yet proven), `active` (TUN
+policy rules, table 2022 and FORWARD access verified), `shared` (eBPF mode; TC
+attachment is reported by `transparent.status`) or `unknown`. Interface names,
+subnets and client identities are never returned. The bundled WebUI reads this
+command instead of parsing human `hotspot status` text.
 
 ## Mutation safety
 

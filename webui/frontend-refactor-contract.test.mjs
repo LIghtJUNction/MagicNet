@@ -126,15 +126,15 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   }
 }
 
-// --- Mobile paper tokens on the real styles entry ---
+// --- Constellation tokens on the real styles entry ---
 const styles = read(stylesPath);
 for (const token of [
-  "#DEE3D4",
-  "#1C1E1B",
-  "#EFEFE7",
-  "#FAFAF7",
-  "#272824",
-  "#30382F",
+  "#F7F2E8",
+  "#1F1B16",
+  "#B9502B",
+  "#14120F",
+  "#F4EDE1",
+  "#F08A5D",
 ]) {
   assert.match(
     styles,
