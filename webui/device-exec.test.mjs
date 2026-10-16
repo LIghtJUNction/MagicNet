@@ -89,6 +89,96 @@ test("malformed native exit events fail without retaining callbacks", async () =
   }
 });
 
+const OUTPUT_UNITS = 8 * 1024 * 1024;
+const OUTPUT_ENTRIES = 64 * 1024;
+
+function pendingExecution() {
+  let callbackName;
+  globalThis.ksu = { spawn: (_, __, ___, name) => { callbackName = name; } };
+  const pending = execAsync("unused");
+  return { pending, callback: window[callbackName], callbackName };
+}
+
+test("output budgets accept the exact combined boundary including stream separators", async () => {
+  const { pending, callback, callbackName } = pendingExecution();
+  const stdout = "a".repeat(OUTPUT_UNITS - 2);
+  callback.stdout.emit("data", stdout);
+  callback.stdout.emit("data", "");
+  callback.stderr.emit("data", "b");
+  callback.emit("exit", 0);
+  assert.deepEqual(await pending, { errno: 0, stdout: `${stdout}\n`, stderr: "b" });
+  assert.equal(window[callbackName], undefined);
+});
+
+for (const terminal of ["success", "nonzero", "error"]) {
+  test(`combined output overflow stays pending until native ${terminal} and returns no partial data`, async () => {
+    const { pending, callback, callbackName } = pendingExecution();
+    const rejected = assert.rejects(pending, (error) => {
+      assert.equal(error.name, "ExecOutputLimitError");
+      assert.ok(!error.message.includes("PRIVATE_OUTPUT"));
+      return true;
+    });
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    callback.stdout.emit("data", "a".repeat(OUTPUT_UNITS));
+    callback.stderr.emit("data", "PRIVATE_OUTPUT");
+    for (let count = 0; count < 100; count += 1) callback.stdout.emit("data", "more output");
+    await Promise.resolve();
+    assert.equal(settled, false, "overflow must not release the active command");
+    assert.ok(window[callbackName]);
+    if (terminal === "error") callback.emit("error", new Error("PRIVATE_OUTPUT native failure"));
+    else callback.emit("exit", terminal === "success" ? 0 : 7);
+    await rejected;
+    assert.equal(window[callbackName], undefined);
+    callback.stdout.emit("data", "late output");
+    callback.emit("exit", 0);
+  });
+}
+
+test("an empty line separator counts toward the output budget", async () => {
+  const { pending, callback, callbackName } = pendingExecution();
+  const rejected = assert.rejects(pending, { name: "ExecOutputLimitError" });
+  callback.stdout.emit("data", "a".repeat(OUTPUT_UNITS));
+  callback.stdout.emit("data", "");
+  callback.emit("exit", 0);
+  await rejected;
+  assert.equal(window[callbackName], undefined);
+});
+
+test("a surrogate pair takes two units, accepting an exact fit but rejecting a one-unit gap", async () => {
+  for (const overflow of [false, true]) {
+    const { pending, callback, callbackName } = pendingExecution();
+    const completion = overflow ? assert.rejects(pending, { name: "ExecOutputLimitError" }) : pending;
+    const prefix = "a".repeat(OUTPUT_UNITS - (overflow ? 2 : 3));
+    callback.stdout.emit("data", prefix);
+    callback.stdout.emit("data", "😀");
+    callback.emit("exit", 0);
+    const result = await completion;
+    if (!overflow) assert.equal(result.stdout, `${prefix}\n😀`);
+    assert.equal(window[callbackName], undefined);
+  }
+});
+
+test("empty output events have a combined count limit independent of their size", async () => {
+  for (const overflow of [false, true]) {
+    const { pending, callback, callbackName } = pendingExecution();
+    const completion = overflow
+      ? assert.rejects(pending, { name: "ExecOutputLimitError" })
+      : pending;
+    for (let count = 0; count < OUTPUT_ENTRIES; count += 1) {
+      (count % 2 ? callback.stdout : callback.stderr).emit("data", "");
+    }
+    if (overflow) callback.stderr.emit("data", "");
+    callback.emit("exit", 0);
+    const result = await completion;
+    if (!overflow) {
+      assert.equal(result.stdout, "\n".repeat(OUTPUT_ENTRIES / 2 - 1));
+      assert.equal(result.stderr, result.stdout);
+    }
+    assert.equal(window[callbackName], undefined);
+  }
+});
+
 test("repeated completion and duplicate events leave no registered callbacks", async () => {
   const before = Object.keys(window).filter((name) => name.startsWith("magicnet_spawn_"));
   globalThis.ksu = { spawn: (_, __, ___, name) => {

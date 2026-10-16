@@ -7,8 +7,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::{
-    defer_reap, read_proc_file_bounded, reserve_child_probe, run_bounded_command, CommandPipe,
-    DeferredReaper, CHILD_REAPER, MAX_CHILD_PROBES,
+    defer_reap, read_proc_file_bounded, reserve_child_probe, run_bounded_command,
+    run_bounded_command_with_input, CommandPipe, DeferredReaper, CHILD_REAPER, MAX_CHILD_PROBES,
+    MAX_COMMAND_INPUT_BYTES,
 };
 
 fn shell(script: &str) -> Command {
@@ -50,6 +51,129 @@ fn isolated(name: &str) -> bool {
 
 fn proc_entries(path: &str) -> usize {
     fs::read_dir(path).unwrap().count()
+}
+
+#[test]
+fn stdin_payload_is_bounded_and_delivered_byte_for_byte_with_eof() {
+    let input = (0..MAX_COMMAND_INPUT_BYTES)
+        .map(|index| (index % 256) as u8)
+        .collect::<Vec<_>>();
+    let output = run_bounded_command_with_input(
+        shell("exec cat"),
+        Duration::from_secs(3),
+        input.len(),
+        &input,
+    )
+    .unwrap();
+    assert!(!output.timed_out);
+    assert!(!output.truncated);
+    assert!(output.status.unwrap().success());
+    assert_eq!(output.stdout, input);
+    for with_input in [false, true] {
+        let command = shell("exec cat");
+        let output = if with_input {
+            run_bounded_command_with_input(command, Duration::from_secs(1), 128, &[])
+        } else {
+            run_bounded_command(command, Duration::from_secs(1), 128)
+        }
+        .unwrap();
+        assert!(output.status.unwrap().success());
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn oversized_command_input_is_rejected_before_spawn() {
+    let error = run_bounded_command_with_input(
+        Command::new("/nonexistent-magicnet-command"),
+        Duration::from_secs(1),
+        128,
+        &vec![b'x'; MAX_COMMAND_INPUT_BYTES + 1],
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error, "command input exceeds the write limit");
+}
+
+#[test]
+fn stdin_and_both_output_streams_make_progress_without_deadlock() {
+    let output = run_bounded_command_with_input(
+        shell("head -c 131072 /dev/zero; head -c 131072 /dev/zero >&2; count=$(wc -c); [ \"$count\" -eq 65536 ]"),
+        Duration::from_secs(3), 128, &vec![b'x'; MAX_COMMAND_INPUT_BYTES],
+    ).unwrap();
+    assert!(!output.timed_out);
+    assert!(output.truncated);
+    assert!(
+        output.status.unwrap().success(),
+        "stdin was not fully delivered before EOF"
+    );
+    assert!(output.stdout.len() < 256);
+    assert!(output.stderr.len() < 256);
+}
+
+#[test]
+fn a_child_not_reading_stdin_cannot_hide_the_deadline() {
+    let started = Instant::now();
+    let output = run_bounded_command_with_input(
+        shell("exec sleep 30"),
+        Duration::from_millis(100),
+        128,
+        &vec![b'x'; MAX_COMMAND_INPUT_BYTES],
+    )
+    .unwrap();
+    assert!(output.timed_out);
+    assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+#[test]
+fn closed_child_stdin_is_a_controlled_delivery_error() {
+    use std::os::unix::process::CommandExt;
+    // Unrelated concurrent fork workers may briefly inherit the pipe reader.
+    // Isolate the fixture so closed stdin reliably produces EPIPE.
+    if isolated("closed_child_stdin_is_a_controlled_delivery_error") {
+        return;
+    }
+    let mut command = shell("exit 0");
+    // spawn's exec handshake guarantees the pipe reader is closed before the
+    // parent starts delivery, independent of pipe capacity or scheduling.
+    unsafe {
+        command.pre_exec(|| {
+            libc::close(libc::STDIN_FILENO);
+            Ok(())
+        });
+    }
+    let error = run_bounded_command_with_input(
+        command,
+        Duration::from_secs(1),
+        128,
+        b"private fixture input",
+    )
+    .err()
+    .unwrap();
+    assert!(error.starts_with("write command input:"), "{error}");
+    assert!(!error.contains("private fixture input"));
+}
+
+#[test]
+fn repeated_stdin_commands_do_not_accumulate_handles_or_threads() {
+    if isolated("repeated_stdin_commands_do_not_accumulate_handles_or_threads") {
+        return;
+    }
+    let threads = proc_entries("/proc/self/task");
+    let fds = proc_entries("/proc/self/fd");
+    for _ in 0..12 {
+        let output = run_bounded_command_with_input(
+            shell("exec cat"),
+            Duration::from_secs(1),
+            128,
+            b"fixture",
+        )
+        .unwrap();
+        assert!(output.status.unwrap().success());
+        assert_eq!(output.stdout, b"fixture");
+    }
+    assert!(proc_entries("/proc/self/task") <= threads + 1);
+    assert_eq!(proc_entries("/proc/self/fd"), fds);
 }
 
 #[test]

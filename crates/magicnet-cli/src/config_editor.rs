@@ -1389,11 +1389,7 @@ mod tests {
         .expect_err("nonzero fetch must fail");
         assert!(unavailable.contains("unavailable"));
 
-        fs::write(
-            &curl,
-            "#!/bin/sh\nchunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 131072 ]; do printf %s \"$chunk\"; i=$((i + 1)); done\n",
-        )
-        .expect("oversized curl fixture");
+        fs::write(&curl, "#!/bin/sh\nhead -c 1048577 /dev/zero\n").expect("oversized curl fixture");
         let oversized = fetch_template_with_curl(
             &curl,
             "https://github.com/example/repository/config.json",
@@ -1402,7 +1398,7 @@ mod tests {
             Duration::from_secs(3),
         )
         .expect_err("oversized fetch must fail");
-        assert!(oversized.contains("exceeds"));
+        assert!(oversized.contains("exceeds"), "{oversized}");
     }
 
     #[test]

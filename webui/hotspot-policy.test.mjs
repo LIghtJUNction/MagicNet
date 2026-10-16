@@ -85,9 +85,9 @@ for (const status of [0, 23]) {
 
 assert.match(control, /关闭 Android 热点硬件加速/);
 assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
-assert.match(webuiApi, /"reconcile"[\s\S]*refresh_hotspot_policy_if_stale/);
-assert.match(webuiApi, /"disable"[\s\S]*refresh_hotspot_policy_if_stale/);
-assert.match(webuiApi, /rollback_hotspot_enable/);
+assert.match(webuiApi, /"reconcile"[\s\S]*config_apply_lock[\s\S]*apply_config_locked/);
+assert.match(webuiApi, /"disable" => set_hotspot_policy\(app, "direct"\)/);
+assert.match(webuiApi, /hotspot rollback failed/);
 const startSingBox = core.slice(
   core.indexOf("magicnet_start_singbox_unlocked()"),
   core.indexOf("magicnet_with_sub_config_lock magicnet_start_singbox"),

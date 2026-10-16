@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import { execAsync } from "./src/composables/deviceExec.ts";
+
+afterEach(() => { delete globalThis.ksu; });
 
 globalThis.window = globalThis;
 
@@ -123,6 +126,45 @@ test("expired commands are skipped even before their delayed timer fires", async
   assert.equal(expiredStarted, false);
   assert.equal(queue.depth, 0);
 });
+
+for (const expireCaller of [false, true]) {
+  test(`overflowing native execution keeps its serial slot${expireCaller ? " after caller timeout" : ""}`, async (t) => {
+    useClock(t);
+    const callbacks = [];
+    const started = [];
+    globalThis.ksu = { spawn: (command, _, __, name) => {
+      started.push(command);
+      callbacks.push({ name, callback: window[name] });
+    } };
+    const queue = new SerialExecQueue();
+    const first = queue.enqueue(() => execAsync("first"), 10, "first");
+    const firstRejected = assert.rejects(first, {
+      name: expireCaller ? "ExecTimeoutError" : "ExecOutputLimitError",
+    });
+    const second = queue.enqueue(() => execAsync("second"), 100, "second");
+    await setImmediate();
+    const callback = callbacks[0].callback;
+    if (expireCaller) {
+      t.mock.timers.tick(10);
+      await firstRejected;
+    }
+    callback.stdout.emit("data", "x".repeat(8 * 1024 * 1024 + 1));
+    await setImmediate();
+    assert.deepEqual(started, ["first"]);
+    assert.equal(queue.depth, 2);
+    assert.ok(window[callbacks[0].name]);
+    callback.emit("exit", 0);
+    await firstRejected;
+    await setImmediate();
+    assert.equal(window[callbacks[0].name], undefined);
+    assert.deepEqual(started, ["first", "second"]);
+    callbacks[1].callback.stdout.emit("data", "survivor");
+    callbacks[1].callback.emit("exit", 0);
+    assert.deepEqual(await second, { errno: 0, stdout: "survivor", stderr: "" });
+    await setImmediate();
+    assert.equal(queue.depth, 0);
+  });
+}
 
 test("synchronous throws and asynchronous failures release the slot for the next command", async () => {
   const queue = new SerialExecQueue();

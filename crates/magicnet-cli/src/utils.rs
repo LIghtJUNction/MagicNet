@@ -6,7 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::{Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use crate::App;
 
 const MAX_COMMAND_STREAM_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_COMMAND_INPUT_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_PROC_CMDLINE_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_PROC_STAT_BYTES: usize = 4 * 1024;
 pub(crate) const MAX_PROC_COMM_BYTES: usize = 256;
@@ -687,10 +688,33 @@ pub(crate) struct BoundedCommandOutput {
 }
 
 pub(crate) fn run_bounded_command(
-    mut command: Command,
+    command: Command,
     timeout: Duration,
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
+    run_bounded_command_inner(command, timeout, stream_limit, None)
+}
+
+/// Deliver bounded private input through the same deadline/ownership loop as
+/// captured output. Borrow the payload; never put it in argv or a writer thread.
+pub(crate) fn run_bounded_command_with_input(
+    command: Command,
+    timeout: Duration,
+    stream_limit: usize,
+    input: &[u8],
+) -> Result<BoundedCommandOutput, String> {
+    run_bounded_command_inner(command, timeout, stream_limit, Some(input))
+}
+
+fn run_bounded_command_inner(
+    mut command: Command,
+    timeout: Duration,
+    stream_limit: usize,
+    input: Option<&[u8]>,
+) -> Result<BoundedCommandOutput, String> {
+    if input.is_some_and(|bytes| bytes.len() > MAX_COMMAND_INPUT_BYTES) {
+        return Err("command input exceeds the write limit".to_string());
+    }
     if timeout.is_zero() {
         return Err("command deadline expired before spawn".to_string());
     }
@@ -718,7 +742,11 @@ pub(crate) fn run_bounded_command(
         });
     }
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -729,13 +757,15 @@ pub(crate) fn run_bounded_command(
         Ok::<_, String>((
             CommandPipe::new(stdout, stream_limit).map_err(|err| err.to_string())?,
             CommandPipe::new(stderr, stream_limit).map_err(|err| err.to_string())?,
+            CommandInput::new(child.stdin.take(), input.unwrap_or_default())
+                .map_err(|err| err.to_string())?,
         ))
     })();
-    let (mut stdout, mut stderr) = match captures {
+    let (mut stdout, mut stderr, mut stdin) = match captures {
         Ok(captures) => captures,
         Err(err) => {
             let _ = terminate_command_group(&mut child);
-            return Err(format!("configure command output: {err}"));
+            return Err(format!("configure command pipes: {err}"));
         }
     };
     let mut timed_out = false;
@@ -745,17 +775,23 @@ pub(crate) fn run_bounded_command(
         // starve stderr, process reaping, or the monotonic deadline.
         stdout.drain_ready(deadline);
         stderr.drain_ready(deadline);
+        if let Err(err) = stdin.write_ready(deadline) {
+            stdin.close();
+            let _ = terminate_command_group(&mut child);
+            return Err(format!("write command input: {err}"));
+        }
         if status.is_none() {
             match peek_child_status(child.id() as libc::pid_t) {
                 Ok(exit) => status = exit,
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => {
+                    stdin.close();
                     let _ = terminate_command_group(&mut child);
                     return Err(format!("wait failed: {err}"));
                 }
             }
         }
-        if status.is_some() && stdout.closed() && stderr.closed() {
+        if status.is_some() && stdout.closed() && stderr.closed() && stdin.closed() {
             // No more group signals can follow this final reap.
             match child.try_wait() {
                 Ok(Some(exit)) => {
@@ -765,6 +801,7 @@ pub(crate) fn run_bounded_command(
                 Ok(None) => {}
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => {
+                    stdin.close();
                     if err.raw_os_error() != Some(libc::ECHILD) {
                         let _ = terminate_command_group(&mut child);
                     }
@@ -774,6 +811,7 @@ pub(crate) fn run_bounded_command(
         }
         if Instant::now() >= deadline {
             timed_out = true;
+            stdin.close();
             status = terminate_command_group(&mut child).or(status);
             // Drain only a bounded cleanup window. An escaped descendant may
             // hold a pipe forever; dropping the capture closes it without
@@ -785,13 +823,14 @@ pub(crate) fn run_bounded_command(
                 if (stdout.closed() && stderr.closed()) || Instant::now() >= cleanup_deadline {
                     break;
                 }
-                if poll_command_pipes(stdout.fd(), stderr.fd(), cleanup_deadline).is_err() {
+                if poll_command_pipes(stdout.fd(), stderr.fd(), -1, cleanup_deadline).is_err() {
                     break;
                 }
             }
             break;
         }
-        if let Err(err) = poll_command_pipes(stdout.fd(), stderr.fd(), deadline) {
+        if let Err(err) = poll_command_pipes(stdout.fd(), stderr.fd(), stdin.fd(), deadline) {
+            stdin.close();
             let _ = terminate_command_group(&mut child);
             return Err(format!("poll command output: {err}"));
         }
@@ -882,6 +921,77 @@ fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
     }
 }
 
+fn set_nonblocking(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+struct CommandInput<'a> {
+    writer: Option<ChildStdin>,
+    remaining: &'a [u8],
+}
+
+impl<'a> CommandInput<'a> {
+    fn new(mut writer: Option<ChildStdin>, bytes: &'a [u8]) -> io::Result<Self> {
+        if bytes.is_empty() {
+            writer = None;
+        } else {
+            let pipe = writer
+                .as_ref()
+                .ok_or_else(|| io::Error::other("missing command stdin"))?;
+            set_nonblocking(pipe.as_raw_fd())?;
+        }
+        Ok(Self {
+            writer,
+            remaining: bytes,
+        })
+    }
+
+    fn fd(&self) -> RawFd {
+        self.writer.as_ref().map_or(-1, AsRawFd::as_raw_fd)
+    }
+
+    fn closed(&self) -> bool {
+        self.writer.is_none()
+    }
+
+    fn close(&mut self) {
+        self.writer = None;
+        self.remaining = &[];
+    }
+
+    fn write_ready(&mut self, deadline: Instant) -> io::Result<()> {
+        // A child can fill both output streams before reading stdin. Finite
+        // nonblocking write attempts preserve output/deadline fairness.
+        for _ in 0..8 {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let Some(writer) = self.writer.as_mut() else {
+                break;
+            };
+            let size = self.remaining.len().min(8192);
+            match writer.write(&self.remaining[..size]) {
+                Ok(0) => return Err(io::Error::from(ErrorKind::WriteZero)),
+                Ok(count) => {
+                    self.remaining = &self.remaining[count..];
+                    if self.remaining.is_empty() {
+                        self.close(); // EOF belongs to the payload, not process exit.
+                        break;
+                    }
+                }
+                Err(err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
+    }
+}
+
 struct OutputCapture {
     bytes: Vec<u8>,
     truncated: bool,
@@ -898,11 +1008,7 @@ struct CommandPipe<R> {
 
 impl<R: Read + AsRawFd> CommandPipe<R> {
     fn new(reader: R, limit: usize) -> io::Result<Self> {
-        let fd = reader.as_raw_fd();
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        set_nonblocking(reader.as_raw_fd())?;
         Ok(Self {
             reader: Some(reader),
             bytes: Vec::new(),
@@ -970,15 +1076,25 @@ impl<R: Read + AsRawFd> CommandPipe<R> {
     }
 }
 
-fn poll_command_pipes(stdout: RawFd, stderr: RawFd, deadline: Instant) -> io::Result<()> {
+fn poll_command_pipes(
+    stdout: RawFd,
+    stderr: RawFd,
+    stdin: RawFd,
+    deadline: Instant,
+) -> io::Result<()> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     let wait_ms = remaining.as_millis().min(10) as i32;
     if remaining.is_zero() {
         return Ok(());
     }
-    let mut fds = [stdout, stderr].map(|fd| libc::pollfd {
+    let mut fds = [
+        (stdout, libc::POLLIN | libc::POLLHUP),
+        (stderr, libc::POLLIN | libc::POLLHUP),
+        (stdin, libc::POLLOUT | libc::POLLHUP),
+    ]
+    .map(|(fd, events)| libc::pollfd {
         fd,
-        events: libc::POLLIN | libc::POLLHUP,
+        events,
         revents: 0,
     });
     let result = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, wait_ms.max(1)) };

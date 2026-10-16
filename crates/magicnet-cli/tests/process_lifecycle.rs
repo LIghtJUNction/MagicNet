@@ -204,3 +204,99 @@ fn killed_cli_closes_output_even_while_watchdog_grace_is_long() {
     }
     let _ = fs::remove_dir_all(fixture);
 }
+
+fn process_start_time(pid: i32) -> Option<String> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    Some(
+        stat.rsplit_once(") ")?
+            .1
+            .split_whitespace()
+            .nth(19)?
+            .to_owned(),
+    )
+}
+
+struct CurlFixture {
+    root: std::path::PathBuf,
+    cli: Option<std::process::Child>,
+    curl: Option<(i32, String)>,
+}
+
+impl Drop for CurlFixture {
+    fn drop(&mut self) {
+        if let Some(cli) = self.cli.as_mut() {
+            let _ = cli.kill();
+            let _ = cli.wait();
+        }
+        if let Some((pid, start_time)) = &self.curl {
+            // A failed parent-death assertion must clean up only this helper,
+            // not a process that has reused the fixture's PID.
+            if process_start_time(*pid).as_ref() == Some(start_time) && process_is_live(*pid) {
+                unsafe { libc::kill(*pid, libc::SIGKILL) };
+            }
+        }
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn killing_cli_parent_terminates_local_api_curl() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let mut fixture = CurlFixture {
+        root: std::env::temp_dir().join(format!(
+            "magicnet-curl-parent-death-{}-{nonce}",
+            std::process::id()
+        )),
+        cli: None,
+        curl: None,
+    };
+    fs::create_dir_all(fixture.root.join("bin")).unwrap();
+    fs::create_dir_all(fixture.root.join("lib/kamfw")).unwrap();
+    fs::write(fixture.root.join("module.prop"), "id=MagicNet\n").unwrap();
+    fs::write(fixture.root.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+    let fixture_cli = fixture.root.join("bin/magicnet-cli");
+    install_fixture_cli(&fixture_cli);
+    let pid_file = fixture.root.join("curl.pid");
+    let quoted_pid_file = format!("'{}'", pid_file.to_string_lossy().replace('\'', "'\\''"));
+    let shell = if cfg!(target_os = "android") {
+        "/system/bin/sh"
+    } else {
+        "/bin/sh"
+    };
+    let curl = fixture.root.join("bin/curl");
+    // exec retains the recorded PID and creates no unowned sleep descendant.
+    fs::write(
+        &curl,
+        format!("#!{shell}\nprintf '%s\\n' \"$$\" > {quoted_pid_file}\nexec sleep 30\n"),
+    )
+    .unwrap();
+    fs::set_permissions(curl, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut command = Command::new(&fixture_cli);
+    command
+        .args(["api", "proxies"])
+        .env_remove("MODDIR")
+        .env_remove("MODPATH")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    fixture.cli = Some(spawn_fixture_cli(&mut command));
+    let curl_pid = wait_for_published_pid(&pid_file, Instant::now() + Duration::from_secs(3));
+    let start_time = process_start_time(curl_pid).expect("fixture curl has exited unexpectedly");
+    fixture.curl = Some((curl_pid, start_time));
+    assert!(process_is_live(curl_pid));
+    fixture.cli.as_mut().unwrap().kill().unwrap();
+    fixture.cli.as_mut().unwrap().wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while process_is_live(curl_pid) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !process_is_live(curl_pid),
+        "local API curl survived its CLI parent"
+    );
+}

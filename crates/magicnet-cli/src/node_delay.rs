@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::time::Duration;
 
 pub(crate) fn node_delay(app: &crate::App, name: &str) -> Result<i64, String> {
     let clean = name.trim();
@@ -6,22 +7,14 @@ pub(crate) fn node_delay(app: &crate::App, name: &str) -> Result<i64, String> {
         return Err("node name is empty".to_string());
     }
     let endpoint = delay_endpoint(&app.api, clean);
-    let output = crate::trusted_curl(app)
-        .args([
-            "-fsS",
-            "--max-time",
-            "7",
-            "--max-filesize",
-            "1048576",
-            &endpoint,
-        ])
-        .output()
-        .map_err(|err| format!("run curl: {err}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-    parse_delay(&String::from_utf8_lossy(&output.stdout))
+    let body = crate::webui_api::local_curl_output(
+        app,
+        &["-fsS", "--max-time", "7", &endpoint],
+        Duration::from_secs(8),
+        1024 * 1024,
+        None,
+    )?;
+    parse_delay(&String::from_utf8_lossy(&body))
 }
 
 fn delay_endpoint(api: &str, name: &str) -> String {

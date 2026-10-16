@@ -191,7 +191,11 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn start_service(app: &App) -> Result<(), String> {
-    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    let guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    start_service_locked(app, &guard)
+}
+
+pub(crate) fn start_service_locked(app: &App, _guard: &ConfigApplyGuard) -> Result<(), String> {
     run_magicnet_function(app, START_KERNEL_COMMAND)
 }
 
@@ -255,8 +259,13 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     // without this process-level guard two fswatch/WebUI invocations can both
     // pass that lock and then interleave stop/start, leaving DNS/TUN rules
     // attached to different core generations.
-    let _config_apply_guard = config_apply_lock(app)?;
+    let guard = config_apply_lock(app)?;
+    apply_config_locked(app, &guard)
+}
 
+// Hotspot controls hold the same lifecycle guard across intent publication,
+// apply and rollback. Retain override recovery without recursively locking.
+pub(crate) fn apply_config_locked(app: &App, _guard: &ConfigApplyGuard) -> Result<(), String> {
     let snapshot = crate::overrides::runtime_snapshot(app).map_err(str::to_string)?;
     let result = apply_config_unlocked(app);
     if result.is_err() {

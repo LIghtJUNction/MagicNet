@@ -1,7 +1,8 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::Duration;
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -63,11 +64,11 @@ fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
     if port.is_none_or(|port| port == 0) {
         return Err("Tailscale login requires a local sing-box API".to_string());
     }
-    let config: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
-            .map_err(|_| "cannot read private API configuration")?,
+    let config = crate::utils::read_json_file_bounded(
+        &app.moddir.join(".config/sing-box/config.json"),
+        4 * 1024 * 1024,
     )
-    .map_err(|_| "invalid private API configuration")?;
+    .ok_or("invalid or unreadable private API configuration")?;
     let api = &config["experimental"]["clash_api"];
     let secret = api["secret"]
         .as_str()
@@ -82,16 +83,21 @@ fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
         return Err("unsupported API credential format".to_string());
     }
     // Keep the credential out of process arguments and shell command previews.
-    let mut child = crate::trusted_curl(app)
-        .args([
+    let prefix = "header = \"Authorization: Bearer ";
+    let suffix = "\"\n";
+    if secret.len() > crate::utils::MAX_COMMAND_INPUT_BYTES - prefix.len() - suffix.len() {
+        return Err("unsupported API credential format".to_string());
+    }
+    let credential = format!("{prefix}{secret}{suffix}");
+    let body = local_curl_output(
+        app,
+        &[
             "-q",
             "--noproxy",
             "*",
             "-fsS",
             "--max-time",
             "4",
-            "--max-filesize",
-            "65536",
             "--config",
             "-",
             &format!(
@@ -99,27 +105,13 @@ fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
                 app.api.trim_end_matches('/'),
                 encode_path_segment(tag)
             ),
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|_| "cannot query local Tailscale status")?;
-    let sent = child.stdin.take().is_some_and(|mut input| {
-        writeln!(input, "header = \"Authorization: Bearer {secret}\"").is_ok()
-    });
-    if !sent {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err("cannot send private API credential".to_string());
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|_| "Tailscale status query failed")?;
-    if !output.status.success() {
-        return Err("Tailscale status is unavailable".to_string());
-    }
-    print!("{}", String::from_utf8_lossy(&output.stdout));
+        ],
+        Duration::from_secs(5),
+        64 * 1024,
+        Some(credential.as_bytes()),
+    )
+    .map_err(|_| "Tailscale status is unavailable")?;
+    print!("{}", String::from_utf8_lossy(&body));
     Ok(())
 }
 
@@ -161,13 +153,160 @@ fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
     }
 }
 
-fn rollback_hotspot_enable(app: &App) {
-    let _ = select_proxy(app, "hotspot", "direct");
-    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
-    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+fn apply_hotspot_policy_locked(
+    app: &App,
+    member: &str,
+    runtime_member: Option<&str>,
+    guard: &crate::service::ConfigApplyGuard,
+) -> Result<(), String> {
+    if member == "proxy" {
+        run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
+        // Persisted intent must be visible before the core snapshots its
+        // source policy. Reuse the lifecycle guard instead of locking twice.
+        crate::service::apply_config_locked(app, guard)?;
+        if let Some(runtime_member) = runtime_member {
+            curl_put_selection(app, "hotspot", &json!({"name": runtime_member}).to_string())?;
+        }
+        run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
+        run_magicnet_function(app, "magicnet_hotspot_watchdog_start")?;
+    } else {
+        run_magicnet_function(app, "magicnet_hotspot_watchdog_stop")?;
+        run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
+        run_magicnet_function(app, "magicnet_hotspot_route_cleanup")?;
+        crate::service::apply_config_locked(app, guard)?;
+        if let Some(runtime_member) = runtime_member {
+            curl_put_selection(app, "hotspot", &json!({"name": runtime_member}).to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn restore_hotspot_policy_locked(
+    app: &App,
+    saved: Option<&str>,
+    runtime: Option<&str>,
+    guard: &crate::service::ConfigApplyGuard,
+) -> Result<(), String> {
+    // Compensation is best-effort, not the fail-fast forward transition. An
+    // unavailable API must not prevent restoring Android offload or routes.
+    let mut errors = Vec::new();
+    let mut attempt = |step: &'static str, result: Result<(), String>| {
+        let success = result.is_ok();
+        if !success {
+            errors.push(step);
+        }
+        success
+    };
+    let saved_restored = attempt("intent", selector_store::set_checked(app, "hotspot", saved));
+    let member = saved.or(runtime).unwrap_or("direct");
+    if member == "proxy" {
+        attempt(
+            "offload-enable",
+            run_magicnet_function(app, "magicnet_hotspot_offload_enable"),
+        );
+    } else {
+        attempt(
+            "watcher-stop",
+            run_magicnet_function(app, "magicnet_hotspot_watchdog_stop"),
+        );
+        attempt(
+            "offload-restore",
+            run_magicnet_function(app, "magicnet_hotspot_offload_restore"),
+        );
+        attempt(
+            "route-cleanup",
+            run_magicnet_function(app, "magicnet_hotspot_route_cleanup"),
+        );
+    }
+    // Do not materialize the failed operation's intent if saving the previous
+    // choice failed. Still attempt independent resource and API compensation.
+    if saved_restored {
+        attempt("config", crate::service::apply_config_locked(app, guard));
+    }
+    if let Some(runtime) = runtime {
+        attempt(
+            "selector",
+            curl_put_selection(app, "hotspot", &json!({"name": runtime}).to_string()),
+        );
+    }
+    if member == "proxy" {
+        attempt(
+            "route-reconcile",
+            run_magicnet_function(app, "magicnet_hotspot_reconcile"),
+        );
+        if saved_restored {
+            attempt(
+                "watcher-start",
+                run_magicnet_function(app, "magicnet_hotspot_watchdog_start"),
+            );
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join(", "))
+    }
+}
+
+fn set_hotspot_policy(app: &App, member: &str) -> Result<(), String> {
+    if !matches!(member, "direct" | "proxy") {
+        return Err("hotspot selector only supports direct or proxy".to_string());
+    }
+    let guard = crate::service::config_apply_lock(app)?;
+    let previous_saved = selector_store::selected_checked(app, "hotspot")?;
+    if previous_saved
+        .as_deref()
+        .is_some_and(|value| !matches!(value, "direct" | "proxy"))
+    {
+        return Err("saved hotspot intent is invalid".to_string());
+    }
+    let previous_runtime = match curl_get_json(app, "/proxies") {
+        Ok(value) => Some(
+            hotspot_member_from_api(&value)
+                .ok_or("hotspot runtime selection is unknown")?
+                .to_string(),
+        ),
+        Err(_) if crate::singbox_pid_summary(app) == "stopped" => None,
+        Err(_) => {
+            return Err("hotspot runtime is unavailable; refusing to change policy".to_string())
+        }
+    };
+    // A failed save is fatal before any API, route or Android settings write.
+    selector_store::set_checked(app, "hotspot", Some(member))?;
+    if let Err(error) = apply_hotspot_policy_locked(
+        app,
+        member,
+        previous_runtime.as_ref().map(|_| member),
+        &guard,
+    ) {
+        // Restore absence as absence, preserve unrelated selector keys, and
+        // restore the observed runtime separately from the configured choice.
+        let rollback = restore_hotspot_policy_locked(
+            app,
+            previous_saved.as_deref(),
+            previous_runtime.as_deref(),
+            &guard,
+        );
+        return match rollback {
+            Ok(()) => Err(error),
+            Err(rollback) => Err(format!("{error}; hotspot rollback failed: {rollback}")),
+        };
+    }
+    if previous_runtime.is_some() {
+        if let SelectorCleanupOutcome::Degraded(error) =
+            classify_selector_cleanup(close_connections_through_chain(app, "hotspot"))
+        {
+            eprintln!("[warning] hotspot policy applied, but stale connections were not fully closed: {error}");
+        }
+    }
+    println!("[info] hotspot outbound set to {member}");
+    Ok(())
 }
 
 pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    if args.len() > 1 {
+        return Err("Usage: cli hotspot {status|enable|disable|reconcile}".to_string());
+    }
     let action = args.first().map(String::as_str).unwrap_or("status");
     match action {
         "status" => {
@@ -179,60 +318,18 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "reconcile" => {
+            let guard = crate::service::config_apply_lock(app)?;
             run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
-            refresh_hotspot_policy_if_stale(app)
+            match run_magicnet_function_status(app, "magicnet_singbox_hotspot_policy_current")?.code() {
+                Some(0) => Ok(()),
+                Some(1) => crate::service::apply_config_locked(app, &guard),
+                status => Err(format!(
+                    "hotspot discovery failed with status {status:?}; retaining the current configuration"
+                )),
+            }
         }
-        "enable" | "disable" => {
-            let member = if action == "enable" {
-                "proxy"
-            } else {
-                "direct"
-            };
-            if action == "enable" {
-                run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
-            }
-            let selected = if curl_get_json(app, "/proxies").is_ok() {
-                select_proxy(app, "hotspot", member)
-            } else {
-                selector_store::save(app, "hotspot", member).map(|()| {
-                    println!(
-                        "[info] hotspot outbound set to {member}; applies when sing-box starts"
-                    );
-                })
-            };
-            if let Err(error) = selected {
-                if action == "enable" {
-                    rollback_hotspot_enable(app);
-                }
-                return Err(error);
-            }
-            if action == "enable" {
-                // The hotspot source rule is consumed at sing-box startup.
-                // Materialize the active downstream subnet and restart only
-                // when the effective runtime fingerprint changed.
-                if let Err(error) = apply_config(app) {
-                    rollback_hotspot_enable(app);
-                    return Err(format!("apply hotspot TUN policy: {error}"));
-                }
-                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
-                    rollback_hotspot_enable(app);
-                    return Err(format!("apply hotspot TUN route: {error}"));
-                }
-                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
-                    rollback_hotspot_enable(app);
-                    return Err(format!("start hotspot route watcher: {error}"));
-                }
-            }
-            if action == "disable" {
-                run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
-                let stop_result = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
-                let cleanup_result = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
-                stop_result?;
-                cleanup_result?;
-                refresh_hotspot_policy_if_stale(app)?;
-            }
-            Ok(())
-        }
+        "enable" => set_hotspot_policy(app, "proxy"),
+        "disable" => set_hotspot_policy(app, "direct"),
         _ => Err("Usage: cli hotspot {status|enable|disable|reconcile}".to_string()),
     }
 }
@@ -403,6 +500,9 @@ pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), Str
     if clean_group.is_empty() || clean_node.is_empty() {
         return Err("Usage: cli api select <group> <node>".to_string());
     }
+    if clean_group == "hotspot" {
+        return set_hotspot_policy(app, clean_node);
+    }
     let payload = json!({ "name": clean_node }).to_string();
     curl_put_selection(app, clean_group, &payload)?;
     let persist_error = selector_store::save(app, clean_group, clean_node).err();
@@ -441,21 +541,14 @@ pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, 
         let body = crate::local_http::request(&app.api, "GET", path, "")?;
         return serde_json::from_slice(&body).map_err(|err| format!("parse API response: {err}"));
     }
-    let output = crate::trusted_curl(app)
-        .args([
-            "-fsS",
-            "--max-time",
-            "3",
-            "--max-filesize",
-            "8388608",
-            &format!("{}{}", app.api, path),
-        ])
-        .output()
-        .map_err(|err| format!("run curl: {err}"))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
-    serde_json::from_slice(&output.stdout).map_err(|err| format!("parse API response: {err}"))
+    let body = local_curl_output(
+        app,
+        &["-fsS", "--max-time", "3", &format!("{}{}", app.api, path)],
+        Duration::from_secs(4),
+        8 * 1024 * 1024,
+        None,
+    )?;
+    serde_json::from_slice(&body).map_err(|err| format!("parse API response: {err}"))
 }
 
 fn close_connection(app: &App, id: &str) -> Result<(), String> {
@@ -466,17 +559,42 @@ fn close_connection(app: &App, id: &str) -> Result<(), String> {
 }
 
 fn run_curl(app: &App, args: &[&str]) -> Result<(), String> {
-    let output = crate::trusted_curl(app)
-        .args(["--max-filesize", "8388608"])
+    // Existing curl deadlines are four/five seconds. Allow one second of
+    // transport shutdown before the independent parent deadline cleans up.
+    let body = local_curl_output(app, args, Duration::from_secs(6), 8 * 1024 * 1024, None)?;
+    print!("{}", String::from_utf8_lossy(&body));
+    Ok(())
+}
+
+pub(crate) fn local_curl_output(
+    app: &App,
+    args: &[&str],
+    timeout: Duration,
+    stream_limit: usize,
+    input: Option<&[u8]>,
+) -> Result<Vec<u8>, String> {
+    let mut command = crate::trusted_curl(app);
+    command
         .args(args)
-        .output()
-        .map_err(|err| format!("run curl: {err}"))?;
-    print!("{}", String::from_utf8_lossy(&output.stdout));
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        .args(["--max-filesize", &stream_limit.to_string()]);
+    let output = match input {
+        Some(input) => {
+            crate::utils::run_bounded_command_with_input(command, timeout, stream_limit, input)
+        }
+        None => crate::run_bounded_command(command, timeout, stream_limit),
     }
+    .map_err(|err| format!("run curl: {err}"))?;
+    // Never pass partial JSON/output on as a successful API result.
+    if output.timed_out {
+        return Err("local API request timed out".to_string());
+    }
+    if output.truncated {
+        return Err("local API response exceeds the read limit".to_string());
+    }
+    if !output.status.is_some_and(|status| status.success()) {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(output.stdout)
 }
 
 fn print_local_response(app: &App, method: &str, path: &str, payload: &str) -> Result<(), String> {
@@ -817,9 +935,106 @@ fn promote_dist_dir(target: &std::path::Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::io::Write;
 
     use super::*;
     use crate::test_support::temp_app;
+
+    fn fixture_curl(app: &App, script: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::create_dir_all(app.moddir.join("bin")).unwrap();
+        let shell = if cfg!(target_os = "android") {
+            "/system/bin/sh"
+        } else {
+            "/bin/sh"
+        };
+        let path = app.moddir.join("bin/curl");
+        fs::write(&path, format!("#!{shell}\n{script}\n")).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[test]
+    fn curl_deadline_never_returns_partial_json_as_success() {
+        let app = temp_app();
+        fixture_curl(&app, "printf '[]'; exec sleep 30");
+        let error =
+            local_curl_output(&app, &[], Duration::from_millis(100), 128, None).unwrap_err();
+        assert_eq!(error, "local API request timed out");
+    }
+
+    #[test]
+    fn curl_stderr_overflow_is_not_accepted_even_on_zero_exit() {
+        let app = temp_app();
+        fixture_curl(&app, "printf '[]'; head -c 1025 /dev/zero >&2");
+        assert_eq!(
+            local_curl_output(&app, &[], Duration::from_secs(1), 1024, None).unwrap_err(),
+            "local API response exceeds the read limit"
+        );
+    }
+
+    #[test]
+    fn node_delay_uses_its_parent_enforced_response_limit() {
+        let app = temp_app();
+        fixture_curl(
+            &app,
+            "printf '{\"delay\":1}'; head -c 1048576 /dev/zero | tr '\\000' ' '",
+        );
+        assert_eq!(
+            crate::node_delay::node_delay(&app, "fixture").unwrap_err(),
+            "local API response exceeds the read limit"
+        );
+    }
+
+    #[test]
+    fn tailscale_credential_stdin_closes_without_exposing_it_in_argv() {
+        let app = temp_app();
+        fs::create_dir_all(app.moddir.join(".config/sing-box")).unwrap();
+        fs::write(app.moddir.join(".config/sing-box/config.json"),
+            r#"{"experimental":{"clash_api":{"tailscale_secret":"fixture-secret-not-an-argument"}}}"#).unwrap();
+        fixture_curl(&app, "printf '%s\\n' \"$@\" >\"${0%/*}/curl-argv\"; cat >\"${0%/*}/curl-stdin\"; printf '{\"state\":\"Running\"}'");
+        tailscale_status(&app, "fixture").unwrap();
+        let argv = fs::read_to_string(app.moddir.join("bin/curl-argv")).unwrap();
+        assert_eq!(argv.lines().next(), Some("-q"));
+        assert!(!argv.contains("fixture-secret-not-an-argument"));
+        assert_eq!(
+            fs::read_to_string(app.moddir.join("bin/curl-stdin")).unwrap(),
+            "header = \"Authorization: Bearer fixture-secret-not-an-argument\"\n"
+        );
+    }
+
+    #[test]
+    fn tailscale_transport_errors_cannot_echo_the_credential() {
+        let app = temp_app();
+        fs::create_dir_all(app.moddir.join(".config/sing-box")).unwrap();
+        fs::write(app.moddir.join(".config/sing-box/config.json"),
+            r#"{"experimental":{"clash_api":{"tailscale_secret":"fixture-secret-not-an-argument"}}}"#).unwrap();
+        fixture_curl(
+            &app,
+            "printf '%s\\n' \"$@\" >\"${0%/*}/curl-argv\"; cat >&2; exit 7",
+        );
+        assert_eq!(
+            tailscale_status(&app, "fixture").unwrap_err(),
+            "Tailscale status is unavailable"
+        );
+        let argv = fs::read_to_string(app.moddir.join("bin/curl-argv")).unwrap();
+        assert_eq!(argv.lines().next(), Some("-q"));
+        assert!(!argv.contains("fixture-secret-not-an-argument"));
+    }
+
+    #[test]
+    fn oversized_valid_curl_json_is_not_accepted_as_success() {
+        let app = temp_app();
+        // Valid JSON plus whitespace: parsing alone must not mask overflow.
+        // The stand-in ignores curl flags to exercise the parent-side ceiling.
+        fixture_curl(
+            &app,
+            "printf '[]'; head -c 8388608 /dev/zero | tr '\\000' ' '",
+        );
+        assert_eq!(
+            curl_get_json(&app, "/proxies").unwrap_err(),
+            "local API response exceeds the read limit"
+        );
+    }
 
     #[test]
     fn tailscale_credentials_are_only_sent_to_loopback() {

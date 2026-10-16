@@ -41,6 +41,8 @@ mod diagnostics_routing;
 mod dns;
 mod ebpf_runtime;
 mod ecapture;
+#[cfg(test)]
+mod hotspot_tests;
 mod local_http;
 mod machine;
 mod mcp;

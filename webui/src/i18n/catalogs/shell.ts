@@ -22,6 +22,7 @@ export default {
   "当前没有 KernelSU 异步执行通道，命令未执行。请使用支持 spawn 的新版管理器。\n\n{p0}": ["KernelSU asynchronous execution is unavailable. The command was not executed. Update to a manager that supports spawn.\n\n{p0}", "Асинхронное выполнение KernelSU недоступно. Команда не выполнена. Обновите менеджер до версии с поддержкой spawn.\n\n{p0}"],
   "当前管理器缺少 KernelSU 异步执行接口，请更新管理器后重试。": ["This manager lacks the KernelSU asynchronous execution interface. Update the manager and retry.", "В этом менеджере нет интерфейса асинхронного выполнения KernelSU. Обновите менеджер и повторите попытку."],
   "KernelSU 启动命令失败。": ["KernelSU failed to start the command.", "KernelSU не удалось запустить команду."],
+  "命令输出超过安全上限，已丢弃。命令可能已更改设备，请检查状态后再重试。": ["Command output exceeded the safety limit and was discarded. The command may have changed the device; check its status before retrying.", "Вывод команды превысил безопасный предел и был удалён. Команда могла изменить состояние устройства; проверьте его перед повторной попыткой."],
   "未执行：{p0}": ["Not executed: {p0}", "Не выполнено: {p0}"],
   "正在执行：{p0}": ["Running: {p0}", "Выполняется: {p0}"],
   "完成": ["Done", "Готово"],

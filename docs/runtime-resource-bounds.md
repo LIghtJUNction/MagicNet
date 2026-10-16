@@ -42,3 +42,66 @@ falls back to the hard-limit sweep. No allocating directory iterator or
 mutex is used in the fork child. Regression tests force `ENOSYS` for
 `close_range` inside child-only seccomp filters and exercise identical
 keepers, descriptor zero, high descriptors and truncated directory records.
+
+## WebUI command output
+
+The native spawn collector retains at most 8,388,608 UTF-16 code units and
+65,536 data events across stdout and stderr, including each stream's join
+separators. Empty events count toward the entry limit. Overflow clears both
+buffers and discards subsequent data, but does not release the serial execution
+slot until native exit/error. Completion reports an explicit output-limit error,
+never successful partial machine JSON. Every completion path clears the buffers
+and unregisters the callback. Caller timeout still does not cancel a native
+command or release its slot. These limits bound retained collector data, not
+incoming native allocations, downstream copies or total WebView RSS.
+
+## Wi-Fi policy lists and local curl
+
+SSID/BSSID list readers, editors and the resident policy loop share the existing
+64 KiB descriptor-verified limit. Malformed or oversized lists fail explicitly
+instead of becoming empty policies. Rejected list edits preserve the previous
+file; invalid application input cannot query/change the Clash mode or publish
+new Wi-Fi runtime state. Editors also enforce the limit before persisting a list.
+
+Local API curl calls, including node delay and authenticated Tailscale status,
+reuse the shared child budget, parent-death signal, process group, nonblocking
+captures and parent-side deadline. A timeout or either stream's truncation is an
+API error, not a successful partial response. Existing curl timeouts are retained;
+the parent allows one second of shutdown grace (the shared print path allows up
+to six seconds for its four/five-second curl requests).
+
+Private curl configuration stays on stdin, never argv. Input is borrowed and
+capped at 64 KiB before spawn, written nonblocking with a finite per-iteration
+budget alongside both output drains, and closed immediately after delivery to
+provide EOF. Empty input also closes immediately; premature closure is a delivery
+error. No detached writer thread is created. Tailscale API configuration reads
+use the existing 4 MiB bounded JSON reader.
+
+Host regressions cover exact output/list/input boundaries, empty-event floods,
+late native completion after caller timeout, private stdin/argv separation,
+bidirectional pipe pressure, early stdin closure, repeated FD/thread counts,
+rejected partial JSON and killing a real CLI while its curl stand-in is active.
+They do not measure the Android sing-box heap or certify the project leak-free.
+
+## Hotspot policy transactions
+
+Both `cli hotspot enable|disable` and generic hotspot selector writes use the
+same bounded lifecycle lock. The previous persisted choice is read without
+quarantining malformed input or following symlinks; unknown intent is an error,
+not an implicit direct policy. A failed save cannot change the runtime selector,
+Android offload settings, routes or the watcher. Selector store reads and writes
+share a 4 MiB limit, including optional legacy migration cleanup.
+
+After saving the new intent, configuration apply reuses the held guard. On
+failure, compensation restores the previous choice (including an absent key),
+keeps unrelated selectors, and restores the observed runtime selection separately
+from configured intent. API or persistence failures do not skip independent
+resource cleanup; unsuccessful compensation is reported explicitly. Reconcile
+also shares the lifecycle lock. Post-command canonical reconciliation remains
+the publication boundary; this does not claim an atomic snapshot across external
+resources or replace the existing startup recovery path.
+
+Temporary-module regressions cover both directions, repeated enable, each
+forward failure, concurrent lifecycle operations, API/save compensation failure,
+invalid or symlinked stores, and the generic selector entry point. They do not
+change host Android settings or exercise real tethering hardware.

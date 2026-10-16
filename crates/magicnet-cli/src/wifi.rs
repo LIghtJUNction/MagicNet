@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::diagnostics::supervisor_pid;
-use crate::utils::clean_module_lines;
+use crate::utils::clean_module_lines_bounded;
 use crate::webui_api::{current_clash_mode, set_clash_mode};
 use crate::{read_kv, run_magicnet_function, write_kv, write_text_file, App};
 
@@ -19,6 +19,11 @@ const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
 const WIFI_SSID_LIST: &str = ".config/magicnet/wifi-ssid.list";
 const WIFI_BSSID_LIST: &str = ".config/magicnet/wifi-bssid.list";
 const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
+const MAX_POLICY_LIST_BYTES: u64 = 64 * 1024;
+
+fn read_policy_list(app: &App, relative: &str) -> Result<Vec<String>, String> {
+    clean_module_lines_bounded(app, Path::new(relative), MAX_POLICY_LIST_BYTES)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PolicyMode {
@@ -220,8 +225,7 @@ fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Re
         ListKind::Ssid => WIFI_SSID_LIST,
         ListKind::Bssid => WIFI_BSSID_LIST,
     };
-    let mut values = clean_module_lines(app, Path::new(relative))
-        .unwrap_or_default()
+    let mut values = read_policy_list(app, relative)?
         .into_iter()
         .map(|item| match kind {
             ListKind::Ssid => item,
@@ -241,6 +245,9 @@ fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Re
     } else {
         format!("{}\n", values.into_iter().collect::<Vec<_>>().join("\n"))
     };
+    if text.len() as u64 > MAX_POLICY_LIST_BYTES {
+        return Err("configuration exceeds the read limit".to_string());
+    }
     write_text_file(app, Path::new(relative), &text)?;
     let config = read_policy_config(app);
     apply_if_enabled(app, &config)?;
@@ -298,9 +305,8 @@ fn apply_network(
     network: &WifiNetwork,
     verbose: bool,
 ) -> Result<bool, String> {
-    let ssids = clean_module_lines(app, Path::new(WIFI_SSID_LIST)).unwrap_or_default();
-    let bssids = clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
-        .unwrap_or_default()
+    let ssids = read_policy_list(app, WIFI_SSID_LIST)?;
+    let bssids = read_policy_list(app, WIFI_BSSID_LIST)?
         .into_iter()
         .filter_map(|value| normalize_bssid(&value))
         .collect::<Vec<_>>();
@@ -657,8 +663,7 @@ fn write_last_state(
 /// Reuses the same detection/decision primitives as the resident policy loop.
 pub(crate) fn inspect_machine(app: &App) -> Result<serde_json::Value, String> {
     let config = read_policy_config(app);
-    let read_list =
-        |path| crate::utils::clean_module_lines_bounded(app, Path::new(path), 64 * 1024);
+    let read_list = |path| read_policy_list(app, path);
     let ssids = read_list(WIFI_SSID_LIST)?;
     let bssids = read_list(WIFI_BSSID_LIST)?
         .into_iter()
@@ -711,13 +716,12 @@ fn inspect_value(
 
 fn print_status(app: &App) -> Result<(), String> {
     let config = read_policy_config(app);
-    let network = detect_wifi()?;
-    let ssids = clean_module_lines(app, Path::new(WIFI_SSID_LIST)).unwrap_or_default();
-    let bssids = clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
-        .unwrap_or_default()
+    let ssids = read_policy_list(app, WIFI_SSID_LIST)?;
+    let bssids = read_policy_list(app, WIFI_BSSID_LIST)?
         .into_iter()
         .filter_map(|value| normalize_bssid(&value))
         .collect::<Vec<_>>();
+    let network = detect_wifi()?;
     let decision = decide(&config, &network, &ssids, &bssids);
     let current = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
     let supervisor = supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy");
@@ -745,6 +749,23 @@ fn print_status(app: &App) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn forbid_api_probes(app: &App) {
+        fs::create_dir_all(app.moddir.join("bin")).unwrap();
+        let shell = if cfg!(target_os = "android") {
+            "/system/bin/sh"
+        } else {
+            "/bin/sh"
+        };
+        let curl = app.moddir.join("bin/curl");
+        fs::write(
+            &curl,
+            format!("#!{shell}\nprintf touched >\"${{0%/*}}/api-probe\"\nexit 91\n"),
+        )
+        .unwrap();
+        fs::set_permissions(curl, fs::Permissions::from_mode(0o700)).unwrap();
+    }
 
     fn config(mode: PolicyMode) -> PolicyConfig {
         PolicyConfig {
@@ -752,6 +773,71 @@ mod tests {
             mode,
             interval_seconds: 5,
         }
+    }
+
+    #[test]
+    fn oversized_policy_lists_fail_before_mode_queries_or_state_publication() {
+        for relative in [WIFI_SSID_LIST, WIFI_BSSID_LIST] {
+            let app = crate::test_support::temp_app();
+            forbid_api_probes(&app);
+            fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+            // Many tiny entries exercise per-line allocation amplification too.
+            let text = format!("{}x", "x\n".repeat(32 * 1024));
+            fs::write(app.moddir.join(relative), &text).unwrap();
+            let error = apply_network(
+                &app,
+                &config(PolicyMode::Whitelist),
+                &WifiNetwork::default(),
+                false,
+            )
+            .unwrap_err();
+            assert_eq!(error, "configuration exceeds the read limit");
+            assert!(!app.moddir.join(WIFI_LAST_STATE).exists());
+            assert!(!app.moddir.join(".state/machines/wifi.state").exists());
+            assert!(!app.moddir.join("bin/api-probe").exists());
+            assert_eq!(fs::read_to_string(app.moddir.join(relative)).unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn malformed_policy_is_not_silently_replaced_with_an_empty_list() {
+        let app = crate::test_support::temp_app();
+        fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+        fs::write(app.moddir.join(WIFI_SSID_LIST), [0xff]).unwrap();
+        let error = update_list(&app, ListKind::Ssid, "fixture", ListAction::Add).unwrap_err();
+        assert_eq!(error, "configuration is not valid UTF-8");
+        assert_eq!(fs::read(app.moddir.join(WIFI_SSID_LIST)).unwrap(), [0xff]);
+    }
+
+    #[test]
+    fn list_edits_reject_oversized_input_without_overwriting_it() {
+        let app = crate::test_support::temp_app();
+        fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+        let text = "x".repeat(64 * 1024 + 1);
+        fs::write(app.moddir.join(WIFI_SSID_LIST), &text).unwrap();
+        let error = update_list(&app, ListKind::Ssid, "fixture", ListAction::Add).unwrap_err();
+        assert_eq!(error, "configuration exceeds the read limit");
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(WIFI_SSID_LIST)).unwrap(),
+            text
+        );
+    }
+
+    #[test]
+    fn list_edits_cannot_persist_a_list_the_readers_would_reject() {
+        let app = crate::test_support::temp_app();
+        fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+        let value = "x".repeat(64 * 1024 - 1);
+        let text = format!("{value}\n");
+        fs::write(app.moddir.join(WIFI_SSID_LIST), &text).unwrap();
+        let error = update_list(&app, ListKind::Ssid, "fixture", ListAction::Add).unwrap_err();
+        assert_eq!(error, "configuration exceeds the read limit");
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(WIFI_SSID_LIST)).unwrap(),
+            text
+        );
+        update_list(&app, ListKind::Ssid, &value, ListAction::Remove).unwrap();
+        assert_eq!(fs::read(app.moddir.join(WIFI_SSID_LIST)).unwrap(), b"");
     }
 
     #[test]

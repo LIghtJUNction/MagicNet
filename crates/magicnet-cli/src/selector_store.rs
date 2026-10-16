@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -16,6 +16,7 @@ use crate::App;
 static LOCK_NONCE: AtomicU64 = AtomicU64::new(0);
 const STORE_PATH: &str = ".config/magicnet/selector-selections.json";
 const LEGACY_STORE_PATH: &str = ".state/sing-box/selector-selections.json";
+const MAX_STORE_BYTES: u64 = 4 * 1024 * 1024;
 
 fn path(app: &App) -> std::path::PathBuf {
     app.moddir.join(STORE_PATH)
@@ -63,6 +64,51 @@ pub(crate) fn selected(app: &App, group: &str) -> Option<String> {
     values.remove(group)
 }
 
+// Transactional controls must distinguish an absent choice from unreadable
+// intent. Do not quarantine, follow links, block on a FIFO or guess defaults.
+fn load_path_checked(target: &Path) -> Result<Option<BTreeMap<String, String>>, String> {
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(target)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("read selector store: {error}")),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("inspect selector store: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_STORE_BYTES {
+        return Err("selector store is not a bounded regular file".to_string());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_STORE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("read selector store: {error}"))?;
+    if bytes.len() as u64 > MAX_STORE_BYTES {
+        return Err("selector store exceeds the read limit".to_string());
+    }
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|_| "selector store contains invalid intent".to_string())
+}
+
+fn load_checked(app: &App) -> Result<BTreeMap<String, String>, String> {
+    if let Some(values) = load_path_checked(&path(app))? {
+        return Ok(values);
+    }
+    Ok(load_path_checked(&legacy_path(app))?.unwrap_or_default())
+}
+
+pub(crate) fn selected_checked(app: &App, group: &str) -> Result<Option<String>, String> {
+    Ok(load_checked(app)?.remove(group))
+}
+
+pub(crate) fn set_checked(app: &App, group: &str, member: Option<&str>) -> Result<(), String> {
+    update(app, group, member, true)
+}
+
 struct StoreLock(fs::File);
 
 impl Drop for StoreLock {
@@ -104,10 +150,7 @@ fn lock(app: &App) -> Result<StoreLock, String> {
 
 fn cleanup_matching_legacy_store(app: &App, committed: &BTreeMap<String, String>) {
     let legacy = legacy_path(app);
-    let Ok(bytes) = fs::read(&legacy) else {
-        return;
-    };
-    let Ok(values) = serde_json::from_slice::<BTreeMap<String, String>>(&bytes) else {
+    let Ok(Some(values)) = load_path_checked(&legacy) else {
         return;
     };
     let fully_migrated = values
@@ -119,12 +162,24 @@ fn cleanup_matching_legacy_store(app: &App, committed: &BTreeMap<String, String>
 }
 
 pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
+    update(app, group, Some(member), false)
+}
+
+fn update(app: &App, group: &str, member: Option<&str>, checked: bool) -> Result<(), String> {
     let target = path(app);
     let parent = target.parent().ok_or("selector store has no parent")?;
     fs::create_dir_all(parent).map_err(|err| format!("create selector store: {err}"))?;
     let _store_lock = lock(app)?;
-    let mut values = load(app);
-    values.insert(group.to_string(), member.to_string());
+    let mut values = if checked {
+        load_checked(app)?
+    } else {
+        load(app)
+    };
+    if let Some(member) = member {
+        values.insert(group.to_string(), member.to_string());
+    } else {
+        values.remove(group);
+    }
     let nonce = format!(
         "{}-{}-{}",
         std::process::id(),
@@ -137,6 +192,9 @@ pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
     let tmp = target.with_extension(format!("json.tmp.{nonce}"));
     let bytes =
         serde_json::to_vec(&values).map_err(|err| format!("encode selector store: {err}"))?;
+    if bytes.len() as u64 > MAX_STORE_BYTES {
+        return Err("selector store exceeds the write limit".to_string());
+    }
     let write_result = (|| {
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -288,6 +346,54 @@ mod tests {
         fs::write(legacy_path(&app), br#"{"proxy":"old-node","late":"node"}"#).unwrap();
         cleanup_matching_legacy_store(&app, &committed);
         assert!(legacy_path(&app).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn checked_save_does_not_block_on_or_follow_legacy_cleanup_inputs() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let (app, root) = app();
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        fs::write(path(&app), br#"{"proxy":"fixture-node"}"#).unwrap();
+        let legacy = legacy_path(&app);
+        let fifo = CString::new(legacy.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        set_checked(&app, "hotspot", Some("proxy")).unwrap();
+        assert_eq!(
+            selected_checked(&app, "hotspot").unwrap().as_deref(),
+            Some("proxy")
+        );
+        assert!(legacy.exists());
+        fs::remove_file(&legacy).unwrap();
+
+        let target = root.join("unrelated.json");
+        fs::write(&target, br#"{"proxy":"fixture-node"}"#).unwrap();
+        std::os::unix::fs::symlink(&target, &legacy).unwrap();
+        set_checked(&app, "hotspot", Some("direct")).unwrap();
+        assert!(fs::symlink_metadata(&legacy)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), br#"{"proxy":"fixture-node"}"#);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn checked_save_rejects_growth_beyond_its_reader_limit_without_replacing_intent() {
+        let (app, root) = app();
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        let bytes =
+            serde_json::to_vec(&json!({"proxy": "x".repeat(MAX_STORE_BYTES as usize - 12)}))
+                .unwrap();
+        assert_eq!(bytes.len() as u64, MAX_STORE_BYTES);
+        fs::write(path(&app), &bytes).unwrap();
+        assert!(set_checked(&app, "hotspot", Some("proxy"))
+            .unwrap_err()
+            .contains("write limit"));
+        assert_eq!(fs::read(path(&app)).unwrap(), bytes);
         fs::remove_dir_all(root).unwrap();
     }
 
