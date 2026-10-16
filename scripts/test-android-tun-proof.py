@@ -286,7 +286,7 @@ class TunProofTests(unittest.TestCase):
     def transaction(self, *, reject_timeout=False, failed_save=False, failed_restore=False,
                     failed_reverse_cleanup=False, failed_restart=False,
                     save_error='', restart_error='', restore_error='', restart_output='',
-                    observation_result=None, observation_error=None, events=None):
+                    observation_result=None, observation_error=None, events=None, busy_saves=None):
         # This executes restoration/accounting with an in-memory device and a
         # real local marker server. It is NOT evidence of Android TUN capture.
         active = copy.deepcopy(BASE)
@@ -294,6 +294,7 @@ class TunProofTests(unittest.TestCase):
         saves = []
         removed_marker = []
         sentinel_operations = []
+        busy = dict(busy_saves or {})
 
         if events is None:
             events = []
@@ -321,7 +322,14 @@ class TunProofTests(unittest.TestCase):
                 events.append(('payload_remove', active == BASE))
                 del payloads[args[5]]
             elif args[1:4] == ['config-editor', 'save-file', 'sing-box']:
-                active = json.loads(base64.b64decode(payloads[Path(args[4]).name]))
+                candidate = json.loads(base64.b64decode(payloads[Path(args[4]).name]))
+                key = 'restore' if candidate == BASE else 'candidate'
+                if busy.get(key, 0):
+                    busy[key] -= 1
+                    events.append(('config_busy', candidate == BASE))
+                    return subprocess.CompletedProcess(['adb'], 1, '',
+                        '[error] config apply is still busy after 2000 ms; retry the lifecycle action\n')
+                active = candidate
                 saves.append(copy.deepcopy(active))
                 events.append(('config_save', active == BASE))
                 if failed_save and len(saves) == 1:
@@ -367,14 +375,15 @@ class TunProofTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, args)
             return subprocess.CompletedProcess(args, 0, '')
 
-        with patch.object(proof.subprocess, 'run', side_effect=host):
+        with patch.object(proof.subprocess, 'run', side_effect=host), patch.object(proof.time, 'sleep'):
             report = proof.verify(adb, instrument, 'component')
-        self.assertEqual(active, BASE)
+        if not busy.get('restore'):
+            self.assertEqual(active, BASE)
         self.assertFalse(payloads, 'private staging payloads must be removed')
         if failed_save or failed_restart:
             self.assertFalse(sentinel_operations, 'failed activation must not reach a sentinel probe')
             self.assertEqual(len(saves), 2, 'one activation and one restoration, without write retries')
-        if not failed_restore:
+        if not failed_restore and not busy.get('restore'):
             self.assertTrue(removed_marker)
         return report, saves
 
@@ -433,6 +442,46 @@ class TunProofTests(unittest.TestCase):
         self.assertEqual(report['status'], 'not_verified')
         self.assertTrue(report['restored'])
         self.assertFalse(report['reject'])
+
+    def test_transient_prewrite_busy_retries_and_restores_exact_config(self):
+        events = []
+        report, saves = self.transaction(busy_saves={'candidate': 1, 'restore': 1}, events=events)
+        self.assertEqual(report['status'], 'verified', report)
+        self.assertTrue(report['restored'])
+        self.assertEqual(report['config_save_busy_retries'], 2)
+        self.assertEqual(len(saves), 4)
+        self.assertEqual(sum(event[0] == 'config_busy' for event in events), 2)
+        self.assertNotIn('failure_control', report)
+
+    def test_persistent_busy_cannot_publish_verified_restoration(self):
+        events = []
+        report, saves = self.transaction(busy_saves={'restore': 100}, events=events)
+        self.assertEqual(report['status'], 'not_verified')
+        self.assertFalse(report['restored'])
+        self.assertEqual(report['failure_kind'], 'config_apply_busy')
+        self.assertEqual(report['reason'], 'config_restore_failed_discard_avd')
+        self.assertEqual(report['config_save_busy_retries'], 2)
+        self.assertEqual(len(saves), 3)
+        self.assertEqual(sum(event == ('config_busy', True) for event in events), 3)
+
+    def test_persistent_activation_busy_aborts_and_still_restores(self):
+        report, saves = self.transaction(busy_saves={'candidate': 100})
+        self.assertEqual(report['status'], 'not_verified')
+        self.assertFalse(report['positive'])
+        self.assertTrue(report['restored'])
+        self.assertEqual(report['failure_kind'], 'config_apply_busy')
+        self.assertEqual(report['config_save_busy_retries'], 2)
+        self.assertEqual(saves, [BASE])
+
+    def test_only_exact_empty_output_prewrite_busy_is_retryable(self):
+        message = '[error] config apply is still busy after 2000 ms; retry the lifecycle action'
+        for rc, stdout, stderr in ((2, '', message), (1, None, message), (1, 'partial-write', message),
+                                   (1, '', message + '\nprivate-data'),
+                                   (1, '', 'config validation failed\n' + message)):
+            self.assertFalse(proof.config_save_busy(subprocess.CompletedProcess([], rc, stdout, stderr)))
+        report, saves = self.transaction(failed_save=True, save_error='config validation failed\n' + message)
+        self.assertNotIn('config_save_busy_retries', report)
+        self.assertEqual(len(saves), 2)
 
     def test_failed_activation_still_restores_original_config(self):
         report, saves = self.transaction(failed_save=True)

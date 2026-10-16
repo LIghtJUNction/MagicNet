@@ -21,6 +21,7 @@ import shlex
 import socketserver
 import subprocess
 import threading
+import time
 
 MODDIR = '/data/adb/modules/MagicNet'
 CLI = MODDIR + '/cli'
@@ -34,6 +35,14 @@ STARTUP_STAGES = frozenset({
     'warp', 'overrides', 'auth', 'config-check', 'route-baseline', 'core-launch',
     'route-capture', 'network-ready',
 })
+
+
+def config_save_busy(result) -> bool:
+    # This exact CLI error is emitted by config_apply_lock before any config
+    # mutation. Do not retry validator text, partial output or unknown failures.
+    return (result.returncode == 1 and result.stdout == '' and isinstance(result.stderr, str)
+            and re.fullmatch(r'\[error\] config apply is still busy after [0-9]{1,6} ms; '
+                             r'retry the lifecycle action', result.stderr.strip()) is not None)
 
 
 def sanitized_failure(output: str, *, operation: str) -> dict:
@@ -257,7 +266,13 @@ def verify(adb, instrument, component) -> dict:
     control = 'prepare'
 
     def command(text, timeout=30, *, operation='device_operation'):
-        cp = adb(text, timeout=timeout)
+        attempts = 3 if operation == 'config_save' else 1
+        for attempt in range(attempts):
+            cp = adb(text, timeout=timeout)
+            if not config_save_busy(cp) or attempt + 1 == attempts:
+                break
+            report['config_save_busy_retries'] = report.get('config_save_busy_retries', 0) + 1
+            time.sleep(1)
         if cp.returncode:
             # Keep the first failure even if restoration also fails. Never
             # retain argv, payloads or raw output from a user configuration.

@@ -92,6 +92,11 @@ must be restored and compared before a proof can pass. The helper refuses physic
 phones and non-x86 emulator identities. A failed/interrupted restoration is a
 failed test: discard the AVD, never publish/cache its mutated disk.
 
+Only the CLI's exact pre-write configuration-lock busy error may be retried,
+up to three attempts with a one-second pause. The report counts these retries.
+Unknown failures, validator errors and restart errors are not retried. Persistent
+contention still fails the proof; restoration must still match the original config.
+
 This proves **one test UID's TCP capture**, not every app's UID, UDP/QUIC, provider
 compatibility, DNS privacy, IPv6, sleep/wake or network handover. A sentinel pass
 cannot close the real-device Play/GMS issue.
