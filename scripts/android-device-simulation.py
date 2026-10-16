@@ -22,6 +22,7 @@ import shlex
 import stat
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import zipfile
@@ -769,8 +770,15 @@ def verify_migrated_node(config: dict) -> None:
             'migration changed canary endpoint or protocol')
 
 
+def upgrade_command(device: Device, operation: str, command: str, timeout: float = 30):
+    result = device.kshell(command, timeout=timeout, check=False)
+    require(result.returncode == 0,
+            f'upgrade {operation} failed (exit {bounded_exit_code(result.returncode)})')
+    return result
+
+
 def save_upgrade_candidate(device: Device) -> None:
-    before = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout,
+    before = json.loads(upgrade_command(device, 'read_config', MOD + '/cli config-editor get sing-box').stdout,
                         object_pairs_hook=unique_keys)
     candidate = upgrade_candidate(before)
     name = 'ci-upgrade-' + os.urandom(8).hex() + '.json'
@@ -779,20 +787,25 @@ def save_upgrade_candidate(device: Device) -> None:
     require(len(encoded) <= 6 * 1024 * 1024, 'upgrade fixture exceeds payload budget')
     created = False
     try:
-        actual = device.kshell(MOD + '/cli webui payload create tmp ' + name).stdout.strip()
+        actual = upgrade_command(device, 'payload_create', MOD + '/cli webui payload create tmp ' + name).stdout.strip()
         created = True
         require(actual == path, 'unexpected upgrade payload path')
         for offset in range(0, len(encoded), 32768):
-            device.kshell(MOD + '/cli webui payload append tmp ' + name + ' '
-                          + shlex.quote(encoded[offset:offset + 32768]))
-        device.kshell(MOD + '/cli config-editor save-file sing-box ' + path, timeout=90)
-        verify_migrated_node(json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout,
+            upgrade_command(device, 'payload_append', MOD + '/cli webui payload append tmp ' + name + ' '
+                            + shlex.quote(encoded[offset:offset + 32768]))
+        upgrade_command(device, 'save_candidate', MOD + '/cli config-editor save-file sing-box ' + path, timeout=90)
+        verify_migrated_node(json.loads(upgrade_command(device, 'verify_candidate', MOD + '/cli config-editor get sing-box').stdout,
                                        object_pairs_hook=unique_keys))
-        device.kshell(MOD + '/cli service restart sing-box', timeout=90)
+        upgrade_command(device, 'restart_candidate', MOD + '/cli service restart sing-box', timeout=90)
         device.ready()
     finally:
         if created:
-            device.kshell(MOD + '/cli webui payload remove tmp ' + name)
+            # Preserve the original operation's failure if cleanup also fails.
+            failed = sys.exc_info()[0] is not None
+            result = device.kshell(MOD + '/cli webui payload remove tmp ' + name, check=False)
+            if not failed:
+                require(result.returncode == 0,
+                        f'upgrade payload_remove failed (exit {bounded_exit_code(result.returncode)})')
 
 
 def upgrade_preservation(device: Device) -> dict:
@@ -802,12 +815,12 @@ def upgrade_preservation(device: Device) -> dict:
     save_upgrade_candidate(device)
     marker = hashlib.sha256(os.urandom(32)).hexdigest()
     setting = MOD + '/.config/magicnet/network-policy.conf'
-    before_policy = device.kshell('cat ' + setting).stdout
+    before_policy = upgrade_command(device, 'read_policy', 'cat ' + setting).stdout
     require(bool(before_policy.strip()), 'network policy snapshot is empty')
-    device.kshell(f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
-    device.kshell(f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
+    upgrade_command(device, 'write_marker', f'printf %s {marker} >{MOD}/.config/magicnet/ci-upgrade-marker')
+    upgrade_command(device, 'install', f'MAGICNET_NONINTERACTIVE=1 {KSUD} module install {REMOTE}/module.zip', timeout=180)
     # Read the installer's actual staged result before activation. No reseeding.
-    device.kshell(f'test -f {STAGED}/module.prop')
+    upgrade_command(device, 'check_staged_module', f'test -f {STAGED}/module.prop')
     verify_migrated_node(json.loads(device.kshell(f'cat {STAGED}/.config/sing-box/config.json').stdout,
                                    object_pairs_hook=unique_keys))
     require(device.kshell(f'cat {STAGED}/.config/magicnet/ci-upgrade-marker').stdout == marker,

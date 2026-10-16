@@ -83,9 +83,43 @@ class CurlFixtureTests(unittest.TestCase):
         self.assertEqual(result.stdout, "429\n\n")
 
     def test_missing_option_value_fails(self) -> None:
-        for option in ("--output", "--dump-header", "--write-out", "--resolve"):
+        for option in ("--output", "--dump-header", "--write-out", "--resolve", "--request", "--data"):
             with self.subTest(option=option):
                 self.assertNotEqual(self.run_curl(option).returncode, 0)
+
+    def test_hotspot_selector_reports_and_persists_its_observed_choice(self) -> None:
+        state = self.root / "hotspot-member"
+        env = {"MAGICNET_FAKE_CURL_HOTSPOT_STATE": str(state)}
+        url = "http://127.0.0.1:9090/proxies"
+        result = self.run_curl(url, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        hotspot = json.loads(result.stdout)["proxies"]["hotspot"]
+        self.assertEqual(hotspot["now"], "direct")
+        self.assertEqual(hotspot["all"], ["direct", "proxy"])
+        self.assertFalse(state.exists(), "GET must not mutate selector state")
+        for method, member in (("--request", "proxy"), ("-X", "direct")):
+            result = self.run_curl("-fs", method, "PUT", "--data", json.dumps({"name": member}), url + "/hotspot", env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {})
+            self.assertEqual(state.read_text().strip(), member)
+            self.assertEqual(json.loads(self.run_curl(url, env=env).stdout)["proxies"]["hotspot"]["now"], member)
+            self.assertEqual(json.loads(self.run_curl(url + "/hotspot", env=env).stdout)["now"], member)
+        other = self.root / "other-module-member"
+        self.assertEqual(json.loads(self.run_curl(url, env={"MAGICNET_FAKE_CURL_HOTSPOT_STATE": str(other)}).stdout)["proxies"]["hotspot"]["now"], "direct")
+        self.assertFalse(other.exists())
+
+    def test_invalid_hotspot_put_preserves_previous_choice(self) -> None:
+        state = self.root / "hotspot-member"
+        state.write_text("proxy\n")
+        env = {"MAGICNET_FAKE_CURL_HOTSPOT_STATE": str(state)}
+        url = "http://127.0.0.1:9090/proxies/hotspot"
+        for optimize in ("0", "1"):
+            for payload in ("not-json", "{}", '[]', '{"name":"invalid"}', '{"name":["direct"]}'):
+                with self.subTest(payload=payload, optimize=optimize):
+                    result = self.run_curl("-X", "PUT", "--data", payload, url, env=env | {"PYTHONOPTIMIZE": optimize})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(state.read_text(), "proxy\n")
+        self.assertNotEqual(self.run_curl("-X", "PUT", "--data", '{"name":"direct"}', url).returncode, 0)
 
     def run_production_fetch(self, extra: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         # Only name resolution is stubbed; the production FIFO, deadline, status,

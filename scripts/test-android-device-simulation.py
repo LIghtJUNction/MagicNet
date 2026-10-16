@@ -859,6 +859,48 @@ class InvalidConfigTests(unittest.TestCase):
         self.assertTrue(calls[-1].startswith('rm -f '))
 
 
+class UpgradeFailureContextTests(unittest.TestCase):
+    def test_command_failure_reports_only_operation_and_bounded_exit_code(self):
+        for code in (1, 2, 124, 139, -11):
+            device = Mock()
+            device.kshell.return_value = cp('private config', code, 'private error')
+            with self.assertRaisesRegex(RuntimeError, f'upgrade save_candidate failed') as error:
+                SIM.upgrade_command(device, 'save_candidate', 'private command', timeout=90)
+            self.assertIn(f'exit {code}', str(error.exception))
+            self.assertNotIn('private', str(error.exception))
+            device.kshell.assert_called_once_with('private command', timeout=90, check=False)
+
+    def test_success_returns_the_original_result(self):
+        device = Mock()
+        result = cp('fixture result')
+        device.kshell.return_value = result
+        self.assertIs(SIM.upgrade_command(device, 'read_config', 'fixture command'), result)
+
+    def test_cleanup_failure_does_not_hide_failed_candidate_save(self):
+        device = Mock()
+        calls = []
+
+        def run(command, **options):
+            calls.append(command)
+            self.assertIs(options['check'], False)
+            if 'config-editor get' in command:
+                return cp(json.dumps(SIM.fixture_config()))
+            if 'payload create' in command:
+                return cp(SIM.MOD + '/.tmp/webui-payload/' + command.split()[-1] + '\n')
+            if 'save-file' in command:
+                return cp('private config', 1, 'private failure')
+            if 'payload remove' in command:
+                return cp(rc=2)
+            return cp()
+
+        device.kshell.side_effect = run
+        with self.assertRaisesRegex(RuntimeError, 'upgrade save_candidate failed \\(exit 1\\)'):
+            SIM.save_upgrade_candidate(device)
+        self.assertIn('payload remove', calls[-1])
+        self.assertFalse(any('service restart' in command for command in calls))
+        device.ready.assert_not_called()
+
+
 class ReportTests(unittest.TestCase):
     def test_unexecuted_cases_are_failures_not_green_skips(self):
         with tempfile.TemporaryDirectory() as tmp:

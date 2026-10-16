@@ -6,6 +6,8 @@ url=""
 write_out=""
 header_out=""
 fail_http=0
+method=GET
+payload=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -o|--output)
@@ -20,7 +22,15 @@ while [[ $# -gt 0 ]]; do
             header_out="${2:?missing header path}"
             shift 2
             ;;
-        -x|--proxy|--max-time|--connect-timeout|-H|--header|--data|--data-binary|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|--user-agent|--noproxy)
+        -X|--request)
+            method="${2:?missing request method}"
+            shift 2
+            ;;
+        --data|--data-binary)
+            payload="${2:?missing request payload}"
+            shift 2
+            ;;
+        -x|--proxy|--max-time|--connect-timeout|-H|--header|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve|--user-agent|--noproxy)
             [[ $# -ge 2 ]] || exit 2
             shift 2
             ;;
@@ -77,8 +87,38 @@ case "$url" in
         printf '%s\n' '{"providers":{"premium_a":{"proxies":[{"name":"fake-node","type":"VMess"}]}}}'
         exit 0
         ;;
+    http://127.0.0.1:9090/proxies/hotspot)
+        if [[ "$method" == PUT ]]; then
+            state="${MAGICNET_FAKE_CURL_HOTSPOT_STATE:?missing isolated hotspot state path}"
+            member="$("${MAGICNET_FAKE_PYTHON:-python3}" -c '
+import json, sys
+try:
+    value = json.loads(sys.argv[1])["name"]
+    if value not in ("direct", "proxy"):
+        raise ValueError("unsupported member")
+except (ValueError, KeyError, TypeError):
+    raise SystemExit(22)
+print(value)
+' "$payload")" || exit 22
+            printf '%s\n' "$member" >"$state"
+            printf '%s\n' '{}'
+        else
+            member=direct
+            if [[ -f "${MAGICNET_FAKE_CURL_HOTSPOT_STATE:-}" ]]; then
+                member="$(<"$MAGICNET_FAKE_CURL_HOTSPOT_STATE")"
+            fi
+            [[ "$member" == direct || "$member" == proxy ]] || exit 22
+            printf '{"type":"Selector","all":["direct","proxy"],"now":"%s"}\n' "$member"
+        fi
+        exit 0
+        ;;
     http://127.0.0.1:9090/proxies*)
-        printf '%s\n' '{"proxies":{"fake-node":{"name":"fake-node","type":"VMess"}},"all":["fake-node"]}'
+        member=direct
+        if [[ -f "${MAGICNET_FAKE_CURL_HOTSPOT_STATE:-}" ]]; then
+            member="$(<"$MAGICNET_FAKE_CURL_HOTSPOT_STATE")"
+        fi
+        [[ "$member" == direct || "$member" == proxy ]] || exit 22
+        printf '{"proxies":{"fake-node":{"name":"fake-node","type":"VMess"},"hotspot":{"type":"Selector","all":["direct","proxy"],"now":"%s"}},"all":["fake-node","hotspot"]}\n' "$member"
         exit 0
         ;;
     http://127.0.0.1:7892*|https://www.baidu.com|https://www.google.com|https://chatgpt.com)
