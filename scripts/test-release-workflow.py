@@ -140,6 +140,34 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.assertIn(message, result.stderr)
         self.assertFalse(self.output.exists())
 
+    def set_version_code(self, code):
+        for name, old, new in (
+            ("kam.toml", "versionCode = 123", f"versionCode = {code}"),
+            ("src/MagicNet/module.prop", "versionCode=123", f"versionCode={code}"),
+        ):
+            self.write(name, (self.repo / name).read_text().replace(old, new))
+        update = json.loads((self.repo / "update.json").read_text())
+        update["versionCode"] = code
+        self.write("update.json", json.dumps(update))
+        self.commit()
+        self.git("push", "--force", "origin", "main")
+
+    def test_version_code_bounds(self):
+        for code in (0, -1, 2147483648, 1789322931018):
+            with self.subTest(code=code):
+                self.git("reset", "--hard", self.before)
+                self.set_version_code(code)
+                self.assert_rejected(self.run_workflow(), "1..2147483647")
+        for code in (1, 10602, 2147483647):
+            with self.subTest(code=code):
+                self.git("reset", "--hard", self.before)
+                self.set_version_code(code)
+                self.assert_build_only(self.run_workflow())
+
+    def test_bump_at_maximum_leaves_all_release_files_unchanged(self):
+        self.set_version_code(2147483647)
+        self.assert_bump_rejected()
+
     def test_three_bump_kinds_keep_metadata_in_sync(self):
         for kind, version in (("patch", "v1.2.4"), ("minor", "v1.3.0"), ("major", "v2.0.0")):
             with self.subTest(kind=kind):

@@ -14,6 +14,9 @@ def git(*args):
     return subprocess.check_output(["git", *args], text=True).strip()
 
 
+MAX_VERSION_CODE = 2147483647
+
+
 def read_metadata():
     prop = tomllib.loads(Path("kam.toml").read_text())["prop"]
     module = dict(
@@ -25,8 +28,8 @@ def read_metadata():
     version, code = prop["version"], prop["versionCode"]
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Expected a committed vMAJOR.MINOR.PATCH version")
-    if type(code) is not int or code <= 0:
-        raise ValueError("versionCode must be a positive integer")
+    if type(code) is not int or not 1 <= code <= MAX_VERSION_CODE:
+        raise ValueError("versionCode must be an integer in 1..2147483647")
     for metadata in (module, update):
         if metadata["version"] != version or str(metadata["versionCode"]) != str(code):
             raise ValueError("Version metadata differs; update all three files together")
@@ -72,6 +75,8 @@ def bump(kind):
     version = "v" + ".".join(map(str, parts))
     require_new_tag(version)
     code += 1
+    if code > MAX_VERSION_CODE:
+        raise ValueError("versionCode increment exceeds 2147483647")
 
     def replace_fields(text, values):
         for key, value in values.items():

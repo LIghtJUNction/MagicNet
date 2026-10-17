@@ -401,9 +401,14 @@ jobs:
             scripts/verify-artifact-signature.sh "$asset" \
               "$RUNNER_TEMP/magicnet-signing-public.pem"
           done
+          notes_file="$RUNNER_TEMP/magicnet-release-notes.md"
+          printf '%s\n\n' "安装器下载：https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}/magicnet_installer.zip" > "$notes_file"
+          if [ -f "docs/releases/${RELEASE_VERSION}.md" ]; then
+            cat "docs/releases/${RELEASE_VERSION}.md" >> "$notes_file"
+          fi
           args=(--repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT_SHA"
                 --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" \
-                --generate-notes --notes "安装器下载：https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}/magicnet_installer.zip" --draft)
+                --generate-notes --notes-file "$notes_file" --draft)
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
           fi

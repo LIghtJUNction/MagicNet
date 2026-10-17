@@ -34,6 +34,8 @@ class ReleaseGateTests(unittest.TestCase):
                         'git submodule status --recursive', 'prepare-release.py --verify-build'):
             self.assertIn(command, gate['run'])
         self.assertIn('--target "$RELEASE_COMMIT_SHA"', publish['run'])
+        self.assertIn('--notes-file "$notes_file"', publish['run'])
+        self.assertIn('cat "docs/releases/${RELEASE_VERSION}.md"', publish['run'])
         self.assertIn('--draft', publish['run'])
         self.assertLess(publish['run'].index('gh release create'), publish['run'].index('gh release edit'))
 

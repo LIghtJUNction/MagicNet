@@ -37,6 +37,8 @@ MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 A
 
 ## 安装与首次成功运行
 
+> **旧版本升级到 v1.6.2：需要手动安装一次。** 本版为符合 KernelSU Modules 限制，将版本码迁移为 `10602`。先备份配置，再在 root 管理器中直接安装 `MagicNet-full.zip`，不要先卸载。详见 [版本码迁移说明](docs/releases/v1.6.2.md)。
+
 1. 从 [Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载模块 ZIP，在 Magisk、KernelSU 或 APatch 的模块页面安装并重启。
 2. 在系统设置中关闭“私人 DNS / 私密 DNS / Private DNS”，不要保留为“自动”。
 3. 打开 root 管理器提供的模块 WebUI，在“订阅”中保存合法的 URL，或导入本地 Clash YAML、base64、分享链接、JSON 或文本订阅。
