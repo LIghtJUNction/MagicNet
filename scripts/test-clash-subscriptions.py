@@ -118,6 +118,39 @@ magicnet_singbox_subscription_filter_file() {{ printf '/dev/null\\n'; }}
         invalid = self.file('invalid.json', '{"outbounds":[{"type":"direct","tag":"direct"}]}')
         self.convert([valid, invalid], converter, success=False)
 
+    def test_complete_source_with_notice_rows_is_not_false_incomplete(self):
+        # Native extraction counts notice/traffic placeholders. Comparing the
+        # filtered valid-node count against that total falsely rejected a
+        # complete VLESS/Reality (or other converter-required) subscription.
+        converter = self.file('converter', '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do case "$1" in -singbox) src="$2"; shift;; -o) out="$2"; shift;; esac; shift; done\ncp "$src" "$out"\n')
+        converter.chmod(0o700)
+        nodes = [
+            {'type': 'trojan', 'tag': 'hk-1', 'server': '192.0.2.1', 'server_port': 443, 'password': 'fixture'},
+            {'type': 'trojan', 'tag': 'hk-2', 'server': '192.0.2.2', 'server_port': 443, 'password': 'fixture'},
+            {'type': 'trojan', 'tag': '剩余流量：100GB', 'server': '127.0.0.1', 'server_port': 443, 'password': 'fixture'},
+            {'type': 'trojan', 'tag': '入口公告', 'server': '127.0.0.1', 'server_port': 443, 'password': 'fixture'},
+        ]
+        source = self.file('complete.json', json.dumps({'outbounds': nodes}))
+        sources = self.file('complete-sources.txt', str(source) + '\n')
+        out = self.root / 'complete-out.json'
+        self.shell(f'''magicnet_singbox_proxylink_bin() {{ printf '%s\\n' {shlex.quote(str(converter))}; }}
+magicnet_singbox_build_outbounds_with_proxylink {sources} {out} 4
+''')
+        imported = {n['tag']: n for n in json.loads(out.read_text()) if n.get('server')}
+        self.assertIn('hk-1', imported)
+        self.assertIn('hk-2', imported)
+        self.assertGreaterEqual(len(imported), 2)
+
+    def test_converter_still_rejects_a_missing_real_node(self):
+        converter = self.file('converter', '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do case "$1" in -singbox) src="$2"; shift;; -o) out="$2"; shift;; esac; shift; done\ncp "$src" "$out"\n')
+        converter.chmod(0o700)
+        nodes = [
+            {'type': 'trojan', 'tag': 'hk-1', 'server': '192.0.2.1', 'server_port': 443, 'password': 'fixture'},
+            {'type': 'trojan', 'tag': '剩余流量：100GB', 'server': '127.0.0.1', 'server_port': 443, 'password': 'fixture'},
+        ]
+        source = self.file('loss.json', json.dumps({'outbounds': nodes}))
+        self.convert([source], converter, expected=3, success=False)
+
     def native_update(self, content, converter=False):
         source = self.file('native-source', content)
         captured = self.root / 'candidate-outbounds.json'
