@@ -40,6 +40,12 @@ output=$(
         MAGICNET_SUB_CONFIG_FILE=/tmp/evil-config.json \
         MAGICNET_SUB_URL_FILE=/tmp/evil-url \
         MAGICNET_SUB_SOURCE_FILE=/tmp/evil-source \
+        MAGICNET_SINGBOX_PROC_ROOT=/tmp/evil-proc \
+        MAGICNET_PROC_ROOT=/tmp/evil-proc \
+        MAGICNET_PROCESS_CGROUP_ROOTS=/tmp/evil-cgroup \
+        MAGICNET_MEMINFO_PATH=/tmp/evil-meminfo \
+        KAM_FSWATCH_BUSYBOX_BIN=/tmp/evil-busybox \
+        KAM_LAUNCH_BUSYBOX=/tmp/evil-busybox \
         KAM_HOME=/tmp/evil-kam \
         MODDIR="$fixture" sh -c '
             . "$1"
@@ -56,6 +62,12 @@ output=$(
             [ -z "${MAGICNET_SUB_URL_FILE+x}" ] || exit 18
             [ -z "${MAGICNET_SUB_SOURCE_FILE+x}" ] || exit 19
             [ -z "${KAM_HOME+x}" ] || exit 24
+            [ -z "${MAGICNET_SINGBOX_PROC_ROOT+x}" ] || exit 25
+            [ -z "${MAGICNET_PROC_ROOT+x}" ] || exit 26
+            [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS+x}" ] || exit 27
+            [ -z "${MAGICNET_MEMINFO_PATH+x}" ] || exit 28
+            [ -z "${KAM_FSWATCH_BUSYBOX_BIN+x}" ] || exit 29
+            [ -z "${KAM_LAUNCH_BUSYBOX+x}" ] || exit 30
         ' entry-env "$ENTRY" 2>&1
 )
 status=$?

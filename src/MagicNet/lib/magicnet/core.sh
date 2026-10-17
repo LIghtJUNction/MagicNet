@@ -1,3 +1,15 @@
+# Isolated lifecycle tests may load this file without the module entrypoint.
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/primitives.sh"
+    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
+        . "${MODDIR}/lib/magicnet/primitives.sh"
+    fi
+}
+type magicnet_source_primitives >/dev/null 2>&1 && magicnet_source_primitives
+
 magicnet_status_text() {
     "$1" >/dev/null 2>&1
     _status_text_rc=$?
@@ -20,6 +32,9 @@ magicnet_singbox_runtime_memory_limit() {
     fi
 
     _singbox_meminfo="${MAGICNET_MEMINFO_PATH:-/proc/meminfo}"
+    if command -v magicnet_effective_meminfo_path >/dev/null 2>&1; then
+        _singbox_meminfo="$(magicnet_effective_meminfo_path "$_singbox_meminfo")"
+    fi
     _singbox_mem_total_kib="$(
         awk '/^MemTotal:/ { print $2; exit }' "$_singbox_meminfo" 2>/dev/null || true
     )"

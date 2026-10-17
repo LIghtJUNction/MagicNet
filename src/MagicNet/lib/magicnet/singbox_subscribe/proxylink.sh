@@ -159,11 +159,14 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     [ "$_source_count" -gt 0 ] || return 1
     _raw_count=$("$_proxylink_jq" 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
     [ "${_raw_count:-0}" -gt 0 ] || return 1
-    _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
+    # Native extraction counts metadata rows too. Compare like-for-like
+    # before built-in name filters drop notice/traffic placeholders.
     if [ "${_expected_count:-0}" -gt 0 ] &&
-        [ "${_pre_filter_valid_count:-0}" -lt "${_expected_count:-0}" ]; then
+        [ "${_raw_count:-0}" -lt "${_expected_count:-0}" ]; then
         return 1
     fi
+    _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
+    [ "${_pre_filter_valid_count:-0}" -gt 0 ] || return 1
 
     _filter_file=$(magicnet_singbox_subscription_filter_file)
     [ -f "$_filter_file" ] || _filter_file=/dev/null

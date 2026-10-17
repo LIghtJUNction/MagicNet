@@ -1,3 +1,15 @@
+# Isolated supervisor tests may load this file without the module entrypoint.
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/primitives.sh"
+    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
+        . "${MODDIR}/lib/magicnet/primitives.sh"
+    fi
+}
+type magicnet_source_primitives >/dev/null 2>&1 && magicnet_source_primitives
+
 magicnet_supervisor_target_pid_matches() (
     _mstm_target="$1"
     _mstm_pid_file="$2"
@@ -347,7 +359,7 @@ magicnet_trusted_flock() {
 }
 
 magicnet_fswatch_busybox_bin() (
-    _mfb_busybox_bin="${KAM_FSWATCH_BUSYBOX_BIN:-}"
+    _mfb_busybox_bin="$(magicnet_trusted_busybox_override "${KAM_FSWATCH_BUSYBOX_BIN:-}" 2>/dev/null || true)"
     if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
         "$_mfb_busybox_bin" flock --help >/dev/null 2>&1; then
         printf '%s\n' "$_mfb_busybox_bin"
@@ -621,13 +633,23 @@ magicnet_subscription_refresh_loop_file() {
     printf '%s/%s.loop.sh\n' "$(magicnet_subscription_refresh_state_dir)" "$(magicnet_subscription_refresh_name)"
 }
 
+magicnet_subscription_refresh_proc_root() {
+    _refresh_requested="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        magicnet_effective_proc_root "$_refresh_requested"
+    else
+        printf '%s\n' "$_refresh_requested"
+    fi
+    unset _refresh_requested
+}
+
 magicnet_subscription_refresh_proc_start() {
-    magicnet_proc_start "$1" "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    magicnet_proc_start "$1" "$(magicnet_subscription_refresh_proc_root)"
 }
 
 magicnet_subscription_refresh_proc_command_matches() {
     _refresh_proc_pid="$1"
-    _refresh_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    _refresh_proc_root="$(magicnet_subscription_refresh_proc_root)"
     _refresh_proc_expected=$(magicnet_subscription_refresh_loop_file)
     _refresh_proc_pid_dir="${_refresh_proc_root}/${_refresh_proc_pid}"
     _refresh_proc_cmdline="${_refresh_proc_root}/${_refresh_proc_pid}/cmdline"
@@ -727,7 +749,7 @@ magicnet_subscription_refresh_owner_pid_state() {
     esac
     if kill -0 "$_refresh_pid_state_pid" 2>/dev/null; then
         _refresh_pid_state_rc=0
-    elif [ -d "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}/$_refresh_pid_state_pid" ]; then
+    elif [ -d "$(magicnet_subscription_refresh_proc_root)/$_refresh_pid_state_pid" ]; then
         _refresh_pid_state_rc=2
     else
         _refresh_pid_state_rc=1
@@ -753,7 +775,7 @@ magicnet_subscription_refresh_owner_matches() {
     _refresh_match_pid="$1"
     _refresh_match_start="$2"
     if ! kill -0 "$_refresh_match_pid" 2>/dev/null; then
-        [ -d "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}/$_refresh_match_pid" ] && _refresh_match_rc=2 || _refresh_match_rc=1
+        [ -d "$(magicnet_subscription_refresh_proc_root)/$_refresh_match_pid" ] && _refresh_match_rc=2 || _refresh_match_rc=1
     elif _refresh_match_actual_start=$(magicnet_subscription_refresh_proc_start "$_refresh_match_pid"); then
         if [ "$_refresh_match_actual_start" != "$_refresh_match_start" ]; then
             _refresh_match_rc=1
@@ -786,7 +808,7 @@ magicnet_subscription_refresh_stop_known() {
 }
 
 magicnet_subscription_refresh_loop_pids() {
-    _refresh_loop_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    _refresh_loop_proc_root="$(magicnet_subscription_refresh_proc_root)"
     _refresh_loop_expected=$(magicnet_subscription_refresh_loop_file)
     case "$_refresh_loop_proc_root:$_refresh_loop_expected" in
     /*:/*) ;;

@@ -35,6 +35,33 @@ export MAGICNET_LIB_DIR="$MODDIR/lib/magicnet"
 unset MAGICNET_LIB_DIR MAGICNET_TEST_FORCE_ANDROID
 [ "$(magicnet_lib_dir)" = "$MODDIR/lib/magicnet" ] || fail "cleared override did not restore the module tree"
 
+export MAGICNET_SINGBOX_PROC_ROOT="$WORKDIR/evil-proc"
+[ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = "$WORKDIR/evil-proc" ] ||
+    fail "host fixtures must still honor MAGICNET_SINGBOX_PROC_ROOT"
+export MAGICNET_TEST_FORCE_ANDROID=1
+[ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = /proc ] ||
+    fail "Android runtime honored a foreign MAGICNET_SINGBOX_PROC_ROOT"
+export MAGICNET_TEST_ALLOW_PROC_ROOT=1
+[ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = "$WORKDIR/evil-proc" ] ||
+    fail "Android hatch did not restore the fixture proc root"
+unset MAGICNET_TEST_ALLOW_PROC_ROOT
+[ "$(magicnet_effective_meminfo_path /tmp/evil-meminfo)" = /proc/meminfo ] ||
+    fail "Android runtime honored a foreign MAGICNET_MEMINFO_PATH"
+unset MAGICNET_TEST_FORCE_ANDROID MAGICNET_SINGBOX_PROC_ROOT
+[ "$(magicnet_effective_meminfo_path /tmp/evil-meminfo)" = /tmp/evil-meminfo ] ||
+    fail "host fixtures must still honor MAGICNET_MEMINFO_PATH"
+
+mkdir -p "$WORKDIR/evil-busybox-dir"
+printf '%s\n' '#!/bin/sh' 'exit 0' >"$WORKDIR/evil-busybox-dir/busybox"
+chmod 755 "$WORKDIR/evil-busybox-dir/busybox"
+[ "$(magicnet_trusted_busybox_override "$WORKDIR/evil-busybox-dir/busybox")" = "$WORKDIR/evil-busybox-dir/busybox" ] ||
+    fail "host fixtures must still honor KAM_FSWATCH_BUSYBOX_BIN"
+export MAGICNET_TEST_FORCE_ANDROID=1
+if magicnet_trusted_busybox_override "$WORKDIR/evil-busybox-dir/busybox"; then
+    fail "Android runtime honored a foreign BusyBox override"
+fi
+unset MAGICNET_TEST_FORCE_ANDROID
+
 mkdir -p "$MODDIR/bin" "$WORKDIR/evil-bin"
 printf '%s\n' '#!/bin/sh' 'exit 91' >"$MODDIR/bin/curl"
 printf '%s\n' '#!/bin/sh' 'exit 92' >"$WORKDIR/evil-bin/curl"
