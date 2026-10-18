@@ -871,7 +871,7 @@ def diagnostics(device: Device, out: Path):
                                timeout=min(3, remaining), check=False)
         predicates[name] = bounded_exit_code(result.returncode)
     (out / 'config-regex-exit-codes.json').write_text(json.dumps(predicates, indent=2) + '\n')
-    commands = {'kam.log': 'tail -n 300 /data/adb/cache/MagicNet/kam.log',
+    commands = {'kam.log': f'tail -n 300 {MOD}/.log/kam.log',
                 'api-probe.txt': f'{MOD}/cli mode; '
                                  f'ls -l {MOD}/bin/curl {MOD}/system/bin/curl '
                                  '/system/bin/curl /system/xbin/curl /vendor/bin/curl 2>/dev/null',

@@ -29,9 +29,9 @@ let browser;
 let checked = 0;
 const errors = [];
 const remote = [];
-const repositoryPrompts = [];
+const dialogs = [];
 async function observe(page) {
-  page.on('dialog', async dialog => { repositoryPrompts.push(dialog.message()); await dialog.dismiss(); });
+  page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.route('https://api.github.com/repos/LIghtJUNction/MagicNet', route => {
     assert.equal(route.request().headers()['x-setup-token'], undefined);
     assert.equal(route.request().headers().referer, undefined);
@@ -102,6 +102,7 @@ try {
   await page.locator('#subscription').fill('not-a-url');
   await page.locator('#save').click();
   assert.equal(await page.locator('#status').getAttribute('data-error'), 'true');
+  assert.equal(await page.locator('#completion').isVisible(), false);
   assert.equal((await rpc('state')).value, null);
   checked++;
 
@@ -119,33 +120,56 @@ try {
   await page.locator('#save').click();
   await Promise.race([requestedReceipt, new Promise((_, reject) => setTimeout(() => reject(new Error('installer receipt was not requested')), 3000))]);
   assert.equal(await page.locator('#completion').isVisible(), false, 'a write acknowledgement is not installer readiness');
-  assert.equal(repositoryPrompts.length, 0);
+  assert.equal(dialogs.length, 0);
   releaseReceipt();
   await page.locator('#completion').waitFor({ state: 'visible' });
   await page.unroute('**/cgi-bin/setup/status');
   assert.equal(await page.locator('#subscription').inputValue(), '');
   assert.equal(new URL(page.url()).hash, '');
-  assert.equal(await page.locator('#completion-title').textContent(), '链接已收好。');
+  assert.equal(await page.locator('#completion-title').textContent(), '订阅已保存。');
+  assert.equal(await page.locator('#completion-note').textContent(), '请返回 Root 管理器，继续下一步安装。');
   const saved = await rpc('wait');
   assert.equal(saved.value, value + '\n');
   assert.equal(saved.mode, 0o600);
   assert.equal(saved.exit, 0);
-  assert.ok(repositoryPrompts.includes('是否跳转至源代码仓库？'));
-  await page.locator('#language').selectOption('zh-TW');
-  assert.equal(await page.locator('#completion-title').textContent(), '連結已收好。');
+  assert.equal(dialogs.length, 0, 'return-to-manager instructions must not be covered by a dialog');
+  for (const [locale, title, note] of [
+    ['en', 'Subscription saved.', 'Return to your Root manager to continue the installation.'],
+    ['zh', '订阅已保存。', '请返回 Root 管理器，继续下一步安装。'],
+    ['zh-TW', '訂閱已儲存。', '請返回 Root 管理器，繼續下一步安裝。'],
+    ['ru', 'Подписка сохранена.', 'Вернитесь в менеджер Root, чтобы продолжить установку.'],
+    ['ja', '購読を保存しました。', 'Root 管理アプリに戻り、インストールの次の手順に進んでください。'],
+    ['ko', '구독을 저장했습니다.', 'Root 관리자 앱으로 돌아가 다음 설치 단계를 진행하세요.'],
+  ]) {
+    await page.locator('#language').selectOption(locale);
+    assert.equal(await page.locator('#completion-title').textContent(), title);
+    assert.equal(await page.locator('#completion-note').textContent(), note);
+  }
   checked++;
 
   await reset(page);
   await page.locator('#skip').click();
   await page.waitForFunction(() => document.getElementById('status').dataset.error === 'true');
   assert.equal(await page.locator('#completion').isVisible(), false);
-  const promptCount = repositoryPrompts.length;
   await page.locator('#cancel').click();
   await page.locator('#completion').waitFor({ state: 'visible' });
   const skipped = await rpc('wait');
   assert.equal(skipped.value, null);
   assert.equal(skipped.exit, 4);
-  assert.equal(repositoryPrompts.length, promptCount);
+  assert.equal(dialogs.length, 0);
+  checked++;
+
+  fixture = await rpc('upgrade');
+  await load(page);
+  assert.equal(await page.locator('#subscription').inputValue(), 'https://existing.example.test/sub');
+  await page.locator('#subscription').fill('https://unsaved.example.test/sub');
+  await page.locator('#skip').click();
+  await page.locator('#completion').waitFor({ state: 'visible' });
+  const kept = await rpc('wait');
+  assert.equal(kept.exit, 0);
+  assert.equal(kept.value, 'https://existing.example.test/sub\n');
+  assert.equal(await page.locator('#completion-title').textContent(), '已保留现有订阅。');
+  assert.equal(await page.locator('#completion-note').textContent(), '请返回 Root 管理器，继续下一步安装。');
   checked++;
 
   fixture = await rpc('upgrade');
@@ -207,6 +231,7 @@ try {
   await context.close();
   assert.deepEqual(errors, []);
   assert.deepEqual(remote, []);
+  assert.deepEqual(dialogs, [], 'completion must leave the return instructions visible');
   console.log(`Installer page: ${checked} scenarios passed against real BusyBox HTTP/CGI (two transport faults injected).`);
 } finally {
   if (browser) await browser.close();

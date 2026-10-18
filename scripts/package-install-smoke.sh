@@ -140,7 +140,7 @@ export BOOTMODE=true
 export MAGICNET_NONINTERACTIVE=1
 export MAGICNET_PREV_DIR="$PREV_MOD"
 # A real KernelSU metamodule can expose an unusable TMPDIR. Migration data must
-# stay in a manager-owned sibling path instead of being silently discarded.
+# stay inside the module instead of being silently discarded.
 export TMPDIR="$TMP/not-a-directory"
 : >"$TMPDIR"
 mkdir -p "$POISONED_CALLER_PATH" "$POISONED_BACKUP_PATH"
@@ -152,7 +152,6 @@ if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE -u MAGICNET_PREV_
     MODPATH="$MANAGER_MODPATH" \
     MODDIR="$MANAGER_MODPATH" \
     BOOTMODE=true \
-    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     PATH="$MANAGER_MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$MANAGER_MODPATH/bin/timeout" 5 "$MANAGER_MODPATH/bin/sh" "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
@@ -166,7 +165,6 @@ if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
     BOOTMODE=true \
     MAGICNET_NONINTERACTIVE=1 \
     MAGICNET_PREV_DIR="$PREV_MOD" \
-    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     PATH="$MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$MODPATH/bin/sh" "$MODPATH/customize.sh" >"$LOG" 2>&1; then
@@ -178,7 +176,7 @@ remove_host_tool_fixtures "$MANAGER_MODPATH"
 
 [[ -f "$POISONED_BACKUP_PATH/sentinel" ]] ||
     fail "caller-selected MAGICNET_BACKUP_DIR was deleted or reused"
-if find "$TMP" -maxdepth 1 -type d -name '*.install-backup.*' -print -quit | grep -q .; then
+if find "$MODPATH" "$MANAGER_MODPATH" -maxdepth 1 -type d -name '.install-backup.*' -print -quit | grep -q .; then
     fail "successful install left a migration backup behind"
 fi
 
@@ -270,35 +268,35 @@ unzip -oq "$ZIP_PATH" -d "$FAIL_MOD"
 install_host_tool_fixtures "$FAIL_MOD"
 printf '%s\n' 'https://old.example/must-not-remain' >"$FAIL_PREV/.config/sing-box/subscription.url"
 ln -s "$FAIL_TARGET" "$FAIL_PREV/.config/magicnet"
-stale_backup="${FAIL_MOD}.install-backup.999999"
+stale_backup="${FAIL_MOD}/.install-backup.999999"
 mkdir -p "$stale_backup/readonly/nested"
 printf '%s\n' 'magicnet-install-backup-v1' >"$stale_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'stale-secret-must-be-removed' >"$stale_backup/readonly/nested/secret"
 chmod 0444 "$stale_backup/readonly/nested/secret"
 chmod 0555 "$stale_backup/readonly" "$stale_backup/readonly/nested"
-untrusted_extra_backup="${FAIL_MOD}.install-backup.888888"
+untrusted_extra_backup="${FAIL_MOD}/.install-backup.888888"
 mkdir -p "$untrusted_extra_backup"
 printf '%s\n' 'magicnet-install-backup-v1' 'unexpected-extra-marker-data' \
     >"$untrusted_extra_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'must-not-be-deleted' >"$untrusted_extra_backup/sentinel"
-untrusted_trailing_backup="${FAIL_MOD}.install-backup.777777"
+untrusted_trailing_backup="${FAIL_MOD}/.install-backup.777777"
 mkdir -p "$untrusted_trailing_backup"
 printf '%s\n%s' 'magicnet-install-backup-v1' 'unexpected-trailing-data' \
     >"$untrusted_trailing_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'must-not-be-deleted' >"$untrusted_trailing_backup/sentinel"
-untrusted_no_lf_backup="${FAIL_MOD}.install-backup.666666"
+untrusted_no_lf_backup="${FAIL_MOD}/.install-backup.666666"
 mkdir -p "$untrusted_no_lf_backup"
 printf '%s' 'magicnet-install-backup-v1' \
     >"$untrusted_no_lf_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'must-not-be-deleted' >"$untrusted_no_lf_backup/sentinel"
-untrusted_marker_link_backup="${FAIL_MOD}.install-backup.555555"
+untrusted_marker_link_backup="${FAIL_MOD}/.install-backup.555555"
 mkdir -p "$untrusted_marker_link_backup"
 printf '%s\n' 'magicnet-install-backup-v1' >"$TMP/untrusted-marker-target"
 ln -s "$TMP/untrusted-marker-target" \
     "$untrusted_marker_link_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'must-not-be-deleted' >"$untrusted_marker_link_backup/sentinel"
 untrusted_dir_target="$TMP/untrusted-backup-target"
-untrusted_dir_link="${FAIL_MOD}.install-backup.444444"
+untrusted_dir_link="${FAIL_MOD}/.install-backup.444444"
 mkdir -p "$untrusted_dir_target"
 printf '%s\n' 'must-not-be-deleted' >"$untrusted_dir_target/sentinel"
 ln -s "$untrusted_dir_target" "$untrusted_dir_link"
@@ -309,14 +307,13 @@ if "$HOST_ENV" -u LD_LIBRARY_PATH \
     BOOTMODE=true \
     MAGICNET_NONINTERACTIVE=1 \
     MAGICNET_PREV_DIR="$FAIL_PREV" \
-    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     MAGICNET_BACKUP_DIR="$POISONED_BACKUP_PATH" \
     PATH="$FAIL_MOD/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$FAIL_MOD/bin/sh" "$FAIL_MOD/customize.sh" >"$FAIL_LOG" 2>&1; then
     fail "unsafe previous-config symlink unexpectedly passed installer migration"
 fi
-if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' \
+if find "$FAIL_MOD" -maxdepth 1 -type d -name '.install-backup.*' \
     ! -path "$untrusted_extra_backup" \
     ! -path "$untrusted_trailing_backup" \
     ! -path "$untrusted_no_lf_backup" \

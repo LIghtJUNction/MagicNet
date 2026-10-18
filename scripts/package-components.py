@@ -47,6 +47,12 @@ chmod 0755 "$MODPATH/bin/magicnet-components" || abort "! component bootstrap is
 '''
 
 LEGACY_INSTALLER_CLEANUP = '''
+# TEMPORARY <=v1.6.2 storage migration. Remove this call with legacy_cleanup.go
+# when direct upgrades from those versions are retired (docs/install-storage.md).
+# It runs only after the components, config migration and setup all succeed.
+if ! "$MODPATH/bin/magicnet-components" --cleanup-legacy --module-dir "$MODPATH"; then
+  warn "$(i18n MN_INSTALL_LEGACY_CLEANUP_FAILED)"
+fi
 # Retire only the old downloader module, and only after all customization passed.
 # Use manager removal flags: never recursively delete another module here.
 case "$MODPATH" in

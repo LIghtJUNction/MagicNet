@@ -87,6 +87,14 @@ set_i18n MAGICNET_RECENT_ERRORS zh 'sing-box 最近错误' en 'sing-box recent e
 set_i18n MAGICNET_SINGBOX_MISSING zh '未安装 sing-box' en 'sing-box is not installed' ru 'sing-box не установлен'
 set_i18n MAGICNET_PROCESS_UNKNOWN zh '无法确定 sing-box 进程状态' en 'sing-box process discovery is indeterminate' ru 'Не удалось определить состояние процесса sing-box'
 
+# TEMPORARY <=v1.6.2 storage migration; retire with legacy_cleanup.go.
+set_i18n MN_INSTALL_LEGACY_CLEANUP_FAILED \
+    zh '部分旧文件暂时无法清除。下次安装时会再次清理。' \
+    en 'Some old files could not be removed. Cleanup will retry at the next installation.' \
+    ru 'Не удалось удалить часть старых файлов. Очистка повторится при следующей установке.' \
+    ja '一部の古いファイルを削除できませんでした。次回のインストール時に再試行します。' \
+    ko '일부 이전 파일을 삭제하지 못했습니다. 다음 설치 때 다시 정리합니다.'
+
 # Localize rendered status only. Keep the shared status helper's protocol values.
 magicnet_display_status() {
     case "$1" in

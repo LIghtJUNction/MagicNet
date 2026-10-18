@@ -184,6 +184,7 @@ func TestDownloadChecksumFailurePreservesInstalledFile(t *testing.T) {
 	if len(partial) > 0 {
 		t.Fatal("partial downloads leaked")
 	}
+	assertNoWorkspace(t, o.ModuleDir)
 }
 func TestTruncatedDownloadIsNotCached(t *testing.T) {
 	c, _ := part(t, "engine", "bin/sing-box", "good")
@@ -202,6 +203,7 @@ func TestTruncatedDownloadIsNotCached(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(o.CacheDir, c.SHA256+".zip")); !os.IsNotExist(err) {
 		t.Fatal("partial cache exists")
 	}
+	assertNoWorkspace(t, o.ModuleDir)
 }
 func TestWrongArchitectureFails(t *testing.T) {
 	c, _ := part(t, "engine", "bin/sing-box", "engine")
@@ -272,7 +274,7 @@ func TestCorruptBundledPayloadFails(t *testing.T) {
 		t.Fatal("corrupt offline payload accepted")
 	}
 }
-func TestPromotionRollsBackOnLaterFailure(t *testing.T) {
+func TestPromotionPreflightPreservesOldFilesOnInvalidStage(t *testing.T) {
 	root, stage := t.TempDir(), t.TempDir()
 	writeFixture(t, filepath.Join(root, "bin/a"), []byte("old-a"))
 	writeFixture(t, filepath.Join(stage, "bin/a"), []byte("new-a"))

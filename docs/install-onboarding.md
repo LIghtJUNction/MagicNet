@@ -43,12 +43,16 @@ does not overwrite the previous configuration's live rule files.
   installer acknowledges readiness; the write response alone is not completion.
   A bounded listener grace period lets the page receive that receipt. Missing
   acknowledgements remain unconfirmed and can be queried again.
+  Once confirmed, the page says the subscription is saved and asks the user to
+  return to their Root manager to continue the installation. Keeping existing
+  subscriptions displays a separate confirmation with the same next step.
 - The page has a Stop installation button. Cancellation propagates as status 4
   to the installer and calls its abort path. With no saved subscription, keeping
   existing settings is rejected, and timeout stops installation rather than
   silently continuing with no subscription.
-- Only an installer-ready receipt displays the optional source-repository
-  confirmation dialog. Cancellation does not display it.
+- The completion instructions stay visible. The source-repository link is
+  available when the user chooses to open it; no dialog or automatic navigation
+  interrupts the return to the Root manager.
 - Star count is requested directly from GitHub's public repository API without
   setup credentials or referrer. Unavailable counts display a dash, not zero.
 - Recovery, an unbooted Android system, disabled sing-box, noninteractive mode,
