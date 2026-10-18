@@ -20,7 +20,9 @@ magicnet_stage_install_config() (
         [ -s "$_candidate_root/config.json" ] || { magicnet_install_config_failure template-extract; return 1; }
 
     _component_release=0
-    if unzip -p "$ZIPFILE" components.json >/dev/null 2>&1; then
+    # BusyBox unzip -p succeeds with empty output when an entry is absent.
+    # Check the actual manifest bytes, not only the unzip exit status.
+    if unzip -p "$ZIPFILE" components.json 2>/dev/null | grep -q .; then
         _component_release=1
     fi
     for _checker in jq sing-box; do
