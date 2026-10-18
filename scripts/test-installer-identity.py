@@ -94,12 +94,15 @@ class InstallerTests(unittest.TestCase):
         return directory
 
     def install(self, archive, *, shell=None, ok=True):
-        # Same generated script; the host wrapper ONLY adds offline/cache flags.
+        # The wrapper forces offline operation. Full installs and unchanged
+        # upgrades use the default storage path; preseeded archives are an
+        # explicitly supplied read-only import source.
         test_archive = self.root / "manager-input.zip"
         with zipfile.ZipFile(archive) as original:
             entries = {info.filename: (info, original.read(info)) for info in original.infolist()}
-        wrapper = ("#!/bin/sh\nexec " + shlex.quote(str(self.helper)) +
-                   ' "$@" --offline --cache-dir "$TEST_CACHE"\n').encode()
+        wrapper = ('#!/bin/sh\nset -- "$@" --offline\n'
+                   '[ -z "$TEST_CACHE" ] || set -- "$@" --cache-dir "$TEST_CACHE"\n'
+                   "exec " + shlex.quote(str(self.helper)) + ' "$@"\n').encode()
         entries[package.HELPER] = package.zip_entry(package.HELPER, wrapper, 0o755)
         package.write_zip(test_archive, entries)
         harness = r'''
@@ -129,13 +132,17 @@ fi
         result = subprocess.run((shell or ["sh"]) + ["-c", harness],
                                 env=dict(os.environ, ZIPFILE=str(test_archive),
                                          TEST_STAGED=str(self.staged), TEST_ACTIVE=str(self.active),
-                                         TEST_CACHE=str(self.cache),
+                                         TEST_CACHE=str(self.cache) if any(self.cache.iterdir()) else "",
                                          TEST_SCRIPT=str(self.root / "customize.sh"),
                                          MAGICNET_PREV_DIR=str(self.active / "MagicNet")),
                                 text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
         self.assertNotIn("[download]", result.stdout)
         self.assertNotIn("[route]", result.stdout)
+        self.assertFalse((self.staged / "MagicNet" / ".components-install").exists())
+        self.assertEqual({p.name for p in self.adb.iterdir()}, {"modules", "modules_update"})
+        for parent in (self.active, self.staged):
+            self.assertFalse(list(parent.glob(".magicnet-components*")))
         if not ok:
             # The manager discards a failed staging tree; the active module stays.
             shutil.rmtree(self.staged / "MagicNet", ignore_errors=True)
@@ -163,6 +170,8 @@ fi
         self.assertFalse((module / "bin/module-downloader").exists())
         self.assertFalse((module / "bin/magicnet-mcp-server").exists())
         self.assertFalse((module / "download.json").exists())
+        self.assertFalse((module / ".components-install").exists())
+        self.assertFalse(list(module.rglob("*.zip")))
         state = json.loads((module / "components.installed.json").read_text())
         for component in state["components"]:
             for entry in component["files"]:

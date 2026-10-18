@@ -72,8 +72,9 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .complete-mark svg { width: 26px; height: 26px; }
 #completion-title:focus { outline: none; }
 #completion h2 { font-size: 30px; font-weight: 530; margin: 0 0 12px; line-height: 1.3; }
-#completion p { margin: 0 0 28px; font-size: 13px; line-height: 1.7; color: var(--muted); }
-.star-success { justify-content: center; }
+#completion p { margin: 0 0 28px; font-size: 16px; line-height: 1.7; color: var(--ink); }
+.star-success { justify-content: center; border-color: var(--line); background: transparent; color: var(--muted); }
+.star-success:hover { background: var(--hover); color: var(--ink); }
 .star-success svg:last-child { margin-left: auto; }
 .star-success span { margin-right: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

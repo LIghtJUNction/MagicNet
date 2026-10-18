@@ -46,6 +46,12 @@ magicnet_uninstall_cleanup() (
         printf '%s\n' '[MagicNet] cli is missing; runtime cleanup could not be verified.' >&2
         _rc=1
     fi
+    # TEMPORARY <=v1.6.2 migration; remove with legacy_cleanup.go when direct
+    # upgrades from those releases are retired. Never blocks network teardown.
+    if [ -x "$MODDIR/bin/magicnet-components" ]; then
+        magicnet_uninstall_run 15 "$MODDIR/bin/magicnet-components" \
+            --cleanup-legacy --module-dir "$MODDIR" || _rc=1
+    fi
     # The manager owns removal of MODDIR, including config, logs and caches.
     # Never delete Download exports, another VPN's processes, or global rules.
     [ "$_rc" = 0 ] || printf '%s\n' \
@@ -54,7 +60,9 @@ magicnet_uninstall_cleanup() (
 )
 
 magicnet_farewell_parent() {
-    printf '%s\n' /data/adb
+    # Android mounts /dev in RAM. Normal exits remove the worker; a reboot
+    # also removes it after power loss/SIGKILL, without a persistent cleaner.
+    printf '%s\n' /dev
 }
 
 magicnet_farewell_allowed() {

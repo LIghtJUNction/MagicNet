@@ -144,14 +144,6 @@ jobs:
           timeout 600 "$manager" --sdk_root="$sdk" "platform-tools" "emulator"
           printf '%s\n' "$tools" "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
 
-      - name: Validate acceptance harness
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash -n scripts/android-kernelsu-acceptance.sh
-          python3 scripts/test-android-probe.py
-          python3 scripts/test-kernelsu-installer-lifecycle.py
-
       - name: Setup Go
         id: go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -223,7 +215,15 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends binutils file jq ripgrep unzip zip python3-yaml shellcheck
+          sudo apt-get install -y --no-install-recommends binutils busybox-static file jq ripgrep unzip zip python3-yaml shellcheck
+
+      - name: Validate acceptance harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/android-kernelsu-acceptance.sh
+          python3 scripts/test-android-probe.py
+          python3 scripts/test-kernelsu-installer-lifecycle.py
 
       # Consolidated from init.yml; retain its unique KAM checks and regressions.
       - name: Validate repository

@@ -25,7 +25,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -432,7 +431,7 @@ func (o options) downloadAttemptWithPolicy(c component, source, destination stri
 	if response.ContentLength >= 0 && response.ContentLength != c.Size {
 		return errors.New("download size mismatch")
 	}
-	tmp, err := os.CreateTemp(o.CacheDir, ".download-")
+	tmp, err := os.CreateTemp(filepath.Dir(destination), ".download-")
 	if err != nil {
 		return err
 	}
@@ -627,82 +626,7 @@ func (o options) downloadComponents(items []componentDownload) error {
 	return firstErr
 }
 
-// All components are validated in a private staging directory before this
-// transaction starts. Rename existing files to rollback storage, then promote.
-// An ordinary I/O error rolls back all earlier promotions, including removals.
-func promote(stage, root string, files []payloadFile, obsolete []string) (err error) {
-	backup := filepath.Join(stage, ".rollback")
-	if err = os.Mkdir(backup, 0o700); err != nil {
-		return err
-	}
-	type change struct {
-		name               string
-		existed, installed bool
-	}
-	changes := []change{}
-	defer func() {
-		if err == nil {
-			return
-		}
-		var rollbackErrors []error
-		for i := len(changes) - 1; i >= 0; i-- {
-			c := changes[i]
-			dst := filepath.Join(root, c.name)
-			if c.installed {
-				if e := os.Remove(dst); e != nil && !os.IsNotExist(e) {
-					rollbackErrors = append(rollbackErrors, e)
-				}
-			}
-			if c.existed {
-				if e := os.Rename(filepath.Join(backup, c.name), dst); e != nil {
-					rollbackErrors = append(rollbackErrors, e)
-				}
-			}
-		}
-		if len(rollbackErrors) > 0 {
-			err = fmt.Errorf("%w; rollback errors: %v; recovery files: %s", err, rollbackErrors, backup)
-		}
-	}()
-	items := append([]payloadFile{}, files...)
-	for _, name := range obsolete {
-		items = append(items, payloadFile{Path: name})
-	}
-	for i, f := range items {
-		dst := filepath.Join(root, f.Path)
-		if err = physical(dst, true); err != nil {
-			return err
-		}
-		if err = os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		c := change{name: f.Path}
-		if st, e := os.Lstat(dst); e == nil {
-			if !st.Mode().IsRegular() {
-				return fmt.Errorf("unsafe destination: %s", dst)
-			}
-			old := filepath.Join(backup, f.Path)
-			if err = os.MkdirAll(filepath.Dir(old), 0o700); err != nil {
-				return err
-			}
-			if err = os.Rename(dst, old); err != nil {
-				return err
-			}
-			c.existed = true
-		} else if !os.IsNotExist(e) {
-			return e
-		}
-		changes = append(changes, c)
-		if i < len(files) {
-			if err = os.Rename(filepath.Join(stage, f.Path), dst); err != nil {
-				return err
-			}
-			changes[len(changes)-1].installed = true
-		}
-	}
-	return nil
-}
-
-func run(o options) error {
+func run(o options) (err error) {
 	started := time.Now()
 	if o.log == nil {
 		o.log = io.Discard
@@ -716,29 +640,36 @@ func run(o options) error {
 	if o.route == nil {
 		o.route = &routeHint{}
 	}
-	if o.Archive == "" || o.ModuleDir == "" || o.CacheDir == "" {
-		return errors.New("archive, module directory and cache directory are required")
+	if o.Archive == "" || o.ModuleDir == "" {
+		return errors.New("archive and module directory are required")
 	}
-	for _, dir := range []string{o.ModuleDir, o.CacheDir} {
-		if err := physical(dir, true); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+	if o.CacheDir != "" {
+		if err := physical(o.CacheDir, true); err != nil {
 			return err
 		}
 	}
-	if err := physical(filepath.Join(o.CacheDir, "install.lock"), true); err != nil {
-		return err
-	}
-	lock, err := os.OpenFile(filepath.Join(o.CacheDir, "install.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := lockModule(o.ModuleDir)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("another component installation is running")
+	stage, err := prepareWorkspace(o.ModuleDir)
+	if err != nil {
+		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	var m manifest
+	defer func() {
+		// The same recovery path handles ordinary errors and a previous process
+		// being killed. Never discard the last old copy when rollback fails.
+		if recoveryErr := recoverPromotion(stage, o.ModuleDir); recoveryErr != nil {
+			err = errors.Join(err, fmt.Errorf("component recovery retained at %s: %w", stage, recoveryErr))
+			return
+		}
+		err = errors.Join(err, cleanupWorkspace(stage))
+		if err == nil {
+			o.printf("[done] MagicNet %s ready: %d components in %.1fs", m.Version, len(m.Components), time.Since(started).Seconds())
+		}
+	}()
 	archive, err := zip.OpenReader(o.Archive)
 	if err != nil {
 		return err
@@ -761,7 +692,6 @@ func run(o options) error {
 	if err != nil {
 		return err
 	}
-	var m manifest
 	if err = json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
@@ -772,20 +702,9 @@ func run(o options) error {
 	// Persist separately: module managers may overwrite components.json before
 	// customize runs, while this file records the last successfully installed set.
 	old := manifest{}
-	if regular(filepath.Join(o.ModuleDir, "components.installed.json")) == nil {
-		data, _ := os.ReadFile(filepath.Join(o.ModuleDir, "components.installed.json"))
+	if data, e := readBounded(filepath.Join(o.ModuleDir, "components.installed.json"), 4<<20); e == nil {
 		_ = json.Unmarshal(data, &old)
 	}
-	stage, err := os.MkdirTemp(filepath.Dir(o.ModuleDir), ".magicnet-components-")
-	if err != nil {
-		return err
-	}
-	keepRecovery := false
-	defer func() {
-		if !keepRecovery {
-			os.RemoveAll(stage)
-		}
-	}()
 	var files []payloadFile
 	wanted := map[string]bool{}
 	type cachedComponent struct {
@@ -826,15 +745,18 @@ func run(o options) error {
 			}
 			continue
 		}
-		cached := filepath.Join(o.CacheDir, c.SHA256+".zip")
-		if validFile(cached, c.Size, c.SHA256) {
-			o.printf("[cache] %s: verified cached component", c.ID)
+		// --cache-dir is an optional read-only archive source. Downloads and
+		// their partial files belong only to this installation's workspace.
+		cached := filepath.Join(stage, ".downloads", c.SHA256+".zip")
+		if source := filepath.Join(o.CacheDir, c.SHA256+".zip"); o.CacheDir != "" && validFile(source, c.Size, c.SHA256) {
+			cached = source
+			o.printf("[cache] %s: verified imported component", c.ID)
 		} else {
-			if err = physical(cached, true); err != nil {
-				return err
-			}
 			if o.Offline {
 				return fmt.Errorf("%s: required component is unavailable offline", c.ID)
+			}
+			if err = os.MkdirAll(filepath.Dir(cached), 0o700); err != nil {
+				return err
 			}
 			if !scheduled[cached] {
 				o.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))
@@ -864,6 +786,11 @@ func run(o options) error {
 		if e != nil {
 			return e
 		}
+		if filepath.Dir(item.path) == filepath.Join(stage, ".downloads") {
+			if err = os.Remove(item.path); err != nil {
+				return err
+			}
+		}
 	}
 	obsolete := []string{}
 	for _, c := range old.Components {
@@ -880,30 +807,34 @@ func run(o options) error {
 	}
 	files = append(files, stateFile)
 	if err = promote(stage, o.ModuleDir, files, obsolete); err != nil {
-		// Keep rollback files on any failed promotion for manual recovery. Network or
-		// validation errors, which happen before promotion, never modify old files.
-		keepRecovery = true
-		return fmt.Errorf("%w (staging: %s)", err, stage)
+		return err
 	}
-	o.printf("[done] MagicNet %s ready: %d components in %.1fs", m.Version, len(m.Components), time.Since(started).Seconds())
+	pruneEmptyParents(o.ModuleDir, obsolete)
 	return nil
 }
 func main() {
 	o := options{log: os.Stdout}
+	var cleanupLegacy bool
 	flag.StringVar(&o.Archive, "archive", "", "trusted core/full module ZIP")
 	flag.StringVar(&o.ModuleDir, "module-dir", "", "module manager installation directory")
 	flag.StringVar(&o.PreviousDir, "previous-dir", "/data/adb/modules/MagicNet", "previous installed module")
-	flag.StringVar(&o.CacheDir, "cache-dir", "", "private component cache")
+	flag.StringVar(&o.CacheDir, "cache-dir", "", "optional read-only directory of verified offline component archives")
 	flag.BoolVar(&o.Offline, "offline", false, "never access the network")
+	// Temporary migration; remove with cleanupLegacyStorage when direct
+	// upgrades from v1.6.2 and older are no longer supported.
+	flag.BoolVar(&cleanupLegacy, "cleanup-legacy", false, "remove verified leftovers from older MagicNet installers")
 	flag.Parse()
-	if o.CacheDir == "" {
-		if runtime.GOOS == "android" {
-			o.CacheDir = "/data/adb/magicnet-components"
+	var err error
+	if cleanupLegacy {
+		if o.ModuleDir == "" {
+			err = errors.New("module directory is required")
 		} else {
-			o.CacheDir = filepath.Join(filepath.Dir(o.ModuleDir), ".magicnet-components-cache")
+			err = cleanupLegacyStorage(o.ModuleDir)
 		}
+	} else {
+		err = run(o)
 	}
-	if err := run(o); err != nil {
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "[error]", err)
 		os.Exit(1)
 	}

@@ -13,24 +13,33 @@ unset _magicnet_binary_path
 # the upgrade path sources install_config.sh and its subscription dependencies
 # before the manager has copied the rest of the payload.
 if unzip -o "$ZIPFILE" \
-  ".config/kamfw/.envrc" "bin/jq" "bin/sing-box" \
+  ".config/kamfw/.envrc" \
   "lib/kamfw/*" "lib/kamfw-web/*" "lib/magicnet/*" \
   "lib/magicnet_singbox_subscribe.sh" -d "$MODPATH" >&2 &&
   [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
-  _magicnet_module_id=${MODPATH##*/}
-  case "$_magicnet_module_id" in
-  '' | *[!A-Za-z0-9._-]*) abort "! invalid module id in MODPATH" ;;
-  esac
-  MAGICNET_CACHE_ROOT=${MAGICNET_CACHE_ROOT:-/data/adb/cache}
-  case "$MAGICNET_CACHE_ROOT" in
-  /*) ;;
-  *) abort "! MAGICNET_CACHE_ROOT must be an absolute path" ;;
-  esac
-  MAGICNET_CACHE_DIR="${MAGICNET_CACHE_ROOT%/}/${_magicnet_module_id}"
-  KAM_LOGFILE="${MAGICNET_CACHE_DIR}/kam.log"
-  mkdir -p "$MAGICNET_CACHE_DIR" || abort "! failed to prepare MagicNet cache"
-  export MAGICNET_CACHE_DIR KAM_LOGFILE
-  unset _magicnet_module_id
+  for _magicnet_log_path in "$MODPATH" "$MODPATH/.log" "$MODPATH/.log/kam.log"; do
+    [ ! -L "$_magicnet_log_path" ] || abort "! unsafe installer log path"
+  done
+  (umask 077; mkdir -p "$MODPATH/.log" && : >>"$MODPATH/.log/kam.log") ||
+    abort "! failed to prepare MagicNet install log"
+  chmod 600 "$MODPATH/.log/kam.log" || abort "! failed to protect MagicNet install log"
+  # Prefer an open log so EXIT handlers can finish after the manager removes
+  # a failed staging tree. Preserve every inherited FD, including recovery's
+  # arbitrary OUTFD; if none is free, retain normal module-local file logging.
+  KAM_LOGFILE="$MODPATH/.log/kam.log"
+  for _magicnet_log_fd in 9 8 7 6 5 4 3; do
+    [ "$_magicnet_log_fd" != "${OUTFD:-}" ] || continue
+    if [ -e "/proc/self/fd/$_magicnet_log_fd" ] || [ -L "/proc/self/fd/$_magicnet_log_fd" ]; then
+      continue
+    fi
+    # The descriptor comes only from the numeric list; the path stays quoted.
+    eval "exec ${_magicnet_log_fd}>>\"\$MODPATH/.log/kam.log\"" ||
+      abort "! failed to open MagicNet install log"
+    KAM_LOGFILE="/proc/self/fd/$_magicnet_log_fd"
+    break
+  done
+  export KAM_LOGFILE
+  unset _magicnet_log_path _magicnet_log_fd
   . "$MODPATH/lib/kamfw/.kamfwrc"
 else
   abort "! .kamfwrc missing"
@@ -52,10 +61,10 @@ if magicnet_install_is_interactive; then
 fi
 
 MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
-# Keep migration data in a private, per-installer sibling directory. Never
+# Keep migration data in the private module directory. Never
 # accept a caller-selected deletion path: module-manager environments are not a
 # trust boundary, and this directory temporarily contains subscription secrets.
-MAGICNET_BACKUP_DIR="${MODPATH}.install-backup.$$"
+MAGICNET_BACKUP_DIR="${MODPATH}/.install-backup.$$"
 MAGICNET_BACKUP_MARKER=".magicnet-install-backup-v1"
 MAGICNET_BACKUP_MARKER_VALUE="magicnet-install-backup-v1"
 MAGICNET_BACKUP_ACTIVE=0
@@ -83,32 +92,42 @@ magicnet_prepare_install_backup_removal() {
   # directories traversable/removable; find's default physical walk does not
   # follow symlinks, and regular files do not need permission changes for rm.
   find "$1" -type d -exec chmod u+rwx '{}' \; || return 1
-  # Revalidate after the permission walk before deleting the sibling path.
+  # Revalidate after the permission walk before deleting the backup.
   magicnet_install_backup_marker_is_exact "$1"
 }
 
 magicnet_cleanup_install_backup() {
   [ "${MAGICNET_BACKUP_ACTIVE:-0}" = 1 ] || return 0
+  # A failed install's manager may already have removed the entire module.
+  if [ ! -e "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ]; then
+    MAGICNET_BACKUP_ACTIVE=0
+    MAGICNET_BACKUP_READY=0
+    return 0
+  fi
   magicnet_prepare_install_backup_removal "$MAGICNET_BACKUP_DIR" || return 1
   rm -rf "$MAGICNET_BACKUP_DIR" || return 1
   MAGICNET_BACKUP_ACTIVE=0
   MAGICNET_BACKUP_READY=0
 }
 
-# A SIGKILL cannot run EXIT handlers. Remove only prior MagicNet-owned sibling
+# A SIGKILL cannot run EXIT handlers. Remove only prior MagicNet-owned
 # directories bearing the exact marker; never restore them into a later run.
-for _stale_backup in "${MODPATH}.install-backup."*; do
+for _stale_backup in "${MODPATH}/.install-backup."*; do
   [ -e "$_stale_backup" ] || [ -L "$_stale_backup" ] || continue
   case "$_stale_backup" in
-  "${MODPATH}.install-backup."*[!0-9]*) continue ;;
+  "${MODPATH}/.install-backup."*[!0-9]*) continue ;;
   esac
+  _stale_owner=${_stale_backup##*.}
+  # kill can fail with permission denied even when the owner is alive.
+  [ -n "$_stale_owner" ] && [ ! -d "/proc/$_stale_owner" ] &&
+    ! kill -0 "$_stale_owner" 2>/dev/null || continue
   if magicnet_install_backup_marker_is_exact "$_stale_backup"; then
     magicnet_prepare_install_backup_removal "$_stale_backup" ||
       abort "! failed to prepare stale MagicNet migration data for removal"
     rm -rf "$_stale_backup" || abort "! failed to remove stale MagicNet migration data"
   fi
 done
-unset _stale_backup
+unset _stale_backup _stale_owner
 
 at_exit_register_trap
 at_exit_add 'magicnet_cleanup_install_backup'
@@ -488,8 +507,8 @@ rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh"
 # saved nodes before replacing the active file; fresh installs use the template.
 # Neither path fetches subscriptions or starts the core inside the installer.
 magicnet_install_config_template() (
+  . "${MODPATH}/lib/magicnet/install_config.sh" || return 1
   if [ "${MAGICNET_BACKUP_READY:-0}" = 1 ]; then
-    . "${MODPATH}/lib/magicnet/install_config.sh" || return 1
     magicnet_refresh_install_config || return 1
     return 0
   fi
@@ -502,16 +521,12 @@ magicnet_install_config_template() (
   (umask 077; mkdir "$_stage") || return 1
   trap 'rm -rf "$_stage"' 0
   trap 'exit 1' 1 2 3 15
-  # Validate against this release's rule sets in a private candidate tree.
-  # Never overwrite rules used by the previous config just to run a check.
-  unzip -o "$ZIPFILE" '.config/sing-box/rules/*' -d "$_stage" >/dev/null 2>&1 || return 1
+  magicnet_stage_install_config "$_stage" || return 1
   _candidate_root="$_stage/.config/sing-box"
-  unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_candidate_root/config.json" || return 1
-  [ -s "$_candidate_root/config.json" ] && chmod 600 "$_candidate_root/config.json" || return 1
   # First installs need the same validation boundary as upgrades. Use the
   # shipped executables rather than an unrelated core from the manager PATH.
-  "${MODPATH}/bin/jq" -e 'type == "object"' "$_candidate_root/config.json" >/dev/null 2>&1 || return 1
-  "${MODPATH}/bin/sing-box" check -c "$_candidate_root/config.json" -D "$_candidate_root" >/dev/null 2>&1 || return 1
+  magicnet_validate_install_config "$_candidate_root/config.json" || return 1
+  chmod 600 "$_candidate_root/config.json" || return 1
   [ ! -e "$_config_dir/config.json" ] || [ -f "$_config_dir/config.json" ] || return 1
   mv -f "$_candidate_root/config.json" "$_config_dir/config.json" || return 1
   # A stale standalone marker would bypass subscription/cache replay entirely.

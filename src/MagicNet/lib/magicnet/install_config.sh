@@ -1,6 +1,87 @@
 # shellcheck shell=ash
 # Rebuild from this ZIP, importing subscription nodes rather than old policy.
 
+# Keep installer diagnostics useful without exposing config contents or core
+# output, which can include node addresses and credentials.
+magicnet_install_config_failure() {
+    printf '! sing-box config install: phase=%s\n' "$1" >&2
+    return 1
+}
+
+# Fresh installs and upgrades use one private candidate layout. Component
+# releases have already verified their rules and executables into MODPATH; the
+# core ZIP intentionally contains neither payload. A raw KAM archive extracts
+# its payload at exit, so it must supply those files here before validation.
+magicnet_stage_install_config() (
+    _stage="$1"
+    _candidate_root="$_stage/.config/sing-box"
+    mkdir -p "$_candidate_root" || { magicnet_install_config_failure stage; return 1; }
+    unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_candidate_root/config.json" 2>/dev/null &&
+        [ -s "$_candidate_root/config.json" ] || { magicnet_install_config_failure template-extract; return 1; }
+
+    _component_release=0
+    # BusyBox unzip -p succeeds with empty output when an entry is absent.
+    # Check the actual manifest bytes, not only the unzip exit status.
+    if unzip -p "$ZIPFILE" components.json 2>/dev/null | grep -q .; then
+        _component_release=1
+    fi
+    for _checker in jq sing-box; do
+        [ ! -L "${MODPATH}/bin" ] && [ ! -L "${MODPATH}/bin/$_checker" ] || {
+            magicnet_install_config_failure checker-path
+            return 1
+        }
+        if [ "$_component_release" = 0 ]; then
+            unzip -o "$ZIPFILE" "bin/$_checker" -d "$MODPATH" >/dev/null 2>&1 &&
+                chmod 0755 "${MODPATH}/bin/$_checker" || {
+                magicnet_install_config_failure "checker-$_checker"
+                return 1
+            }
+        fi
+        [ -x "${MODPATH}/bin/$_checker" ] || {
+            magicnet_install_config_failure "checker-$_checker"
+            return 1
+        }
+    done
+    "${MODPATH}/bin/jq" -e 'type == "object"' "$_candidate_root/config.json" >/dev/null 2>&1 || {
+        magicnet_install_config_failure template-json
+        return 1
+    }
+    # A release template must not make the installer fetch a remote rule set.
+    # Check before importing nodes: that helper also invokes sing-box check.
+    "${MODPATH}/bin/jq" -e 'all((.route.rule_set // [])[]; .type != "remote")' \
+        "$_candidate_root/config.json" >/dev/null 2>&1 || {
+        magicnet_install_config_failure rules-offline
+        return 1
+    }
+    if [ "$_component_release" = 1 ]; then
+        _rules="${MODPATH}/.config/sing-box/rules"
+        [ -d "$_rules" ] && [ ! -L "$_rules" ] &&
+            cp -R "$_rules" "$_candidate_root/rules" || {
+            magicnet_install_config_failure rules-component
+            return 1
+        }
+    else
+        unzip -o "$ZIPFILE" '.config/sing-box/rules/*' -d "$_stage" >/dev/null 2>&1 || {
+            magicnet_install_config_failure rules-extract
+            return 1
+        }
+    fi
+    # The checker must not read outside its private rule tree through a link.
+    _unsafe_rule="$(find "$_candidate_root/rules" ! -type d ! -type f -print -quit 2>/dev/null)" &&
+        [ -z "$_unsafe_rule" ] || { magicnet_install_config_failure rules-path; return 1; }
+)
+
+magicnet_validate_install_config() {
+    "${MODPATH}/bin/jq" -e 'type == "object"' "$1" >/dev/null 2>&1 || {
+        magicnet_install_config_failure candidate-json
+        return 1
+    }
+    "${MODPATH}/bin/sing-box" check -c "$1" -D "${1%/*}" >/dev/null 2>&1 || {
+        magicnet_install_config_failure core-check
+        return 1
+    }
+}
+
 # Upgrade only the exact repository pin shipped by the previous managed
 # default. Custom repositories, refs, digests, extra settings and unsafe path
 # layouts are left untouched.
@@ -64,14 +145,10 @@ magicnet_refresh_install_config() (
     mkdir -p "${MODDIR}/.state" || return 1
     mkdir "$_refresh_work" || return 1
     trap 'rm -rf "$_refresh_work"' 0
-    unzip -o "$ZIPFILE" '.config/sing-box/rules/*' -d "$_refresh_work" >/dev/null 2>&1 || return 1
-    (set -C; : >"$_refresh_candidate") || return 1
-    trap 'rm -rf "$_refresh_work"; rm -f "$_refresh_candidate"' 0
     trap 'exit 1' 1 2 3 15
 
     # Never use the installed config as the template, including in-place flashes.
-    unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_refresh_candidate" || return 1
-    [ -s "$_refresh_candidate" ] || return 1
+    magicnet_stage_install_config "$_refresh_work" || return 1
     _refresh_cached="${MODDIR}/.state/sing-box/subscription-work/outbounds.json"
     _refresh_restored=0
     if [ -s "$_refresh_cached" ] || [ -s "$_refresh_previous" ]; then
@@ -90,12 +167,16 @@ magicnet_refresh_install_config() (
             : >"$_refresh_work/tags.txt" || return 1
             magicnet_singbox_build_outbounds_file_with_jq \
                 "$_refresh_work/nodes.json" "$_refresh_work/tags.txt" \
-                "$_refresh_work/outbounds.json" || return 1
+                "$_refresh_work/outbounds.json" >/dev/null 2>&1 || {
+                magicnet_install_config_failure node-prepare
+                return 1
+            }
             jq -e 'any(.[]; (.server | type) == "string")' \
                 "$_refresh_work/outbounds.json" >/dev/null || continue
             MAGICNET_SUB_CONFIG_FILE="$_refresh_candidate"
             export MAGICNET_SUB_CONFIG_FILE
             if ! magicnet_singbox_update_config_with_nodes "$_refresh_work/outbounds.json" >/dev/null 2>&1; then
+                magicnet_install_config_failure node-merge
                 error "The regenerated sing-box config failed validation; the previous config was not replaced."
                 return 1
             fi
@@ -111,8 +192,7 @@ magicnet_refresh_install_config() (
     # Validate even when there were no saved nodes to import. A nonempty ZIP
     # entry is not evidence of a usable config. Keep diagnostics private: core
     # errors can contain node addresses and credentials.
-    "${MODDIR}/bin/jq" -e 'type == "object"' "$_refresh_candidate" >/dev/null 2>&1 || return 1
-    "${MODDIR}/bin/sing-box" check -c "$_refresh_candidate" -D "${_refresh_candidate%/*}" >/dev/null 2>&1 || return 1
+    magicnet_validate_install_config "$_refresh_candidate" || return 1
 
     # Keep one private, recoverable copy, not an ever-growing credential history.
     if [ -f "$_refresh_previous" ]; then

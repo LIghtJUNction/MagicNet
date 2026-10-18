@@ -32,14 +32,21 @@ magicnet_singbox_update_config_with_nodes() (
     mv "${MAGICNET_SUB_CONFIG_FILE}.new" "$MAGICNET_SUB_CONFIG_FILE"
 )
 FIXTURE
-ln -s "$(command -v jq)" "$MODPATH/bin/jq"
+cp "$(command -v jq)" "$MODPATH/bin/jq"
 cat >"$MODPATH/bin/sing-box" <<'FIXTURE'
 #!/bin/sh
 [ "${REJECT_CONFIG:-0}" != 1 ] || exit 1
 [ "$1" = check ] && [ "$2" = -c ] && [ "$4" = -D ] && [ "$5" = "${3%/*}" ] || exit 1
+[ -s "$5/rules/fixture.srs" ] || exit 1
 jq -e 'type == "object"' "$3" >/dev/null
 FIXTURE
 chmod +x "$MODPATH/bin/sing-box"
+python3 - "$ZIPFILE" "$MODPATH" <<'PY'
+import pathlib, sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'a') as z:
+    for name in ('jq', 'sing-box'):
+        z.write(pathlib.Path(sys.argv[2]) / 'bin' / name, 'bin/' + name)
+PY
 cat >"$TMP/runner.sh" <<'SHRUN'
 set -eu
 info() { printf '%s\n' "$*"; }
@@ -57,6 +64,18 @@ printf '%s\n' '{"old":true}' >"$CONFIG"
 run_refresh
 jq -e '.dns.tag == "new" and (has("old") | not)' "$CONFIG" >/dev/null
 [[ "$(stat -c %a "$CONFIG")" == 600 ]]
+# Published core/installer ZIPs have no rule or executable entries. Their
+# component bootstrap has already installed verified payloads before refresh.
+mkdir "$MODPATH/.config/sing-box/rules"
+unzip -p "$ZIPFILE" .config/sing-box/rules/fixture.srs >"$MODPATH/.config/sing-box/rules/fixture.srs"
+python3 - "$ZIPFILE" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    template = z.read('.config/sing-box/config.json')
+with zipfile.ZipFile(sys.argv[1], 'w') as z:
+    z.writestr('components.json', '{"schema":1}')
+    z.writestr('.config/sing-box/config.json', template)
+PY
 # Preserve source files byte-for-byte; no network access is needed.
 for item in subscription.url subscription.local subscription.user-agent subscription-filter.list; do
     printf 'saved-%s\n' "$item" >"$MODPATH/.config/sing-box/$item"
@@ -80,6 +99,13 @@ else
     [[ "$grep_status" -eq 1 ]] || exit "$grep_status"
 fi
 no_temporary_files
+# Missing verified rules aborts a core upgrade before publishing or fetching.
+mv "$MODPATH/.config/sing-box/rules" "$TMP/rules-before"
+cp "$CONFIG" "$TMP/before-missing-rules"
+expect_failure
+grep -q 'phase=rules-component' "$TMP/log"
+cmp "$CONFIG" "$TMP/before-missing-rules"
+mv "$TMP/rules-before" "$MODPATH/.config/sing-box/rules"
 # Corrupt/missing caches fall back to nodes from the previous full config.
 printf 'broken cache\n' >"$CACHE"
 : >"$MARKER"

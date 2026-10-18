@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -89,10 +90,24 @@ try {
   assert.equal(saved.exit, 0);
   assert.equal(saved.value, value + '\n');
   assert.equal(await page.locator('#title').isVisible(), false);
-  assert.equal(await page.locator('#completion-note').textContent(), '安装器已确认：一切就绪。');
+  assert.equal(await page.locator('#completion-title').textContent(), '订阅已保存。');
+  assert.equal(await page.locator('#completion-note').textContent(), '请返回 Root 管理器，继续下一步安装。');
   assert.equal(await page.locator('#completion-title').evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.locator('#completion-title').getAttribute('aria-describedby'), 'completion-note');
   assert.equal(await page.locator('#telegram').isVisible(), true);
   assert.equal(await page.locator('#discord').isVisible(), true);
+  if (process.env.MAGICNET_TEST_SCREENSHOTS) {
+    const directory = process.env.MAGICNET_TEST_SCREENSHOTS;
+    await mkdir(directory, { recursive: true });
+    for (const [width, height] of [[320, 568], [390, 852], [1440, 900]]) {
+      await page.setViewportSize({ width, height });
+      for (const colorScheme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(directory, `subscription-saved-${width}-${colorScheme}.png`), fullPage: true });
+      }
+    }
+  }
   await context.close();
   assert.deepEqual(errors, [], 'page emitted JavaScript or CSP errors');
   console.log('Design contracts passed: eight layouts, illustration, minimal copy, accessible targets, both invite clicks and saved state.');

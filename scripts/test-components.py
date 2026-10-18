@@ -97,12 +97,15 @@ class PackageTests(unittest.TestCase):
 
     def invoke(self, output, filename, *, previous=None, cache=None, module=None, ok=True):
         module = module or self.root / "module"
-        cache = cache or self.root / "cache"
-        result = subprocess.run([str(self.helper), "--archive", str(output / filename),
-                                 "--module-dir", str(module), "--previous-dir",
-                                 str(previous or self.root / "absent"), "--cache-dir", str(cache),
-                                 "--offline"], text=True, capture_output=True, check=False)
+        command = [str(self.helper), "--archive", str(output / filename),
+                   "--module-dir", str(module), "--previous-dir",
+                   str(previous or self.root / "absent"), "--offline"]
+        if cache is not None:
+            command += ["--cache-dir", str(cache)]
+        result = subprocess.run(command, text=True, capture_output=True, check=False)
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
+        self.assertFalse((module / ".components-install").exists())
+        self.assertFalse(list(module.parent.glob(".magicnet-components*")))
         return module, result
 
     def test_core_full_alias_and_manifest(self):
@@ -202,9 +205,27 @@ class PackageTests(unittest.TestCase):
         cache.mkdir()
         for c in m["components"]:
             shutil.copyfile(output / c["asset"], cache / (c["sha256"] + ".zip"))
+        (cache / "unrelated.txt").write_text("keep")
+        before = {p.name: p.read_bytes() for p in cache.iterdir()}
         _, result = self.invoke(output, "MagicNet-core.zip", cache=cache)
         self.assertIn("[cache]", result.stdout)
         self.assertNotIn("[download]", result.stdout)
+        self.assertEqual({p.name: p.read_bytes() for p in cache.iterdir()}, before)
+
+    def test_repeated_upgrades_leave_no_old_assets_or_archives(self):
+        module = self.root / "module"
+        (module / ".config").mkdir(parents=True)
+        (module / ".config" / "subscription.url").write_text("private fixture")
+        for version in range(3):
+            entries = dict(self.entries)
+            entries["module.prop"] = f"id=MagicNet\nversion=v1.4.{8 + version}\nversionCode={123 + version}\n".encode()
+            entries[f"webroot/version-{version}/index.js"] = f"webui {version}".encode()
+            output, _ = self.build(f"upgrade-{version}", entries=entries)
+            self.invoke(output, "MagicNet-full.zip", module=module)
+            self.assertEqual(sorted(p.name for p in module.glob("webroot/version-*")),
+                             [f"version-{version}"])
+            self.assertEqual((module / ".config/subscription.url").read_text(), "private fixture")
+            self.assertFalse(list(module.rglob("*.zip")))
 
     def test_incomplete_offline_core_does_not_install(self):
         output, _ = self.build()

@@ -34,13 +34,16 @@ page and uses the existing `launch browser` implementation to select the current
 Android user's default browser. Browser failure does not change cleanup status.
 
 The worker copies only its executable and public page assets into a private
-`/data/adb/.magicnet-farewell.XXXXXX` directory before the module is removed.
+`/dev/.magicnet-farewell.XXXXXX` directory before the module is removed. Android's
+`/dev` is backed by RAM, so the worker does not leave files under `/data/adb`.
 It waits at most 300 seconds for Android boot completion, serves on an ephemeral
 `127.0.0.1` port for at most 120 seconds, and has an outer 480-second deadline.
 The listener exposes only a random page path, no CGI, configuration or privileged
 commands. Normal exits and handled signals remove temporary files and stop the
-owned listener. Power loss or an uncatchable SIGKILL can interrupt final cleanup;
-no persistent boot service is installed to recover such temporary files.
+owned listener. A reboot also clears the temporary files after power loss or an
+uncatchable SIGKILL. No persistent boot cleaner is installed. Identifiable, idle
+worker files from old releases are covered by the temporary
+[storage migration](install-storage.md).
 
 All page CSS and JavaScript are inline, so the loaded tab remains usable after
 the listener stops. The page never closes itself or waits for the user before
