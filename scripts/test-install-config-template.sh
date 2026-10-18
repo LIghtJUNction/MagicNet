@@ -220,7 +220,7 @@ printf '%s\\n' checked >"$MODPATH/core-called"
         tools = self.root / 'busybox-unzip'
         tools.mkdir()
         unzip = tools / 'unzip'
-        unzip.write_text('#!/bin/sh\\nexec "' + busybox + '" unzip "$@"\\n')
+        unzip.write_text('#!/bin/sh\nexec "' + busybox + '" unzip "$@"\n')
         unzip.chmod(0o755)
         env = {'PATH': str(tools) + os.pathsep + os.environ.get('PATH', '')}
         for shell in shells:
