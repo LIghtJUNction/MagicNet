@@ -42,8 +42,8 @@ export MAGICNET_TEST_FORCE_ANDROID=1
 [ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = /proc ] ||
     fail "Android runtime honored a foreign MAGICNET_SINGBOX_PROC_ROOT"
 export MAGICNET_TEST_ALLOW_PROC_ROOT=1
-[ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = "$WORKDIR/evil-proc" ] ||
-    fail "Android hatch did not restore the fixture proc root"
+[ "$(magicnet_effective_proc_root "$MAGICNET_SINGBOX_PROC_ROOT")" = /proc ] ||
+    fail "Android runtime allowed the test-only proc root override"
 unset MAGICNET_TEST_ALLOW_PROC_ROOT
 [ "$(magicnet_effective_meminfo_path /tmp/evil-meminfo)" = /proc/meminfo ] ||
     fail "Android runtime honored a foreign MAGICNET_MEMINFO_PATH"

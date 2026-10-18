@@ -298,6 +298,10 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
       mv "$ipv6_rules.new" "$ipv6_rules"
       ;;
     -D)
+      if [ "${HOTSPOT_IPV6_LEGACY_DELETE_FAIL:-0}" -ne 0 ] &&
+        [ "$*" = 'PREROUTING -i wlan2 -p tcp -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' ]; then
+        return 2
+      fi
       awk -v rule="$*" '$0 != rule' "$ipv6_rules" >"$ipv6_rules.new"
       mv "$ipv6_rules.new" "$ipv6_rules"
       ;;
@@ -321,6 +325,28 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
   magicnet_hotspot_reconcile
   grep -Fqx 'PREROUTING -i wlan2 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT' "$ipv6_rules"
   magicnet_hotspot_forward_access status wlan2
+
+  # Older releases installed a TCP-only exemption. Its tuple must remain
+  # removable after an upgrade, even when both rule formats are present.
+  legacy_rule='PREROUTING -i wlan2 -p tcp -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT'
+  unrelated_rule='PREROUTING -i wlan2 -p tcp -s 2001:db8::/64 -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT'
+  printf '%s\n' "$legacy_rule" "$unrelated_rule" >>"$ipv6_rules"
+  HOTSPOT_IPV6_LEGACY_DELETE_FAIL=1
+  if magicnet_hotspot_route_cleanup; then
+    printf '%s\n' 'failed legacy IPv6 rule removal was reported as a successful stop' >&2
+    exit 1
+  fi
+  [ -f "$(magicnet_hotspot_route_pending_file)" ]
+  grep -Fqx "$legacy_rule" "$ipv6_rules"
+  HOTSPOT_IPV6_LEGACY_DELETE_FAIL=0
+  magicnet_hotspot_route_cleanup
+  if grep -Fqx "$legacy_rule" "$ipv6_rules"; then
+    printf '%s\n' 'stop left the previous release TCP-only IPv6 exemption installed' >&2
+    exit 1
+  fi
+  [ "$(cat "$ipv6_rules")" = "$unrelated_rule" ]
+  [ ! -e "$(magicnet_hotspot_route_state_file)" ]
+  magicnet_hotspot_reconcile
 
   # The core can re-prepend its hooks when the upstream network changes.
   # Membership alone must not let reconcile keep an exemption below them.
@@ -365,7 +391,8 @@ assert_hotspot_ipv6_exempt_is_installed_and_removed() (
 
   printf '1\n' >"$WORK/offload"
   magicnet_hotspot_offload_restore
-  [ "$(cat "$ipv6_rules")" = 'PREROUTING -j sing-box-prerouting-prematch' ]
+  printf '%s\n' 'PREROUTING -j sing-box-prerouting-prematch' "$unrelated_rule" >"$WORK/expected-ipv6-after-stop"
+  cmp -s "$ipv6_rules" "$WORK/expected-ipv6-after-stop"
   [ ! -s "$WORK/forward-rules" ]
   [ ! -e "$MODDIR/.state/hotspot/tun-rules.list" ]
 )

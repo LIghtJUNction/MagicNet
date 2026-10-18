@@ -18,14 +18,11 @@ magicnet_android_runtime() {
 
 # Android runtime paths are module-owned. Inherited proc/cgroup/meminfo
 # overrides can redirect PID ownership and memory accounting. Host fixtures
-# still honor them; MAGICNET_TEST_ALLOW_PROC_ROOT=1 is the only Android hatch.
-magicnet_android_ignores_foreign_runtime_paths() {
-    magicnet_android_runtime && [ "${MAGICNET_TEST_ALLOW_PROC_ROOT:-0}" != 1 ]
-}
+# still honor them. Android always uses its fixed runtime paths.
 
 magicnet_effective_proc_root() {
     _mn_proc_root="${1:-/proc}"
-    if magicnet_android_ignores_foreign_runtime_paths; then
+    if magicnet_android_runtime; then
         case "$_mn_proc_root" in
         /proc) ;;
         *) _mn_proc_root=/proc ;;
@@ -37,7 +34,7 @@ magicnet_effective_proc_root() {
 
 magicnet_effective_meminfo_path() {
     _mn_meminfo="${1:-/proc/meminfo}"
-    if magicnet_android_ignores_foreign_runtime_paths; then
+    if magicnet_android_runtime; then
         case "$_mn_meminfo" in
         /proc/meminfo) ;;
         *) _mn_meminfo=/proc/meminfo ;;
@@ -582,7 +579,7 @@ magicnet_detach_pid_from_app_cgroup() (
     [ "$_detach_app_lines" -gt 0 ] || return 0
 
     _detach_default_roots='/sys/fs/cgroup:/dev/memcg/apps:/dev/cpuset:/dev/cpuctl:/dev/blkio:/dev/freezer'
-    if magicnet_android_ignores_foreign_runtime_paths; then
+    if magicnet_android_runtime; then
         _detach_roots="$_detach_default_roots"
         _detach_custom=0
     else

@@ -524,14 +524,14 @@ fn refuse_private_cli() -> String {
 }
 
 fn cli_args_reveal_secret(args: &[String]) -> bool {
-    if args.iter().any(|item| item.starts_with("__")) {
-        return true;
-    }
     let command = args
         .iter()
         .map(String::as_str)
         .filter(|item| *item != "--json")
         .collect::<Vec<_>>();
+    if command.first().is_some_and(|item| item.starts_with("__")) {
+        return true;
+    }
     // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
     // Named private tools remain the explicit path for those contents.
     matches!(
@@ -824,6 +824,7 @@ mod tests {
             ["wifi", "inspect"].as_slice(),
             ["network-access", "inspect"].as_slice(),
             ["__proc-stat"].as_slice(),
+            ["--json", "__proc-stat", "/proc", "1"].as_slice(),
             ["__proc-cmdline", "/proc", "1"].as_slice(),
             ["__module-update-worker", "id"].as_slice(),
             ["override", "inspect"].as_slice(),
@@ -843,6 +844,9 @@ mod tests {
             ["mcp", "status"].as_slice(),
             ["--json", "sub", "status"].as_slice(),
             ["config-editor", "validate", "sing-box"].as_slice(),
+            ["node", "test", "__edge"].as_slice(),
+            ["api", "select", "proxy", "__edge"].as_slice(),
+            ["wifi", "add-ssid", "__home"].as_slice(),
         ] {
             let owned = args
                 .iter()

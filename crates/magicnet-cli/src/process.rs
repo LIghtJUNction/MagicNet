@@ -2164,8 +2164,17 @@ mod process_group_tests {
         command.args(["-c", &script]);
         assert!(run_process_group(&mut command, Duration::from_millis(100)).is_err());
         let pid = fs::read_to_string(&pid_file)?.trim().parse::<i32>()?;
-        std::thread::sleep(Duration::from_millis(100));
-        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        let proc_dir = std::path::PathBuf::from(format!("/proc/{pid}"));
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        // A dead orphan can retain its PID until init reaps it. Require
+        // confirmed exit evidence; unreadable or malformed state still fails.
+        while super::proc_pid_is_live(&proc_dir)? && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            !super::proc_pid_is_live(&proc_dir)?,
+            "grandchild survived process-group timeout: {pid}"
+        );
         let _ = fs::remove_file(pid_file);
         Ok(())
     }

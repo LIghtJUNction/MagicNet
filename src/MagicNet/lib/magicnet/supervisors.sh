@@ -1,15 +1,3 @@
-# Isolated supervisor tests may load this file without the module entrypoint.
-type magicnet_source_primitives >/dev/null 2>&1 || {
-    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
-        # BASH_SOURCE is guarded by the Bash-only branch above.
-        # shellcheck disable=SC3054
-        . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/primitives.sh"
-    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
-        . "${MODDIR}/lib/magicnet/primitives.sh"
-    fi
-}
-type magicnet_source_primitives >/dev/null 2>&1 && magicnet_source_primitives
-
 magicnet_supervisor_target_pid_matches() (
     _mstm_target="$1"
     _mstm_pid_file="$2"

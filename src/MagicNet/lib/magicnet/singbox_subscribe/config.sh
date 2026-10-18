@@ -1,16 +1,6 @@
 # Isolated subscription tests and recovery paths may load this file without
 # the normal module entrypoint. Reuse the canonical endpoint helpers whenever
 # they have not already been loaded.
-type magicnet_source_primitives >/dev/null 2>&1 || {
-    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
-        # BASH_SOURCE is guarded by the Bash-only branch above.
-        # shellcheck disable=SC3054
-        . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/primitives.sh"
-    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
-        . "${MODDIR}/lib/magicnet/primitives.sh"
-    fi
-}
-type magicnet_source_primitives >/dev/null 2>&1 && magicnet_source_primitives
 if ! command -v magicnet_singbox_api_listener_exists >/dev/null 2>&1; then
     if command -v magicnet_lib_dir >/dev/null 2>&1; then
         # shellcheck disable=SC1090
@@ -260,7 +250,10 @@ magicnet_singbox_build_outbounds_file_with_jq() (
 magicnet_singbox_count_valid_outbounds_nodes() {
     _nodes_json="$1"
     command -v jq >/dev/null 2>&1 || return 1
-    jq -n -r --slurpfile nodes "$_nodes_json" '
+    # Completeness compares against native extraction before notice-name
+    # filtering. Keep protocol validation, reserved-tag rejection and dedupe
+    # in both modes so invalid rows cannot stand in for lost real nodes.
+    jq -n -r --slurpfile nodes "$_nodes_json" --argjson include_info_tags "${2:-false}" '
       def normalize_tag:
         if type == "string"
         then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
@@ -304,7 +297,7 @@ magicnet_singbox_count_valid_outbounds_nodes() {
         | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
             valid_proxy_node
-            and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
+            and ($include_info_tags or (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not))
           ))
         | reduce .[] as $node
             ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)
