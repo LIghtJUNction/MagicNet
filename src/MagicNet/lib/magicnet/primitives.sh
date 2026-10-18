@@ -16,6 +16,62 @@ magicnet_android_runtime() {
     [ "${MAGICNET_TEST_FORCE_ANDROID:-0}" = 1 ] || [ -x /system/bin/getprop ]
 }
 
+# Android runtime paths are module-owned. Inherited proc/cgroup/meminfo
+# overrides can redirect PID ownership and memory accounting. Host fixtures
+# still honor them; MAGICNET_TEST_ALLOW_PROC_ROOT=1 is the only Android hatch.
+magicnet_android_ignores_foreign_runtime_paths() {
+    magicnet_android_runtime && [ "${MAGICNET_TEST_ALLOW_PROC_ROOT:-0}" != 1 ]
+}
+
+magicnet_effective_proc_root() {
+    _mn_proc_root="${1:-/proc}"
+    if magicnet_android_ignores_foreign_runtime_paths; then
+        case "$_mn_proc_root" in
+        /proc) ;;
+        *) _mn_proc_root=/proc ;;
+        esac
+    fi
+    printf '%s\n' "$_mn_proc_root"
+    unset _mn_proc_root
+}
+
+magicnet_effective_meminfo_path() {
+    _mn_meminfo="${1:-/proc/meminfo}"
+    if magicnet_android_ignores_foreign_runtime_paths; then
+        case "$_mn_meminfo" in
+        /proc/meminfo) ;;
+        *) _mn_meminfo=/proc/meminfo ;;
+        esac
+    fi
+    printf '%s\n' "$_mn_meminfo"
+    unset _mn_meminfo
+}
+
+# Host fixtures may inject any BusyBox. Android only accepts root-manager or
+# module-owned binaries; a caller-supplied PATH decoy is ignored.
+magicnet_trusted_busybox_override() {
+    _mn_bb="${1:-}"
+    [ -n "$_mn_bb" ] || {
+        unset _mn_bb
+        return 1
+    }
+    if ! magicnet_android_runtime; then
+        printf '%s\n' "$_mn_bb"
+        unset _mn_bb
+        return 0
+    fi
+    case "$_mn_bb" in
+    /data/adb/ap/bin/busybox | /data/adb/ksu/bin/busybox | /data/adb/magisk/busybox | \
+        "${MODDIR}/bin/busybox" | "${MODDIR}/system/bin/busybox")
+        printf '%s\n' "$_mn_bb"
+        unset _mn_bb
+        return 0
+        ;;
+    esac
+    unset _mn_bb
+    return 1
+}
+
 magicnet_lib_dir() {
     _requested="${MAGICNET_LIB_DIR:-}"
     _module_lib="${MODDIR}/lib/magicnet"
@@ -347,7 +403,7 @@ magicnet_proc_named_pids_to_file() (
 # malformed entries, and kills its reader worker if this shell disappears.
 magicnet_proc_cmdline_lines() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="$(magicnet_effective_proc_root "${2:-${MAGICNET_PROC_ROOT:-/proc}}")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -373,7 +429,7 @@ magicnet_proc_cmdline_lines() (
 
 magicnet_proc_comm() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="$(magicnet_effective_proc_root "${2:-${MAGICNET_PROC_ROOT:-/proc}}")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -399,7 +455,7 @@ magicnet_proc_comm() (
 
 magicnet_proc_stat_identity() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="$(magicnet_effective_proc_root "${2:-${MAGICNET_PROC_ROOT:-/proc}}")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -427,7 +483,7 @@ magicnet_proc_stat_identity() (
 # root (tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
 magicnet_proc_start() {
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="$(magicnet_effective_proc_root "${2:-${MAGICNET_PROC_ROOT:-/proc}}")"
     case "$_proc_pid" in
     '' | *[!0-9]*)
         unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
@@ -471,7 +527,7 @@ magicnet_proc_start() {
 
 magicnet_proc_state() {
     _proc_state_pid="$1"
-    _proc_state_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_state_root="$(magicnet_effective_proc_root "${2:-${MAGICNET_PROC_ROOT:-/proc}}")"
     if _proc_state_identity="$(magicnet_proc_stat_identity "$_proc_state_pid" "$_proc_state_root")"; then
         _proc_state_read_rc=0
     else
@@ -514,7 +570,7 @@ magicnet_singbox_proc_start() {
 # the bridge exits, so its persistent children are not reclaimed with the app.
 magicnet_detach_pid_from_app_cgroup() (
     _detach_pid="$1"
-    _detach_proc_root="${MAGICNET_PROC_ROOT:-/proc}"
+    _detach_proc_root="$(magicnet_effective_proc_root "${MAGICNET_PROC_ROOT:-/proc}")"
     case "$_detach_pid" in
     '' | *[!0-9]* | 0 | 1) return 1 ;;
     esac
@@ -526,9 +582,14 @@ magicnet_detach_pid_from_app_cgroup() (
     [ "$_detach_app_lines" -gt 0 ] || return 0
 
     _detach_default_roots='/sys/fs/cgroup:/dev/memcg/apps:/dev/cpuset:/dev/cpuctl:/dev/blkio:/dev/freezer'
-    _detach_roots="${MAGICNET_PROCESS_CGROUP_ROOTS:-$_detach_default_roots}"
-    _detach_custom=0
-    [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS:-}" ] || _detach_custom=1
+    if magicnet_android_ignores_foreign_runtime_paths; then
+        _detach_roots="$_detach_default_roots"
+        _detach_custom=0
+    else
+        _detach_roots="${MAGICNET_PROCESS_CGROUP_ROOTS:-$_detach_default_roots}"
+        _detach_custom=0
+        [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS:-}" ] || _detach_custom=1
+    fi
     _detach_required=0
     _detach_moved=0
     _detach_failed=0

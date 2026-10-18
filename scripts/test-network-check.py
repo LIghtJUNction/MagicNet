@@ -150,6 +150,32 @@ class ProbeTests(unittest.TestCase):
         result = self.run_probe([row], env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_android_runtime_ignores_inherited_tmpdir(self):
+        module_bin = self.script.parent / "bin"
+        module_bin.mkdir()
+        module_curl = module_bin / "curl"
+        module_curl.write_text(
+            MOCK
+            + """
+from pathlib import Path
+marker = Path(os.environ['CALLS']) / 'tmpdir-scan'
+moddir = Path(%r)
+tmpdir = Path(os.environ['TMPDIR'])
+marker.write_text(
+    'tmpdir=' + ','.join(sorted(p.name for p in tmpdir.glob('.network-check.*')))
+    + '\\nmoddir=' + ','.join(sorted(p.name for p in moddir.glob('.network-check.*')))
+)
+"""
+            % str(self.script.parent)
+        )
+        module_curl.chmod(0o755)
+        env = dict(self.env, MAGICNET_TEST_FORCE_ANDROID="1")
+        result = self.run_probe(["probe|test|https://example.invalid/200|200"], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        scan = (self.calls / "tmpdir-scan").read_text()
+        self.assertIn("tmpdir=\n", scan + "\n")
+        self.assertIn("moddir=.network-check.", scan)
+
     def test_http_error_and_unfinished_redirect_never_pass(self):
         for code in (100, 206, 301, 302, 401, 403, 404, 407, 429, 500, 502, 503, 599):
             with self.subTest(code=code):

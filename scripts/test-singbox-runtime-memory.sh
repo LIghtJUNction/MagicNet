@@ -5,7 +5,9 @@ ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# core.sh only declares lifecycle helpers, so sourcing it here is side-effect free.
+# primitives.sh owns the Android meminfo remap; core.sh only declares helpers.
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 
@@ -45,6 +47,15 @@ assert_limit 512MiB 16777216
     fail 'explicit GOMEMLIMIT was not preserved'
 [ "$(GOMEMLIMIT=off MAGICNET_MEMINFO_PATH="$WORK/missing" magicnet_singbox_runtime_memory_limit)" = off ] ||
     fail 'GOMEMLIMIT=off was not preserved'
+
+write_meminfo "$WORK/tiny" 2097152
+[ "$(MAGICNET_MEMINFO_PATH="$WORK/tiny" magicnet_singbox_runtime_memory_limit)" = 192MiB ] ||
+    fail 'host fixtures must still honor MAGICNET_MEMINFO_PATH'
+_real_limit="$(magicnet_singbox_runtime_memory_limit)"
+_android_limit="$(MAGICNET_TEST_FORCE_ANDROID=1 MAGICNET_MEMINFO_PATH="$WORK/tiny" magicnet_singbox_runtime_memory_limit)"
+[ "$_android_limit" = "$_real_limit" ] ||
+    fail "Android runtime honored a foreign MAGICNET_MEMINFO_PATH ($_android_limit != $_real_limit)"
+unset _real_limit _android_limit
 
 # Keep the launcher integration from regressing into a computed-but-unused
 # budget. The assignment is scoped to singbox_start, so it cannot leak to the

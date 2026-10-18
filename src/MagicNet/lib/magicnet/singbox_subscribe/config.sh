@@ -1,6 +1,16 @@
 # Isolated subscription tests and recovery paths may load this file without
 # the normal module entrypoint. Reuse the canonical endpoint helpers whenever
 # they have not already been loaded.
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/primitives.sh"
+    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
+        . "${MODDIR}/lib/magicnet/primitives.sh"
+    fi
+}
+type magicnet_source_primitives >/dev/null 2>&1 && magicnet_source_primitives
 if ! command -v magicnet_singbox_api_listener_exists >/dev/null 2>&1; then
     if command -v magicnet_lib_dir >/dev/null 2>&1; then
         # shellcheck disable=SC1090
@@ -644,6 +654,9 @@ magicnet_singbox_pid_live() (
     '' | *[!0-9]* | 0) return 1 ;;
     esac
     _live_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _live_proc_root="$(magicnet_effective_proc_root "$_live_proc_root")"
+    fi
     _live_proc_dir="$_live_proc_root/$_live_pid"
     [ -d "$_live_proc_dir" ] || {
         unset _live_pid _live_proc_root _live_proc_dir
@@ -670,6 +683,9 @@ magicnet_singbox_pids_to_file() (
     chmod 600 "$_singbox_output" 2>/dev/null || return 2
     : >"$_singbox_output" || return 2
     _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _singbox_proc_root="$(magicnet_effective_proc_root "$_singbox_proc_root")"
+    fi
     _singbox_candidates=$(magicnet_proc_query_temp_create) || return 2
     _singbox_found=0
 
@@ -778,6 +794,9 @@ magicnet_singbox_pid_owned() (
     [ -x "${MODDIR}/bin/sing-box" ] || return 2
     _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 2
     _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _owned_proc_root="$(magicnet_effective_proc_root "$_owned_proc_root")"
+    fi
     _owned_proc_dir="$_owned_proc_root/$_owned_pid"
     _owned_comm="$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root")" || {
         [ -d "$_owned_proc_dir" ] && return 2

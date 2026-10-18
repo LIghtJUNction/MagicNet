@@ -152,6 +152,16 @@ if [ -n "$android_busybox" ]; then
     printf '%s\n' "android PATH busybox was accepted: $android_busybox" >&2
     exit 1
 fi
+android_override="$(
+    PATH="$android_decoy:/usr/bin:/bin" \
+        KAM_FSWATCH_BUSYBOX_BIN="$busybox_bin" \
+        MAGICNET_TEST_FORCE_ANDROID=1 \
+        magicnet_fswatch_busybox_bin || true
+)"
+if [ -n "$android_override" ]; then
+    printf '%s\n' "android honored a foreign KAM_FSWATCH_BUSYBOX_BIN: $android_override" >&2
+    exit 1
+fi
 android_flock="$(
     PATH="$android_decoy:/usr/bin:/bin" \
         MAGICNET_TEST_FORCE_ANDROID=1 \

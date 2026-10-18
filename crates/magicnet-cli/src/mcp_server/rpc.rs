@@ -407,6 +407,7 @@ pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
 fn run_cli_with_timeout(server: &Server, args: &[&str], timeout: Duration) -> String {
     let mut command = Command::new(&server.cli);
     command.args(args);
+    crate::process::sanitize_cli_child_environment(&mut command);
     let output = match crate::run_bounded_command(command, timeout, MAX_CLI_STREAM_BYTES) {
         Ok(output) => output,
         Err(error) => return format!("failed to run cli: {error}\nrc=-1"),
@@ -523,6 +524,9 @@ fn refuse_private_cli() -> String {
 }
 
 fn cli_args_reveal_secret(args: &[String]) -> bool {
+    if args.iter().any(|item| item.starts_with("__")) {
+        return true;
+    }
     let command = args
         .iter()
         .map(String::as_str)
@@ -533,11 +537,14 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
     matches!(
         command.as_slice(),
         ["mcp", "secret" | "logs", ..]
-            | ["sub", "get" | "list" | "file" | "copy-path", ..]
+            | ["sub", "get" | "list" | "file" | "copy-path" | "inspect", ..]
+            | ["sub", "user-agent", "get", ..]
             | ["backup", "export", ..]
-            | ["config-editor", "get", ..]
+            | ["config-editor", "get" | "path", ..]
             | ["config-editor", "repo", "get" | "get-json", ..]
             | ["override", "inspect", ..]
+            | ["wifi", "inspect", ..]
+            | ["network-access", "inspect", ..]
             | ["service", "logs", ..]
     )
 }
@@ -807,8 +814,18 @@ mod tests {
             ["sub", "copy-path"].as_slice(),
             ["backup", "export"].as_slice(),
             ["config-editor", "get", "sing-box"].as_slice(),
+            ["config-editor", "path", "sing-box"].as_slice(),
             ["config-editor", "repo", "get"].as_slice(),
             ["config-editor", "repo", "get-json"].as_slice(),
+            ["sub", "user-agent", "get"].as_slice(),
+            ["--json", "sub", "user-agent", "get"].as_slice(),
+            ["sub", "inspect"].as_slice(),
+            ["--json", "sub", "inspect"].as_slice(),
+            ["wifi", "inspect"].as_slice(),
+            ["network-access", "inspect"].as_slice(),
+            ["__proc-stat"].as_slice(),
+            ["__proc-cmdline", "/proc", "1"].as_slice(),
+            ["__module-update-worker", "id"].as_slice(),
             ["override", "inspect"].as_slice(),
             ["service", "logs"].as_slice(),
             ["mcp", "logs"].as_slice(),
