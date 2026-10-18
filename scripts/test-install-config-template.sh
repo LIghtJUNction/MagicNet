@@ -211,6 +211,23 @@ printf '%s\\n' checked >"$MODPATH/core-called"
                 self.run_helper(shell)
                 self.assertEqual(self.active.read_bytes(), template)
 
+    def test_raw_archive_with_busybox_unzip(self):
+        # BusyBox unzip -p returns success but prints nothing if a ZIP entry
+        # does not exist. A raw package must not be mistaken for components.
+        busybox = shutil.which('busybox')
+        if not busybox:
+            self.skipTest('BusyBox not available')
+        tools = self.root / 'busybox-unzip'
+        tools.mkdir()
+        unzip = tools / 'unzip'
+        unzip.write_text('#!/bin/sh\\nexec "' + busybox + '" unzip "$@"\\n')
+        unzip.chmod(0o755)
+        env = {'PATH': str(tools) + os.pathsep + os.environ.get('PATH', '')}
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.run_helper(shell, extra_env=env)
+                self.assertEqual(self.active.read_bytes(), template)
+
     def test_core_archive_uses_verified_installed_rules(self):
         rules = self.config / 'rules'
         rules.mkdir()
