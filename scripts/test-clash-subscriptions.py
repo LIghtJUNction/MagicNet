@@ -118,6 +118,96 @@ magicnet_singbox_subscription_filter_file() {{ printf '/dev/null\\n'; }}
         invalid = self.file('invalid.json', '{"outbounds":[{"type":"direct","tag":"direct"}]}')
         self.convert([valid, invalid], converter, success=False)
 
+    def reality_fixture(self):
+        # The source has ten usable nodes plus ten well-formed notice rows.
+        # Names and endpoints are synthetic; no provider credentials are used.
+        names = [f'reality-{i}' for i in range(10)] + [
+            '剩余流量：100GB', '到期：2099-01-01', '入口公告', '客服说明',
+            '使用须知', '线路说明', '节点提示', '群组入口', '维护通知', '服务公告',
+        ]
+        nodes = [
+            {'type': 'vless', 'tag': name, 'server': f'192.0.2.{i + 1}',
+             'server_port': 443, 'uuid': '00000000-0000-4000-8000-000000000001',
+             'flow': 'xtls-rprx-vision',
+             'tls': {'enabled': True, 'server_name': 'tls.example.invalid',
+                     'utls': {'enabled': True, 'fingerprint': 'chrome'},
+                     'reality': {'enabled': True,
+                                 'public_key': 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+                                 'short_id': '0123456789abcdef'}}}
+            for i, name in enumerate(names)
+        ]
+        content = 'proxies:\n' + ''.join(
+            f'  - name: {json.dumps(node["tag"], ensure_ascii=False)}\n'
+            f'    type: vless\n    server: {node["server"]}\n    port: 443\n'
+            f'    uuid: {node["uuid"]}\n    flow: xtls-rprx-vision\n'
+            '    tls: true\n    servername: tls.example.invalid\n'
+            '    client-fingerprint: chrome\n    reality-opts:\n'
+            '      public-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n'
+            '      short-id: 0123456789abcdef\n'
+            for node in nodes
+        )
+        filters = self.file('notice-filters.txt', '\n'.join(names[10:]) + '\n')
+        self.prefix += f"magicnet_singbox_subscription_filter_file() {{ printf '%s\\n' {shlex.quote(str(filters))}; }}\n"
+        return content, nodes
+
+    def converter_output(self, nodes):
+        output = self.file('converter-output.json', json.dumps({'outbounds': nodes}))
+        converter = self.file('converter', '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift;; esac; shift; done\n'
+                              f'cp {shlex.quote(str(output))} "$out"\n')
+        converter.chmod(0o700)
+        return converter
+
+    def test_notice_rows_do_not_make_complete_reality_source_incomplete(self):
+        content, expected = self.reality_fixture()
+        nodes, status = self.native_update(content, converter=self.converter_output(expected))
+        self.assertIsNotNone(nodes, status)
+        imported = [node for node in nodes if node.get('server')]
+        self.assertEqual(imported, expected[:10])
+        self.assertEqual((self.root / 'native-counts').read_text(), '10 10\n')
+
+    def test_lost_reality_node_cannot_be_hidden_by_converter_padding(self):
+        content, expected = self.reality_fixture()
+        padding = [
+            ('missing', None),
+            ('duplicate tag', dict(expected[0])),
+            ('reserved tag', {**expected[0], 'tag': 'proxy'}),
+            ('non-proxy', {'type': 'direct', 'tag': 'extra-direct'}),
+            ('invalid protocol fields', {**expected[9], 'uuid': ''}),
+        ]
+        for name, extra in padding:
+            with self.subTest(padding=name):
+                output = expected[:9] + expected[10:] + ([] if extra is None else [extra])
+                nodes, status = self.native_update(content, converter=self.converter_output(output))
+                self.assertTrue(nodes is None, 'incomplete converter output reached configuration staging')
+                self.assertIn('convert failed incomplete_conversion', status)
+
+    @unittest.skipUnless(CONVERTER, 'real converter is exercised by the evidence job')
+    def test_real_reality_source_with_notice_rows(self):
+        content, expected = self.reality_fixture()
+        nodes, status = self.native_update(content, converter=CONVERTER)
+        self.assertIsNotNone(nodes, status)
+        imported = [node for node in nodes if node.get('server')]
+        self.assertEqual([node['tag'] for node in imported], [node['tag'] for node in expected[:10]])
+        for node in imported:
+            self.assertEqual(node['tls'], expected[0]['tls'])
+            self.assertEqual(node['flow'], 'xtls-rprx-vision')
+        self.assertEqual((self.root / 'native-counts').read_text(), '10 10\n')
+
+    @unittest.skipUnless(CONVERTER, 'real converter is exercised by the evidence job')
+    def test_real_converter_preserves_repeated_source_names(self):
+        content, expected = self.reality_fixture()
+        # The packaged converter gives repeated source names distinct tags.
+        # Validate those results before name filters remove the notice rows.
+        content = content.replace('name: "reality-1"', 'name: "reality-0"')
+        content = content.replace('name: "客服说明"', 'name: "入口公告"')
+        nodes, status = self.native_update(content, converter=CONVERTER)
+        self.assertIsNotNone(nodes, status)
+        imported = [node for node in nodes if node.get('server')]
+        self.assertEqual(len(imported), 10)
+        self.assertEqual(len({node['tag'] for node in imported}), 10)
+        self.assertEqual([node['server'] for node in imported], [node['server'] for node in expected[:10]])
+        self.assertEqual((self.root / 'native-counts').read_text(), '10 10\n')
+
     def native_update(self, content, converter=False):
         source = self.file('native-source', content)
         captured = self.root / 'candidate-outbounds.json'
@@ -136,6 +226,8 @@ magicnet_singbox_build_outbounds_with_proxylink() {
   printf '1 0\\n'
 }
 """ if converter else ''
+        if isinstance(converter, Path):
+            converter_control = f"magicnet_singbox_proxylink_bin() {{ printf '%s\\n' {shlex.quote(str(converter))}; }}\n"
         if converter == 'failed':
             converter_control = '''
 magicnet_singbox_proxylink_bin() { printf '/fixture-converter\\n'; }
@@ -156,6 +248,7 @@ magicnet_singbox_fetch_subscription() {{
 # Capture the real native result before any config install or core restart.
 magicnet_singbox_update_config_with_nodes() {{
   cp "$1" {shlex.quote(str(captured))}
+  printf '%s %s\\n' "$_imported" "$_skipped" >{shlex.quote(str(self.root / "native-counts"))}
   return 1
 }}
 MAGICNET_PROXYLINK_ENABLED={int(bool(converter))}

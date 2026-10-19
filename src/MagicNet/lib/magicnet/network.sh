@@ -546,13 +546,6 @@ magicnet_xtables_delete_rule() (
     return 1
 )
 
-magicnet_dns_capture_delete_jump() (
-    _dns_capture_delete_cmd="$1"
-    _dns_capture_delete_table="$3"
-    shift 3
-    magicnet_xtables_delete_rule "$_dns_capture_delete_cmd" "$_dns_capture_delete_table" "$@"
-)
-
 magicnet_dns_capture_cleanup_family() (
     _dns_capture_family="$1"
     _dns_capture_probe_rc=0

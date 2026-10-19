@@ -1107,15 +1107,6 @@ fn poll_command_pipes(
     Ok(())
 }
 
-/// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
-/// module-owned state so symlink swaps cannot redirect privileged reads.
-#[allow(dead_code)]
-pub(crate) fn clean_lines(path: PathBuf) -> Vec<String> {
-    fs::read_to_string(path)
-        .map(|text| filter_clean_lines(&text))
-        .unwrap_or_default()
-}
-
 fn filter_clean_lines(text: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
@@ -1125,9 +1116,9 @@ fn filter_clean_lines(text: &str) -> Vec<String> {
 }
 
 /// Reads a text file through the same module-root fd boundary used by the
-/// writers. Missing or malformed ordinary list files retain `clean_lines`'
-/// empty-list semantics, while symlinks, nonregular files, and hard links are
-/// rejected instead of being silently followed.
+/// writers. Missing or malformed ordinary list files yield an empty list,
+/// while symlinks, nonregular files, and hard links are rejected instead of
+/// being silently followed.
 pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<String>, String> {
     let target = split_module_relative_file(relative)?;
     let directory = open_module_directory(app, &target.directory)?;
@@ -1161,13 +1152,6 @@ pub(crate) fn clean_module_lines_bounded(
         return Err("configuration exceeds the read limit".to_string());
     }
     Ok(filter_clean_lines(&text))
-}
-
-/// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
-/// [`first_clean_module_line`] for anything under the module root.
-#[allow(dead_code)]
-pub(crate) fn first_clean_line(path: PathBuf) -> String {
-    clean_lines(path).into_iter().next().unwrap_or_default()
 }
 
 pub(crate) fn first_clean_module_line(app: &App, relative: &Path) -> String {

@@ -250,7 +250,10 @@ magicnet_singbox_build_outbounds_file_with_jq() (
 magicnet_singbox_count_valid_outbounds_nodes() {
     _nodes_json="$1"
     command -v jq >/dev/null 2>&1 || return 1
-    jq -n -r --slurpfile nodes "$_nodes_json" '
+    # Completeness compares against native extraction before notice-name
+    # filtering. Keep protocol validation, reserved-tag rejection and dedupe
+    # in both modes so invalid rows cannot stand in for lost real nodes.
+    jq -n -r --slurpfile nodes "$_nodes_json" --argjson include_info_tags "${2:-false}" '
       def normalize_tag:
         if type == "string"
         then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
@@ -294,7 +297,7 @@ magicnet_singbox_count_valid_outbounds_nodes() {
         | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
             valid_proxy_node
-            and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
+            and ($include_info_tags or (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not))
           ))
         | reduce .[] as $node
             ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)
@@ -644,6 +647,9 @@ magicnet_singbox_pid_live() (
     '' | *[!0-9]* | 0) return 1 ;;
     esac
     _live_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _live_proc_root="$(magicnet_effective_proc_root "$_live_proc_root")"
+    fi
     _live_proc_dir="$_live_proc_root/$_live_pid"
     [ -d "$_live_proc_dir" ] || {
         unset _live_pid _live_proc_root _live_proc_dir
@@ -670,6 +676,9 @@ magicnet_singbox_pids_to_file() (
     chmod 600 "$_singbox_output" 2>/dev/null || return 2
     : >"$_singbox_output" || return 2
     _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _singbox_proc_root="$(magicnet_effective_proc_root "$_singbox_proc_root")"
+    fi
     _singbox_candidates=$(magicnet_proc_query_temp_create) || return 2
     _singbox_found=0
 
@@ -778,6 +787,9 @@ magicnet_singbox_pid_owned() (
     [ -x "${MODDIR}/bin/sing-box" ] || return 2
     _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 2
     _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if command -v magicnet_effective_proc_root >/dev/null 2>&1; then
+        _owned_proc_root="$(magicnet_effective_proc_root "$_owned_proc_root")"
+    fi
     _owned_proc_dir="$_owned_proc_root/$_owned_pid"
     _owned_comm="$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root")" || {
         [ -d "$_owned_proc_dir" ] && return 2

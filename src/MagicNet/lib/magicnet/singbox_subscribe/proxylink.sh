@@ -159,7 +159,7 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     [ "$_source_count" -gt 0 ] || return 1
     _raw_count=$("$_proxylink_jq" 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
     [ "${_raw_count:-0}" -gt 0 ] || return 1
-    _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
+    _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds" true) || return 1
     if [ "${_expected_count:-0}" -gt 0 ] &&
         [ "${_pre_filter_valid_count:-0}" -lt "${_expected_count:-0}" ]; then
         return 1

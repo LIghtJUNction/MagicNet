@@ -70,4 +70,14 @@ for target in "$WORK/cgroup-v2/cgroup.procs" "$WORK/memcg/apps/tasks" "$WORK/cpu
     fi
 done
 
+: >"$WORK/cgroup-v2/cgroup.procs"
+MAGICNET_PROCESS_CGROUP_ROOTS="$WORK/cgroup-v2:$WORK/memcg/apps:$WORK/cpuset"
+export MAGICNET_PROCESS_CGROUP_ROOTS MAGICNET_TEST_FORCE_ANDROID=1
+magicnet_detach_pid_from_app_cgroup 123 || true
+if [ -s "$WORK/cgroup-v2/cgroup.procs" ]; then
+    printf 'Android runtime honored a foreign MAGICNET_PROCESS_CGROUP_ROOTS\n' >&2
+    exit 1
+fi
+unset MAGICNET_TEST_FORCE_ANDROID
+
 printf 'process cgroup detach test passed\n'

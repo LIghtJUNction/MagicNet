@@ -321,14 +321,22 @@ magicnet_hotspot_ipv6_exempt() (
         '
         ;;
     cleanup)
-        _attempt=0
-        while :; do
-            _rc=0
-            magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
-            case "$_rc" in 0) ;; 1) break ;; *) return 2 ;; esac
-            [ "$_attempt" -lt 8 ] || return 1
-            magicnet_ip6tables_cmd -t mangle -D "$@" >/dev/null 2>&1 || return 1
-            _attempt=$((_attempt + 1))
+        # The journal predates the all-protocol exemption. Remove both exact
+        # module-owned tuples so upgrading cannot strand its TCP-only rule.
+        # Extra selectors or a different interface/comment remain untouched.
+        for _protocol in all tcp; do
+            set -- PREROUTING -i "$_iface"
+            [ "$_protocol" != tcp ] || set -- "$@" -p tcp
+            set -- "$@" -m comment --comment magicnet-hotspot-ipv6-exempt -j ACCEPT
+            _attempt=0
+            while :; do
+                _rc=0
+                magicnet_ip6tables_cmd -t mangle -C "$@" >/dev/null 2>&1 || _rc=$?
+                case "$_rc" in 0) ;; 1) break ;; *) return 2 ;; esac
+                [ "$_attempt" -lt 8 ] || return 1
+                magicnet_ip6tables_cmd -t mangle -D "$@" >/dev/null 2>&1 || return 1
+                _attempt=$((_attempt + 1))
+            done
         done ;;
     *) return 1 ;;
     esac

@@ -20,6 +20,9 @@ magicnet_singbox_runtime_memory_limit() {
     fi
 
     _singbox_meminfo="${MAGICNET_MEMINFO_PATH:-/proc/meminfo}"
+    if command -v magicnet_effective_meminfo_path >/dev/null 2>&1; then
+        _singbox_meminfo="$(magicnet_effective_meminfo_path "$_singbox_meminfo")"
+    fi
     _singbox_mem_total_kib="$(
         awk '/^MemTotal:/ { print $2; exit }' "$_singbox_meminfo" 2>/dev/null || true
     )"
@@ -214,6 +217,34 @@ magicnet_rollback_failed_start_unlocked() (
     magicnet_lifecycle_after_stop
 )
 
+# The launcher can observe a live core before its TUN/table is ready. Retry
+# only capture's read-only not-ready precondition; ownership/query failures
+# stay fatal. Fifty probes allow at most 49 sleeps of 0.2s, in addition to the
+# existing probe costs. This budget never relaunches or relaxes ownership checks.
+magicnet_startup_capture_kernel_routes() (
+    _startup_route_attempt=1
+    while :; do
+        if magicnet_kernel_route_state_capture; then
+            return 0
+        else
+            _startup_route_rc=$?
+        fi
+        [ "$_startup_route_rc" -eq 1 ] || return 2
+        # The core may have exited or become indeterminate during the probe.
+        # Neither condition permits waiting on a possibly stale TUN/table.
+        if magicnet_kernel_running; then
+            :
+        else
+            _startup_route_rc=$?
+            [ "$_startup_route_rc" -eq 1 ] && return 1
+            return 2
+        fi
+        [ "$_startup_route_attempt" -lt 50 ] || return 1
+        sleep 0.2 || return 2
+        _startup_route_attempt=$((_startup_route_attempt + 1))
+    done
+)
+
 magicnet_start_singbox_ready_unlocked() {
     if magicnet_start_singbox_unlocked; then
         :
@@ -227,7 +258,7 @@ magicnet_start_singbox_ready_unlocked() {
     # Capture the core's own rules BEFORE hotspot/DNS initialization. A failure
     # in those later phases must not leave only a prepared, unattributed ledger.
     if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
-        if ! magicnet_startup_step route-capture magicnet_kernel_route_state_capture; then
+        if ! magicnet_startup_step route-capture magicnet_startup_capture_kernel_routes; then
             magicnet_kernel_route_report_result 2 || true
             magicnet_warn "Route ownership could not be verified; rolling back startup."
             magicnet_rollback_failed_start_unlocked || return 2

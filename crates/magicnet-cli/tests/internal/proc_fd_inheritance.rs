@@ -1,6 +1,5 @@
 use super::*;
 use std::os::unix::fs::OpenOptionsExt;
-use std::sync::mpsc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -59,14 +58,9 @@ fn blocked_proc_worker_releases_unrelated_descriptors() {
     let fifo_c = cstring_from_os_str(fifo.as_os_str(), "fixture").unwrap();
     assert_eq!(unsafe { libc::mkfifo(fifo_c.as_ptr(), 0o600) }, 0);
 
-    let (sender, receiver) = mpsc::channel();
     let reader = std::thread::spawn(move || {
-        sender
-            .send(unsafe { libc::syscall(libc::SYS_gettid) })
-            .unwrap();
         read_proc_file_bounded_with_timeout(&fifo, 32, Duration::from_secs(10))
     });
-    let tid = receiver.recv_timeout(Duration::from_secs(2)).unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     // A nonblocking writer succeeds only after the production fork worker
     // opens its FIFO. Hold it empty so the worker stays blocked during checks.
@@ -85,13 +79,8 @@ fn blocked_proc_worker_releases_unrelated_descriptors() {
             Err(error) => panic!("worker did not open its fixture: {error}"),
         }
     };
-    let children = fs::read_to_string(format!("/proc/self/task/{tid}/children")).unwrap();
-    let pids: Vec<_> = children.split_whitespace().collect();
-    assert_eq!(pids.len(), 1, "expected the production proc-reader child");
-    let inherited: Vec<_> = fs::read_dir(format!("/proc/{}/fd", pids[0]))
-        .unwrap()
-        .map(|entry| fs::read_link(entry.unwrap().path()).unwrap())
-        .collect();
+    // Verify the effects while the real worker remains blocked. This does
+    // not depend on the optional CONFIG_PROC_CHILDREN procfs interface.
     drop(writer);
     drop(lock);
     let executable_result = Command::new(&binary).status();
@@ -106,14 +95,6 @@ fn blocked_proc_worker_releases_unrelated_descriptors() {
     drop(guard);
     let result = reader.join().unwrap();
     assert_eq!(result.unwrap(), b"");
-    assert!(
-        !inherited.contains(&binary),
-        "proc worker retained an executable writer"
-    );
-    assert!(
-        !inherited.contains(&lock_path),
-        "proc worker retained an unrelated lock"
-    );
     assert!(
         executable_result.unwrap().success(),
         "closed executable remained busy"

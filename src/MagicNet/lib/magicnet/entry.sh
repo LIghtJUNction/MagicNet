@@ -18,6 +18,11 @@ unset MAGICNET_SUB_FAULT MAGICNET_SUB_FAULT_EXIT137 MAGICNET_SUB_FAULT_TERM
 unset MAGICNET_SUB_REFRESH_OWNER_WRITE_FAIL MAGICNET_SUB_REFRESH_PROC_ROOT
 unset MAGICNET_SUB_DEFER_FSWATCH_RESTORE MAGICNET_SUB_FSWATCH_RESTORE_PENDING
 unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH
+# Inherited proc/cgroup/meminfo/BusyBox overrides can redirect PID ownership
+# or execute a caller-supplied binary. Host fixtures set these after bootstrap.
+unset MAGICNET_SINGBOX_PROC_ROOT MAGICNET_PROC_ROOT MAGICNET_PROCESS_CGROUP_ROOTS
+unset MAGICNET_MEMINFO_PATH
+unset KAM_FSWATCH_BUSYBOX_BIN KAM_LAUNCH_BUSYBOX
 # Kamfw re-exports KAM_HOME from the resolved module root. A caller-injected
 # value must not redirect supervisor pidfiles or watchdog state.
 unset KAM_HOME
