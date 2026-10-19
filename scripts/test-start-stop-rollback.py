@@ -19,10 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StartStopRollback(unittest.TestCase):
-    def run_case(self, code: str, expected: int = 0):
+    def run_case(self, code: str, expected: int = 0, *, real_capture: bool = False):
         with tempfile.TemporaryDirectory(prefix="magicnet-rollback-") as work:
             mod = Path(work) / "module"
             (mod / ".state/hotspot").mkdir(parents=True)
+            capture_stub = "" if real_capture else r'''
+magicnet_kernel_route_state_capture() {
+    event capture
+    [ ! -e "$MODDIR/capture-fails" ] || return 2
+    : >"$MODDIR/route-owned"
+}
+'''
             prefix = f'''
 set -eu
 MODDIR={shlex.quote(str(mod))}
@@ -43,11 +50,7 @@ magicnet_start_singbox_unlocked() {{
     event start
     : >"$MODDIR/core"
 }}
-magicnet_kernel_route_state_capture() {{
-    event capture
-    [ ! -e "$MODDIR/capture-fails" ] || return 2
-    : >"$MODDIR/route-owned"
-}}
+{capture_stub}
 magicnet_after_kernel_start_unlocked() {{
     event post-start
     : >"$MODDIR/dns"
@@ -95,6 +98,218 @@ printf '1\\n' >"$MODDIR/offload"
             events = (mod / "events").read_text()
             self.assertEqual(cp.returncode, expected, cp.stdout + cp.stderr + events)
             return events
+
+    def run_readiness_case(self, code: str):
+        # Exercise the shipped readiness probe, capture, and atomic ledger
+        # writer. Only external process/interface/netlink effects are modeled.
+        # Advancing those effects at sleep makes the startup race deterministic.
+        return self.run_case(r'''
+magicnet_transparent_mode() { printf 'tun\n'; }
+magicnet_iface_exists() {
+    event iface-probe
+    [ "$1" = magicnet0 ] && [ ! -e "$MODDIR/tun-pending" ]
+}
+on_core_launch() { :; }
+on_route_probe() { :; }
+on_wait() { :; }
+ip() {
+    case "$*" in
+        'route show table 2022')
+            event route-probe
+            on_route_probe
+            [ ! -e "$MODDIR/query-fails" ] || return 2
+            [ ! -e "$MODDIR/route-pending" ] || return 0
+            printf 'default dev magicnet0 scope link\n'
+            ;;
+        'rule show')
+            printf '9002: from 192.0.2.0/24 lookup 2022\n'
+            if [ -e "$MODDIR/core" ]; then
+                printf '9000: from all fwmark 0x200000 lookup 2022\n'
+            fi
+            ;;
+        '-6 rule show') : ;;
+        *) event "unexpected-ip:$*"; return 2 ;;
+    esac
+}
+mv() {
+    if [ "$#" -eq 3 ] && [ "$1" = -f ] &&
+        [ "$3" = "$(magicnet_kernel_route_state_file)" ]; then
+        event "ledger:$(sed -n 's/^phase=//p' "$2")"
+    fi
+    command mv "$@"
+}
+magicnet_start_singbox_unlocked() {
+    event start
+    magicnet_kernel_route_state_begin || return $?
+    : >"$MODDIR/core"
+    on_core_launch
+}
+magicnet_after_kernel_start_unlocked() {
+    event post-start
+    : >"$MODDIR/dns"
+    : >"$MODDIR/guard"
+    : >"$MODDIR/hotspot"
+}
+magicnet_singbox_save_last_good() { event checkpoint; }
+magicnet_kernel_route_cleanup_after_stop() {
+    event route-clean
+    [ ! -e "$MODDIR/core" ] || return 2
+    rm -f "$(magicnet_kernel_route_state_file)"
+}
+sleep() {
+    event "wait:$*"
+    [ "$*" = 0.2 ] || return 81
+    # No ownership capture, DNS/hotspot installation, or relaunch while the
+    # original generation is alive but its TUN/table is still pending.
+    [ -e "$MODDIR/core" ] && [ ! -e "$MODDIR/unknown" ] || return 82
+    grep -Fqx 'phase=prepared' "$(magicnet_kernel_route_state_file)" || return 83
+    [ "$(grep -cx start "$MODDIR/events")" -eq 1 ] || return 84
+    for name in dns guard hotspot; do
+        [ ! -e "$MODDIR/$name" ] || return 85
+    done
+    on_wait
+}
+''' + code, real_capture=True)
+
+    def test_delayed_tun_and_table_capture_once_before_network_setup(self):
+        events = self.run_readiness_case(r'''
+: >"$MODDIR/tun-pending"
+: >"$MODDIR/route-pending"
+on_wait() {
+    if [ -e "$MODDIR/tun-pending" ]; then
+        rm "$MODDIR/tun-pending"
+    else
+        rm "$MODDIR/route-pending"
+    fi
+}
+magicnet_start_singbox_ready_unlocked
+state="$(magicnet_kernel_route_state_file)"
+grep -Fqx 'phase=active' "$state"
+grep -Fqx 'rule4=9000: from all fwmark 0x200000 lookup 2022' "$state"
+! grep -Fq 'from 192.0.2.0/24' "$state"
+for name in core dns guard hotspot; do [ -e "$MODDIR/$name" ] || exit 20; done
+''').splitlines()
+        self.assertEqual(events.count("start"), 1)
+        self.assertEqual(events.count("wait:0.2"), 2)
+        self.assertEqual(events.count("ledger:prepared"), 1)
+        self.assertEqual(events.count("ledger:active"), 1)
+        self.assertEqual(events.count("post-start"), 1)
+        self.assertEqual(events.count("checkpoint"), 1)
+        self.assertLess(events.index("ledger:active"), events.index("post-start"))
+        self.assertNotIn("stop", events)
+        self.assertNotIn("route-clean", events)
+
+    def test_never_ready_is_bounded_and_rolls_back_without_network_setup(self):
+        for pending in ("tun-pending", "route-pending"):
+            with self.subTest(pending=pending):
+                events = self.run_readiness_case(f'''
+: >"$MODDIR/{pending}"
+rc=0
+magicnet_start_singbox_ready_unlocked || rc=$?
+[ "$rc" = 2 ] || exit 20
+[ ! -e "$MODDIR/core" ] || exit 21
+[ ! -e "$(magicnet_kernel_route_state_file)" ] || exit 22
+''').splitlines()
+                self.assertEqual(events.count("iface-probe"), 50)
+                self.assertEqual(events.count("wait:0.2"), 49)
+                self.assertEqual(events.count("start"), 1)
+                self.assertEqual(events.count("stop"), 1)
+                self.assertNotIn("ledger:active", events)
+                self.assertNotIn("post-start", events)
+
+    def test_last_readiness_attempt_can_succeed_without_extra_wait(self):
+        events = self.run_readiness_case(r'''
+: >"$MODDIR/route-pending"
+on_wait() {
+    if [ "$(grep -cx 'wait:0.2' "$MODDIR/events")" -eq 49 ]; then
+        rm "$MODDIR/route-pending"
+    fi
+}
+magicnet_start_singbox_ready_unlocked
+''').splitlines()
+        self.assertEqual(events.count("iface-probe"), 50)
+        self.assertEqual(events.count("wait:0.2"), 49)
+        self.assertEqual(events.count("start"), 1)
+        self.assertEqual(events.count("ledger:active"), 1)
+        self.assertEqual(events.count("post-start"), 1)
+        self.assertNotIn("stop", events)
+
+    def test_route_query_or_ledger_error_is_not_retried(self):
+        for failure in (': >"$MODDIR/query-fails"',
+                        'rm "$(magicnet_kernel_route_state_file)"'):
+            with self.subTest(failure=failure):
+                events = self.run_readiness_case(f'''
+on_core_launch() {{ {failure}; }}
+rc=0
+magicnet_start_singbox_ready_unlocked || rc=$?
+[ "$rc" = 2 ] || exit 20
+[ ! -e "$MODDIR/core" ] || exit 21
+''').splitlines()
+                self.assertEqual(events.count("iface-probe"), 1)
+                self.assertEqual(events.count("route-probe"), 1)
+                self.assertEqual(events.count("stop"), 1)
+                self.assertIn("warn:Startup step failed: stage=route-capture exit=2", events)
+                self.assertNotIn("wait:0.2", events)
+                self.assertNotIn("ledger:active", events)
+                self.assertNotIn("post-start", events)
+
+    def test_core_exit_or_unknown_after_pending_probe_does_not_wait(self):
+        for outcome, change, expected_rc in (
+                ("dead", 'rm "$MODDIR/core"', 1),
+                ("unknown", ': >"$MODDIR/unknown"', 2)):
+            with self.subTest(outcome=outcome):
+                events = self.run_readiness_case(f'''
+: >"$MODDIR/route-pending"
+# The readiness probe observed a live core before invoking ip. Change its
+# identity here to require a fresh liveness check before any retry/sleep.
+on_route_probe() {{ {change}; }}
+rc=0
+magicnet_start_singbox_ready_unlocked || rc=$?
+[ "$rc" = 2 ] || exit 20
+if [ -e "$MODDIR/unknown" ]; then
+    [ -e "$MODDIR/core" ] || exit 21
+else
+    [ ! -e "$(magicnet_kernel_route_state_file)" ] || exit 22
+fi
+''').splitlines()
+                self.assertEqual(events.count("route-probe"), 1)
+                self.assertIn(
+                    f"warn:Startup step failed: stage=route-capture exit={expected_rc}", events)
+                self.assertNotIn("wait:0.2", events)
+                self.assertNotIn("stop", events)
+                self.assertNotIn("ledger:active", events)
+                self.assertNotIn("post-start", events)
+
+    def test_sleep_failure_aborts_and_rolls_back(self):
+        events = self.run_readiness_case(r'''
+: >"$MODDIR/route-pending"
+on_wait() { return 1; }
+rc=0
+magicnet_start_singbox_ready_unlocked || rc=$?
+[ "$rc" = 2 ] || exit 20
+[ ! -e "$MODDIR/core" ] || exit 21
+''').splitlines()
+        self.assertEqual(events.count("wait:0.2"), 1)
+        self.assertEqual(events.count("iface-probe"), 1)
+        self.assertEqual(events.count("stop"), 1)
+        self.assertIn("warn:Startup step failed: stage=route-capture exit=2", events)
+        self.assertNotIn("ledger:active", events)
+        self.assertNotIn("post-start", events)
+
+    def test_ebpf_does_not_wait_for_tun_or_capture_a_route_ledger(self):
+        events = self.run_readiness_case(r'''
+magicnet_transparent_mode() { printf 'ebpf\n'; }
+: >"$MODDIR/tun-pending"
+: >"$MODDIR/route-pending"
+magicnet_start_singbox_ready_unlocked
+[ ! -e "$(magicnet_kernel_route_state_file)" ] || exit 20
+''').splitlines()
+        self.assertEqual(events.count("start"), 1)
+        self.assertEqual(events.count("post-start"), 1)
+        self.assertNotIn("iface-probe", events)
+        self.assertNotIn("wait:0.2", events)
+        self.assertNotIn("ledger:active", events)
+        self.assertNotIn("stop", events)
 
     def test_stop_finalization_remains_inside_the_locked_service_operation(self):
         # Contract check complements the executed shell failure tests below.
