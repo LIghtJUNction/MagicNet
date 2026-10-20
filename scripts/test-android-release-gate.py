@@ -29,7 +29,7 @@ class AndroidReleaseGateTests(unittest.TestCase):
 
     def test_other_commits_branches_events_and_repositories_are_not_evidence(self):
         for key, value in (('head_sha', 'b'*40), ('head_branch', 'work'),
-                           ('event', 'pull_request'), ('head_repository', {'full_name': 'other/fork'})):
+                           ('event', 'pull_request'), ('event', 'workflow_dispatch'), ('head_repository', {'full_name': 'other/fork'})):
             self.assertIsNone(GATE.inspect_runs([RUN | {key: value}], SHA, REPO))
 
     def test_latest_failure_cannot_reuse_earlier_success(self):

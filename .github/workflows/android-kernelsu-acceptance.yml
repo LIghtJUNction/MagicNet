@@ -1,6 +1,7 @@
 name: Android KernelSU Acceptance
 
 on:
+  workflow_call:
   pull_request:
   merge_group:
   push:
@@ -73,6 +74,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install workflow test dependency
         run: |
@@ -119,6 +121,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: recursive
           fetch-depth: 1
