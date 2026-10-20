@@ -3,27 +3,28 @@ import { subscriptionSnapshot } from "../machine-fixtures.mjs";
 
 const pages = ["control", "subs", "tailscale", "apps", "block", "chain", "config", "webui", "health", "terminal", "output", "tools", "about"];
 for (const theme of ["light", "dark"]) {
-  test(`every shipped page has a usable layout: ${theme}`, async ({ page }, info) => {
-    // Native responses are display fixtures, not Android/KernelSU acceptance.
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    await page.addInitScript(({ theme, subscription }) => {
-      localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
-      localStorage.setItem("magicnet.webui.theme", theme);
-      window.ksu = { spawn(command, _args, _options, callbackName) {
-        setTimeout(() => {
-          const callback = window[callbackName];
-          let output = "";
-          if (command.includes("config-editor get sing-box")) output = JSON.stringify({ outbounds: [{ type: "direct", tag: "direct" }], route: { final: "direct" } });
-          else if (command.includes("--json sub inspect")) output = subscription;
-          if (output) callback.stdout.emit("data", output);
-          callback.emit("exit", 0);
-        }, 0);
-      } };
-    }, { theme, subscription: subscriptionSnapshot() });
-    await page.goto("/", { waitUntil: "networkidle" });
-    for (const id of pages) {
-      await page.evaluate((id) => { location.hash = "/" + id; }, id);
+  for (const id of pages) {
+    test(`${id} has a usable layout: ${theme}`, async ({ page }, info) => {
+      // Isolate each screenshot from cached pages and earlier navigation state.
+      // Cross-page draft and navigation behavior have separate interaction tests.
+      // Native responses are display fixtures, not Android/KernelSU acceptance.
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.addInitScript(({ theme, subscription }) => {
+        localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
+        localStorage.setItem("magicnet.webui.theme", theme);
+        window.ksu = { spawn(command, _args, _options, callbackName) {
+          setTimeout(() => {
+            const callback = window[callbackName];
+            let output = "";
+            if (command.includes("config-editor get sing-box")) output = JSON.stringify({ outbounds: [{ type: "direct", tag: "direct" }], route: { final: "direct" } });
+            else if (command.includes("--json sub inspect")) output = subscription;
+            if (output) callback.stdout.emit("data", output);
+            callback.emit("exit", 0);
+          }, 0);
+        } };
+      }, { theme, subscription: subscriptionSnapshot() });
+      await page.goto(`/#/${id}`, { waitUntil: "networkidle" });
       const surface = page.locator(`.page-surface[data-page="${id}"]`);
       await expect(surface).toBeVisible();
       await expect(surface.locator("h2").first()).toBeVisible();
@@ -38,9 +39,9 @@ for (const theme of ["light", "dark"]) {
       });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), id).toBe(true);
       await page.screenshot({ path: info.outputPath(`${theme}-${id}.png`), fullPage: true, timeout: 20_000 });
-    }
-    expect(errors).toEqual([]);
-  });
+      expect(errors).toEqual([]);
+    });
+  }
 }
 
 test("advanced tools retain their native disclosure and keyboard access", async ({ page }) => {
