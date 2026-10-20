@@ -39,6 +39,71 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('--draft', publish['run'])
         self.assertLess(publish['run'].index('gh release create'), publish['run'].index('gh release edit'))
 
+    def test_dispatched_release_uses_same_commit_acceptance_dependency(self):
+        flow = yaml.safe_load((ROOT / '.github/workflows/exec.yml').read_text())
+        android = yaml.safe_load((ROOT / '.github/workflows/android-kernelsu-acceptance.yml').read_text())
+        call = flow['jobs']['release-android']
+        self.assertEqual(call['uses'], './.github/workflows/android-kernelsu-acceptance.yml')
+        self.assertEqual(call['permissions'], {'contents': 'read'})
+        self.assertNotIn('secrets', call)
+        self.assertNotIn('continue-on-error', call)
+        self.assertIn('workflow_call', android.get('on', android.get(True)))
+        for guard in ("github.event_name == 'workflow_dispatch'", "github.ref == 'refs/heads/main'",
+                      "inputs.release == true", "inputs.bump == 'none'",
+                      "inputs.expected_sha == github.sha"):
+            self.assertIn(guard, call['if'])
+        for job in ('harness', 'android-kernelsu'):
+            checkout = android['jobs'][job]['steps'][0]
+            self.assertEqual(checkout['with']['ref'], '${{ github.sha }}')
+        gate = android['jobs']['simulation-gate']
+        self.assertEqual(set(gate['needs']), {'harness', 'android-kernelsu'})
+        command = gate['steps'][0]['run']
+        for harness, device in (('success', 'success'), ('failure', 'success'),
+                                ('success', 'skipped'), ('cancelled', 'success')):
+            result = subprocess.run(['bash', '-e', '-c', command],
+                                    env=dict(os.environ, HARNESS_RESULT=harness, ANDROID_RESULT=device))
+            self.assertEqual(result.returncode == 0, harness == device == 'success')
+        build = flow['jobs']['build']
+        self.assertEqual(build['needs'], 'release-android')
+        self.assertIn('!cancelled()', build['if'])
+        self.assertIn("needs.release-android.result == 'success'", build['if'])
+        # Even a skipped dependency must never grant release permission.
+        verify = next(step for step in build['steps'] if step.get('id') == 'android_acceptance')
+        self.assertEqual(verify['env']['ANDROID_RESULT'], '${{ needs.release-android.result }}')
+        for status in ('success', 'skipped', 'failure', 'cancelled', ''):
+            for ref in ('refs/heads/main', 'refs/heads/other'):
+                result = subprocess.run(['bash', '-c', verify['run']], env=dict(
+                    os.environ, GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF=ref,
+                    ANDROID_RESULT=status))
+                self.assertEqual(result.returncode == 0,
+                                 status == 'success' and ref == 'refs/heads/main')
+
+    def test_bot_build_dispatch_binds_sha_and_rejects_moved_main(self):
+        flow = yaml.safe_load((ROOT / '.github/workflows/exec.yml').read_text())
+        steps = flow['jobs']['build']['steps']
+        verify = next(step for step in steps if step.get('name') == 'Verify dispatched commit')
+        validate = next(step for step in steps if step.get('name') == 'Validate release request')
+        self.assertLess(steps.index(verify), steps.index(validate))
+        self.assertEqual(verify['env']['EXPECTED_SHA'], '${{ inputs.expected_sha }}')
+        for expected in ('', 'a' * 40, 'b' * 40):
+            result = subprocess.run(['bash', '-c', verify['run']], capture_output=True,
+                                    env=dict(os.environ, EXPECTED_SHA=expected, GITHUB_SHA='a' * 40))
+            self.assertEqual(result.returncode == 0, expected != 'b' * 40)
+        command = flow['jobs']['version-bump']['steps'][-1]['run']
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / 'git').write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_SHA"\n')
+            (work / 'gh').write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            for path in work.iterdir():
+                path.chmod(0o755)
+            result = subprocess.run(['bash', '-c', command], capture_output=True, text=True,
+                                    env=dict(os.environ, PATH=tmp + ':' + os.environ['PATH'],
+                                             TEST_SHA='a' * 40, RELEASE_INPUT='true', PRERELEASE_INPUT='false'))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('expected_sha=' + 'a' * 40, result.stdout.splitlines())
+            self.assertIn('bump=none', result.stdout.splitlines())
+            self.assertIn('release=true', result.stdout.splitlines())
+
     def test_shared_suite_preserves_all_original_checks(self):
         script = (ROOT / 'scripts/quality-gate.sh').read_text()
         for command in ('cargo fmt', 'cargo clippy', 'cargo test',

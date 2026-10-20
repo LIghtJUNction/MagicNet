@@ -414,7 +414,7 @@ class WorkflowStructureTest(unittest.TestCase):
     def test_version_bump_pushes_directly_to_main_without_a_pr(self):
         text = (WORKFLOWS / "exec.yml").read_text()
         workflow = yaml.safe_load(text)
-        self.assertEqual(set(workflow["jobs"]), {"version-bump", "build"})
+        self.assertEqual(set(workflow["jobs"]), {"version-bump", "release-android", "build"})
         self.assertNotIn("RELEASE_TOKEN", text)
         version_job = workflow["jobs"]["version-bump"]
         self.assertNotIn("pull-requests", version_job["permissions"])

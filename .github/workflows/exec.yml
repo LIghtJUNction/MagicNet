@@ -3,6 +3,11 @@ name: Build Kam Module
 on:
   workflow_dispatch:
     inputs:
+      expected_sha:
+        description: Expected commit for a bot-dispatched version build (empty for manual builds)
+        required: false
+        type: string
+        default: ""
       force_tests:
         description: Ignore previous test results and run every check
         required: false
@@ -101,10 +106,21 @@ jobs:
           # when made with GITHUB_TOKEN, so dispatch the build against the
           # commit we just pushed instead of relying on the push event.
           gh workflow run exec.yml --ref main \
-            -f bump=none -f release="$RELEASE_INPUT" -f prerelease="$PRERELEASE_INPUT"
+            -f bump=none -f release="$RELEASE_INPUT" -f prerelease="$PRERELEASE_INPUT" \
+            -f expected_sha="$(git rev-parse HEAD)"
+
+  # A bot push does not start push workflows. Run the SAME acceptance workflow
+  # as a dependency of dispatched releases, at this run's immutable github.sha.
+  # No separate dispatch, new credential, or relaxed push-evidence filter.
+  release-android:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release == true && (inputs.bump == 'none' || inputs.bump == '') && (inputs.expected_sha == '' || inputs.expected_sha == github.sha) }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-kernelsu-acceptance.yml
 
   build:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
+    needs: release-android
+    if: ${{ !cancelled() && (needs.release-android.result == 'success' || needs.release-android.result == 'skipped') && (github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '') }}
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
@@ -123,6 +139,15 @@ jobs:
           persist-credentials: false
           submodules: recursive
           fetch-depth: 0
+
+      - name: Verify dispatched commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if [ -n "$EXPECTED_SHA" ] && [ "$EXPECTED_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::main moved after version preparation; refusing to build a different commit"
+            exit 1
+          fi
 
       - name: Validate release request
         env:
@@ -385,7 +410,18 @@ jobs:
         id: android_acceptance
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         timeout-minutes: 90
-        run: python3 scripts/require-android-acceptance.py
+        env:
+          ANDROID_RESULT: ${{ needs.release-android.result }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # GitHub supplies this dependency result, not a caller input. The
+            # local reusable workflow checks out this release's github.sha.
+            test "$GITHUB_REF" = refs/heads/main
+            test "$ANDROID_RESULT" = success
+          else
+            python3 scripts/require-android-acceptance.py
+          fi
 
       - name: Create GitHub release
         if: ${{ env.RELEASE_REQUESTED == '1' && steps.release_quality.outcome == 'success' && steps.android_acceptance.outcome == 'success' }}
