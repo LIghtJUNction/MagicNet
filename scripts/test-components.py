@@ -271,7 +271,7 @@ class PackageTests(unittest.TestCase):
 class GateTests(unittest.TestCase):
     def test_release_requires_same_checkout_quality_success(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/exec.yml").read_text())
-        self.assertEqual(set(workflow["jobs"]), {"version-bump", "build"})
+        self.assertEqual(set(workflow["jobs"]), {"version-bump", "release-android", "build"})
         version_steps = workflow["jobs"]["version-bump"]["steps"]
         self.assertFalse(any(s.get("name") == "Create GitHub release" for s in version_steps))
         steps = workflow["jobs"]["build"]["steps"]
