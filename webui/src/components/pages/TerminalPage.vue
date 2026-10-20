@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 import { ArrowDown, ArrowUp, Check, Copy, CornerDownLeft, Play, RotateCcw, Terminal, Trash2 } from "lucide-vue-next";
 import { t } from "@/i18n";
-import { compactCommand, compactOutput, execFailed } from "@/utils";
+import { compactCommand, compactOutput, copyText, execFailed } from "@/utils";
 import Button from "@/components/ui/Button.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
@@ -38,6 +38,7 @@ const executing = ref(false);
 const executedList = ref<ExecutedEntry[]>([]);
 const copiedAll = ref(false);
 const copiedId = ref<string | null>(null);
+const clipboardError = ref(false);
 const clearingHistory = ref(false);
 const historyClearFailed = ref(false);
 let sessionRevision = 0;
@@ -83,26 +84,28 @@ async function copyAllOutput(): Promise<void> {
   const fullText = executedList.value
     .map((item) => `$ ${item.command}\n${item.output}`)
     .join("\n\n");
-  try {
-    await navigator.clipboard.writeText(fullText);
-    copiedAll.value = true;
+  const revision = sessionRevision;
+  const copied = await copyText(fullText);
+  if (revision !== sessionRevision) return;
+  copiedAll.value = copied;
+  clipboardError.value = !copied;
+  if (copied) {
     setTimeout(() => {
-      copiedAll.value = false;
+      if (revision === sessionRevision) copiedAll.value = false;
     }, 2000);
-  } catch {
-    /* ignore clipboard failure */
   }
 }
 
 async function copyEntryOutput(entry: ExecutedEntry): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(entry.output);
-    copiedId.value = entry.id;
+  const revision = sessionRevision;
+  const copied = await copyText(entry.output);
+  if (revision !== sessionRevision) return;
+  copiedId.value = copied ? entry.id : null;
+  clipboardError.value = !copied;
+  if (copied) {
     setTimeout(() => {
-      if (copiedId.value === entry.id) copiedId.value = null;
+      if (revision === sessionRevision && copiedId.value === entry.id) copiedId.value = null;
     }, 2000);
-  } catch {
-    /* ignore clipboard failure */
   }
 }
 
@@ -133,6 +136,7 @@ function resetSession(): void {
   executedList.value = [];
   copiedAll.value = false;
   copiedId.value = null;
+  clipboardError.value = false;
   historyClearFailed.value = false;
   // Keep execution admission locked until an already running command settles.
 }
@@ -306,6 +310,8 @@ watch(executedList, () => {
         </Button>
       </div>
     </PageHeader>
+
+    <p v-if="clipboardError" role="alert" class="text-sm text-[var(--mn-danger)]">{{ t("复制失败，请选择输出内容后手动复制。") }}</p>
 
     <section class="terminal-workspace" :aria-label="t('终端')">
       <header class="terminal-toolbar">

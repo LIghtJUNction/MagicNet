@@ -17,7 +17,7 @@ const helpersCode = helpers.statements.filter(n => !ts.isImportDeclaration(n)).m
 const guards = ts.createSourceFile("terminalGuard.ts", guardSource, ts.ScriptTarget.Latest, true);
 const guardCode = guards.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(guards).replace(/^export /, "")).join("\n");
 const page = ts.createSourceFile("TerminalPage.ts", pageSource.split('<script setup lang="ts">')[1].split("</script>")[0], ts.ScriptTarget.Latest, true);
-const pageNames = ["submitCommand", "runCommandDirect", "resetSession", "handleClearHistory"];
+const pageNames = ["submitCommand", "runCommandDirect", "resetSession", "handleClearHistory", "copyAllOutput", "copyEntryOutput"];
 const functions = page.statements.filter(n => ts.isFunctionDeclaration(n) && pageNames.includes(n.name?.text));
 assert.equal(functions.length, pageNames.length);
 const code = ts.transpileModule(`${utilsCode}\n${helpersCode}\n${guardCode}\n${functions.map(n => n.getText(page)).join("\n")}\nglobalThis.historyLimit = MAX_HISTORY_LENGTH; globalThis.commandLimit = MAX_HISTORY_COMMAND_LENGTH; globalThis.entryLimit = MAX_TERMINAL_ENTRIES;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -30,7 +30,9 @@ function fixture(options = {}) {
     t: (s, params = {}) => s.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? k),
     inputCommand: ref(""), history: ref([]), historyIndex: ref(-1), draftInput: ref(""),
     executing: ref(false), executedList: ref([]), clearingHistory: ref(false),
-    copiedAll: ref(false), copiedId: ref(null), historyClearFailed: ref(false), sessionRevision: 0,
+    copiedAll: ref(false), copiedId: ref(null), clipboardError: ref(false), historyClearFailed: ref(false), sessionRevision: 0,
+    copyText: async text => options.copyText ? options.copyText(text) : options.copyResult !== false,
+    setTimeout: () => 1,
     scrollToBottom() {}, focusInput() {}, nextTick: fn => Promise.resolve().then(fn),
     clearScreen() { context.executedList.value = []; },
     window: { localStorage: {
@@ -46,6 +48,31 @@ function fixture(options = {}) {
 }
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { resolve, promise }; };
+
+test("terminal copy failures show a manual-copy fallback and never mark output as copied", async () => {
+  const { context: c } = fixture({ copyResult: false });
+  const entry = { id: "1", command: "health", output: "result" };
+  c.executedList.value = [entry];
+  await c.copyAllOutput();
+  assert.equal(c.copiedAll.value, false);
+  assert.equal(c.clipboardError.value, true);
+  await c.copyEntryOutput(entry);
+  assert.equal(c.copiedId.value, null);
+  assert.equal(c.clipboardError.value, true);
+  c.resetSession();
+  assert.equal(c.clipboardError.value, false);
+});
+
+test("terminal copy completion after navigation cannot change the new session", async () => {
+  const pending = deferred();
+  const { context: c } = fixture({ copyText: () => pending.promise });
+  const copying = c.copyEntryOutput({ id: "1", output: "result" });
+  c.resetSession();
+  pending.resolve(false);
+  await copying;
+  assert.equal(c.copiedId.value, null);
+  assert.equal(c.clipboardError.value, false);
+});
 
 test("history is synchronous, memory-only and bounded without mutating its input", () => {
   const { context: c, storageCalls, shellCalls } = fixture();
