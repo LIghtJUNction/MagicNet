@@ -306,7 +306,8 @@ const paletteItems = computed<PaletteItem[]>(() => [
 ]);
 
 function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
-  if (tab !== activeTab.value) {
+  const changed = tab !== activeTab.value;
+  if (changed) {
     activeTab.value = tab;
     const definition = tabs.find((item) => item.key === tab);
     if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
@@ -318,6 +319,11 @@ function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
       document.querySelectorAll<HTMLElement>(`[data-tab="${tab}"]`),
     ).find((item) => item.offsetParent !== null);
     target?.scrollIntoView({ block: "nearest", inline: "center" });
+    // Cached long pages retain their height. Start explicit navigation at the
+    // heading; browser history can still restore its own scroll position.
+    if (changed && options.updateLocation !== false) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
   });
 }
 
@@ -604,6 +610,7 @@ onUnmounted(() => {
           <Monitor v-else :size="17" aria-hidden="true" />
         </Button>
         <Button
+          class="mn-refresh-action"
           variant="ghost"
           size="icon"
           :loading="state.task === '刷新面板'"
@@ -799,6 +806,9 @@ onUnmounted(() => {
             <LanguageSelect />
           </div>
           <div class="mn-utility-grid">
+            <Button variant="outline" :loading="state.task === '刷新面板'" @click="refreshAll">
+              <RefreshCw :size="18" aria-hidden="true" />{{ t('刷新面板') }}
+            </Button>
             <Button variant="outline" @click="requestOnboarding">
               <ScrollText :size="18" aria-hidden="true" />{{ t('新手引导') }}
             </Button>

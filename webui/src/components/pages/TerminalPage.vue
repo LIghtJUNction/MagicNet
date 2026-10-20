@@ -313,7 +313,7 @@ watch(executedList, () => {
         <span class="terminal-status" role="status"><StatusDot v-if="executing" tone="current" /><span v-else class="terminal-neutral-dot" aria-hidden="true"></span>{{ t(executing ? "执行中…" : "就绪") }}</span>
       </header>
 
-      <div ref="terminalBodyRef" class="terminal-output" :aria-label="t('命令输出')" tabindex="0" :aria-busy="executing">
+      <div ref="terminalBodyRef" class="terminal-output" :class="{ 'terminal-output--empty': executedList.length === 0 && !executing }" :aria-label="t('命令输出')" tabindex="0" :aria-busy="executing">
         <div v-if="executedList.length === 0 && !executing" class="terminal-empty">
           <Terminal :size="28" :stroke-width="1.4" aria-hidden="true" />
           <h2>{{ t("从一条命令开始") }}</h2>
@@ -443,8 +443,10 @@ watch(executedList, () => {
   .terminal-page { gap: 20px; }
   .terminal-toolbar { padding: 14px 16px; }
   .terminal-output { padding: 4px 16px; height: clamp(220px, 34dvh, 340px); }
+  .terminal-output--empty { height: auto; }
   .terminal-composer { padding: 14px 12px 4px; }
-  .terminal-empty { padding: 24px 0; }
+  .terminal-empty { padding: 12px 0; gap: 8px; }
+  .terminal-empty > svg { display: none; }
   .terminal-input-row { gap: 8px; padding-left: 10px; }
   .terminal-quick { grid-template-columns: 1fr; gap: 10px; }
   .terminal-footer { align-items: flex-start; }

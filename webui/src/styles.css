@@ -1731,6 +1731,21 @@ a {
     display: none;
   }
 
+  .mn-brand-lockup {
+    gap: 0;
+  }
+
+  .mn-brand-mark {
+    width: 44px;
+    flex-basis: 44px;
+  }
+
+  .mn-palette-trigger {
+    min-width: 44px;
+    margin-inline-end: 0;
+    padding-inline: 0;
+  }
+
   .mn-language-select {
     gap: 0;
   }
@@ -1745,6 +1760,21 @@ a {
 
   .mn-utility-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .mn-global-actions > .mn-refresh-action {
+    display: none;
+  }
+
+  .mn-workspace-header {
+    margin-bottom: 16px;
+  }
+
+  .mn-runtime-brief {
+    margin-bottom: 8px;
+    border-radius: 18px;
   }
 }
 

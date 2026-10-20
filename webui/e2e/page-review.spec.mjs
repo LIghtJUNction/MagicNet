@@ -37,6 +37,17 @@ for (const theme of ["light", "dark"]) {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), id).toBe(true);
+      if (id === "terminal" && info.project.name === "narrow-320") {
+        await expect.poll(async () => {
+          const [input, run, dock] = await Promise.all([
+            page.locator("#terminal-command").boundingBox(),
+            page.locator(".terminal-run").boundingBox(),
+            page.locator(".mobile-nav").boundingBox(),
+          ]);
+          return Boolean(input && run && dock && [input, run].every((box) =>
+            box.y >= 0 && box.y + box.height <= dock.y));
+        }, { message: "The initial terminal input and run button must stay above the phone dock" }).toBe(true);
+      }
       await page.screenshot({ path: info.outputPath(`${theme}-${id}.png`), fullPage: true, timeout: 20_000 });
     }
     expect(errors).toEqual([]);

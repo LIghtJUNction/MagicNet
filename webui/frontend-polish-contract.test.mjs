@@ -53,10 +53,8 @@ for (const panel of deferredPanels) {
   assert.doesNotMatch(panel, /onMounted\(\(\) => \{\s*void refresh/);
 }
 
-assert.match(
-  app,
-  /if \(tab !== activeTab\.value\) \{[\s\S]*warmActiveTab\(tab\);[\s\S]*writeTabToLocation\(tab\);[\s\S]*void nextTick/,
-);
+// Navigation is exercised with cached pages in e2e/navigation-layout.spec.mjs.
+// Do not require one spelling of the change guard here.
 assert.match(app, /@pointerenter="prefetchTab\(item\.key\)"/);
 assert.match(styles, /scrollbar-gutter:\s*stable/);
 assert.match(styles, /content-visibility:\s*auto/);

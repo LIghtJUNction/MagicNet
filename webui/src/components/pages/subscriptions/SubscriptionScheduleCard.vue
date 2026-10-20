@@ -17,8 +17,11 @@ const scheduleValue = ref<ScheduleValue>("off");
 const scheduleDirty = ref(false);
 
 const scheduleChanged = computed(() => scheduleValue.value !== state.subscriptions.scheduleIntervalHours);
+const canSaveSchedule = computed(() => scheduleChanged.value
+  || (state.subscriptions.scheduleEnabled && ["none", "stale"].includes(state.subscriptions.scheduleOwner)));
 
 const scheduleMeaning = computed(() => {
+  if (["unknown", "pending"].includes(state.subscriptions.scheduleOwner)) return t("自动更新状态未确认，请重新读取订阅状态。");
   if (!state.subscriptions.scheduleEnabled) return t("按需手动更新订阅。");
   if (!state.subscriptions.scheduleOwnerValid) return t("自动更新暂未正常启动，请重新保存设置。");
   if (state.subscriptions.scheduleRunning) return t("每次更新完成后，间隔 {value} 小时再次更新。", { value: state.subscriptions.scheduleIntervalHours });
@@ -33,12 +36,11 @@ watch(() => state.subscriptions.scheduleIntervalHours, (value) => {
 }, { immediate: true });
 
 async function saveSchedule(): Promise<void> {
-  if (!scheduleChanged.value) return;
+  if (!canSaveSchedule.value) return;
   await withAction("save-schedule", async () => {
     const result = await runCli(`sub schedule set ${scheduleValue.value}`, t("保存自动更新"));
     if (execFailed(result)) return;
     await refreshSubs(true);
-    scheduleDirty.value = false;
   });
 }
 </script>
@@ -77,7 +79,7 @@ async function saveSchedule(): Promise<void> {
       <p class="mt-2 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ scheduleMeaning }}</p>
     </div>
 
-    <Button class="mt-4 w-full" :disabled="!scheduleChanged" :loading="isRunning('save-schedule')" @click="saveSchedule">
+    <Button class="mt-4 w-full" :disabled="!canSaveSchedule" :loading="isRunning('save-schedule')" @click="saveSchedule">
       <Clock3 :size="16" />{{ t("保存更新设置") }} </Button>
   </Card>
 
