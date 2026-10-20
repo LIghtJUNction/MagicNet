@@ -535,11 +535,6 @@ onMounted(() => {
         </span>
       </div>
       <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">{{ t('同一 Android UID 的应用会一起生效。') }}</p>
-      <AppPolicyRouteGuide
-        :mode="state.appPolicy.mode"
-        :reapply-loading="isRunning('reapply-app-policy')"
-        @reapply="requestReapplyAppPolicy"
-      />
       <p v-if="policySummary.conflicts.length" role="alert" class="text-sm text-[var(--mn-danger)]">
         {{ t('{count} 个名单冲突，请检查下方分流概览。', { count: policySummary.conflicts.length }) }}
       </p>
@@ -598,6 +593,12 @@ onMounted(() => {
       </Card>
       </details>
     </div>
+
+    <AppPolicyRouteGuide
+      :mode="state.appPolicy.mode"
+      :reapply-loading="isRunning('reapply-app-policy')"
+      @reapply="requestReapplyAppPolicy"
+    />
 
     <details class="mn-disclosure">
       <summary>{{ t('按包名添加') }}</summary>

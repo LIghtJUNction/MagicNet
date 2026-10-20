@@ -57,15 +57,14 @@ async function persistUserAgent(): Promise<boolean> {
   const result = await runCli(command, value ? t("保存订阅 User-Agent") : t("清除订阅 User-Agent"));
   if (execFailed(result)) return false;
   if (!(await refreshSubs(true))) return false;
-  userAgentDirty.value = false;
   return true;
 }
 
 async function saveUserAgent(): Promise<void> {
   if (!userAgentChanged.value || userAgentError.value) return;
   await withAction("save-user-agent", async () => {
-    if (!(await persistUserAgent())) return;
     const value = normalizedUserAgent.value;
+    if (!(await persistUserAgent())) return;
     if (props.configured) {
       await startBackgroundCli(
         "sub update-all",

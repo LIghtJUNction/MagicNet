@@ -9,6 +9,7 @@ import SectionDisclosure from "@/components/ui/SectionDisclosure.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 import { generateQrSvgPath } from "@/lib/qrcode";
 import {
   inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError,
@@ -35,6 +36,7 @@ const loginMessage = ref("");
 const loginUrl = ref("");
 const isOnline = ref(false);
 const copied = ref(false);
+const copyFailed = ref(false);
 let loginTimer: ReturnType<typeof setTimeout> | undefined;
 let loginGeneration = 0;
 
@@ -53,6 +55,8 @@ function stopLoginPolling(): void {
   loginUrl.value = "";
   loginMessage.value = "";
   isOnline.value = false;
+  copied.value = false;
+  copyFailed.value = false;
 }
 
 function cancelLogin(): void {
@@ -62,12 +66,13 @@ function cancelLogin(): void {
 
 async function copyAuthUrl(): Promise<void> {
   if (!loginUrl.value) return;
-  try {
-    await navigator.clipboard.writeText(loginUrl.value);
-    copied.value = true;
-    setTimeout(() => { copied.value = false; }, 2000);
-  } catch {
-    /* clipboard fallback */
+  const generation = loginGeneration;
+  const success = await copyText(loginUrl.value);
+  if (!active || generation !== loginGeneration) return;
+  copied.value = success;
+  copyFailed.value = !success;
+  if (success) {
+    setTimeout(() => { if (generation === loginGeneration) copied.value = false; }, 2000);
   }
 }
 
@@ -329,6 +334,7 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
               <Button size="sm" variant="outline" :disabled="locked" @click="openExternal(loginUrl, 'Tailscale', { preferBrowser: false })">{{ t("继续 Tailscale 登录") }}<ArrowUpRight :size="13" aria-hidden="true" /></Button>
               <Button size="sm" variant="ghost" :disabled="locked" @click="copyAuthUrl"><component :is="copied ? Check : Copy" :size="13" aria-hidden="true" />{{ t(copied ? "已复制授权链接" : "复制授权链接") }}</Button>
             </div>
+            <p v-if="copyFailed" role="alert" class="text-sm text-[var(--mn-danger)]">{{ t("复制失败，请使用二维码或继续登录按钮。") }}</p>
           </div>
         </div>
       </div>

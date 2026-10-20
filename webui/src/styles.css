@@ -1731,6 +1731,10 @@ a {
     display: none;
   }
 
+  .mn-palette-trigger {
+    display: none;
+  }
+
   .mn-language-select {
     gap: 0;
   }

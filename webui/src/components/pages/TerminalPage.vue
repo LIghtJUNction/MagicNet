@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 import { ArrowDown, ArrowUp, Check, Copy, CornerDownLeft, Play, RotateCcw, Terminal, Trash2 } from "lucide-vue-next";
 import { t } from "@/i18n";
-import { compactCommand, compactOutput, execFailed } from "@/utils";
+import { compactCommand, compactOutput, copyText, execFailed } from "@/utils";
 import Button from "@/components/ui/Button.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
@@ -38,6 +38,7 @@ const executing = ref(false);
 const executedList = ref<ExecutedEntry[]>([]);
 const copiedAll = ref(false);
 const copiedId = ref<string | null>(null);
+const clipboardError = ref(false);
 const clearingHistory = ref(false);
 const historyClearFailed = ref(false);
 let sessionRevision = 0;
@@ -83,26 +84,28 @@ async function copyAllOutput(): Promise<void> {
   const fullText = executedList.value
     .map((item) => `$ ${item.command}\n${item.output}`)
     .join("\n\n");
-  try {
-    await navigator.clipboard.writeText(fullText);
-    copiedAll.value = true;
+  const revision = sessionRevision;
+  const copied = await copyText(fullText);
+  if (revision !== sessionRevision) return;
+  copiedAll.value = copied;
+  clipboardError.value = !copied;
+  if (copied) {
     setTimeout(() => {
-      copiedAll.value = false;
+      if (revision === sessionRevision) copiedAll.value = false;
     }, 2000);
-  } catch {
-    /* ignore clipboard failure */
   }
 }
 
 async function copyEntryOutput(entry: ExecutedEntry): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(entry.output);
-    copiedId.value = entry.id;
+  const revision = sessionRevision;
+  const copied = await copyText(entry.output);
+  if (revision !== sessionRevision) return;
+  copiedId.value = copied ? entry.id : null;
+  clipboardError.value = !copied;
+  if (copied) {
     setTimeout(() => {
-      if (copiedId.value === entry.id) copiedId.value = null;
+      if (revision === sessionRevision && copiedId.value === entry.id) copiedId.value = null;
     }, 2000);
-  } catch {
-    /* ignore clipboard failure */
   }
 }
 
@@ -133,6 +136,7 @@ function resetSession(): void {
   executedList.value = [];
   copiedAll.value = false;
   copiedId.value = null;
+  clipboardError.value = false;
   historyClearFailed.value = false;
   // Keep execution admission locked until an already running command settles.
 }
@@ -307,13 +311,15 @@ watch(executedList, () => {
       </div>
     </PageHeader>
 
+    <p v-if="clipboardError" role="alert" class="text-sm text-[var(--mn-danger)]">{{ t("复制失败，请选择输出内容后手动复制。") }}</p>
+
     <section class="terminal-workspace" :aria-label="t('终端')">
       <header class="terminal-toolbar">
         <div class="terminal-identity"><Terminal :size="18" aria-hidden="true" /><span>magicnet-cli</span></div>
         <span class="terminal-status" role="status"><StatusDot v-if="executing" tone="current" /><span v-else class="terminal-neutral-dot" aria-hidden="true"></span>{{ t(executing ? "执行中…" : "就绪") }}</span>
       </header>
 
-      <div ref="terminalBodyRef" class="terminal-output" :aria-label="t('命令输出')" tabindex="0" :aria-busy="executing">
+      <div ref="terminalBodyRef" class="terminal-output" :class="{ 'terminal-output--empty': executedList.length === 0 && !executing }" :aria-label="t('命令输出')" tabindex="0" :aria-busy="executing">
         <div v-if="executedList.length === 0 && !executing" class="terminal-empty">
           <Terminal :size="28" :stroke-width="1.4" aria-hidden="true" />
           <h2>{{ t("从一条命令开始") }}</h2>
@@ -443,8 +449,11 @@ watch(executedList, () => {
   .terminal-page { gap: 20px; }
   .terminal-toolbar { padding: 14px 16px; }
   .terminal-output { padding: 4px 16px; height: clamp(220px, 34dvh, 340px); }
+  .terminal-output--empty { height: auto; }
   .terminal-composer { padding: 14px 12px 4px; }
-  .terminal-empty { padding: 24px 0; }
+  .terminal-empty { gap: 8px; padding: 8px 0; }
+  .terminal-empty > svg { display: none; }
+  .terminal-empty h2 { font-size: 18px; }
   .terminal-input-row { gap: 8px; padding-left: 10px; }
   .terminal-quick { grid-template-columns: 1fr; gap: 10px; }
   .terminal-footer { align-items: flex-start; }

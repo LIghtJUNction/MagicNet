@@ -1,4 +1,5 @@
 export default {
+  "复制失败，请使用二维码或继续登录按钮。": ["Copy failed. Use the QR code or the continue login button.", "Не удалось скопировать. Используйте QR-код или кнопку продолжения входа."],
   "连接状态未确认": ["Connection state unconfirmed", "Состояние подключения не подтверждено"],
   "已禁用，登出待完成": ["Disabled · logout incomplete", "Отключено · выход не завершён"],
   "Tailscale 已启用": ["Tailscale enabled", "Tailscale включён"],
