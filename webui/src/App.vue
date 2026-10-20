@@ -287,26 +287,30 @@ const tabsByWorkspace = computed(() =>
   })),
 );
 
-const paletteItems = computed<PaletteItem[]>(() => [
-  ...tabs.map((tab) => ({
-    id: `tab:${tab.key}`,
-    label: tab.label,
-    hint: tab.hint,
-    group: workspaces.find((workspace) => workspace.key === tab.workspace)?.label ?? "",
-    keywords: tab.keywords,
-    icon: tab.icon,
-    run: () => setTab(tab.key),
-  })),
-  { id: "action:refresh", label: "刷新面板", hint: "重新读取全部状态，不会重启服务", group: "操作", keywords: ["refresh", "reload"], icon: RefreshCw, run: () => void refreshAll() },
-  { id: "action:theme", label: "切换外观", hint: "亮色 → 暗色 → 跟随系统", group: "操作", keywords: ["theme", "dark", "light"], icon: themePreference.value === "dark" ? Moon : themePreference.value === "light" ? Sun : Monitor, run: cycleTheme },
-  { id: "action:onboarding", label: "新手引导", hint: "导入订阅的首次设置", group: "操作", keywords: ["guide", "onboarding"], icon: ScrollText, run: () => launchOnboarding(paletteTrigger.value) },
-  { id: "action:issue", label: "反馈问题", hint: "生成脱敏的 GitHub Issue", group: "操作", keywords: ["issue", "bug", "feedback"], icon: Bug, run: () => void createIssue() },
-  { id: "link:github", label: "GitHub", hint: "LIghtJUNction/MagicNet", group: "链接", keywords: ["repo", "source"], icon: Github, run: () => openExternal(REPO, "GitHub") },
-  { id: "link:donate", label: "捐赠", hint: "支持 MagicNet 持续维护", group: "链接", keywords: ["donate", "sponsor"], icon: Coffee, run: () => openExternal("https://donate.lmm.best/?project=magicnet", "捐赠") },
-]);
+const paletteItems = computed<PaletteItem[]>(() => {
+  const trigger = paletteTrigger.value;
+  return [
+    ...tabs.map((tab) => ({
+      id: `tab:${tab.key}`,
+      label: tab.label,
+      hint: tab.hint,
+      group: workspaces.find((workspace) => workspace.key === tab.workspace)?.label ?? "",
+      keywords: tab.keywords,
+      icon: tab.icon,
+      run: () => setTab(tab.key),
+    })),
+    { id: "action:refresh", label: "刷新面板", hint: "重新读取全部状态，不会重启服务", group: "操作", keywords: ["refresh", "reload"], icon: RefreshCw, run: () => void refreshAll() },
+    { id: "action:theme", label: "切换外观", hint: "亮色 → 暗色 → 跟随系统", group: "操作", keywords: ["theme", "dark", "light"], icon: themePreference.value === "dark" ? Moon : themePreference.value === "light" ? Sun : Monitor, run: cycleTheme },
+    { id: "action:onboarding", label: "新手引导", hint: "导入订阅的首次设置", group: "操作", keywords: ["guide", "onboarding"], icon: ScrollText, run: () => launchOnboarding(trigger) },
+    { id: "action:issue", label: "反馈问题", hint: "生成脱敏的 GitHub Issue", group: "操作", keywords: ["issue", "bug", "feedback"], icon: Bug, run: () => void createIssue() },
+    { id: "link:github", label: "GitHub", hint: "LIghtJUNction/MagicNet", group: "链接", keywords: ["repo", "source"], icon: Github, run: () => openExternal(REPO, "GitHub") },
+    { id: "link:donate", label: "捐赠", hint: "支持 MagicNet 持续维护", group: "链接", keywords: ["donate", "sponsor"], icon: Coffee, run: () => openExternal("https://donate.lmm.best/?project=magicnet", "捐赠") },
+  ];
+});
 
 function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
-  if (tab !== activeTab.value) {
+  const changed = tab !== activeTab.value;
+  if (changed) {
     activeTab.value = tab;
     const definition = tabs.find((item) => item.key === tab);
     if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
@@ -318,6 +322,11 @@ function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
       document.querySelectorAll<HTMLElement>(`[data-tab="${tab}"]`),
     ).find((item) => item.offsetParent !== null);
     target?.scrollIntoView({ block: "nearest", inline: "center" });
+    // Cached long pages retain their height. Start explicit navigation at the
+    // heading; browser history can still restore its own scroll position.
+    if (changed && options.updateLocation !== false) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
   });
 }
 
@@ -416,9 +425,13 @@ function trapUtilityMenuFocus(event: KeyboardEvent): void {
 }
 
 function openPalette(event?: Event): void {
-  const trigger = event?.currentTarget instanceof HTMLElement
-    ? event.currentTarget
-    : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  // The utility sheet disappears when the palette opens, so return to its
+  // persistent toolbar trigger instead of a detached button in the sheet.
+  const trigger = showUtilityMenu.value
+    ? utilityMenuTrigger.value
+    : event?.currentTarget instanceof HTMLElement
+      ? event.currentTarget
+      : document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (showUtilityMenu.value) closeUtilityMenu(false);
   paletteTrigger.value = trigger;
   showPalette.value = true;
@@ -604,6 +617,7 @@ onUnmounted(() => {
           <Monitor v-else :size="17" aria-hidden="true" />
         </Button>
         <Button
+          class="mn-refresh-action"
           variant="ghost"
           size="icon"
           :loading="state.task === '刷新面板'"
@@ -799,6 +813,9 @@ onUnmounted(() => {
             <LanguageSelect />
           </div>
           <div class="mn-utility-grid">
+            <Button variant="outline" :loading="state.task === '刷新面板'" @click="refreshAll">
+              <RefreshCw :size="18" aria-hidden="true" />{{ t('刷新面板') }}
+            </Button>
             <Button variant="outline" @click="requestOnboarding">
               <ScrollText :size="18" aria-hidden="true" />{{ t('新手引导') }}
             </Button>

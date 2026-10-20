@@ -51,8 +51,10 @@ export function useExternalLinks(
     if (sensitive) {
       state.output = t("正在打开 {p0}；敏感链接不会被复制或显示。", { p0: t(label) });
     } else {
-      await copyText(url);
-      state.output = t("已复制 {p0}，正在打开系统浏览器：\n{p1}", { p0: t(label), p1: url });
+      const copied = await copyText(url);
+      state.output = copied
+        ? t("已复制 {p0}，正在打开系统浏览器：\n{p1}", { p0: t(label), p1: url })
+        : `${t("剪贴板不可用。")} ${t("正在打开 {p0}", { p0: t(label) })}\n${url}`;
     }
     if (!state.hasKsu) {
       window.open(url, "_blank", "noopener,noreferrer");

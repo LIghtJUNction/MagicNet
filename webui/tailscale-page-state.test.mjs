@@ -18,6 +18,7 @@ function page(options = {}) {
   const hooks = Object.fromEntries(['onMounted','onActivated','onDeactivated','onUnmounted'].map(name => [name, fn => { lifecycle[name] = fn; }]));
   const dependencies = {
     computed, ref, watch: () => {}, ...hooks, document,
+    copyText: async text => options.copyText ? options.copyText(text) : true,
     setTimeout: fn => { timers.set(++next, fn); return next; }, clearTimeout: id => timers.delete(id),
     TAILSCALE_KEYS_URL: 'https://login.tailscale.com/admin/settings/keys', TAILSCALE_MACHINES_URL: 'https://login.tailscale.com/admin/machines', t: key => key, generateQrSvgPath: () => null,
     useMagicNet: () => ({ state, shellQuote: s => s, stagePrivatePayload: () => {}, removePrivatePayload: () => {},
@@ -29,7 +30,7 @@ function page(options = {}) {
     saveTailscale: async () => { calls.push('save'); return options.save ? options.save() : { saved: true, stage: 'done', snapshot: configured }; },
     TailscaleSetupError: class extends Error {},
   };
-  const make = new Function(...Object.keys(dependencies), compiled + '\nreturn {read,submit,reloadAfterControl,retryRestart,snapshot,hostname,edited,authKey,isOnline,loading,saving,controlState,needsRestart,startLoginPolling};');
+  const make = new Function(...Object.keys(dependencies), compiled + '\nreturn {read,submit,reloadAfterControl,retryRestart,snapshot,hostname,edited,authKey,isOnline,loading,saving,controlState,needsRestart,startLoginPolling,copyAuthUrl,loginUrl,copied,copyFailed};');
   const instance = make(...Object.values(dependencies));
   instance.controlState.value = {enabled:true,resumable:false,logout_pending:false,local_identity:true,core:'running',revision:'a'.repeat(64)};
   return { ...instance, calls, lifecycle, document, listeners, timers, state };
@@ -82,4 +83,16 @@ test('lifecycle changes invalidate login polling and reload the real configurati
 test('a failed status read produces unknown, never stale online success', async () => {
   const p = page({ read: () => ({ ok: false, stdout: '' }) }); p.snapshot.value = configured; p.isOnline.value = true;
   p.startLoginPolling(false); await tick(); assert.equal(p.isOnline.value, false);
+});
+
+test('authorization copy failure reports the alternative without publishing the private URL', async () => {
+  const p = page({ copyText: () => false });
+  p.loginUrl.value = 'https://login.tailscale.com/a/private';
+  await p.copyAuthUrl();
+  assert.equal(p.copied.value, false);
+  assert.equal(p.copyFailed.value, true);
+  assert.deepEqual(p.calls, []);
+  p.lifecycle.onDeactivated();
+  assert.equal(p.copyFailed.value, false);
+  assert.equal(p.loginUrl.value, '');
 });

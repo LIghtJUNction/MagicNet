@@ -287,12 +287,12 @@ async function runWifiAction(
   key: string,
   args: string,
   label: string,
-): Promise<void> {
-  await withAction(key, async () => {
+): Promise<boolean> {
+  return (await withAction(key, async () => {
     const output = await runCli(args, label);
-    if (execFailed(output)) return;
-    await refreshWifiPolicy(true);
-  });
+    if (execFailed(output)) return false;
+    return refreshWifiPolicy(true);
+  })) ?? false;
 }
 
 async function toggleWifiPolicy(): Promise<void> {
@@ -370,17 +370,18 @@ async function setWifiPolicyMode(mode: "blacklist" | "whitelist"): Promise<void>
 
 async function addWifiEntry(kind: "ssid" | "bssid"): Promise<void> {
   const input = kind === "ssid" ? wifiSsidInput : wifiBssidInput;
-  const value = input.value.trim();
+  const submitted = input.value;
+  const value = submitted.trim();
   if (!value) {
     state.output = kind === "ssid" ? t("请输入 SSID。") : t("请输入 BSSID。");
     return;
   }
-  await runWifiAction(
+  const saved = await runWifiAction(
     `wifi-add-${kind}`,
     `wifi add-${kind} ${shellQuote(value)}`,
     t("添加 Wi-Fi {kind}", { kind: kind.toUpperCase() }),
   );
-  input.value = "";
+  if (saved && input.value === submitted) input.value = "";
 }
 
 async function removeWifiEntry(
@@ -675,12 +676,14 @@ onMounted(() => {
             <div class="flex gap-2">
               <Input
                 v-model="wifiSsidInput"
+                class="min-w-0 flex-1"
                 aria-label="Wi-Fi SSID"
                 :placeholder="t('Wi-Fi 名称（SSID）')"
                 @keyup.enter="addWifiEntry('ssid')"
               />
               <Button
                 variant="secondary"
+                class="shrink-0 whitespace-nowrap"
                 :loading="isRunning('wifi-add-ssid')"
                 @click="addWifiEntry('ssid')"
               ><Plus :size="17" />SSID</Button>
@@ -702,12 +705,14 @@ onMounted(() => {
             <div class="flex gap-2">
               <Input
                 v-model="wifiBssidInput"
+                class="min-w-0 flex-1"
                 aria-label="Wi-Fi BSSID"
                 :placeholder="t('BSSID 地址')"
                 @keyup.enter="addWifiEntry('bssid')"
               />
               <Button
                 variant="secondary"
+                class="shrink-0 whitespace-nowrap"
                 :loading="isRunning('wifi-add-bssid')"
                 @click="addWifiEntry('bssid')"
               ><Plus :size="17" />BSSID</Button>

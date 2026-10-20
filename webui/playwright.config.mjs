@@ -1,5 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
+const port = Number(process.env.MAGICNET_WEBUI_PORT || 4174);
+const baseURL = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -10,7 +13,7 @@ export default defineConfig({
   workers: process.env.CI ? 4 : 2,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:4174",
+    baseURL,
     actionTimeout: 5_000,
     reducedMotion: "reduce",
     colorScheme: "light",
@@ -45,9 +48,10 @@ export default defineConfig({
     { name: "desktop", use: { viewport: { width: 1280, height: 900 } } },
   ],
   webServer: {
-    command: "npm run dev -- --port 4174 --strictPort",
-    url: "http://127.0.0.1:4174",
-    reuseExistingServer: !process.env.CI,
+    command: `npm run dev -- --port ${port} --strictPort`,
+    url: baseURL,
+    // Another checkout can own the same port. Reuse only when explicitly requested.
+    reuseExistingServer: !process.env.CI && process.env.MAGICNET_WEBUI_REUSE_SERVER === "1",
     timeout: 30_000,
   },
 });

@@ -10,8 +10,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELLS = [['sh'], ['bash']]
-if shutil.which('busybox'):
-    SHELLS.append(['busybox', 'ash'])
+if busybox := shutil.which('busybox'):
+    SHELLS.append([busybox, 'ash'])
 
 SCRIPT = r'''
 set -eu

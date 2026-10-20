@@ -85,7 +85,6 @@ async function saveFilters(): Promise<void> {
     );
     if (execFailed(result)) return;
     if (!(await refreshSubs(true))) return;
-    filterDirty.value = false;
     if (props.configured) {
       await startBackgroundCli("sub update-all", t("应用订阅节点过滤"), "", "sub update-all");
     }

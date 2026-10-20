@@ -326,6 +326,7 @@ export default {
   "关闭": ["Off", "Выключено"],
   "按需手动更新订阅。": ["Update subscriptions manually as needed.", "Обновляйте подписки вручную по мере необходимости."],
   "自动更新暂未正常启动，请重新保存设置。": ["Automatic updates have not started correctly. Save the settings again.", "Автообновление не запустилось корректно. Сохраните настройки повторно."],
+  "自动更新状态未确认，请重新读取订阅状态。": ["Automatic update status is unconfirmed. Reload subscription status.", "Состояние автообновления не подтверждено. Обновите статус подписки."],
   "每次更新完成后，间隔 {value} 小时再次更新。": ["The next update runs {value} hours after the previous update finishes.", "Следующее обновление запустится через {value} ч после завершения предыдущего."],
   "已开启，等待后台启动。": ["Enabled, waiting for the background task to start.", "Включено, ожидается запуск фоновой задачи."],
   "保存自动更新": ["Save automatic updates", "Сохранить автообновление"],

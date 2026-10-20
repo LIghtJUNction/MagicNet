@@ -8,9 +8,11 @@ const pages = [
   ["route", "block", "拦截规则"],
   ["route", "chain", "链式代理"],
   ["configure", "subs", "订阅"],
+  ["configure", "tailscale", "Tailscale"],
   ["configure", "config", "配置文件"],
   ["configure", "webui", "面板配置"],
   ["diagnose", "health", "诊断"],
+  ["diagnose", "terminal", "终端"],
   ["diagnose", "output", "最近输出"],
   ["diagnose", "tools", "工具"],
 ];
@@ -144,7 +146,7 @@ test("a fresh browser opens the overview instead of an unusable setup flow", asy
   }
 });
 
-test("all eleven pages fit in both themes", async ({ page }, testInfo) => {
+test("all thirteen pages fit in both themes", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -287,7 +289,7 @@ test("native editor preserves drafts and blocks empty or invalid saves", async (
 });
 
 test("toolbar menus fit the page when opened", async ({ page }) => {
-  for (const [workspace, tab, heading] of [pages[2], pages[6], pages[8]]) {
+  for (const [workspace, tab, heading] of pages.filter(([, tab]) => ["apps", "config", "health"].includes(tab))) {
     await navigate(page, workspace, tab, heading);
     const menu = page.locator(".mn-page-actions .config-action-menu");
     await menu.locator("summary").click();

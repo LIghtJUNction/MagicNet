@@ -102,6 +102,14 @@ function updateConfigSyntaxState(syntax: { valid: boolean; checking: boolean }):
   if (!syntax.checking) analyzedConfigText.value = state.config.text;
 }
 
+function markConfigEdited(): void {
+  state.config.dirty = true;
+  state.config.status = t("未校验");
+  state.config.validation = {
+    status: "idle", summary: t("当前修改尚未校验。"), checkedAt: "",
+  };
+}
+
 async function loadConfigForEditing(): Promise<void> {
   await loadConfig();
   if (!state.config.dirty && state.config.text) issueBaseline.value = state.config.text;
@@ -158,7 +166,7 @@ function formatConfigJson(): void {
   try {
     const parsed = JSON.parse(state.config.text);
     state.config.text = `${JSON.stringify(parsed, null, 2)}\n`;
-    state.config.dirty = true;
+    markConfigEdited();
     localJsonStatus.value = t("本地 JSON 格式化完成；保存前仍会执行 sing-box check。");
   } catch {
     localJsonError.value = true;
@@ -404,7 +412,7 @@ async function openConfigIssue(): Promise<void> {
       <ConfigCodeEditor
         v-model="state.config.text"
         @syntax-state="updateConfigSyntaxState"
-        @update:model-value="state.config.dirty = true"
+        @update:model-value="markConfigEdited"
       />
     </Card>
 

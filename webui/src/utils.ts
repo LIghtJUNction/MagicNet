@@ -331,7 +331,9 @@ export function nextFrame(): Promise<void> {
 
 export async function copyText(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard?.writeText(text);
+    const clipboard = globalThis.navigator?.clipboard;
+    if (typeof clipboard?.writeText !== "function") return false;
+    await clipboard.writeText(text);
     return true;
   } catch {
     return false;
@@ -339,7 +341,11 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 export async function readClipboardText(): Promise<string> {
-  return await navigator.clipboard?.readText?.() || "";
+  try {
+    return await globalThis.navigator?.clipboard?.readText?.() || "";
+  } catch {
+    return "";
+  }
 }
 
 export class ExecTimeoutError extends Error {

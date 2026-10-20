@@ -101,8 +101,9 @@ function updateSelection(target: HTMLTextAreaElement | null = editor.value): voi
   currentColumn.value = position.column;
 }
 
-function syncScrollLayers(event: Event): void {
-  const target = event.currentTarget as HTMLTextAreaElement;
+function syncScrollLayers(): void {
+  const target = editor.value;
+  if (!target) return;
   editorScrollTop.value = target.scrollTop;
   if (highlight.value) {
     highlight.value.scrollTop = target.scrollTop;
@@ -123,7 +124,7 @@ async function jumpToLine(line: number, column = 1): Promise<void> {
   target.setSelectionRange(position, position);
   const top = editorPaddingTop.value + (Math.max(1, line) - 1) * editorLineHeight.value;
   target.scrollTop = Math.max(0, top - target.clientHeight / 2 + editorLineHeight.value / 2);
-  syncScrollLayers({ currentTarget: target } as unknown as Event);
+  syncScrollLayers();
   updateSelection(target);
   await nextTick();
   target.focus({ preventScroll: true });
@@ -141,6 +142,10 @@ watch(
     }, 180);
   },
 );
+
+// Input can scroll before the deferred highlight grows. Synchronize again
+// after its DOM update so the painted text stays beneath the caret.
+watch(deferredText, syncScrollLayers, { flush: "post" });
 
 watch(
   syntaxState,

@@ -8,7 +8,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { backgroundLogCommand, formatBackgroundDuration, formatBackgroundTime } from "@/composables/backgroundTasks";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, redactedCliPreview } from "@/utils";
+import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
 import { analyzeRuntimeLogLines, runtimeLogContext } from "./runtimeLogInsights";
@@ -74,14 +74,23 @@ async function copyBackgroundLogPath(): Promise<void> {
 }
 
 async function refreshBackgroundLog(): Promise<void> {
-  const { log, args, label } = state.backgroundTask;
+  const { id, log, args, label } = state.backgroundTask;
   if (!log) return;
-  const text = await runShell(
+  const refreshing = runShell(
     backgroundLogCommand(log, args),
     t("刷新后台日志 {value1}", { value1: label }),
     true,
     redactedCliPreview("refresh background log [private-output]"),
   );
+  // runShell registers its redacted operation before the first await.
+  const operationSequence = state.operationCapture.sequence;
+  const text = await refreshing;
+  if (
+    execFailed(text)
+    || state.operationCapture.sequence !== operationSequence
+    || state.backgroundTask.id !== id
+    || state.backgroundTask.log !== log
+  ) return;
   state.backgroundTask.updatedAt = Date.now();
   state.output = t("后台日志已刷新：{value1}\n\n{value2}", { value1: label, value2: text || t("日志为空。") });
   copied.value = false;

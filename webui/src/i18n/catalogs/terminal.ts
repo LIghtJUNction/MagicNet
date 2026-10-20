@@ -1,4 +1,8 @@
 export default {
+  "复制失败，请选择输出内容后手动复制。": [
+    "Copy failed. Select the output and copy it manually.",
+    "Не удалось скопировать. Выделите вывод и скопируйте его вручную."
+  ],
   "历史仅保留在当前页面，离开后清除；不再写入文件或浏览器存储。": [
     "History stays on this page and clears when you leave; it is not written to files or browser storage.",
     "История хранится только на этой странице и очищается при уходе; запись в файлы и хранилище браузера отключена."
