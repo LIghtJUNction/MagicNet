@@ -2,7 +2,7 @@ use super::*;
 
 // These tests fork before changing descriptors/rlimits/seccomp, so the test
 // runner's process, descriptor table and security policy remain untouched.
-unsafe fn run_fd_cleanup_case(force_fallback: bool, keep_stdin: bool) -> i32 {
+unsafe fn run_fd_cleanup_case(force_fallback: bool, keep_stdin: bool, cloexec: bool) -> i32 {
     let child = libc::fork();
     assert!(child >= 0, "fork descriptor test");
     if child == 0 {
@@ -64,6 +64,23 @@ unsafe fn run_fd_cleanup_case(force_fallback: bool, keep_stdin: bool) -> i32 {
                 libc::_exit(14);
             }
         }
+        if cloexec {
+            if libc::fcntl(source, libc::F_SETFD, 0) != 0
+                || libc::fcntl(high, libc::F_SETFD, 0) != 0
+                || mark_inherited_fds_cloexec().is_err()
+            {
+                libc::_exit(30);
+            }
+            for fd in [source, high] {
+                if libc::fcntl(fd, libc::F_GETFD) != libc::FD_CLOEXEC {
+                    libc::_exit(31);
+                }
+            }
+            if libc::fcntl(0, libc::F_GETFD) != 0 {
+                libc::_exit(32);
+            }
+            libc::_exit(0);
+        }
         let second = if keep_stdin { 0 } else { source };
         close_inherited_fds_except(source, second);
         if libc::fcntl(source, libc::F_GETFD) < 0 {
@@ -98,20 +115,30 @@ unsafe fn run_fd_cleanup_case(force_fallback: bool, keep_stdin: bool) -> i32 {
 
 #[test]
 fn fallback_closes_descriptors_above_lowered_soft_limit() {
-    assert_eq!(unsafe { run_fd_cleanup_case(true, false) }, 0);
+    assert_eq!(unsafe { run_fd_cleanup_case(true, false, false) }, 0);
 }
 
 #[test]
 fn fallback_preserves_descriptor_zero_and_distinct_keeper() {
-    assert_eq!(unsafe { run_fd_cleanup_case(true, true) }, 0);
+    assert_eq!(unsafe { run_fd_cleanup_case(true, true, false) }, 0);
 }
 
 #[test]
 fn fast_cleanup_preserves_identical_keeper() {
-    assert_eq!(unsafe { run_fd_cleanup_case(false, false) }, 0);
+    assert_eq!(unsafe { run_fd_cleanup_case(false, false, false) }, 0);
 }
 
 #[test]
 fn fast_cleanup_preserves_descriptor_zero() {
-    assert_eq!(unsafe { run_fd_cleanup_case(false, true) }, 0);
+    assert_eq!(unsafe { run_fd_cleanup_case(false, true, false) }, 0);
+}
+
+#[test]
+fn startup_cloexec_preserves_handles_and_standard_streams() {
+    assert_eq!(unsafe { run_fd_cleanup_case(false, true, true) }, 0);
+}
+
+#[test]
+fn startup_cloexec_fallback_covers_descriptors_above_soft_limit() {
+    assert_eq!(unsafe { run_fd_cleanup_case(true, true, true) }, 0);
 }

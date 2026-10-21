@@ -32,7 +32,7 @@ magicnet_singbox_chain_apply() {
         return 1
     }
 
-    _chain_tmp="${_chain_config}.chain.$$"
+    _chain_tmp="$(magicnet_config_staging_file "$_chain_config" chain)" || return 1
     _chain_ai_lib="$(magicnet_jq_ai_tags_lib)"
     # shellcheck disable=SC2016
     if ! (umask 077; "$_chain_jq" -L "$_chain_ai_lib" \

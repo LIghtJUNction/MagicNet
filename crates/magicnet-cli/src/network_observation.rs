@@ -233,10 +233,12 @@ fn hotspot_matches(inventory: &str, rules: &str, routes: &str, forward: &str) ->
     rows.iter().all(|row| {
         let Some((priority, iface)) = row.split_once('|') else { return false; };
         if priority.parse::<u32>().is_err() || !iface_valid(iface) { return false; }
-        let present = rules.lines().any(|line| {
-            let words = line.split_whitespace().collect::<Vec<_>>();
-            words == [format!("{priority}:").as_str(), "from", "all", "iif", iface, "lookup", "2022"]
-        });
+        // The journal can omit older copies left by concurrent writers. A
+        // matching saved priority alone must not advertise active forwarding.
+        let mut observed = rules.lines().map(|line| line.split_whitespace().collect::<Vec<_>>())
+            .filter(|words| words.len() == 7 && words[1..] == ["from", "all", "iif", iface, "lookup", "2022"]);
+        let present = observed.next().is_some_and(|words| words[0] == format!("{priority}:"))
+            && observed.next().is_none();
         let outbound = format!("-A FORWARD -i {iface} -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT");
         let inbound = format!("-A FORWARD -i magicnet0 -o {iface} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment magicnet-hotspot -j ACCEPT");
         let lines = forward.lines().map(|line| line.replace('"', "").replace("ESTABLISHED,RELATED", "RELATED,ESTABLISHED")).collect::<Vec<_>>();
@@ -488,6 +490,23 @@ mod tests {
         let route = "default dev magicnet0 scope link\n";
         let forward = "-A FORWARD -i wlan1 -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT\n-A FORWARD -i magicnet0 -o wlan1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment magicnet-hotspot -j ACCEPT\n";
         assert!(hotspot_matches(inventory, ip, route, forward));
+        for duplicate in [
+            "8999: from all iif wlan1 lookup 2022",
+            "8997: from all iif wlan1 lookup 2022",
+        ] {
+            assert!(!hotspot_matches(
+                inventory,
+                &format!("{ip}{duplicate}\n"),
+                route,
+                forward
+            ));
+        }
+        assert!(hotspot_matches(
+            inventory,
+            &format!("{ip}8997: from all iif usb0 lookup 2022\n"),
+            route,
+            forward
+        ));
         assert!(!hotspot_matches(
             inventory,
             ip,

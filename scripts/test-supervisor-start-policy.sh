@@ -205,4 +205,58 @@ EOF
     grep -Fx "$MODDIR/bin:/system/bin:/system/xbin:/vendor/bin" "$worker_path" >/dev/null
 )
 
+# Check the real pinned snapshot implementation with the environment passed to
+# its launcher. Generated files and every fixed materializer stage must not
+# schedule another apply; persistent user inputs must still be observed.
+(
+    prune_file="$fixture/fswatch-prunes"
+    fswatch() {
+        [ "${1:-}" != status ] || return 1
+        printf '%s\n' "$KAM_FSWATCH_PRUNE_NAMES" >"$prune_file"
+    }
+    MAGICNET_FSWATCH_PRUNE_NAMES=custom-output magicnet_fswatch_start
+    KAM_FSWATCH_PRUNE_NAMES=$(cat "$prune_file")
+    print() { printf '%s\n' "$*"; }
+    # shellcheck disable=SC1091
+    . "$ROOT/src/MagicNet/lib/kamfw/fswatch.sh"
+    mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet"
+    printf 'template\n' >"$MODDIR/.config/sing-box/config.source.json"
+    printf 'subscription\n' >"$MODDIR/.config/sing-box/subscription.url"
+    printf 'route intent\n' >"$MODDIR/.config/magicnet/route-proxy-domain-suffix.list"
+    printf 'generated\n' >"$MODDIR/.config/sing-box/config.json"
+    fswatch_snapshot "$MODDIR/.config" >"$fixture/before.snapshot"
+    for suffix in '' .new .route.new .tailscale.new .tailscale-auth.new .tailscale-scrub.new \
+        .magicnet-selectors.new .magicnet-block.new .zashboard.new .app-policy.new \
+        .include-packages.tmp .include-uids.tmp .exclude-uids.tmp .exclude-uids.tmp.new \
+        .magicnet-warp.new .magicnet-dns.new .hotspot-policy.new .magicnet-route.new \
+        .transparent-mode.new; do
+        printf 'updated output\n' >"$MODDIR/.config/sing-box/config.json$suffix"
+    done
+    for kind in chain hotspot-policy.check ebpf-networks ebpf-current transaction-restore; do
+        staging=$(magicnet_config_staging_file "$MODDIR/.config/sing-box/config.json" "$kind")
+        printf 'dynamic output\n' >"$staging"
+    done
+    printf 'new auth output\n' >"$MODDIR/.config/sing-box/tailscale-auth.json.new"
+    printf 'merged auth output\n' >"$MODDIR/.config/sing-box/tailscale-auth.json.merged"
+    printf 'custom output\n' >"$MODDIR/.config/custom-output"
+    fswatch_snapshot "$MODDIR/.config" >"$fixture/after.snapshot"
+    diff -u "$fixture/before.snapshot" "$fixture/after.snapshot"
+    for input in sing-box/subscription.url sing-box/config.source.json magicnet/route-proxy-domain-suffix.list; do
+        printf 'user edit\n' >>"$MODDIR/.config/$input"
+        fswatch_snapshot "$MODDIR/.config" >"$fixture/edited.snapshot"
+        if cmp -s "$fixture/after.snapshot" "$fixture/edited.snapshot"; then
+            printf 'fswatch ignored editable input: %s\n' "$input" >&2
+            exit 1
+        fi
+        cp "$fixture/edited.snapshot" "$fixture/after.snapshot"
+    done
+    # A caller-controlled symlink must not redirect private staging writes.
+    mkdir -p "$fixture/foreign" "$fixture/symlink-config"
+    ln -s "$fixture/foreign" "$fixture/symlink-config/.magicnet-staging"
+    if magicnet_config_staging_file "$fixture/symlink-config/config.json" chain; then
+        printf 'accepted symlinked config staging directory\n' >&2
+        exit 1
+    fi
+)
+
 printf '%s\n' 'supervisor start policy test passed'

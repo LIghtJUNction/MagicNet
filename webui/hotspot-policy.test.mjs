@@ -34,7 +34,7 @@ assert.match(control, /type HotspotPolicyPhase = "loading" \| "ready" \| "error"
 assert.match(control, /hotspotPolicyPhase\.value = "loading"/);
 assert.match(control, /hotspotPolicyPhase\.value = "error"/);
 assert.match(control, /hotspotPolicyPhase !== 'ready'/);
-assert.match(control, /aria-busy="hotspotPolicyPhase === 'loading'"/);
+assert.match(control, /aria-busy="hotspotPolicyPhase === 'loading' \|\| hotspotTaskPending"/);
 assert.match(control, /role="alert"/);
 assert.match(control, /MagicNet 没读到当前热点设置/);
 assert.match(control, /设备设置没变/);
@@ -85,7 +85,8 @@ for (const status of [0, 23]) {
 
 assert.match(control, /关闭 Android 热点硬件加速/);
 assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
-assert.match(webuiApi, /"reconcile"[\s\S]*config_apply_lock[\s\S]*apply_config_locked/);
+assert.match(webuiApi, /"reconcile"[\s\S]*config_apply_lock[\s\S]*refresh_hotspot_policy_locked/);
+assert.match(webuiApi, /fn refresh_hotspot_policy_locked[\s\S]*hotspot_policy_is_stale[\s\S]*apply_config_locked/);
 assert.match(webuiApi, /"disable" => set_hotspot_policy\(app, "direct"\)/);
 assert.match(webuiApi, /hotspot rollback failed/);
 const startSingBox = core.slice(

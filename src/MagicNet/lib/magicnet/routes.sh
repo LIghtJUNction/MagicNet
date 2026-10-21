@@ -222,6 +222,22 @@ magicnet_hotspot_rule_present() (
     '
 )
 
+# Observe only the exact ingress tuple used by this module. Callers choose the
+# interface scope: discovery is enough for status, but cleanup requires a valid
+# ownership journal. Never infer ownership from the table/priority alone.
+magicnet_hotspot_observed_rules() (
+    _observed_ifaces="$1"
+    _observed_rules="$(ip rule show 2>/dev/null)" || return 2
+    printf '%s\n' "$_observed_rules" | awk -v ifaces="$_observed_ifaces" '
+        BEGIN { n = split(ifaces, names, "\n"); for (i = 1; i <= n; i++) wanted[names[i]] = 1 }
+        NF == 7 && $1 ~ /^[1-9][0-9]*:$/ && $1 + 0 <= 4294967295 &&
+            $2 == "from" && $3 == "all" && $4 == "iif" && wanted[$5] &&
+            $6 == "lookup" && $7 == "2022" {
+            priority = $1; sub(/:$/, "", priority); print priority "|" $5
+        }
+    '
+)
+
 magicnet_hotspot_delete_rule() (
     _delete_priority="$1"
     _delete_iface="$2"
@@ -568,7 +584,11 @@ magicnet_hotspot_route_journal_valid() (
     done <"$_journal"
 )
 
-magicnet_hotspot_route_cleanup() (
+magicnet_hotspot_route_cleanup() {
+    magicnet_with_config_lock magicnet_hotspot_route_cleanup_locked
+}
+
+magicnet_hotspot_route_cleanup_locked() (
     _state="$(magicnet_hotspot_route_state_file)"
     _pending="$(magicnet_hotspot_route_pending_file)"
     [ -e "$_state" ] || [ -e "$_pending" ] || [ -L "$_state" ] || [ -L "$_pending" ] || return 0
@@ -585,19 +605,38 @@ magicnet_hotspot_route_cleanup() (
             return 1
         fi
     fi
-    ip rule show >/dev/null 2>&1 || return 2
-    _rc=0
+    # Older concurrent writers could overwrite each other's priority in the
+    # journal. Recover all exact ingress copies for journal-owned interfaces,
+    # recording them before deletion so an interrupted cleanup can retry.
+    set --
     for _file in "$_state" "$_pending"; do
-        [ -e "$_file" ] || continue
-        while IFS='|' read -r _priority _iface _peer || [ -n "$_priority$_iface$_peer" ]; do
-            if [ "$_priority" = return4 ]; then
-                magicnet_hotspot_delete_return_rule "$_iface" "$_peer" || _rc=1
-            else
-                magicnet_hotspot_forward_access cleanup "$_iface" || _rc=1
-                magicnet_hotspot_delete_rule "$_priority" "$_iface" || _rc=1
-            fi
-        done <"$_file"
+        [ ! -f "$_file" ] || set -- "$@" "$_file"
     done
+    _owned_ifaces="$(awk -F'|' 'NF == 2 && !seen[$2]++ { print $2 }' "$@")" || return 2
+    _observed="$(magicnet_hotspot_observed_rules "$_owned_ifaces")" || return 2
+    _tmp="${_pending}.new.$$"
+    if ! (
+        umask 077
+        { cat "$_pending"; printf '%s\n' "$_observed"; } |
+            awk 'NF && !seen[$0]++' >"$_tmp"
+    ) || ! magicnet_hotspot_route_journal_valid "$_tmp" || ! mv -f "$_tmp" "$_pending"; then
+        rm -f "$_tmp"
+        return 1
+    fi
+    _cleanup_records="$(awk 'NF && !seen[$0]++' "$@")" || return 2
+    _rc=0
+    for _iface in $_owned_ifaces; do
+        magicnet_hotspot_forward_access cleanup "$_iface" || _rc=1
+    done
+    while IFS='|' read -r _priority _iface _peer || [ -n "$_priority$_iface$_peer" ]; do
+        if [ "$_priority" = return4 ]; then
+            magicnet_hotspot_delete_return_rule "$_iface" "$_peer" || _rc=1
+        else
+            magicnet_hotspot_delete_rule "$_priority" "$_iface" || _rc=1
+        fi
+    done <<EOF
+$_cleanup_records
+EOF
     [ "$_rc" -eq 0 ] || return "$_rc"
     rm -f "$_state" "$_pending"
 )
@@ -663,6 +702,9 @@ magicnet_hotspot_routes_current() (
     _current_expected="$(printf '%s\n' "$_current_pairs" | awk -F'|' 'NF == 2 {print $1}' | sort -u)"
     _current_ifaces="$(printf '%s\n' "$_current_saved" | awk -F'|' 'NF == 2 {print $2}' | sort -u)"
     [ -n "$_current_expected" ] && [ "$_current_ifaces" = "$_current_expected" ] || return 1
+    _current_observed="$(magicnet_hotspot_observed_rules "$_current_ifaces")" || return 2
+    _current_duplicates="$(printf '%s\n' "$_current_observed" | awk -F'|' 'NF == 2 && seen[$2]++ { n++ } END { print n+0 }')"
+    [ "$_current_duplicates" -eq 0 ] || return 1
     _current_return="$(magicnet_hotspot_return_path)" || return $?
     _current_return_local="${_current_return%%|*}"
     _current_return_cidr="${_current_return##*|}"
@@ -683,7 +725,11 @@ EOF
     magicnet_hotspot_return_path_ready "$_current_return_local" "${_current_return_cidr%/32}"
 )
 
-magicnet_hotspot_reconcile() (
+magicnet_hotspot_reconcile() {
+    magicnet_with_config_lock magicnet_hotspot_reconcile_locked
+}
+
+magicnet_hotspot_reconcile_locked() (
     if ! magicnet_hotspot_proxy_enabled; then
         magicnet_hotspot_route_cleanup
         return $?
@@ -846,6 +892,7 @@ magicnet_hotspot_route_status() (
     _hotspot_missing_rule_count=0
     _hotspot_return_rule_count=0
     _hotspot_rule_unknown=0
+    _hotspot_observed_ifaces="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 {print $1}')"
     if [ -e "$_hotspot_state_file" ] || [ -L "$_hotspot_state_file" ]; then
         if magicnet_hotspot_route_journal_valid "$_hotspot_state_file"; then
             while IFS='|' read -r _hotspot_priority _hotspot_iface _hotspot_peer ||
@@ -858,6 +905,8 @@ magicnet_hotspot_route_status() (
                         _hotspot_return_rule_count=$((_hotspot_return_rule_count + 1))
                     fi
                 else
+                    _hotspot_observed_ifaces="${_hotspot_observed_ifaces}
+${_hotspot_iface}"
                     printf 'policy_rule=%s iif=%s table=2022\n' "$_hotspot_priority" "$_hotspot_iface"
                     magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || _hotspot_rule_rc=$?
                     if [ "$_hotspot_rule_rc" -eq 0 ]; then
@@ -881,8 +930,24 @@ magicnet_hotspot_route_status() (
     fi
     printf 'policy_rule_count=%s\n' "$_hotspot_rule_count"
     printf 'policy_rule_missing=%s\n' "$_hotspot_missing_rule_count"
+    _hotspot_observed_count=0
+    _hotspot_duplicate_count=0
+    if _hotspot_observed="$(magicnet_hotspot_observed_rules "$_hotspot_observed_ifaces")"; then
+        _hotspot_observed_count="$(printf '%s\n' "$_hotspot_observed" | awk 'NF {n++} END {print n+0}')"
+        _hotspot_duplicate_count="$(printf '%s\n' "$_hotspot_observed" | awk -F'|' 'NF == 2 && seen[$2]++ {n++} END {print n+0}')"
+        printf 'policy_rule_observed=%s\npolicy_rule_duplicates=%s\n' "$_hotspot_observed_count" "$_hotspot_duplicate_count"
+    else
+        _hotspot_rule_unknown=1
+        printf 'policy_rule_observed=unknown\npolicy_rule_duplicates=unknown\n'
+    fi
     if ! magicnet_hotspot_proxy_enabled; then
-        printf 'route_status=disabled\n'
+        if [ "$_hotspot_rule_unknown" -ne 0 ]; then
+            printf 'route_status=unknown\n'
+        elif [ "$_hotspot_observed_count" -ne 0 ]; then
+            printf 'route_status=degraded\n'
+        else
+            printf 'route_status=disabled\n'
+        fi
     elif [ -e "$(magicnet_hotspot_route_pending_file)" ] || [ -L "$(magicnet_hotspot_route_pending_file)" ]; then
         printf 'route_status=pending\n'
     elif [ "$_hotspot_ready_rc" -gt 1 ] || [ "$_hotspot_rule_unknown" -ne 0 ] ||
@@ -897,6 +962,7 @@ magicnet_hotspot_route_status() (
             printf 'route_status=waiting-for-hotspot\n'
         fi
     elif [ "$_hotspot_ready_rc" -ne 0 ] || [ "$_hotspot_rule_count" -ne "$_hotspot_expected_rule_count" ] ||
+        [ "$_hotspot_observed_count" -ne "$_hotspot_expected_rule_count" ] || [ "$_hotspot_duplicate_count" -ne 0 ] ||
         [ "$_hotspot_missing_rule_count" -ne 0 ] || [ "$_hotspot_return_rule_count" -ne 1 ] ||
         [ "$_hotspot_return_rc" -ne 0 ]; then
         printf 'route_status=degraded\n'
@@ -1157,7 +1223,7 @@ magicnet_singbox_apply_hotspot_policy() {
 magicnet_singbox_hotspot_policy_current() (
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
-    _tmp="${_config}.hotspot-policy.check.$$"
+    _tmp="$(magicnet_config_staging_file "$_config" hotspot-policy.check)" || return 2
     if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp"; then
         _hotspot_policy_rc=0
         magicnet_ebpf_hotspot_config_current || _hotspot_policy_rc=$?

@@ -7,6 +7,7 @@ trap 'rm -rf "$fixture"' 0
 export MODDIR="$fixture/module"
 REAL_JQ=$(command -v jq)
 FAIL_STAGE=''
+RULE_CHECKSUM_CALLS=''
 export REAL_JQ FAIL_STAGE
 mkdir -p "$MODDIR/bin" "$MODDIR/.config/sing-box/rules"
 . "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
@@ -28,6 +29,9 @@ chmod +x "$MODDIR/bin/jq"
 find() { [ "$FAIL_STAGE" != find ] && command find "$@"; }
 sort() { [ "$FAIL_STAGE" != sort ] && command sort; }
 cksum() {
+    if [ -n "$RULE_CHECKSUM_CALLS" ] && [ "$#" -gt 0 ]; then
+        printf '%s\n' "$#" >>"$RULE_CHECKSUM_CALLS"
+    fi
     [ "$FAIL_STAGE" != checksum ] || return 1
     if [ "$FAIL_STAGE" = rule ] && [ "$#" -gt 0 ]; then return 1; fi
     if [ "$FAIL_STAGE" = final-checksum ] && [ "$#" -eq 0 ]; then
@@ -97,6 +101,30 @@ for FAIL_STAGE in jq find sort checksum rule final-checksum; do
 done
 FAIL_STAGE=''
 magicnet_singbox_runtime_fingerprint_matches
+
+# Rule hashing must scale by bounded batches, not one new process per file.
+# Spaces and shell metacharacters in names must remain literal arguments.
+for name in 'space rule' 'quote"rule' 'glob*rule'; do
+    printf '%s\n' "$name" >"$MODDIR/.config/sing-box/rules/$name.srs"
+done
+i=1
+while [ "$i" -le 61 ]; do
+    printf '%s\n' "$i" >"$MODDIR/.config/sing-box/rules/rule-$i.srs"
+    i=$((i + 1))
+done
+RULE_CHECKSUM_CALLS="$fixture/checksum-calls"
+batched=$(magicnet_singbox_runtime_fingerprint)
+[ "$(wc -l <"$RULE_CHECKSUM_CALLS")" -le 3 ] || fail '65 rules spawned more than 3 checksum processes'
+RULE_CHECKSUM_CALLS=''
+expected=$(
+    {
+        command jq -e -S -c . "$config" | command cksum
+        command jq -e -S -c . "$auth" | command cksum
+        find "$MODDIR/.config/sing-box/rules" -type f -name '*.srs' | sort |
+            while IFS= read -r name; do command cksum "$name"; done
+    } | command cksum | awk '{ print $1 ":" $2 }'
+)
+[ "$batched" = "$expected" ] || fail 'batched rule checksums changed the fingerprint'
 printf '%s\n' 'runtime fingerprint safety test passed'
 
 # Model the real materializers' non-commuting prepend operations. Startup

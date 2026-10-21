@@ -115,7 +115,7 @@ magicnet_singbox_apply_transparent_mode() {
     if [ -f "$_saved_file" ] && [ ! -L "$_saved_file" ]; then
         _saved_inbound="$($_jq -c 'if type == "object" then . else {} end' "$_saved_file")" || return 1
     fi
-    _pairs="${_config}.ebpf-networks.$$"
+    _pairs="$(magicnet_config_staging_file "$_config" ebpf-networks)" || return 1
     : >"$_pairs" || return 1
     if [ "$_mode" = ebpf ]; then
         magicnet_ebpf_active_networks >"$_pairs" || {
@@ -439,7 +439,7 @@ magicnet_ebpf_hotspot_config_current() {
     _current_config="${MODDIR}/.config/sing-box/config.json"
     _current_jq="${MODDIR}/bin/jq"
     [ -f "$_current_config" ] && [ -x "$_current_jq" ] || return 2
-    _current_pairs="${_current_config}.ebpf-current.$$"
+    _current_pairs="$(magicnet_config_staging_file "$_current_config" ebpf-current)" || return 2
     magicnet_ebpf_active_networks >"$_current_pairs" || {
         rm -f "$_current_pairs" 2>/dev/null || true
         return 2
@@ -541,7 +541,7 @@ magicnet_recover_interrupted_transparent_transaction() {
     _restore_config="${MODDIR}/.config/sing-box/config.json"
     if [ "$_old_config_present" = 1 ]; then
         [ -f "${_transaction_dir}/old-config.json" ] || return 1
-        _restore_tmp="${_restore_config}.transaction-restore.$$"
+        _restore_tmp="$(magicnet_config_staging_file "$_restore_config" transaction-restore)" || return 1
         if ! (
             umask 077
             cp "${_transaction_dir}/old-config.json" "$_restore_tmp"

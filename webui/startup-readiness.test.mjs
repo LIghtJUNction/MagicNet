@@ -2,10 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { servicePresentation } from './src/lib/servicePresentation.ts';
 import { startupFailure } from './src/components/pages/startupFailure.ts';
-import { buildControlRuntimeInsight } from './src/components/pages/controlRuntimeInsight.ts';
+import { buildControlRuntimeInsight, pendingServiceLabel } from './src/components/pages/controlRuntimeInsight.ts';
 
 const runtime = {singBoxState:'sing-box',serviceReady:true,transparentMode:'tun',transparentEffectiveMode:'tun',fswatch:'123'};
 const input = {hasKsu:true,phase:'idle',queueDepth:0,runtime};
+
+test('pending service actions replace stale status text until completion is confirmed', () => {
+  assert.equal(pendingServiceLabel({args:'service start sing-box',status:'running'}),'正在启动服务');
+  assert.equal(pendingServiceLabel({args:'service stop sing-box',status:'running'}),'正在停止服务');
+  assert.equal(pendingServiceLabel({args:'service restart sing-box',status:'running'}),'正在重启服务');
+  assert.equal(pendingServiceLabel({args:'service restart sing-box',status:'timeout'}),'等待服务操作结果');
+  for (const status of ['done','error','idle']) {
+    assert.equal(pendingServiceLabel({args:'service start sing-box',status}),'');
+  }
+  assert.equal(pendingServiceLabel({args:'hotspot enable',status:'running'}),'');
+});
 
 test('only explicit service readiness permits a green running indicator', () => {
   for (const connected of [true,false]) for (const singBoxState of ['sing-box','stopped','unknown']) for (const serviceReady of [true,false,null]) {

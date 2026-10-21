@@ -40,6 +40,7 @@ import {
   stopAllServicesAction,
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
+import { backgroundTaskBlocksLaunch, formatBackgroundDuration } from "@/composables/backgroundTasks";
 import { servicePresentation } from "@/lib/servicePresentation";
 import { machineFailureText, parseMachineHotspot, type HotspotRouteState } from "@/composables/machineStatus";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -50,6 +51,7 @@ import {
   buildControlRuntimeInsight,
   controlInsightTone,
   controlRuntimeBusy,
+  pendingServiceLabel,
 } from "./controlRuntimeInsight";
 
 const {
@@ -88,6 +90,16 @@ const hotspotForwardingLabel = computed(() => {
 });
 const hotspotPolicyPhase = ref<HotspotPolicyPhase>("loading");
 const hotspotPolicyError = ref("");
+const hotspotTaskPending = computed(() =>
+  /^hotspot (enable|disable)$/.test(state.backgroundTask.args) &&
+  backgroundTaskBlocksLaunch(state.backgroundTask),
+);
+const hotspotPendingLabel = computed(() => t(
+  state.backgroundTask.status === "timeout"
+    ? "等待任务结果，已等待 {duration}"
+    : "正在应用，已等待 {duration}",
+  { duration: formatBackgroundDuration(state.backgroundTask) },
+));
 let dangerActionTrigger: HTMLElement | null = null;
 
 const pendingDangerMessage = computed(
@@ -118,13 +130,17 @@ const showRuntimeNotice = computed(() => state.hasKsu && (
   serviceStatus.value.state === "unknown" ||
   (runtimeInsight.value.status !== "ok" && state.runtime.singBoxState === "sing-box")
 ));
-const controlTitle = computed(() => serviceStatus.value.label);
+const servicePendingLabel = computed(() => pendingServiceLabel(state.backgroundTask));
+const controlTitle = computed(() => servicePendingLabel.value || serviceStatus.value.label);
 const coreFact = computed(() => !state.hasKsu || state.runtime.singBoxState === "unknown" ? t("未确认")
   : state.runtime.singBoxState === "sing-box" ? t("进程存在") : t("已停止"));
 const readinessFact = computed(() => !state.hasKsu || state.runtime.serviceReady == null ? t("未确认")
   : state.runtime.singBoxState === "sing-box" && state.runtime.serviceReady ? t("已就绪") : t("未就绪"));
 const controlDescription = computed(() => {
   if (!state.hasKsu) return t("在模块管理器中打开，连接设备后管理代理服务。");
+  if (servicePendingLabel.value) return t("已等待 {duration}。任务完成后自动更新状态。", {
+    duration: formatBackgroundDuration(state.backgroundTask),
+  });
   if (serviceStatus.value.state === "ready") return t("服务已就绪。实际联网情况可在诊断中确认。");
   if (serviceStatus.value.state === "stopped") return t("启动前确认订阅已配置；现有配置和节点会保留。");
   return t("先确认服务状态，再继续操作。刷新不会重启服务。");
@@ -190,9 +206,7 @@ async function runAction(
 ): Promise<void> {
   await withAction(key, async () => {
     if (background) {
-      const launch = await startBackgroundCli(args, label);
-      if (execFailed(launch)) return;
-      window.setTimeout(() => void refreshStatus(), 1200);
+      await startBackgroundCli(args, label);
     } else {
       const output = await runCli(args, label);
       if (execFailed(output)) {
@@ -337,7 +351,7 @@ async function retryHotspotPolicy(): Promise<void> {
 
 async function toggleHotspotProxy(event: Event): Promise<void> {
   const checkbox = event.currentTarget as HTMLInputElement;
-  if (hotspotPolicyPhase.value !== "ready") {
+  if (hotspotPolicyPhase.value !== "ready" || runtimeBusy.value) {
     checkbox.checked = hotspotProxyEnabled.value;
     return;
   }
@@ -345,7 +359,7 @@ async function toggleHotspotProxy(event: Event): Promise<void> {
   const enabled = checkbox.checked;
   hotspotProxyEnabled.value = enabled;
   await withAction("hotspot-proxy", async () => {
-    const output = await runCli(
+    const output = await startBackgroundCli(
       `hotspot ${enabled ? "enable" : "disable"}`,
       enabled ? t("启用热点代理") : t("停用热点代理"),
     );
@@ -353,11 +367,15 @@ async function toggleHotspotProxy(event: Event): Promise<void> {
       hotspotProxyEnabled.value = previous;
       return;
     }
-    if (!(await refreshHotspotPolicy())) {
-      hotspotProxyEnabled.value = previous;
-    }
   });
 }
+
+watch(() => state.backgroundTask.status, (status) => {
+  if (/^hotspot (enable|disable)$/.test(state.backgroundTask.args) &&
+      (status === "done" || status === "error")) {
+    void refreshHotspotPolicy();
+  }
+});
 
 async function setWifiPolicyMode(mode: "blacklist" | "whitelist"): Promise<void> {
   if (state.wifiPolicy.policyMode === mode) return;
@@ -456,7 +474,7 @@ onMounted(() => {
       <div class="mn-control-overview">
         <div class="mn-control-status" role="status" aria-live="polite">
           <div class="mn-control-state-heading">
-            <p class="mn-control-eyebrow"><StatusDot :tone="serviceStatus.tone" />{{ t("代理服务") }}<span v-if="state.hasKsu && state.runtime.transparentMode !== 'unknown'" class="mn-control-mode">{{ transparentModeLabel }}</span></p>
+            <p class="mn-control-eyebrow"><StatusDot :tone="servicePendingLabel ? 'unknown' : serviceStatus.tone" />{{ t("代理服务") }}<span v-if="state.hasKsu && state.runtime.transparentMode !== 'unknown'" class="mn-control-mode">{{ transparentModeLabel }}</span></p>
             <h2>{{ controlTitle }}</h2>
             <p class="mn-control-description">{{ controlDescription }}</p>
           </div>
@@ -469,7 +487,7 @@ onMounted(() => {
           </dl>
         </div>
         <div class="mn-control-actions">
-          <Button class="mn-control-power" :data-running="state.runtime.singBoxState === 'sing-box'" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('toggle-sing-box')" @click="toggleSingBox">
+          <Button class="mn-control-power" :data-running="state.runtime.singBoxState === 'sing-box'" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('toggle-sing-box') || Boolean(servicePendingLabel)" @click="toggleSingBox">
             <Power :size="18" />{{ state.runtime.singBoxState === 'sing-box' ? t("停止服务") : t("启动服务") }}
           </Button>
           <div class="mn-control-shortcuts">
@@ -592,13 +610,13 @@ onMounted(() => {
         </p>
       </Card>
 
-      <Card class="grid gap-2" :aria-busy="hotspotPolicyPhase === 'loading'">
+      <Card class="grid gap-2" :aria-busy="hotspotPolicyPhase === 'loading' || hotspotTaskPending">
         <label class="mn-hotspot-switch">
           <input
             type="checkbox"
             role="switch"
             class="mn-hotspot-input"
-            :checked="hotspotProxyEnabled"
+            :checked="hotspotTaskPending ? state.backgroundTask.args === 'hotspot enable' : hotspotProxyEnabled"
             :disabled="!state.hasKsu || hotspotPolicyPhase !== 'ready' || runtimeBusy || isRunning('hotspot-proxy')"
             :aria-label="t('允许热点使用代理')"
             aria-describedby="hotspot-proxy-description hotspot-proxy-status"
@@ -607,7 +625,7 @@ onMounted(() => {
           <span class="min-w-0">
             <span class="mn-hotspot-label"><Share2 :size="17" />{{ t("热点代理") }}</span>
             <span id="hotspot-proxy-status" class="mn-hotspot-state">
-              {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? hotspotForwardingLabel : t("已关闭") }}
+              {{ !state.hasKsu ? t("未连接设备") : hotspotTaskPending ? hotspotPendingLabel : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? hotspotForwardingLabel : t("已关闭") }}
             </span>
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
@@ -615,7 +633,7 @@ onMounted(() => {
         <details class="mn-control-details">
           <summary>{{ t("共享设置") }}</summary>
           <p id="hotspot-proxy-description" class="text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }} </p>
-          <Button v-if="state.hasKsu && hotspotProxyEnabled" variant="ghost" :disabled="runtimeBusy" @click="retryHotspotPolicy">{{ t("重新读取") }}</Button>
+          <Button v-if="state.hasKsu && hotspotProxyEnabled" variant="ghost" :loading="isRunning('hotspot-policy-refresh')" @click="retryHotspotPolicy">{{ t("重新读取") }}</Button>
         </details>
         <div v-if="state.hasKsu && hotspotPolicyPhase === 'error'" class="mn-control-notice mn-tone-warn" role="alert">
           <p>{{ hotspotPolicyError }}</p>

@@ -51,7 +51,7 @@ pub(crate) fn read_json_file_bounded(path: &Path, max_bytes: u64) -> Option<serd
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod fd_cleanup;
 #[cfg(any(target_os = "android", target_os = "linux"))]
-pub(crate) use fd_cleanup::close_inherited_fds_except;
+pub(crate) use fd_cleanup::{close_inherited_fds_except, mark_inherited_fds_cloexec};
 
 fn close_raw_fd(fd: RawFd) {
     if fd >= 0 {

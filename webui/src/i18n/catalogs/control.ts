@@ -1,4 +1,13 @@
 export default {
+  "正在启动服务": ["Starting service", "Запуск сервиса"],
+  "正在停止服务": ["Stopping service", "Остановка сервиса"],
+  "正在重启服务": ["Restarting service", "Перезапуск сервиса"],
+  "等待服务操作结果": ["Waiting for the service result", "Ожидание результата операции"],
+  "已等待 {duration}。任务完成后自动更新状态。": ["Waiting for {duration}. Status updates when the task finishes.", "Ожидание: {duration}. Состояние обновится после завершения задачи."],
+  "正在应用，已等待 {duration}": ["Applying; waiting for {duration}", "Применение; ожидание: {duration}"],
+  "等待任务结果，已等待 {duration}": ["Waiting for the result: {duration}", "Ожидание результата: {duration}"],
+  "{p0} 等待前一个操作超过 {p1} 秒，命令未执行。请稍后重试。": ["{p0} waited more than {p1} seconds for the previous operation. The command did not run. Try again later.", "{p0} ожидает предыдущую операцию более {p1} секунд. Команда не выполнена. Повторите позже."],
+  "\n\n[warn] 尚未确认任务完成，将每 15 秒继续检查。可以刷新状态或查看日志。": ["\n\n[warn] Task completion is unconfirmed. Checks continue every 15 seconds. You can refresh status or view logs.", "\n\n[warn] Завершение задачи не подтверждено. Проверка продолжается каждые 15 секунд. Можно обновить состояние или просмотреть журнал."],
   "状态待确认": ["Status unconfirmed", "Состояние не подтверждено"],
   "节点准备": ["Node preparation", "Подготовка узлов"],
   "代理链配置": ["Proxy chain configuration", "Настройка цепочки прокси"],
@@ -362,9 +371,14 @@ export default {
     "Проверьте разрешение KernelSU",
   ],
   后台任务进行中: ["Background task running", "Выполняется фоновая задача"],
-  "phase={phase} queue={queueDepth}，建议等待任务结束后再切换模式或重启。": [
-    "phase={phase} queue={queueDepth}. Wait for the task to finish before switching modes or restarting.",
-    "phase={phase} queue={queueDepth}. Дождитесь завершения задачи перед переключением режима или перезапуском.",
+  "等待任务结果": ["Waiting for the task result", "Ожидание результата задачи"],
+  "任务尚未确认完成，面板会继续检查。可以刷新状态或查看输出。": [
+    "Task completion is unconfirmed. The panel will keep checking. You can refresh status or view Output.",
+    "Завершение задачи не подтверждено. Панель продолжит проверку. Можно обновить состояние или посмотреть вывод.",
+  ],
+  "请等待当前操作完成。期间可以刷新状态或查看输出。": [
+    "Wait for the current operation to finish. You can refresh status or view Output while it runs.",
+    "Дождитесь завершения текущей операции. Во время её выполнения можно обновить состояние или посмотреть вывод.",
   ],
   查看最近输出: ["View recent output", "Посмотрите последний вывод"],
   等待队列清空: [

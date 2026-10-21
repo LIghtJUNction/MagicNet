@@ -223,7 +223,9 @@ live `magicnet0` IPv4 address, verifies its connected main-table route and owned
 destination rule, and queries the actual UID 0 route without forcing an output
 interface. An upstream result cannot report `active`; failed or ambiguous
 observations report `unknown`. A legacy ingress-only journal stays `pending`
-until reconciliation installs and verifies the return path. `tun_rule_count`
+until reconciliation installs and verifies the return path. Each recorded
+downstream must have exactly one matching ingress rule; duplicate priorities or
+copies keep the state `pending` until reconciliation removes them. `tun_rule_count`
 continues to count downstream interception rules, excluding the private return
 record. Readiness proves these routing facts, not a completed TCP handshake or
 internet reachability.
