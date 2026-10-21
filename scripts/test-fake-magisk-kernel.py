@@ -109,6 +109,93 @@ class ReleaseKernelFixtureTests(unittest.TestCase):
         self.call(state, "seed-cleanup")
         return state
 
+    def start_core(self, state, address="172.20.0.1/30", mode="tun"):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "config.json"
+            config.write_text(json.dumps({"inbounds": [{"type": mode, "address": [address, "fd00::1/126"]}]}))
+            self.assertEqual(self.call(state, "core-start", str(os.getpid()), str(config))[0], 0)
+
+    def lookup(self, state, peer="172.20.0.2", local="172.20.0.1"):
+        return self.call(state, "ip", "-4", "route", "get", peer, "from", local, "uid", "0")
+
+    def test_tether_interface_is_discoverable_without_host_sysfs(self):
+        state = kernel.initial()
+        self.assertEqual(self.call(state, "interface", "ap0")[0], 0)
+        self.assertIn("ap0:", self.call(state, "ip", "-o", "link", "show")[1])
+        self.assertIn("ap0:", self.call(state, "ip", "link", "show", "dev", "ap0")[1])
+        self.assertIn("192.168.43.0/24 dev ap0", self.call(state, "ip", "route", "show", "dev", "ap0", "scope", "link")[1])
+        self.assertNotEqual(self.call(state, "interface", "ap99")[0], 0)
+
+    def test_live_config_controls_addresses_and_main_connected_route(self):
+        state = kernel.initial()
+        self.start_core(state)
+        for options in (("-o", "-4"), ("-4", "-o")):
+            code, text = self.call(state, "ip", *options, "addr", "show", "dev", "magicnet0")
+            self.assertEqual(code, 0)
+            self.assertIn("inet 172.20.0.1/30", text)
+            self.assertNotIn("172.19.0.1", text)
+        code, text = self.call(state, "ip", "-4", "route", "show", "table", "main", "dev", "magicnet0", "scope", "link")
+        self.assertEqual(code, 0)
+        self.assertIn("172.20.0.0/30 dev magicnet0 proto kernel scope link src 172.20.0.1", text)
+
+    def test_implicit_all_source_is_printed_and_deleted_consistently(self):
+        state = kernel.initial()
+        for args, expected in (
+            (("priority", "8999", "iif", "ap0", "lookup", "2022"), "8999: from all iif ap0 lookup 2022"),
+            (("priority", "999", "to", "172.20.0.2/32", "lookup", "main"), "999: from all to 172.20.0.2/32 lookup main"),
+        ):
+            self.assertEqual(self.call(state, "ip", "-4", "rule", "add", *args)[0], 0)
+            self.assertIn(expected, self.call(state, "ip", "-4", "rule", "show")[1])
+            self.assertEqual(self.call(state, "ip", "-4", "rule", "del", *args)[0], 0)
+            self.assertNotIn(expected, self.call(state, "ip", "-4", "rule", "show")[1])
+
+    def test_uid_zero_return_depends_on_matching_rule_and_priority(self):
+        state = kernel.initial()
+        self.start_core(state)
+        self.assertIn("dev wlan0", self.lookup(state)[1])
+        wrong = ("priority", "999", "to", "172.20.0.3/32", "lookup", "main")
+        late = ("priority", "1001", "to", "172.20.0.2/32", "lookup", "main")
+        for args in (wrong, late):
+            self.call(state, "ip", "-4", "rule", "add", *args)
+            self.assertIn("dev wlan0", self.lookup(state)[1])
+        self.call(state, "ip", "-4", "rule", "del", *late)
+        owned = ("priority", "999", "to", "172.20.0.2/32", "lookup", "main")
+        self.call(state, "ip", "-4", "rule", "add", *owned)
+        self.assertIn("dev magicnet0", self.lookup(state)[1])
+        self.assertIn("dev wlan0", self.lookup(state, peer="203.0.113.80")[1])
+        self.call(state, "ip", "-4", "rule", "del", *owned)
+        self.assertIn("dev wlan0", self.lookup(state)[1])
+
+    def test_earlier_foreign_uid_policy_can_preempt_return_rule(self):
+        state = kernel.initial()
+        self.start_core(state)
+        self.call(state, "ip", "-4", "rule", "add", "priority", "999", "to", "172.20.0.2/32", "lookup", "main")
+        foreign = ("priority", "998", "uidrange", "0-0", "lookup", "100")
+        self.call(state, "ip", "-4", "rule", "add", *foreign)
+        self.assertIn("dev wlan0", self.lookup(state)[1])
+        self.call(state, "ip", "-4", "rule", "del", *foreign)
+        self.assertIn("dev magicnet0", self.lookup(state)[1])
+
+    def test_stale_peer_rule_cannot_repair_a_restarted_address(self):
+        state = kernel.initial()
+        self.start_core(state)
+        self.call(state, "ip", "-4", "rule", "add", "priority", "999", "to", "172.20.0.2/32", "lookup", "main")
+        self.start_core(state, "172.21.0.1/30")
+        self.assertIn("dev wlan0", self.lookup(state, "172.21.0.2", "172.21.0.1")[1])
+        self.assertIn("dev wlan0", self.lookup(state, "172.20.0.2", "172.21.0.1")[1])
+        self.call(state, "ip", "-4", "rule", "add", "priority", "999", "to", "172.21.0.2/32", "lookup", "main")
+        self.assertIn("dev magicnet0", self.lookup(state, "172.21.0.2", "172.21.0.1")[1])
+
+    def test_return_rule_cannot_invent_a_missing_tun_core(self):
+        state = kernel.initial()
+        self.call(state, "ip", "-4", "rule", "add", "priority", "999", "to", "172.20.0.2/32", "lookup", "main")
+        for core in (None, {"pid": 2147483647, "mode": "tun", "addresses": ["172.20.0.1/30"]},
+                     {"pid": os.getpid(), "mode": "ebpf", "addresses": ["172.20.0.1/30"]}):
+            state["core"] = core
+            self.assertNotEqual(self.lookup(state)[0], 0)
+            self.assertEqual(self.call(state, "ip", "-4", "-o", "addr", "show", "dev", "magicnet0"), (0, ""))
+            self.assertEqual(self.call(state, "ip", "-4", "route", "show", "table", "main", "dev", "magicnet0", "scope", "link"), (0, ""))
+
     def test_chain_mutations_and_reads_share_state(self):
         state = self.seeded()
         jump = ("OUTPUT", "-j", kernel.CHAIN)

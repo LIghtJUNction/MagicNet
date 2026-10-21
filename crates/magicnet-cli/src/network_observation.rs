@@ -1,4 +1,5 @@
 //! Bounded, read-only kernel observations. Recovery inventory is not liveness.
+use std::net::Ipv4Addr;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
@@ -129,7 +130,81 @@ fn iface_valid(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || b"_.:-".contains(&c))
 }
 
+fn hotspot_return_rule(inventory: &str) -> Option<(u32, Ipv4Addr)> {
+    let mut found = None;
+    let mut ingress = 0;
+    let mut count = 0;
+    for row in inventory.lines().filter(|line| !line.trim().is_empty()) {
+        count += 1;
+        if count > 64 {
+            return None;
+        }
+        let fields = row.split('|').collect::<Vec<_>>();
+        match fields.as_slice() {
+            [priority, iface]
+                if priority.parse::<u32>().is_ok_and(|p| p > 0) && iface_valid(iface) =>
+            {
+                ingress += 1;
+            }
+            ["return4", priority, destination] if found.is_none() => {
+                let priority = priority.parse::<u32>().ok().filter(|p| *p > 0)?;
+                let peer = destination.strip_suffix("/32")?.parse::<Ipv4Addr>().ok()?;
+                if peer.is_unspecified()
+                    || peer.is_loopback()
+                    || peer.is_multicast()
+                    || peer.is_broadcast()
+                {
+                    return None;
+                }
+                found = Some((priority, peer));
+            }
+            _ => return None,
+        }
+    }
+    if ingress == 0 {
+        None
+    } else {
+        found
+    }
+}
+
+// The count remains the number of downstream interception rules. A return
+// record is a private recovery input, not another hotspot or a public address.
+pub(crate) fn hotspot_ingress_rule_count(path: &Path) -> usize {
+    crate::read_proc_text_bounded(path, 8192)
+        .ok()
+        .map(|inventory| {
+            inventory
+                .lines()
+                .filter(|row| {
+                    let Some((priority, iface)) = row.split_once('|') else {
+                        return false;
+                    };
+                    priority.parse::<u32>().is_ok_and(|p| p > 0) && iface_valid(iface)
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 fn hotspot_matches(inventory: &str, rules: &str, routes: &str, forward: &str) -> bool {
+    let Some((return_priority, peer)) = hotspot_return_rule(inventory) else {
+        return false;
+    };
+    let return_priority = format!("{return_priority}:");
+    let peer = peer.to_string();
+    let peer_cidr = format!("{peer}/32");
+    if !rules.lines().any(|line| {
+        let words = line.split_whitespace().collect::<Vec<_>>();
+        words.len() == 7
+            && words[0] == return_priority
+            && words[1..4] == ["from", "all", "to"]
+            && (words[4] == peer || words[4] == peer_cidr)
+            && words[5] == "lookup"
+            && matches!(words[6], "main" | "254")
+    }) {
+        return false;
+    }
     let prefixes = routes
         .lines()
         .filter_map(|line| {
@@ -150,7 +225,7 @@ fn hotspot_matches(inventory: &str, rules: &str, routes: &str, forward: &str) ->
     }
     let rows = inventory
         .lines()
-        .filter(|line| !line.trim().is_empty())
+        .filter(|line| !line.trim().is_empty() && !line.starts_with("return4|"))
         .collect::<Vec<_>>();
     if rows.is_empty() || rows.len() > 64 {
         return false;
@@ -160,9 +235,7 @@ fn hotspot_matches(inventory: &str, rules: &str, routes: &str, forward: &str) ->
         if priority.parse::<u32>().is_err() || !iface_valid(iface) { return false; }
         let present = rules.lines().any(|line| {
             let words = line.split_whitespace().collect::<Vec<_>>();
-            words.first().is_some_and(|word| *word == format!("{priority}:"))
-                && words.windows(2).any(|pair| pair == ["iif", iface])
-                && words.windows(2).any(|pair| pair == ["lookup", "2022"])
+            words == [format!("{priority}:").as_str(), "from", "all", "iif", iface, "lookup", "2022"]
         });
         let outbound = format!("-A FORWARD -i {iface} -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT");
         let inbound = format!("-A FORWARD -i magicnet0 -o {iface} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment magicnet-hotspot -j ACCEPT");
@@ -171,16 +244,154 @@ fn hotspot_matches(inventory: &str, rules: &str, routes: &str, forward: &str) ->
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct HotspotReturnPath {
+    local: Ipv4Addr,
+    peer: Ipv4Addr,
+}
+
+// sing-tun's system/mixed stack uses the first TUN IPv4 address and its
+// successor for the internal TCP translation. Multiple observed addresses
+// cannot prove which address the live core selected, so they remain unknown.
+fn hotspot_return_path(
+    addresses: &str,
+    routes: &str,
+) -> Result<Option<HotspotReturnPath>, &'static str> {
+    let mut cidrs = Vec::new();
+    for line in addresses.lines().filter(|line| !line.trim().is_empty()) {
+        let words = line.split_whitespace().collect::<Vec<_>>();
+        if words.len() < 4 || words[1].trim_end_matches(':') != "magicnet0" || words[2] != "inet" {
+            return Err("observation-invalid");
+        }
+        cidrs.push(words[3]);
+    }
+    let cidr = match cidrs.as_slice() {
+        [] => return Ok(None),
+        [cidr] => *cidr,
+        _ => return Err("observation-ambiguous"),
+    };
+    let Some((address, prefix)) = cidr.split_once('/') else {
+        return Err("observation-invalid");
+    };
+    let local = address
+        .parse::<Ipv4Addr>()
+        .map_err(|_| "observation-invalid")?;
+    let prefix_text = prefix;
+    let prefix = prefix_text
+        .parse::<u32>()
+        .ok()
+        .filter(|p| (8..=30).contains(p))
+        .ok_or("observation-invalid")?;
+    if prefix_text != prefix.to_string() {
+        return Err("observation-invalid");
+    }
+    let number = u32::from(local);
+    let host_mask = u32::MAX >> prefix;
+    if matches!(local.octets()[0], 0 | 127 | 224..=255) || (number & host_mask) >= host_mask - 1 {
+        return Err("observation-invalid");
+    }
+    let network = format!("{}/{}", Ipv4Addr::from(number & !host_mask), prefix);
+    // The command already filters dev magicnet0 and scope link; iproute2 may
+    // omit those two fields from its printed result. Explicit mismatches and
+    // gateway routes still cannot establish the connected return path.
+    let candidates = routes
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .filter(|words| words.first().is_some_and(|first| *first == network))
+        .collect::<Vec<_>>();
+    if candidates.len() > 1 {
+        return Err("observation-ambiguous");
+    }
+    let connected = candidates.first().is_some_and(|words| {
+        !words.contains(&"via")
+            && words.windows(2).all(|pair| match pair[0] {
+                "dev" => pair[1] == "magicnet0",
+                "scope" => pair[1] == "link",
+                "src" => pair[1] == address,
+                _ => true,
+            })
+    });
+    Ok(connected.then_some(HotspotReturnPath {
+        local,
+        peer: Ipv4Addr::from(number + 1),
+    }))
+}
+
+fn hotspot_return_selected(text: &str, path: &HotspotReturnPath) -> Result<bool, &'static str> {
+    let peer = path.peer.to_string();
+    let local = path.local.to_string();
+    let candidates = text
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .filter(|words| {
+            words.first().is_some_and(|first| *first == peer)
+                || (words.first() == Some(&"local")
+                    && words.get(1).is_some_and(|second| *second == peer))
+        })
+        .collect::<Vec<_>>();
+    let [words] = candidates.as_slice() else {
+        return Err("observation-invalid");
+    };
+    Ok(words.first().is_some_and(|first| *first == peer)
+        && words
+            .windows(2)
+            .any(|pair| pair == ["from", local.as_str()])
+        && words.windows(2).any(|pair| pair == ["dev", "magicnet0"])
+        && !words.contains(&"via")
+        && words
+            .windows(2)
+            .all(|pair| pair[0] != "dev" || pair[1] == "magicnet0"))
+}
+
+fn observe_hotspot(
+    inventory: &str,
+    mut observe: impl FnMut(&str, &[&str]) -> Result<String, &'static str>,
+) -> Result<bool, &'static str> {
+    let Some((_, peer)) = hotspot_return_rule(inventory) else {
+        return Ok(false);
+    };
+    let rules = observe("ip", &["-4", "rule", "show"])?;
+    let routes = observe("ip", &["-4", "route", "show", "table", "2022"])?;
+    let forward = observe("iptables", &["-S", "FORWARD"])?;
+    if !hotspot_matches(inventory, &rules, &routes, &forward) {
+        return Ok(false);
+    }
+    let addresses = observe("ip", &["-4", "-o", "addr", "show", "dev", "magicnet0"])?;
+    let connected = observe(
+        "ip",
+        &[
+            "-4",
+            "route",
+            "show",
+            "table",
+            "main",
+            "dev",
+            "magicnet0",
+            "scope",
+            "link",
+        ],
+    )?;
+    let Some(path) = hotspot_return_path(&addresses, &connected)? else {
+        return Ok(false);
+    };
+    if path.peer != peer {
+        return Ok(false);
+    }
+    let local = path.local.to_string();
+    let peer = path.peer.to_string();
+    let selected = observe(
+        "ip",
+        &["-4", "route", "get", &peer, "from", &local, "uid", "0"],
+    )?;
+    hotspot_return_selected(&selected, &path)
+}
+
 pub(crate) fn hotspot_state(path: &Path) -> &'static str {
     let inventory = match crate::read_proc_text_bounded(path, 8192) {
         Ok(text) => text,
         Err(_) => return "unknown",
     };
-    let observed = snapshot("ip", &["-4", "rule", "show"]).and_then(|rules| {
-        let routes = snapshot("ip", &["-4", "route", "show", "table", "2022"])?;
-        let forward = snapshot("iptables", &["-S", "FORWARD"])?;
-        Ok(hotspot_matches(&inventory, &rules, &routes, &forward))
-    });
+    let observed = observe_hotspot(&inventory, snapshot);
     match observed {
         Ok(true) => "active",
         Ok(false) => "pending",
@@ -261,45 +472,204 @@ mod tests {
         );
     }
     #[test]
+    fn legacy_hotspot_inventory_cannot_prove_internal_return_routing() {
+        // Before #389, this ingress-only inventory was enough for `active`,
+        // even when Android selected an upstream route for the internal peer.
+        let rules = "8999: from all iif wlan1 lookup 2022\n";
+        let routes = "default dev magicnet0 scope link\n";
+        let forward = "-A FORWARD -i wlan1 -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT\n-A FORWARD -i magicnet0 -o wlan1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment magicnet-hotspot -j ACCEPT\n";
+        assert!(!hotspot_matches("8999|wlan1\n", rules, routes, forward));
+    }
+
+    #[test]
     fn inventory_does_not_prove_hotspot_liveness() {
-        let ip = "8999: from all iif wlan1 lookup 2022\n";
+        let inventory = "8999|wlan1\nreturn4|8998|172.20.0.2/32\n";
+        let ip = "8999: from all iif wlan1 lookup 2022\n8998: from all to 172.20.0.2 lookup main\n";
         let route = "default dev magicnet0 scope link\n";
         let forward = "-A FORWARD -i wlan1 -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT\n-A FORWARD -i magicnet0 -o wlan1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment magicnet-hotspot -j ACCEPT\n";
-        assert!(hotspot_matches("8999|wlan1\n", ip, route, forward));
+        assert!(hotspot_matches(inventory, ip, route, forward));
         assert!(!hotspot_matches(
-            "8999|wlan1\n",
+            inventory,
             ip,
             "198.18.0.1 dev magicnet0\n",
             forward
         ));
         assert!(!hotspot_matches(
-            "8999|wlan1\n",
+            inventory,
             ip,
             "0.0.0.0/1 dev magicnet0\n",
             forward
         ));
         assert!(hotspot_matches(
-            "8999|wlan1\n",
+            inventory,
             ip,
             "0.0.0.0/1 dev magicnet0\n128.0.0.0/1 dev magicnet0\n",
             forward
         ));
 
         for (rules, routes, fw) in [("", route, forward), (ip, "", forward), (ip, route, "")] {
-            assert!(!hotspot_matches("8999|wlan1\n", rules, routes, fw));
+            assert!(!hotspot_matches(inventory, rules, routes, fw));
         }
         assert!(!hotspot_matches(
-            "8999|wlan1\n",
+            inventory,
             &ip.replace("2022", "20220"),
             route,
             forward
         ));
         assert!(!hotspot_matches(
-            "8999|wlan1\n9000|usb0\n",
+            &format!("{inventory}9000|usb0\n"),
             ip,
             route,
             forward
         ));
+        for extra in ["from 192.0.2.0/24 iif", "from all not iif"] {
+            assert!(!hotspot_matches(
+                inventory,
+                &ip.replace("from all iif", extra),
+                route,
+                forward
+            ));
+        }
+        for replacement in [
+            "to 172.20.0.0/30",
+            "to 172.20.0.2 fwmark 1",
+            "to 172.20.0.2 uidrange 0-0",
+        ] {
+            assert!(!hotspot_matches(
+                inventory,
+                &ip.replace("to 172.20.0.2", replacement),
+                route,
+                forward
+            ));
+        }
+        assert!(hotspot_matches(
+            inventory,
+            &ip.replace("to 172.20.0.2 lookup main", "to 172.20.0.2/32 lookup 254"),
+            route,
+            forward
+        ));
+    }
+
+    #[test]
+    fn hotspot_peer_is_derived_from_the_single_live_tun_address() {
+        let addresses = "7: magicnet0    inet 172.20.0.1/30 scope global magicnet0\\       valid_lft forever preferred_lft forever\n";
+        for route in [
+            "172.20.0.0/30 dev magicnet0 proto kernel scope link src 172.20.0.1\n",
+            "172.20.0.0/30 proto kernel src 172.20.0.1\n",
+        ] {
+            assert_eq!(
+                hotspot_return_path(addresses, route),
+                Ok(Some(HotspotReturnPath {
+                    local: Ipv4Addr::new(172, 20, 0, 1),
+                    peer: Ipv4Addr::new(172, 20, 0, 2),
+                }))
+            );
+        }
+        for routes in [
+            "",
+            "default dev magicnet0\n",
+            "172.19.0.0/30 dev magicnet0\n",
+            "172.20.0.0/30 dev wlan0\n",
+            "172.20.0.0/30 via 192.0.2.1 dev magicnet0\n",
+            "172.20.0.0/30 src 172.20.0.3\n",
+        ] {
+            assert_eq!(hotspot_return_path(addresses, routes), Ok(None));
+        }
+        assert_eq!(hotspot_return_path("", ""), Ok(None));
+        assert!(hotspot_return_path(&format!("{addresses}{addresses}"), "").is_err());
+        assert!(hotspot_return_path(addresses, "172.20.0.0/30 proto kernel src 172.20.0.1\n172.20.0.0/30 proto static src 172.20.0.1\n").is_err());
+        for invalid in [
+            "172.20.0.2/30",
+            "172.20.0.3/30",
+            "172.20.0.1/31",
+            "172.20.0.1/030",
+            "127.0.0.1/8",
+            "0.0.0.1/8",
+            "224.0.0.1/8",
+        ] {
+            assert!(
+                hotspot_return_path(&addresses.replace("172.20.0.1/30", invalid), "").is_err(),
+                "{invalid}"
+            );
+        }
+        let moved = addresses.replace("172.20.0.1/30", "10.88.1.253/23");
+        assert_eq!(
+            hotspot_return_path(&moved, "10.88.0.0/23 proto kernel src 10.88.1.253\n"),
+            Ok(Some(HotspotReturnPath {
+                local: Ipv4Addr::new(10, 88, 1, 253),
+                peer: Ipv4Addr::new(10, 88, 1, 254),
+            }))
+        );
+    }
+
+    fn observe_hotspot_fixture(
+        inventory: &str,
+        lookup: Result<&str, &'static str>,
+    ) -> Result<bool, &'static str> {
+        observe_hotspot(inventory, |program, args| {
+            let text = match (program, args) {
+                ("ip", ["-4", "rule", "show"]) => "8999: from all iif wlan1 lookup 2022\n8998: from all to 172.20.0.2 lookup main\n",
+                ("ip", ["-4", "route", "show", "table", "2022"]) => "default dev magicnet0 scope link\n",
+                ("iptables", ["-S", "FORWARD"]) => "-A FORWARD -i wlan1 -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT\n-A FORWARD -i magicnet0 -o wlan1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment magicnet-hotspot -j ACCEPT\n",
+                ("ip", ["-4", "-o", "addr", "show", "dev", "magicnet0"]) => "7: magicnet0 inet 172.20.0.1/30 scope global magicnet0\n",
+                ("ip", ["-4", "route", "show", "table", "main", "dev", "magicnet0", "scope", "link"]) => "172.20.0.0/30 proto kernel src 172.20.0.1\n",
+                ("ip", ["-4", "route", "get", "172.20.0.2", "from", "172.20.0.1", "uid", "0"]) => lookup?,
+                _ => panic!("unexpected observation: {program} {args:?}"),
+            };
+            Ok(text.to_string())
+        })
+    }
+
+    #[test]
+    fn hotspot_readiness_requires_the_actual_internal_uid_zero_return_path() {
+        let inventory = "8999|wlan1\nreturn4|8998|172.20.0.2/32\n";
+        assert_eq!(
+            observe_hotspot_fixture(
+                inventory,
+                Ok("172.20.0.2 from 172.20.0.1 dev magicnet0 uid 0\n    cache\n")
+            ),
+            Ok(true)
+        );
+        for reply in [
+            "172.20.0.2 from 172.20.0.1 via 192.0.2.1 dev wlan0 table wlan0 uid 0\n",
+            "172.20.0.2 from 172.20.0.1 dev magicnet0-extra uid 0\n",
+            "172.20.0.2 from 172.20.0.1 via 192.0.2.1 dev magicnet0 uid 0\n",
+            "local 172.20.0.2 from 172.20.0.1 dev lo uid 0\n",
+            "172.20.0.2 from 172.20.0.3 dev magicnet0 uid 0\n",
+        ] {
+            assert_eq!(
+                observe_hotspot_fixture(inventory, Ok(reply)),
+                Ok(false),
+                "{reply}"
+            );
+        }
+        for invalid in ["", "unreachable 172.20.0.2\n", "172.20.0.3 from 172.20.0.1 dev magicnet0 uid 0\n", "172.20.0.2 from 172.20.0.1 dev magicnet0 uid 0\n172.20.0.2 from 172.20.0.1 dev wlan0 uid 0\n"] {
+            assert_eq!(observe_hotspot_fixture(inventory, Ok(invalid)), Err("observation-invalid"));
+        }
+        for error in [
+            "observation-failed",
+            "observation-incomplete",
+            "observation-unavailable",
+        ] {
+            assert_eq!(observe_hotspot_fixture(inventory, Err(error)), Err(error));
+        }
+        for invalid in [
+            "8999|wlan1\n",
+            "return4|8998|172.20.0.2/32\n",
+            "8999|wlan1\nreturn4|8998|172.20.0.0/30\n",
+            "8999|wlan1\nreturn4|0|172.20.0.2/32\n",
+        ] {
+            assert_eq!(
+                observe_hotspot(invalid, |_, _| panic!(
+                    "invalid inventory must not prove readiness"
+                )),
+                Ok(false)
+            );
+        }
+        assert_eq!(
+            observe_hotspot_fixture(&format!("{inventory}return4|8997|172.20.0.2/32\n"), Ok("")),
+            Ok(false)
+        );
     }
 }
 

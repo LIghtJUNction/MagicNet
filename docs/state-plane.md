@@ -118,7 +118,7 @@ These files are intentionally retained because they contain information needed t
 - `.state/sing-box/subscription-update.lock/`: updater ownership and crash detection;
 - `.state/watchdog/*.pid` / refresh owner records: exact process ownership;
 - `.state/hotspot/tether-offload.previous`: Android setting value that MagicNet must restore;
-- `.state/hotspot/tun-rules.list`: exact policy rules MagicNet must delete;
+- `.state/hotspot/tun-rules.list`: exact ingress and internal IPv4 return rules MagicNet must delete; live routing is independently verified;
 - `.state/dns-leak-guard.ifaces`: exact interfaces whose owned rules require cleanup;
 - `.state/app-policy/*uids.list`: resolved UID sets needed to remove stale managed UID boundaries.
 

@@ -736,7 +736,8 @@ pub(crate) struct HotspotObservation {
 
 pub(crate) fn hotspot_observation(app: &App) -> HotspotObservation {
     let owned = app.moddir.join(HOTSPOT_OFFLOAD_OWNER).is_file();
-    let rule_count = clean_line_count(&app.moddir.join(HOTSPOT_TUN_RULES));
+    let rules = app.moddir.join(HOTSPOT_TUN_RULES);
+    let rule_count = crate::network_observation::hotspot_ingress_rule_count(&rules);
     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
         .remove("MAGICNET_TRANSPARENT_MODE")
         .unwrap_or_else(|| "tun".to_string());
@@ -748,9 +749,9 @@ pub(crate) fn hotspot_observation(app: &App) -> HotspotObservation {
         .exists();
     let state = if pending {
         "pending"
-    } else if rule_count > 0 {
+    } else if rules.exists() {
         if owned && configured_mode == "tun" {
-            crate::network_observation::hotspot_state(&app.moddir.join(HOTSPOT_TUN_RULES))
+            crate::network_observation::hotspot_state(&rules)
         } else {
             "pending"
         }
@@ -1180,7 +1181,7 @@ mod tests {
         let rules = root.join(super::HOTSPOT_TUN_RULES);
         fs::create_dir_all(rules.parent().unwrap()).unwrap();
         fs::write(root.join(super::HOTSPOT_OFFLOAD_OWNER), "value=0\n").unwrap();
-        fs::write(&rules, "8999|wlan2\n").unwrap();
+        fs::write(&rules, "8999|wlan2\nreturn4|8998|172.20.0.2/32\n").unwrap();
         let pending = root.join(format!("{}.pending", super::HOTSPOT_TUN_RULES));
         fs::write(&pending, "8999|usb0\n").unwrap();
         let record = super::hotspot_record(&app).encode();
@@ -1188,6 +1189,8 @@ mod tests {
         assert!(!record.contains("state=active\n"));
         assert!(!record.contains("wlan2"));
         assert!(!record.contains("usb0"));
+        assert!(!record.contains("172.20.0.2"));
+        assert!(record.contains("tun_rule_count=1\n"));
         fs::remove_file(pending).unwrap();
         assert!(super::hotspot_record(&app).encode().contains(&format!(
             "state={}\n",

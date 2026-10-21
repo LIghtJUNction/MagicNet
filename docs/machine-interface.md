@@ -211,11 +211,22 @@ and quota displays, and reports unknown rather than keeping an old green state.
 `unknown`); `enabled` is `null` when the member cannot be classified.
 `effective.route_state` is the same reconcile used for
 `.state/machines/hotspot.state`: `disabled`, `waiting` (no downstream hotspot
-yet), `pending` (write-ahead record or rules not yet proven), `active` (TUN
-policy rules, table 2022 and FORWARD access verified), `shared` (eBPF mode; TC
+yet), `pending` (write-ahead record or routing not yet proven), `active` (TUN
+policy rules, table 2022, FORWARD access and the internal IPv4 return path
+verified), `shared` (eBPF mode; TC
 attachment is reported by `transparent.status`) or `unknown`. Interface names,
 subnets and client identities are never returned. The bundled WebUI reads this
 command instead of parsing human `hotspot status` text.
+
+For TUN, the return-path observation derives the internal peer from the single
+live `magicnet0` IPv4 address, verifies its connected main-table route and owned
+destination rule, and queries the actual UID 0 route without forcing an output
+interface. An upstream result cannot report `active`; failed or ambiguous
+observations report `unknown`. A legacy ingress-only journal stays `pending`
+until reconciliation installs and verifies the return path. `tun_rule_count`
+continues to count downstream interception rules, excluding the private return
+record. Readiness proves these routing facts, not a completed TCP handshake or
+internet reachability.
 
 ## Mutation safety
 

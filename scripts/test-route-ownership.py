@@ -55,17 +55,29 @@ if a[0] == 'iptables':
     done()
 assert a.pop(0) == 'ip'
 family = '4'
-if a[0] == '-6': family = '6'; a.pop(0)
+if a[0] in ('-4', '-6'): family = a.pop(0)[1:]
+if a == ['-o', 'addr', 'show', 'dev', 'magicnet0']:
+    if s.get('fail_addr'): done(2)
+    done(0, s.get('addr4', '7: magicnet0 inet 172.20.0.1/30 scope global magicnet0'))
 kind, op = a[:2]; a = a[2:]
 key = kind + family
+if kind == 'route' and op == 'get':
+    assert len(a) == 5 and a[1] == 'from' and a[3:] == ['uid', '0'], a
+    s.setdefault('lookups', []).append(a)
+    if s.get('fail_lookup'): done(2)
+    dev = s.get('return_dev', 'magicnet0')
+    done(0, f'{a[0]} from {a[2]} dev {dev} uid 0')
 if op == 'show':
     if s.get('fail_' + key): done(2, 'netlink permission denied')
-    if kind == 'route': assert a == ['table', '2022'], a
+    if kind == 'route':
+        if a == ['table', 'main', 'dev', 'magicnet0', 'scope', 'link']:
+            done(0, s.get('main4', '172.20.0.0/30 dev magicnet0 proto kernel scope link src 172.20.0.1'))
+        assert a == ['table', '2022'], a
     done(0, '\n'.join(s[key]))
 s['writes'].append(['ip', family, kind, op] + a)
 if kind == 'rule':
     assert a[0] == 'priority', a
-    record = a[1] + ': ' + ('from all ' if a[2] == 'iif' else '') + ' '.join(a[2:])
+    record = a[1] + ': ' + ('from all ' if a[2] in ('iif', 'to') else '') + ' '.join(a[2:])
     if op == 'del':
         if s.get('fail_delete'): done(2)
         if record not in s[key]: done(1)
@@ -77,7 +89,7 @@ if kind == 'rule':
             else: s[key].remove(record)
     elif op == 'add':
         assert (root / 'module/.state/hotspot/tun-rules.list.pending').is_file()
-        if s.get('fail_add'): done(2)
+        if s.get('fail_add') or (a[2] == 'iif' and s.get('fail_ingress_add')): done(2)
         record = a[1] + ': from all ' + ' '.join(a[2:])
         s[key].append(record)
     else: raise AssertionError(op)
@@ -394,12 +406,12 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertFalse(self.pending.exists())
 
     def test_hotspot_failed_install_and_rollback_retains_pending_record(self):
-        self.change(kernel=0, route4=['default dev magicnet0'], fail_add=True, fail_forward_delete=True)
+        self.change(kernel=0, route4=['default dev magicnet0'], fail_ingress_add=True, fail_forward_delete=True)
         self.run_helper('magicnet_hotspot_reconcile', 1)
         self.assertTrue(self.pending.exists())
         self.assertFalse(self.hotspot.exists())
         self.assertTrue(self.read()['forward'])
-        self.change(fail_add=False, fail_forward_delete=False)
+        self.change(fail_ingress_add=False, fail_forward_delete=False)
         self.run_helper('magicnet_hotspot_route_cleanup')
         self.assertFalse(self.pending.exists())
         self.assertFalse(self.read()['forward'])
@@ -417,6 +429,69 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         before = self.read()['writes'][:]
         self.run_helper('magicnet_hotspot_route_status')
         self.assertEqual(self.read()['writes'], before)
+
+    def test_hotspot_return_probe_failure_rolls_back_or_keeps_pending_evidence(self):
+        self.change(kernel=0, route4=['default dev magicnet0'], return_dev='wlan0')
+        self.run_helper('magicnet_hotspot_reconcile', 1)
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.pending.exists())
+        self.assertFalse(self.read()['rule4'])
+        self.assertFalse(self.read()['forward'])
+        self.change(return_dev='magicnet0', fail_lookup=True)
+        self.run_helper('magicnet_hotspot_reconcile', 2)
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.pending.exists())
+        self.assertFalse(self.read()['rule4'])
+        self.change(return_dev='wlan0', fail_lookup=False, fail_delete=True)
+        self.run_helper('magicnet_hotspot_reconcile', 1)
+        self.assertTrue(self.pending.exists())
+        self.assertIn('return4|', self.pending.read_text())
+        self.assertFalse(self.hotspot.exists())
+        self.assertIn('route_status=pending', self.run_helper('magicnet_hotspot_route_status').stdout)
+        self.change(fail_delete=False)
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertFalse(self.pending.exists())
+        self.assertFalse(self.read()['rule4'])
+
+    def test_hotspot_unreadable_live_return_path_keeps_active_resources(self):
+        self.change(kernel=0, route4=['default dev magicnet0'])
+        self.run_helper('magicnet_hotspot_reconcile')
+        before = self.read()['writes'][:]
+        inventory = self.hotspot.read_text()
+        self.change(fail_lookup=True)
+        self.assertIn('route_status=unknown', self.run_helper('magicnet_hotspot_route_status').stdout)
+        self.run_helper('magicnet_hotspot_reconcile', 2)
+        self.assertEqual(self.read()['writes'], before)
+        self.assertEqual(self.hotspot.read_text(), inventory)
+        self.assertFalse(self.pending.exists())
+
+    def test_hotspot_return_collision_never_deletes_foreign_selectors(self):
+        owned = '8998: from all to 172.20.0.2/32 lookup main'
+        foreign = '8998: from 203.0.113.0/24 to 172.20.0.2/32 lookup main'
+        self.change(rule4=[owned, foreign])
+        self.hotspot.write_text('return4|8998|172.20.0.2/32\n')
+        self.run_helper('magicnet_hotspot_delete_return_rule 8998 172.20.0.2/32', 2)
+        self.run_helper('magicnet_hotspot_route_cleanup', 1)
+        self.assertEqual(self.read()['rule4'], [owned, foreign])
+        self.assertFalse(self.read()['writes'])
+        self.assertTrue(self.pending.exists())
+        self.change(rule4=[owned])
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertFalse(self.pending.exists())
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.read()['rule4'])
+
+    def test_hotspot_malformed_typed_journal_blocks_all_cleanup_writes(self):
+        self.hotspot.write_text('8999|wlan2\n')
+        self.change(rule4=['8999: from all iif wlan2 lookup 2022'])
+        for row in ('return4|8998|0.0.0.0/0', 'return4|8998|172.20.0.0/30',
+                    'return4|0|172.20.0.2/32', 'return4|8998|172.20.0.2/32|extra',
+                    'return4|8998|172.20.0.2/32\nreturn4|8997|172.21.0.2/32'):
+            self.pending.write_text(row + '\n')
+            self.run_helper('magicnet_hotspot_route_cleanup', 2)
+            self.assertFalse(self.read()['writes'])
+            self.assertTrue(self.hotspot.exists())
+            self.assertTrue(self.pending.exists())
 
     def test_failed_cleanup_marks_previously_active_hotspot_pending(self):
         self.change(kernel=0, route4=['default dev magicnet0'])

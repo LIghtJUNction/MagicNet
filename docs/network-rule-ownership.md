@@ -43,6 +43,24 @@ insertion; only verified installation promotes it to `tun-rules.list`. Cleanup
 also marks the installation pending before changing it. Partial apply or rollback
 retains the journal, and canonical `hotspot.state` reports `pending`, not `active`.
 
+Hotspot TUN ownership keeps the existing `priority|interface` ingress rows and
+adds one `return4|priority|peer/32` row. This rule selects the main table only for
+the internal IPv4 peer derived from the live TUN address; it does not exempt UID
+0 from normal loop prevention or select the TUN for other destinations. Its
+priority precedes observed positive-priority policies, and installation must
+verify the actual UID 0 route to that peer through `magicnet0`. A connected main
+route and matching rule inventory alone do not establish readiness on Android.
+The watcher repeats the route query and replaces owned return state after a TUN
+address change or an earlier policy taking precedence. Failed inspection retains
+the existing resources for a later retry instead of treating unknown as absent.
+
+Return rules use the same write-ahead journal and stop/disable/mode-switch
+cleanup as ingress rules. Cleanup accepts old ingress-only journals, verifies
+exact return selectors, refuses a potentially matching foreign sibling, and
+retains pending evidence after a failed removal. It never deletes the core's
+connected main-table route or unrelated upstream policies to repair the return
+path.
+
 New DNS leak-guard REJECT rules carry the comment `magicnet-dns-guard`; their
 interface journal is published before insertion. Untagged rules belonging to
 Android/other modules are not discovered merely by port and physical interface.
@@ -86,7 +104,11 @@ hotspot write-ahead/rollback, and tagged versus unrelated DNS REJECT rules.
 The Rust state regression verifies that an incomplete hotspot transaction is not
 published as active. Existing ordered DNS, startup and timeout regressions remain. The GitHub PR and
 release host gates also execute a disposable real Linux network namespace,
-including colliding-rule insertion orders and scoped cleanup. Namespace creation
+including colliding-rule insertion orders and scoped cleanup. The hotspot case
+reproduces an earlier UID 0 upstream policy overriding a present TUN connected
+route, then verifies the production repair, unchanged external UID 0 routing,
+earlier-policy replacement, TUN address replacement, ambiguity handling and
+repeated cleanup. Namespace creation
 failure is a failed test, not an accepted skip. WebUI log classification respects
 the declared severity, so one WARN containing "failed" cannot count as both a
 warning and an error.
