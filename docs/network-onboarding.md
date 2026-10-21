@@ -32,11 +32,18 @@ hotspot clients. That exemption is not a TPROXY, Redirect, or netd
 `ALLOW_MULTI` path. Cleanup removes only the rules owned by MagicNet.
 
 The WebUI distinguishes configured, waiting-for-hotspot and degraded states.
-TUN readiness requires routing and forwarding rules for every detected interface.
+TUN readiness requires routing and forwarding rules for every detected interface,
+plus an actual UID 0 route lookup returning the internal TUN IPv4 peer through
+`magicnet0`. Android can otherwise select an upstream policy before the connected
+main-table route. MagicNet installs a destination-specific `/32` return rule and
+keeps the normal UID 0 loop-prevention exclusions. A stale or upstream return
+path cannot display ready; a failed or ambiguous observation remains unknown.
 Discovery errors cannot be reported as an inactive hotspot. eBPF status never
 uses `magicnet0` or table 2022 as attachment proof; verify it using
 `cli transparent status` and `cli health`.
 
 Host fixtures verify discovery, rule installation/cleanup and API/UI behavior.
+The CI network namespace also exercises real Linux policy-route selection and
+scoped cleanup; it does not run the TUN TCP stack or Android netd.
 They do not prove forwarding on every Android vendor or IPv6 tethering path;
 verify with a connected hotspot client on the target device before relying on it.

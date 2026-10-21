@@ -390,11 +390,11 @@ fi
 SH
 cat >>"$MODDIR/lib/magicnet/network.sh" <<'SH'
 
-# Host fixture only: the real core tests cover actual Linux interfaces. Here
-# the synthetic TUN exists only while this fixture's exact generation is live.
+# Host fixture only: ap0 is the modeled tether interface; the synthetic TUN
+# exists only while this fixture's exact core generation is live.
 magicnet_iface_exists() {
     magicnet_iface_name_valid "$1" || return 1
-    if [ "$1" = magicnet0 ]; then
+    if [ "$1" = magicnet0 ] || [ "$1" = ap0 ]; then
         "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" interface "$1"
     else
         [ -d "/sys/class/net/$1" ]
@@ -721,7 +721,6 @@ export MAGICNET_NOTIFY_ENABLED=0
 export MAGICNET_WATCHDOG_ENABLED=0
 export MAGICNET_FSWATCH_ENABLED=0
 export MAGICNET_CONFIG_LOCK_TIMEOUT=2
-export MAGIC_HOTSPOT_IFACES="ap0"
 export MAGIC_VPN_COEXIST_IFACES="tun0"
 export MAGIC_TUN_IFACES="magicnet0"
 export PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH"
@@ -935,17 +934,33 @@ run "$MODDIR/cli" hotspot status >"$TMP/hotspot-direct.log"
 rg -q '^enabled=0$' "$TMP/hotspot-direct.log"
 rg -q '^outbound=direct$' "$TMP/hotspot-direct.log"
 rg -q '^offload_disabled=0$' "$TMP/hotspot-direct.log"
+hotspot_rules_before="$("$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" ip -4 rule show)"
 run "$MODDIR/cli" hotspot enable
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-proxy.log"
 rg -q '^enabled=1$' "$TMP/hotspot-proxy.log"
 rg -q '^outbound=proxy$' "$TMP/hotspot-proxy.log"
 rg -q '^offload_disabled=1$' "$TMP/hotspot-proxy.log"
 rg -q '^offload_owned=1$' "$TMP/hotspot-proxy.log"
+rg -q '^route_status=ready$' "$TMP/hotspot-proxy.log"
+rg -q '^return_route_ready=1$' "$TMP/hotspot-proxy.log"
+"$MODDIR/cli" --json hotspot status >"$TMP/hotspot-proxy.json"
+"$HOST_JQ" -e '
+    .schema == 1 and .ok == true and .command == "hotspot.status"
+    and .data.effective.route_state == "active"
+    and .data.effective.offload_owned == true
+    and .data.effective.tun_rule_count == 1
+' "$TMP/hotspot-proxy.json" >/dev/null
 run "$MODDIR/cli" hotspot disable
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-restored.log"
 rg -q '^offload_disabled=0$' "$TMP/hotspot-restored.log"
 rg -q '^offload_owned=0$' "$TMP/hotspot-restored.log"
+rg -q '^route_status=disabled$' "$TMP/hotspot-restored.log"
 test ! -e "$MAGICNET_FAKE_SETTINGS_FILE"
+test ! -e "$MODDIR/.state/hotspot/tun-rules.list"
+test ! -e "$MODDIR/.state/hotspot/tun-rules.list.pending"
+hotspot_rules_after="$("$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" ip -4 rule show)"
+[[ "$hotspot_rules_after" == "$hotspot_rules_before" ]]
+echo 'Modeled hotspot discovery, return route, machine state and disable cleanup passed'
 
 env -u MODDIR -u MODPATH \
     KAM_LANG="$KAM_LANG" \

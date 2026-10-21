@@ -6,6 +6,7 @@ failure handling, ownership checks or lifecycle ordering.
 """
 import contextlib
 import fcntl
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -127,24 +128,87 @@ def xtables(state, family, args):
     raise ValueError(f"unsupported xtables fixture command: {family} {args}")
 
 
+def policy_rules(state, family, tun):
+    rules = list(state["rules"][family])
+    if family == "4":
+        # Android-style root traffic selects the upstream before the core's
+        # generic table. Only an earlier, matching return rule can change it.
+        rules.append("1000: from all uidrange 0-0 lookup 100")
+    if tun:
+        rules.append("9000: from all lookup 2022")
+    return sorted(rules, key=lambda rule: int(rule.split(":", 1)[0]))
+
+
+def return_lookup(state, args, addresses):
+    # This models only the local UID-0 lookup used by production observation;
+    # it does not model packet delivery, a TCP handshake or an Android kernel.
+    if len(args) != 7 or args[3] != "from" or args[5:] != ["uid", "0"]:
+        raise ValueError(f"unsupported route lookup: {args}")
+    destination = ipaddress.IPv4Address(args[2])
+    source = ipaddress.IPv4Address(args[4])
+    if source not in [address.ip for address in addresses]:
+        return 2
+    for line in policy_rules(state, "4", True):
+        tokens = line.split(":", 1)[1].split()
+        if len(tokens) % 2:
+            raise ValueError(f"unsupported policy fixture rule: {line}")
+        matches, table = True, None
+        for key, value in zip(tokens[::2], tokens[1::2]):
+            if key == "from":
+                matches &= value == "all" or source in ipaddress.IPv4Network(value, strict=False)
+            elif key == "to":
+                matches &= value == "all" or destination in ipaddress.IPv4Network(value, strict=False)
+            elif key == "iif":
+                matches &= value == "lo"
+            elif key == "uidrange":
+                low, high = map(int, value.split("-"))
+                matches &= low <= 0 <= high
+            elif key == "lookup":
+                table = value
+            else:
+                raise ValueError(f"unsupported policy fixture selector: {key}")
+        if not matches:
+            continue
+        if table in ("main", "254"):
+            if not any(destination in address.network for address in addresses):
+                continue
+            print(f"{destination} from {source} dev magicnet0 uid 0")
+        elif table == "2022":
+            print(f"{destination} from {source} dev magicnet0 table 2022 uid 0")
+        elif table == "100":
+            print(f"{destination} from {source} via 192.168.43.254 dev wlan0 table 100 uid 0")
+        else:
+            # No routes are modeled for other tables; the next rule applies.
+            continue
+        return 0
+    return 2
+
+
 def ip(state, args):
     args = list(args)
     family = "4"
-    if args[:1] in (["-4"], ["-6"]):
-        family, args = args[0][1:], args[1:]
+    one_line = False
+    while args and args[0] in ("-4", "-6", "-o"):
+        option = args.pop(0)
+        if option == "-o":
+            one_line = True
+        else:
+            family = option[1:]
     core = state["core"]
     tun = live(core) and core["mode"] == "tun"
+    addresses = [ipaddress.IPv4Interface(address) for address in core.get("addresses", [])] if tun else []
     if args[:2] == ["rule", "show"]:
-        if tun:
-            print("9000: from all lookup 2022")
-        for rule in state["rules"][family]:
+        for rule in policy_rules(state, family, tun):
             print(rule)
         return 0
     if args[:2] in (["rule", "add"], ["rule", "del"]):
         action, rule = args[1], args[2:]
         if rule[0] != "priority":
             raise ValueError(f"fixture requires exact priority: {args}")
-        line = f"{rule[1]}: " + " ".join(rule[2:])
+        selectors = rule[2:]
+        if "from" not in selectors:
+            selectors = ["from", "all", *selectors]
+        line = f"{rule[1]}: " + " ".join(selectors)
         if action == "add":
             state["rules"][family].append(line)
         elif line in state["rules"][family]:
@@ -158,10 +222,18 @@ def ip(state, args):
             print(f"8: {name}: <UP> mtu 1500 state UNKNOWN")
             return 0
         return 1
+    if args[:2] == ["route", "get"]:
+        if family != "4":
+            raise ValueError("only IPv4 UID-0 route lookups are modeled")
+        return return_lookup(state, args, addresses)
     if args[:2] == ["route", "show"]:
-        if "dev" in args and args[-1] in ("ap0", "wlan0"):
-            name = args[-1]
+        name = args[args.index("dev") + 1] if "dev" in args else None
+        if name in ("ap0", "wlan0"):
             print(f"192.168.43.0/24 dev {name} proto kernel scope link src 192.168.43.1")
+            return 0
+        if family == "4" and args[2:] == ["table", "main", "dev", "magicnet0", "scope", "link"]:
+            for address in addresses:
+                print(f"{address.network} dev magicnet0 proto kernel scope link src {address.ip}")
             return 0
         if args[2:] == ["table", "2022"] and tun:
             print("default dev magicnet0 scope link")
@@ -172,21 +244,23 @@ def ip(state, args):
         if tun:
             raise ValueError("fixture must not flush a live core's routes")
         return 0
-    if args[:3] == ["-o", "link", "show"]:
+    if one_line and args == ["link", "show"]:
         print("1: lo: <LOOPBACK,UP>")
+        print("7: ap0: <BROADCAST,UP>")
         if tun:
             print("8: magicnet0: <POINTOPOINT,UP>")
         return 0
-    if args[:3] == ["-o", "-4", "addr"] and args[3:5] == ["show", "dev"]:
-        dev = args[5]
+    if one_line and family == "4" and args[:3] == ["addr", "show", "dev"] and len(args) == 4:
+        dev = args[3]
         cidrs = {"ap0": "192.168.43.1/24", "wlan0": "192.168.43.1/24", "tun0": "10.8.0.2/24"}
-        if tun:
-            cidrs["magicnet0"] = "172.19.0.1/30"
+        if dev == "magicnet0":
+            for address in addresses:
+                print(f"8: {dev} inet {address} scope global {dev}")
         if dev in cidrs:
             print(f"8: {dev} inet {cidrs[dev]} scope global {dev}")
         return 0
-    if args[:3] == ["-o", "-6", "addr"] and args[3:5] == ["show", "dev"]:
-        if args[5] == "tun0":
+    if one_line and family == "6" and args[:3] == ["addr", "show", "dev"] and len(args) == 4:
+        if args[3] == "tun0":
             print("9: tun0 inet6 fd00::2/64 scope global")
         return 0
     raise ValueError(f"unsupported ip fixture command: {args}")
@@ -199,13 +273,23 @@ def dispatch(state, command, args):
         return ip(state, args)
     if command == "core-start":
         config = json.loads(Path(args[1]).read_text())
-        mode = "tun" if any(i.get("type") == "tun" for i in config.get("inbounds", [])) else "ebpf"
+        inbounds = [i for i in config.get("inbounds", []) if i.get("type") == "tun"]
+        mode = "tun" if inbounds else "ebpf"
+        addresses = []
+        for inbound in inbounds:
+            configured = inbound.get("address", [])
+            for address in [configured] if isinstance(configured, str) else configured:
+                parsed = ipaddress.ip_interface(address)
+                if parsed.version == 4:
+                    addresses.append(str(parsed))
         fields = Path(f"/proc/{int(args[0])}/stat").read_text().rsplit(") ", 1)[1].split()
-        state["core"] = {"pid": int(args[0]), "mode": mode, "start": fields[19]}
+        state["core"] = {"pid": int(args[0]), "mode": mode, "start": fields[19], "addresses": addresses}
         return 0
     if command == "pid-live":
         return 0 if len(args) == 1 and live({"pid": int(args[0])}) else 1
     if command == "interface":
+        if args == ["ap0"]:
+            return 0
         return 0 if args == ["magicnet0"] and live(state["core"]) and state["core"]["mode"] == "tun" else 1
     if command == "seed-cleanup":
         for family in ("iptables", "ip6tables"):

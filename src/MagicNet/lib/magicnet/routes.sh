@@ -256,6 +256,163 @@ magicnet_hotspot_delete_rule() (
     [ "$_present_rc" -eq 1 ]
 )
 
+magicnet_hotspot_return_peer_valid() {
+    printf '%s\n' "$1" | awk -F/ '
+        NF != 2 || $2 != "32" { exit 1 }
+        {
+            if (split($1, octets, ".") != 4) exit 1
+            for (i = 1; i <= 4; i++)
+                if (octets[i] !~ /^[0-9]+$/ || length(octets[i]) > 3 ||
+                    (length(octets[i]) > 1 && substr(octets[i], 1, 1) == "0") || octets[i] + 0 > 255) exit 1
+            if (octets[1] + 0 == 0 || octets[1] + 0 == 127 || octets[1] + 0 >= 224) exit 1
+        }
+        END { if (NR != 1) exit 1 }
+    '
+}
+
+# Observe the live TUN, never the desired config or a hard-coded subnet.
+# sing-tun's system TCP path (also used by mixed) maps to local address + 1.
+# Return local|peer|peer/32 only when one address and its connected main route
+# agree. 1 means missing evidence, 2 means an unreadable/ambiguous observation.
+magicnet_hotspot_return_path() (
+    _return_addresses="$(ip -4 -o addr show dev magicnet0 2>/dev/null)" || return 2
+    _return_address="$(printf '%s\n' "$_return_addresses" | awk '
+        function ip(number, a, b, c, d) {
+            a = int(number / 16777216); b = int(number / 65536) % 256
+            c = int(number / 256) % 256; d = number % 256
+            return a "." b "." c "." d
+        }
+        NF {
+            if ($2 != "magicnet0" || $3 != "inet") { bad = 1; next }
+            count++
+            if (split($4, cidr, "/") != 2 || cidr[2] !~ /^[1-9][0-9]*$/ ||
+                length(cidr[2]) > 2 || cidr[2] + 0 < 8 || cidr[2] + 0 > 30 ||
+                split(cidr[1], octets, ".") != 4) { bad = 1; next }
+            number = 0
+            for (i = 1; i <= 4; i++) {
+                if (octets[i] !~ /^[0-9]+$/ || length(octets[i]) > 3 ||
+                    (length(octets[i]) > 1 && substr(octets[i], 1, 1) == "0") || octets[i] + 0 > 255) bad = 1
+                number = number * 256 + octets[i]
+            }
+            if (octets[1] + 0 == 0 || octets[1] + 0 == 127 || octets[1] + 0 >= 224) bad = 1
+            # BusyBox awk can omit libm/pow support; this bounded integer loop
+            # works on those Android-style builds as well.
+            size = 1
+            for (bit = cidr[2] + 0; bit < 32; bit++) size *= 2
+            if (number % size >= size - 2) bad = 1
+            local = cidr[1]; peer = ip(number + 1)
+            network = ip(int(number / size) * size) "/" cidr[2]
+        }
+        END {
+            if (bad || count > 1) exit 2
+            if (!count) exit 1
+            print local "|" peer "|" peer "/32|" network
+        }
+    ')" || return $?
+    _return_network="${_return_address##*|}"
+    _return_tuple="${_return_address%|*}"
+    _return_local="${_return_tuple%%|*}"
+    _return_routes="$(ip -4 route show table main dev magicnet0 scope link 2>/dev/null)" || return 2
+    printf '%s\n' "$_return_routes" | awk -v network="$_return_network" -v local="$_return_local" '
+        $1 == network {
+            count++; valid = 1
+            # Some iproute2 versions omit selectors already supplied on the
+            # command line. If printed, they must still match exactly.
+            for (i = 2; i <= NF; i++) {
+                if ($i == "via") valid = 0
+                if ($i == "dev" && $(i + 1) != "magicnet0") valid = 0
+                if ($i == "scope" && $(i + 1) != "link") valid = 0
+                if ($i == "src" && $(i + 1) != local) valid = 0
+            }
+            if (valid) found++
+        }
+        END { if (count > 1) exit 2; exit found == 1 ? 0 : 1 }
+    ' || return $?
+    printf '%s\n' "$_return_tuple"
+)
+
+magicnet_hotspot_return_path_ready() (
+    _return_local="$1"
+    _return_peer="$2"
+    magicnet_hotspot_return_peer_valid "${_return_local}/32" &&
+        magicnet_hotspot_return_peer_valid "${_return_peer}/32" || return 2
+    # Do not force oif: that would hide the Android RPDB decision we need to
+    # verify. UID 0 remains excluded from general TUN interception.
+    _return_lookup="$(ip -4 route get "$_return_peer" from "$_return_local" uid 0 2>/dev/null)" || return 2
+    printf '%s\n' "$_return_lookup" | awk -v peer="$_return_peer" -v local="$_return_local" '
+        $1 == peer || ($1 == "local" && $2 == peer) {
+            count++; dev = source = ""; via = 0
+            for (i = 1; i <= NF; i++) {
+                if ($i == "dev") dev = $(i + 1)
+                if ($i == "from") source = $(i + 1)
+                if ($i == "via") via = 1
+            }
+            if (dev == "magicnet0" && source == local && !via && $1 == peer) ready++
+        }
+        END { if (count != 1) exit 2; exit ready == 1 ? 0 : 1 }
+    '
+)
+
+magicnet_hotspot_return_rule_present() (
+    _check_priority="$1"
+    _check_peer="$2"
+    magicnet_hotspot_return_peer_valid "$_check_peer" || return 2
+    _check_rules="$(ip -4 rule show 2>/dev/null)" || return 2
+    printf '%s\n' "$_check_rules" | awk \
+        -v priority="${_check_priority}:" -v cidr="$_check_peer" -v peer="${_check_peer%/32}" '
+        NF == 7 && $1 == priority && $2 == "from" && $3 == "all" &&
+            $4 == "to" && ($5 == cidr || $5 == peer) && $6 == "lookup" &&
+            ($7 == "main" || $7 == "254") { found = 1 }
+        END { exit !found }
+    '
+)
+
+magicnet_hotspot_delete_return_rule() (
+    _delete_priority="$1"
+    _delete_peer="$2"
+    _delete_attempt=0
+    while [ "$_delete_attempt" -lt 8 ]; do
+        _present_rc=0
+        magicnet_hotspot_return_rule_present "$_delete_priority" "$_delete_peer" || _present_rc=$?
+        case "$_present_rc" in 0) ;; 1) return 0 ;; *) return 2 ;; esac
+        _delete_rules="$(ip -4 rule show 2>/dev/null)" || return 2
+        printf '%s\n' "$_delete_rules" | awk \
+            -v priority="${_delete_priority}:" -v cidr="$_delete_peer" -v peer="${_delete_peer%/32}" '
+            $1 == priority {
+                destination = table = ""
+                for (i = 2; i < NF; i++) {
+                    if ($i == "to") destination = $(i + 1)
+                    if ($i == "lookup") table = $(i + 1)
+                }
+                if ((destination == cidr || destination == peer) && (table == "main" || table == "254") &&
+                    !(NF == 7 && $2 == "from" && $3 == "all" && $4 == "to" && $6 == "lookup")) ambiguous = 1
+            }
+            END { exit ambiguous ? 1 : 0 }
+        ' || return 2
+        ip -4 rule del priority "$_delete_priority" to "$_delete_peer" lookup main >/dev/null 2>&1 || return 1
+        _delete_attempt=$((_delete_attempt + 1))
+    done
+    _present_rc=0
+    magicnet_hotspot_return_rule_present "$_delete_priority" "$_delete_peer" || _present_rc=$?
+    [ "$_present_rc" -eq 1 ]
+)
+
+magicnet_hotspot_choose_return_rule_priority() (
+    _return_reserved="${1:-}"
+    _return_rules="$(ip -4 rule show 2>/dev/null)" || return 2
+    _return_priority="$(printf '%s\n' "$_return_rules" | awk '
+        NF {
+            if ($1 !~ /^[0-9]+:$/ || $1 + 0 > 4294967295) { bad = 1; next }
+            priority = $1 + 0
+            if (priority > 0 && (!found || priority < first)) { first = priority; found = 1 }
+        }
+        END { if (bad) exit 2; print found ? first - 1 : 8999 }
+    ')" || return $?
+    [ "$_return_priority" != "$_return_reserved" ] || _return_priority=$((_return_priority - 1))
+    [ "$_return_priority" -gt 0 ] || return 1
+    printf '%s\n' "$_return_priority"
+)
+
 # sing-box auto_redirect installs a global IPv6 TPROXY in mangle PREROUTING.
 # Hotspot clients arrive on PREROUTING of the tether iface, not local OUTPUT.
 # Insert an interface-scoped ACCEPT so downstream IPv6 is forwarded natively
@@ -391,6 +548,26 @@ magicnet_hotspot_route_pending_file() {
     printf '%s.pending\n' "$(magicnet_hotspot_route_state_file)"
 }
 
+magicnet_hotspot_route_journal_valid() (
+    _journal="$1"
+    [ -f "$_journal" ] && [ ! -L "$_journal" ] && [ -r "$_journal" ] || return 2
+    [ "$(wc -c <"$_journal")" -le 8192 ] || return 2
+    awk -F'|' '
+        function priority(value) { return value ~ /^[1-9][0-9]*$/ && value + 0 <= 4294967295 }
+        NF == 2 && priority($1) { next }
+        NF == 3 && $1 == "return4" && priority($2) { returns++; next }
+        { bad = 1 }
+        END { exit bad || returns > 1 ? 2 : 0 }
+    ' "$_journal" || return 2
+    while IFS='|' read -r _kind _value _peer || [ -n "$_kind$_value$_peer" ]; do
+        if [ "$_kind" = return4 ]; then
+            magicnet_hotspot_return_peer_valid "$_peer" || return 2
+        else
+            magicnet_hotspot_interface_allowed "$_value" || return 2
+        fi
+    done <"$_journal"
+)
+
 magicnet_hotspot_route_cleanup() (
     _state="$(magicnet_hotspot_route_state_file)"
     _pending="$(magicnet_hotspot_route_pending_file)"
@@ -398,11 +575,7 @@ magicnet_hotspot_route_cleanup() (
     # Validate every journal before removing the first resource.
     for _file in "$_state" "$_pending"; do
         [ -e "$_file" ] || [ -L "$_file" ] || continue
-        [ -f "$_file" ] && [ ! -L "$_file" ] || return 2
-        while IFS='|' read -r _priority _iface; do
-            case "$_priority" in '' | *[!0-9]*) return 2 ;; esac
-            magicnet_hotspot_interface_allowed "$_iface" || return 2
-        done <"$_file"
+        magicnet_hotspot_route_journal_valid "$_file" || return 2
     done
     # A partial cleanup must stop advertising an earlier installation as active.
     if [ -f "$_state" ] && [ ! -e "$_pending" ]; then
@@ -416,9 +589,13 @@ magicnet_hotspot_route_cleanup() (
     _rc=0
     for _file in "$_state" "$_pending"; do
         [ -e "$_file" ] || continue
-        while IFS='|' read -r _priority _iface; do
-            magicnet_hotspot_forward_access cleanup "$_iface" || _rc=1
-            magicnet_hotspot_delete_rule "$_priority" "$_iface" || _rc=1
+        while IFS='|' read -r _priority _iface _peer || [ -n "$_priority$_iface$_peer" ]; do
+            if [ "$_priority" = return4 ]; then
+                magicnet_hotspot_delete_return_rule "$_iface" "$_peer" || _rc=1
+            else
+                magicnet_hotspot_forward_access cleanup "$_iface" || _rc=1
+                magicnet_hotspot_delete_rule "$_priority" "$_iface" || _rc=1
+            fi
         done <"$_file"
     done
     [ "$_rc" -eq 0 ] || return "$_rc"
@@ -478,23 +655,35 @@ magicnet_hotspot_tun_route_table_ready() (
 magicnet_hotspot_routes_current() (
     _current_pairs="$1"
     _current_file="$(magicnet_hotspot_route_state_file)"
-    [ ! -e "$(magicnet_hotspot_route_pending_file)" ] || return 1
+    [ ! -e "$(magicnet_hotspot_route_pending_file)" ] &&
+        [ ! -L "$(magicnet_hotspot_route_pending_file)" ] || return 1
     [ -f "$_current_file" ] || return 1
+    magicnet_hotspot_route_journal_valid "$_current_file" || return 2
     _current_saved="$(cat "$_current_file")" || return 2
     _current_expected="$(printf '%s\n' "$_current_pairs" | awk -F'|' 'NF == 2 {print $1}' | sort -u)"
     _current_ifaces="$(printf '%s\n' "$_current_saved" | awk -F'|' 'NF == 2 {print $2}' | sort -u)"
     [ -n "$_current_expected" ] && [ "$_current_ifaces" = "$_current_expected" ] || return 1
-    while IFS='|' read -r _current_priority _current_iface; do
-        case "$_current_priority" in '' | *[!0-9]*) return 1 ;; esac
-        magicnet_hotspot_interface_allowed "$_current_iface" || return 1
-        magicnet_hotspot_rule_present "$_current_priority" "$_current_iface" || return $?
-        magicnet_hotspot_forward_access status "$_current_iface" || return $?
+    _current_return="$(magicnet_hotspot_return_path)" || return $?
+    _current_return_local="${_current_return%%|*}"
+    _current_return_cidr="${_current_return##*|}"
+    _current_return_count=0
+    while IFS='|' read -r _current_priority _current_iface _current_peer; do
+        if [ "$_current_priority" = return4 ]; then
+            [ "$_current_peer" = "$_current_return_cidr" ] || return 1
+            magicnet_hotspot_return_rule_present "$_current_iface" "$_current_peer" || return $?
+            _current_return_count=$((_current_return_count + 1))
+        else
+            magicnet_hotspot_rule_present "$_current_priority" "$_current_iface" || return $?
+            magicnet_hotspot_forward_access status "$_current_iface" || return $?
+        fi
     done <<EOF
 $_current_saved
 EOF
+    [ "$_current_return_count" -eq 1 ] || return 1
+    magicnet_hotspot_return_path_ready "$_current_return_local" "${_current_return_cidr%/32}"
 )
 
-magicnet_hotspot_reconcile() {
+magicnet_hotspot_reconcile() (
     if ! magicnet_hotspot_proxy_enabled; then
         magicnet_hotspot_route_cleanup
         return $?
@@ -508,6 +697,7 @@ magicnet_hotspot_reconcile() {
         unset _hotspot_transparent_mode
         return "$_hotspot_ebpf_reconcile_rc"
     fi
+    [ "$_hotspot_transparent_mode" = tun ] || return 2
     unset _hotspot_transparent_mode
 
     # The selector can be enabled before sing-box has created magicnet0. That
@@ -529,6 +719,13 @@ magicnet_hotspot_reconcile() {
 
     _hotspot_pairs="$(magicnet_hotspot_active_networks)" || return 2
     _hotspot_pairs="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 && !seen[$1]++')"
+    if [ -n "$_hotspot_pairs" ]; then
+        # Read all address evidence before replacing any existing resources.
+        # A failed/ambiguous observation must not become an empty topology.
+        _hotspot_return_path="$(magicnet_hotspot_return_path)" || return $?
+        _hotspot_return_local="${_hotspot_return_path%%|*}"
+        _hotspot_return_cidr="${_hotspot_return_path##*|}"
+    fi
     _hotspot_current_rc=0
     magicnet_hotspot_routes_current "$_hotspot_pairs" || _hotspot_current_rc=$?
     case "$_hotspot_current_rc" in
@@ -550,6 +747,7 @@ magicnet_hotspot_reconcile() {
         unset _hotspot_pairs _hotspot_first_iface
         return 1
     }
+    _hotspot_return_priority="$(magicnet_hotspot_choose_return_rule_priority "$_hotspot_priority")" || return $?
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
     _hotspot_pending="$(magicnet_hotspot_route_pending_file)"
     _hotspot_state_tmp="${_hotspot_pending}.new.$$"
@@ -557,13 +755,19 @@ magicnet_hotspot_reconcile() {
     if ! mkdir -p "${_hotspot_pending%/*}" || ! (
         umask 077
         printf '%s\n' "$_hotspot_pairs" | awk -F'|' -v priority="$_hotspot_priority" \
-            'NF == 2 { print priority "|" $1 }' >"$_hotspot_state_tmp"
+            'NF == 2 { print priority "|" $1 }' >"$_hotspot_state_tmp" &&
+        printf 'return4|%s|%s\n' "$_hotspot_return_priority" "$_hotspot_return_cidr" >>"$_hotspot_state_tmp"
     ) || ! mv -f "$_hotspot_state_tmp" "$_hotspot_pending"; then
         rm -f "$_hotspot_state_tmp"
         return 1
     fi
     _hotspot_add_rc=0
-    while IFS='|' read -r _hotspot_iface _hotspot_cidr; do
+    if ! ip -4 rule add priority "$_hotspot_return_priority" to "$_hotspot_return_cidr" lookup main >/dev/null 2>&1; then
+        _hotspot_add_rc=1
+    else
+        magicnet_hotspot_return_rule_present "$_hotspot_return_priority" "$_hotspot_return_cidr" || _hotspot_add_rc=$?
+    fi
+    while [ "$_hotspot_add_rc" -eq 0 ] && IFS='|' read -r _hotspot_iface _hotspot_cidr; do
         [ -n "$_hotspot_iface" ] || continue
         if ! magicnet_hotspot_forward_access ensure "$_hotspot_iface" ||
             ! ip rule add priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 >/dev/null 2>&1 ||
@@ -575,22 +779,31 @@ magicnet_hotspot_reconcile() {
     done <<EOF
 $_hotspot_pairs
 EOF
+    if [ "$_hotspot_add_rc" -eq 0 ]; then
+        magicnet_hotspot_return_path_ready "$_hotspot_return_local" "${_hotspot_return_cidr%/32}" || _hotspot_add_rc=$?
+    fi
     if [ "$_hotspot_add_rc" -ne 0 ] || ! mv -f "$_hotspot_pending" "$_hotspot_state_file"; then
         # Cleanup deletes the journal ONLY after all recorded resources are
         # verified absent. Failure is visible and a subsequent stop can retry.
         magicnet_hotspot_route_cleanup || magicnet_warn "Hotspot rollback incomplete; pending journal retained."
-        return 1
+        [ "$_hotspot_add_rc" -ne 0 ] || _hotspot_add_rc=1
+        return "$_hotspot_add_rc"
     fi
     unset _hotspot_pairs _hotspot_first_iface _hotspot_priority _hotspot_state_file _hotspot_state_tmp
     unset _hotspot_add_rc _hotspot_pending _hotspot_iface _hotspot_cidr
-}
+)
 
-magicnet_hotspot_route_status() {
-    if [ "$(magicnet_transparent_mode 2>/dev/null)" = ebpf ]; then
+magicnet_hotspot_route_status() (
+    _hotspot_mode="$(magicnet_transparent_mode 2>/dev/null)" || {
+        printf 'route_status=unknown\n'
+        return 0
+    }
+    if [ "$_hotspot_mode" = ebpf ]; then
         # TUN state cannot prove TC attachment; transparent status verifies it.
         if magicnet_hotspot_proxy_enabled; then printf 'route_status=shared-tc-unverified\n'; else printf 'route_status=disabled\n'; fi
         return 0
     fi
+    [ "$_hotspot_mode" = tun ] || { printf 'route_status=unknown\n'; return 0; }
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
     _hotspot_ready_rc=0
     magicnet_hotspot_tun_route_table_ready || _hotspot_ready_rc=$?
@@ -606,47 +819,91 @@ magicnet_hotspot_route_status() {
     _hotspot_networks="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF && !seen[$2]++ { print $2 }' | tr '\n' ',' | sed 's/,$//')"
     printf 'downstream_interfaces=%s\n' "${_hotspot_interfaces:-none}"
     printf 'downstream_networks=%s\n' "${_hotspot_networks:-none}"
+    _hotspot_return_rc=1
+    _hotspot_return_path=
+    _hotspot_inventory_present=0
+    if [ -e "$_hotspot_state_file" ] || [ -L "$_hotspot_state_file" ]; then
+        _hotspot_inventory_present=1
+    fi
+    # Enabling the selector before a hotspot/TUN exists is a normal wait. Do
+    # not turn that into a failed address query; retained ownership still needs
+    # observation so a stale or interrupted installation cannot look clean.
+    if [ -n "$_hotspot_pairs" ] || [ "$_hotspot_inventory_present" -ne 0 ] ||
+        [ -e "$(magicnet_hotspot_route_pending_file)" ] || [ -L "$(magicnet_hotspot_route_pending_file)" ]; then
+        _hotspot_return_rc=0
+        _hotspot_return_path="$(magicnet_hotspot_return_path)" || _hotspot_return_rc=$?
+    fi
+    _hotspot_return_cidr="${_hotspot_return_path##*|}"
+    if [ "$_hotspot_return_rc" -eq 0 ]; then
+        magicnet_hotspot_return_path_ready "${_hotspot_return_path%%|*}" "${_hotspot_return_cidr%/32}" || _hotspot_return_rc=$?
+    fi
+    case "$_hotspot_return_rc" in
+    0) printf 'return_route_ready=1\n' ;;
+    1) printf 'return_route_ready=0\n' ;;
+    *) printf 'return_route_ready=unknown\n' ;;
+    esac
     _hotspot_rule_count=0
     _hotspot_missing_rule_count=0
-    if [ -f "$_hotspot_state_file" ]; then
-        while IFS='|' read -r _hotspot_priority _hotspot_iface; do
-            case "$_hotspot_priority" in
-            '' | *[!0-9]*) continue ;;
-            esac
-            magicnet_hotspot_interface_allowed "$_hotspot_iface" || continue
-            printf 'policy_rule=%s iif=%s table=2022\n' "$_hotspot_priority" "$_hotspot_iface"
-            if magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" &&
-                magicnet_hotspot_forward_access status "$_hotspot_iface"; then
-                if printf '%s\n' "$_hotspot_pairs" | awk -F'|' -v iface="$_hotspot_iface" '$1 == iface {found=1} END {exit !found}'; then
-                    _hotspot_rule_count=$((_hotspot_rule_count + 1))
+    _hotspot_return_rule_count=0
+    _hotspot_rule_unknown=0
+    if [ -e "$_hotspot_state_file" ] || [ -L "$_hotspot_state_file" ]; then
+        if magicnet_hotspot_route_journal_valid "$_hotspot_state_file"; then
+            while IFS='|' read -r _hotspot_priority _hotspot_iface _hotspot_peer ||
+                [ -n "$_hotspot_priority$_hotspot_iface$_hotspot_peer" ]; do
+                _hotspot_rule_rc=0
+                if [ "$_hotspot_priority" = return4 ]; then
+                    printf 'return_rule=%s to=%s table=main\n' "$_hotspot_iface" "$_hotspot_peer"
+                    magicnet_hotspot_return_rule_present "$_hotspot_iface" "$_hotspot_peer" || _hotspot_rule_rc=$?
+                    if [ "$_hotspot_rule_rc" -eq 0 ] && [ "$_hotspot_peer" = "$_hotspot_return_cidr" ]; then
+                        _hotspot_return_rule_count=$((_hotspot_return_rule_count + 1))
+                    fi
+                else
+                    printf 'policy_rule=%s iif=%s table=2022\n' "$_hotspot_priority" "$_hotspot_iface"
+                    magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || _hotspot_rule_rc=$?
+                    if [ "$_hotspot_rule_rc" -eq 0 ]; then
+                        magicnet_hotspot_forward_access status "$_hotspot_iface" || _hotspot_rule_rc=$?
+                    fi
+                    if [ "$_hotspot_rule_rc" -eq 0 ]; then
+                        if printf '%s\n' "$_hotspot_pairs" | awk -F'|' -v iface="$_hotspot_iface" '$1 == iface {found=1} END {exit !found}'; then
+                            _hotspot_rule_count=$((_hotspot_rule_count + 1))
+                        else
+                            _hotspot_missing_rule_count=$((_hotspot_missing_rule_count + 1))
+                        fi
+                    else
+                        _hotspot_missing_rule_count=$((_hotspot_missing_rule_count + 1))
+                    fi
                 fi
-            else
-                _hotspot_missing_rule_count=$((_hotspot_missing_rule_count + 1))
-            fi
-        done <"$_hotspot_state_file"
+                [ "$_hotspot_rule_rc" -le 1 ] || _hotspot_rule_unknown=1
+            done <"$_hotspot_state_file"
+        else
+            _hotspot_rule_unknown=1
+        fi
     fi
     printf 'policy_rule_count=%s\n' "$_hotspot_rule_count"
     printf 'policy_rule_missing=%s\n' "$_hotspot_missing_rule_count"
     if ! magicnet_hotspot_proxy_enabled; then
         printf 'route_status=disabled\n'
-    elif [ -e "$(magicnet_hotspot_route_pending_file)" ]; then
+    elif [ -e "$(magicnet_hotspot_route_pending_file)" ] || [ -L "$(magicnet_hotspot_route_pending_file)" ]; then
         printf 'route_status=pending\n'
-    elif [ "$_hotspot_ready_rc" -gt 1 ]; then
+    elif [ "$_hotspot_ready_rc" -gt 1 ] || [ "$_hotspot_rule_unknown" -ne 0 ] ||
+        [ "$_hotspot_return_rc" -gt 1 ]; then
         printf 'route_status=unknown\n'
     elif [ "$_hotspot_discovery_error" -ne 0 ]; then
         printf 'route_status=degraded\n'
     elif [ -z "$_hotspot_pairs" ]; then
-        printf 'route_status=waiting-for-hotspot\n'
-    elif ! magicnet_hotspot_tun_route_table_ready || [ "$_hotspot_rule_count" -lt "$_hotspot_expected_rule_count" ] ||
-        [ "$_hotspot_missing_rule_count" -ne 0 ]; then
+        if [ "$_hotspot_inventory_present" -ne 0 ]; then
+            printf 'route_status=pending\n'
+        else
+            printf 'route_status=waiting-for-hotspot\n'
+        fi
+    elif [ "$_hotspot_ready_rc" -ne 0 ] || [ "$_hotspot_rule_count" -ne "$_hotspot_expected_rule_count" ] ||
+        [ "$_hotspot_missing_rule_count" -ne 0 ] || [ "$_hotspot_return_rule_count" -ne 1 ] ||
+        [ "$_hotspot_return_rc" -ne 0 ]; then
         printf 'route_status=degraded\n'
     else
         printf 'route_status=ready\n'
     fi
-    unset _hotspot_state_file _hotspot_pairs _hotspot_interfaces _hotspot_networks
-    unset _hotspot_rule_count _hotspot_missing_rule_count _hotspot_priority _hotspot_iface
-    unset _hotspot_discovery_error _hotspot_expected_rule_count
-}
+)
 
 magicnet_hotspot_offload_value() (
     command -v settings >/dev/null 2>&1 || return 1

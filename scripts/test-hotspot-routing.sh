@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
+HOTSPOT_RETURN_WORK="$WORK/internal-return"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 MODDIR="$WORK/module"
@@ -11,7 +12,9 @@ JQ_BIN=$(command -v jq)
 mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box" "$MODDIR/bin"
 ln -s "$JQ_BIN" "$MODDIR/bin/jq"
 ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
-printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
+printf '%s\n' '0: from all lookup local' \
+  '10000: from all uidrange 0-0 lookup wlan0' \
+  '21000: from all iif wlan2 lookup wlan0' >"$RULES"
 printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
 HOTSPOT_CIDR=10.199.43.0/24
 HOTSPOT_SECONDARY_CIDR=
@@ -20,6 +23,16 @@ HOTSPOT_ROUTE_QUERY_FAIL=0
 HOTSPOT_LINK_QUERY_FAIL=0
 HOTSPOT_DUMPSYS_FAIL=0
 HOTSPOT_IFACE_MISSING=0
+TUN_ADDRESS=172.20.0.1/30
+TUN_EXTRA_ADDRESS=
+TUN_MAIN_ROUTE='172.20.0.0/30 dev magicnet0 proto kernel scope link src 172.20.0.1'
+TUN_ADDRESS_QUERY_FAIL=0
+TUN_MAIN_QUERY_FAIL=0
+TUN_LOOKUP_FAIL=0
+TUN_FORCE_RETURN_UPSTREAM=0
+TUN_LOOKUP_VIA=0
+: >"$WORK/ip-writes"
+: >"$WORK/route-lookups"
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "outbounds": [
@@ -82,6 +95,39 @@ settings() {
 }
 
 ip() {
+  [ "${1:-}" != -4 ] || shift
+  if [ "$*" = '-o addr show dev magicnet0' ]; then
+    [ "$TUN_ADDRESS_QUERY_FAIL" -eq 0 ] || return 2
+    [ -z "$TUN_ADDRESS" ] || printf '7: magicnet0 inet %s scope global magicnet0\n' "$TUN_ADDRESS"
+    [ -z "$TUN_EXTRA_ADDRESS" ] || printf '7: magicnet0 inet %s scope global secondary magicnet0\n' "$TUN_EXTRA_ADDRESS"
+    return 0
+  fi
+  if [ "$*" = 'route show table main dev magicnet0 scope link' ]; then
+    [ "$TUN_MAIN_QUERY_FAIL" -eq 0 ] || return 2
+    [ -z "$TUN_MAIN_ROUTE" ] || printf '%s\n' "$TUN_MAIN_ROUTE"
+    return 0
+  fi
+  if [ "${1:-} ${2:-}" = 'route get' ]; then
+    printf '%s\n' "$*" >>"$WORK/route-lookups"
+    [ "$TUN_LOOKUP_FAIL" -eq 0 ] || return 2
+    [ "${4:-} ${6:-} ${7:-}" = 'from uid 0' ] && [ "$#" -eq 7 ] || return 2
+    if [ "$TUN_FORCE_RETURN_UPSTREAM" -eq 0 ] && awk -v peer="$3" '
+      /uidrange 0-0/ { p=$1+0; if (!root_seen || p<root) root=p; root_seen=1 }
+      $4 == "to" && ($5 == peer || $5 == peer "/32") && $6 == "lookup" && $7 == "main" {
+        p=$1+0; if (!ret_seen || p<ret) ret=p; ret_seen=1
+      }
+      END { exit !(ret_seen && (!root_seen || ret<root)) }
+    ' "$RULES"; then
+      if [ "$TUN_LOOKUP_VIA" -eq 1 ]; then
+        printf '%s from %s via 192.0.2.1 dev magicnet0 uid 0\n' "$3" "$5"
+      else
+        printf '%s from %s dev magicnet0 uid 0\n' "$3" "$5"
+      fi
+    else
+      printf '%s from %s via 192.168.1.1 dev wlan0 table wlan0 uid 0\n' "$3" "$5"
+    fi
+    return 0
+  fi
   if [ "${1:-} ${2:-} ${3:-}" = '-o link show' ]; then
     [ "$HOTSPOT_LINK_QUERY_FAIL" -eq 0 ] || return 2
     printf '%s\n' '5: wlan2: <BROADCAST,MULTICAST,UP>'
@@ -111,15 +157,26 @@ ip() {
     return 0
   fi
   if [ "${1:-}" = rule ] && [ "${2:-}" = add ]; then
+    printf '%s\n' "$*" >>"$WORK/ip-writes"
+    [ -f "$(magicnet_hotspot_route_pending_file)" ] || return 2
     priority="${4:-}"
     iface="${6:-}"
-    printf '%s: from all iif %s lookup 2022\n' "$priority" "$iface" >>"$RULES"
+    if [ "${5:-}" = to ]; then
+      printf '%s: from all to %s lookup main\n' "$priority" "${iface%/32}" >>"$RULES"
+    else
+      printf '%s: from all iif %s lookup 2022\n' "$priority" "$iface" >>"$RULES"
+    fi
     return 0
   fi
   if [ "${1:-}" = rule ] && [ "${2:-}" = del ]; then
+    printf '%s\n' "$*" >>"$WORK/ip-writes"
     priority="${4:-}"
     iface="${6:-}"
-    pattern="${priority}: from all iif ${iface} lookup 2022"
+    if [ "${5:-}" = to ]; then
+      pattern="${priority}: from all to ${iface%/32} lookup main"
+    else
+      pattern="${priority}: from all iif ${iface} lookup 2022"
+    fi
     grep -F -v -x "$pattern" "$RULES" >"$WORK/ip-rules.new" || true
     mv -f "$WORK/ip-rules.new" "$RULES"
     return 0
@@ -221,6 +278,7 @@ HOTSPOT_SECONDARY_CIDR=
 
 magicnet_hotspot_reconcile
 grep -Fqx '20999|wlan2' "$MODDIR/.state/hotspot/tun-rules.list"
+grep -Fqx 'return4|9999|172.20.0.2/32' "$MODDIR/.state/hotspot/tun-rules.list"
 grep -Fqx '20999: from all iif wlan2 lookup 2022' "$RULES"
 
 magicnet_hotspot_reconcile
@@ -231,6 +289,15 @@ grep -Fqx 'route_table_ready=1' "$WORK/status"
 grep -Fqx 'downstream_interfaces=wlan2' "$WORK/status"
 grep -Fqx 'downstream_networks=192.168.52.0/24' "$WORK/status"
 grep -Fqx 'route_status=ready' "$WORK/status"
+# A connected main-table route and installed ingress rules do not prove that
+# local UID 0 replies use it. This models an earlier Android upstream policy.
+TUN_FORCE_RETURN_UPSTREAM=1
+magicnet_hotspot_route_status >"$WORK/status"
+if grep -Fqx 'route_status=ready' "$WORK/status"; then
+  printf '%s\n' 'hotspot status reported ready while the TUN internal reply selected wlan0' >&2
+  exit 1
+fi
+TUN_FORCE_RETURN_UPSTREAM=0
 [ "$(wc -l <"$WORK/forward-rules" | tr -d ' ')" -eq 2 ]
 grep -Fq -- '-i wlan2 -o magicnet0' "$WORK/forward-rules"
 grep -Fq -- '-i magicnet0 -o wlan2 -m conntrack --ctstate ESTABLISHED,RELATED' "$WORK/forward-rules"
@@ -750,5 +817,123 @@ assert_startup_restores_persisted_hotspot() (
 )
 
 assert_startup_restores_persisted_hotspot
+
+assert_hotspot_internal_return_routing() (
+  WORK="$HOTSPOT_RETURN_WORK"
+  MODDIR="$WORK/module"
+  RULES="$WORK/ip-rules"
+  mkdir -p "$MODDIR/.state/hotspot"
+  printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
+  printf '%s\n' '0: from all lookup local' \
+    '10000: from all uidrange 0-0 lookup wlan0' \
+    '21000: from all iif wlan2 lookup wlan0' >"$RULES"
+  : >"$WORK/forward-rules"
+  : >"$WORK/ip-writes"
+  : >"$WORK/route-lookups"
+  magicnet_transparent_mode() { printf 'tun\n'; }
+  expect_return_status() {
+    _expected="$1"
+    shift
+    if "$@" >/dev/null; then _actual=0; else _actual=$?; fi
+    [ "$_actual" -eq "$_expected" ] || {
+      printf '%s returned %s, expected %s\n' "$1" "$_actual" "$_expected" >&2
+      exit 1
+    }
+  }
+
+  [ "$(magicnet_hotspot_return_path)" = '172.20.0.1|172.20.0.2|172.20.0.2/32' ]
+  expect_return_status 1 magicnet_hotspot_return_path_ready 172.20.0.1 172.20.0.2
+  [ "$(magicnet_hotspot_choose_return_rule_priority 9999)" = 9998 ]
+  magicnet_hotspot_reconcile
+  magicnet_hotspot_return_path_ready 172.20.0.1 172.20.0.2
+  grep -Fqx 'return4|9999|172.20.0.2/32' "$(magicnet_hotspot_route_state_file)"
+  grep -Fqx 'route get 172.20.0.2 from 172.20.0.1 uid 0' "$WORK/route-lookups"
+  cp "$WORK/ip-writes" "$WORK/writes-before-observation"
+  magicnet_hotspot_routes_current 'wlan2|192.168.52.0/24'
+  magicnet_hotspot_route_status >"$WORK/status"
+  grep -Fqx 'return_route_ready=1' "$WORK/status"
+  grep -Fqx 'policy_rule_count=1' "$WORK/status"
+  grep -Fqx 'route_status=ready' "$WORK/status"
+  magicnet_hotspot_reconcile
+  cmp -s "$WORK/ip-writes" "$WORK/writes-before-observation"
+
+  # Read errors cannot authorize cleanup or an attempted reinstallation.
+  for failure in address main lookup; do
+    case "$failure" in
+      address) TUN_ADDRESS_QUERY_FAIL=1 ;;
+      main) TUN_MAIN_QUERY_FAIL=1 ;;
+      lookup) TUN_LOOKUP_FAIL=1 ;;
+    esac
+    expect_return_status 2 magicnet_hotspot_reconcile
+    magicnet_hotspot_route_status >"$WORK/status"
+    grep -Fqx 'route_status=unknown' "$WORK/status"
+    cmp -s "$WORK/ip-writes" "$WORK/writes-before-observation"
+    TUN_ADDRESS_QUERY_FAIL=0 TUN_MAIN_QUERY_FAIL=0 TUN_LOOKUP_FAIL=0
+  done
+  TUN_EXTRA_ADDRESS=172.21.0.1/30
+  expect_return_status 2 magicnet_hotspot_reconcile
+  cmp -s "$WORK/ip-writes" "$WORK/writes-before-observation"
+  TUN_EXTRA_ADDRESS=
+
+  # Existing ownership is insufficient after Android inserts an earlier rule.
+  printf '%s\n' '5000: from all uidrange 0-0 lookup wlan0' >>"$RULES"
+  expect_return_status 1 magicnet_hotspot_routes_current 'wlan2|192.168.52.0/24'
+  magicnet_hotspot_route_status >"$WORK/status"
+  grep -Fqx 'route_status=degraded' "$WORK/status"
+  magicnet_hotspot_reconcile
+  grep -Fqx 'return4|4999|172.20.0.2/32' "$(magicnet_hotspot_route_state_file)"
+  grep -Fqx '5000: from all uidrange 0-0 lookup wlan0' "$RULES"
+  TUN_LOOKUP_VIA=1
+  expect_return_status 1 magicnet_hotspot_return_path_ready 172.20.0.1 172.20.0.2
+  magicnet_hotspot_route_status >"$WORK/status"
+  grep -Fqx 'route_status=degraded' "$WORK/status"
+  TUN_LOOKUP_VIA=0
+
+  # Renumbering replaces only the previously recorded /32. Even a wide TUN
+  # address must never install a broad destination-network or UID exemption.
+  TUN_ADDRESS=172.21.0.1/8
+  TUN_MAIN_ROUTE='172.0.0.0/8 proto kernel src 172.21.0.1'
+  magicnet_hotspot_reconcile
+  grep -Fqx 'return4|4999|172.21.0.2/32' "$(magicnet_hotspot_route_state_file)"
+  if grep -Fq 'to 172.20.0.2' "$RULES"; then exit 1; fi
+  if grep -Eq 'to [^ ]+/(8|30) |uidrange.*lookup main' "$RULES"; then exit 1; fi
+  for bad_route in '' 'default dev magicnet0 scope link' \
+    '172.0.0.0/8 dev magicnet0 via 192.0.2.1 scope link src 172.21.0.1' \
+    '172.0.0.0/8 dev wlan0 scope link src 172.21.0.1' \
+    '172.0.0.0/8 dev magicnet0 scope link src 172.21.0.5'; do
+    TUN_MAIN_ROUTE="$bad_route"
+    expect_return_status 1 magicnet_hotspot_return_path
+  done
+  TUN_MAIN_ROUTE='172.0.0.0/8 proto kernel src 172.21.0.1'
+  TUN_ADDRESS=172.21.0.2/30
+  expect_return_status 2 magicnet_hotspot_return_path
+  TUN_ADDRESS=
+  expect_return_status 1 magicnet_hotspot_return_path
+  TUN_ADDRESS=172.21.0.1/8
+  magicnet_hotspot_route_cleanup
+  grep -Fqx '5000: from all uidrange 0-0 lookup wlan0' "$RULES"
+  grep -Fqx '10000: from all uidrange 0-0 lookup wlan0' "$RULES"
+  if grep -Fq 'lookup main' "$RULES"; then exit 1; fi
+
+  # A known bad path after installation must roll back, not publish active.
+  TUN_FORCE_RETURN_UPSTREAM=1
+  expect_return_status 1 magicnet_hotspot_reconcile
+  [ ! -e "$(magicnet_hotspot_route_state_file)" ]
+  [ ! -e "$(magicnet_hotspot_route_pending_file)" ]
+  [ ! -s "$WORK/forward-rules" ]
+  if grep -Fq 'lookup main' "$RULES"; then exit 1; fi
+  (
+    HOTSPOT_CIDR=
+    TUN_ADDRESS_QUERY_FAIL=1
+    magicnet_iface_exists() { [ "$1" != magicnet0 ]; }
+    magicnet_hotspot_route_status >"$WORK/status"
+    grep -Fqx 'route_status=waiting-for-hotspot' "$WORK/status"
+    printf '%s\n' 'return4|4999|172.21.0.2/32' >"$(magicnet_hotspot_route_state_file)"
+    magicnet_hotspot_route_status >"$WORK/status"
+    grep -Fqx 'route_status=unknown' "$WORK/status"
+  )
+)
+
+assert_hotspot_internal_return_routing
 
 printf '%s\n' 'hotspot routing test passed'
