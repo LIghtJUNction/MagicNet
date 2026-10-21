@@ -36,3 +36,24 @@ test("changing pages after scrolling opens the destination at its heading", asyn
   await expect(page.locator('.page-surface[data-page="control"] h2').first()).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
+
+test("a direct link keeps the selected section label fully visible", async ({ page }) => {
+  // A hash-only navigation would exercise the normal setTab path instead of mounting a deep link.
+  await page.goto("about:blank");
+  await page.goto("/#/webui", { waitUntil: "networkidle" });
+  await expect(page.locator('.page-surface[data-page="webui"] h2').first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const sections = page.locator(".mn-section-tabs");
+  if (await sections.isVisible()) {
+    await expect.poll(async () => sections.evaluate((track) => {
+      const selected = track.querySelector('[aria-current="page"]');
+      if (!selected) return false;
+      const label = selected.getBoundingClientRect();
+      const visible = track.getBoundingClientRect();
+      return label.left >= visible.left && label.right <= visible.right;
+    })).toBe(true);
+  } else {
+    await expect(page.locator('.desktop-rail [data-tab="webui"][aria-current="page"]')).toBeInViewport({ ratio: 1 });
+  }
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});

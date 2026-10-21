@@ -528,6 +528,8 @@ function warnBeforeDiscardingConfig(event: BeforeUnloadEvent): void {
 
 onMounted(() => {
   void refreshStatus();
+  // Initial deep links still need their selected phone section label revealed.
+  setTab(activeTab.value, { updateLocation: false });
   // A deep link is already the active tab, so setTab would not warm it.
   warmActiveTab(activeTab.value);
   document.addEventListener("keydown", handleEscape);
