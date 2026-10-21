@@ -64,6 +64,7 @@ function backgroundFixture() {
   let resolve;
   const pending = new Promise((done) => { resolve = done; });
   const timers = [];
+  const delays = [];
   const state = {
     backgroundTask: { id: "operation", status: "running" },
     subscriptions: { ...subscriptionDefaults }, runtime: { ...runtimeDefaults },
@@ -72,7 +73,7 @@ function backgroundFixture() {
   const context = vm.createContext({
     t,
     ...background, state, Date, backgroundLogTimer: 0,
-    window: { setTimeout: (callback) => { timers.push(callback); return timers.length; } },
+    window: { setTimeout: (callback, delay) => { timers.push(callback); delays.push(delay); return timers.length; } },
     foregroundUiGate: { begin: () => ++token, current: () => token, owns: (value) => value === token },
     nextTick: async () => {}, nextFrame: async () => {}, stopBackgroundLogFollow: () => {},
     createBackgroundOperationId: () => "operation", trackRedactedOperation: () => 1,
@@ -90,7 +91,7 @@ function backgroundFixture() {
     publishTrackedOperation: (_, phase, notice, output) => { Object.assign(state, { phase, notice, output }); return true; },
   });
   vm.runInContext(code, context);
-  return { context, state, timers, resolve, supersede: () => ++token };
+  return { context, state, timers, delays, resolve, supersede: () => ++token };
 }
 
 test("late config reads preserve edits entered while loading", async () => {
@@ -178,6 +179,26 @@ test("background polling continues until completion after a foreground change", 
   await timers.shift()();
   assert.equal(state.backgroundTask.status, "done");
   assert.equal(state.output, "new foreground output");
+});
+
+test("a task that completes after the fast tracking limit releases controls without a reload", async () => {
+  const { context, state, timers, delays } = backgroundFixture();
+  context.runShell = async () => "[launch] id=operation label=restart";
+  context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1, 89);
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "timeout");
+  assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), true);
+  assert.equal(timers.length, 1);
+  assert.equal(delays.at(-1), 15000);
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "timeout", "unknown device work must keep the write gate");
+  assert.equal(timers.length, 1, "slow tracking must keep only one scheduled read");
+
+  context.runShell = async () => "[launch] id=operation label=restart\n[exit] id=operation status=0";
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "done");
+  assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), false);
+  assert.equal(timers.length, 0);
 });
 
 test("subscription polling failures preserve newer foreground feedback and keep tracking", async () => {

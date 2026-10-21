@@ -137,3 +137,14 @@ test("background log completion does not update a replacement task", async () =>
   assert.equal(f.state.backgroundTask.updatedAt, 456);
   assert.doesNotMatch(f.state.output, /后台日志已刷新|fixture-secret/);
 });
+
+test("a command that expires in the queue has a known non-execution outcome", async () => {
+  const f = fixture();
+  const running = f.context.runShellOutcome("background fixture", "投递后台任务", true);
+  await settle();
+  f.pending[0].reject(new ExecTimeoutError("fixture queue wait expired", false));
+  const outcome = await running;
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.timedOut, false, "a command never dispatched must not enter unknown background tracking");
+  assert.match(outcome.text, /\[error\] errno=-1/);
+});

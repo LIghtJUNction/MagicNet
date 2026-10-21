@@ -349,9 +349,12 @@ export async function readClipboardText(): Promise<string> {
 }
 
 export class ExecTimeoutError extends Error {
-  constructor(message: string) {
+  readonly started: boolean;
+
+  constructor(message: string, started = true) {
     super(message);
     this.name = "ExecTimeoutError";
+    this.started = started;
   }
 }
 

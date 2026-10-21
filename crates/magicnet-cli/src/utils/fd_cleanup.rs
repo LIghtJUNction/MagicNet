@@ -1,5 +1,36 @@
 use std::os::fd::RawFd;
 
+// Rust-owned files already use CLOEXEC, but a shell/root-manager launcher can
+// pass inheritable locks (often fd 9) into this CLI. Keep intentional handles
+// usable here, including the module-update worker lock, while preventing any
+// later exec from passing them to runtime shells or detached supervisors.
+// Call once at CLI entry, before starting threads or opening candidate inputs.
+pub(crate) fn mark_inherited_fds_cloexec() -> std::io::Result<()> {
+    const CLOSE_RANGE_CLOEXEC: u32 = 1 << 2;
+    if unsafe { libc::syscall(libc::SYS_close_range, 3_u32, u32::MAX, CLOSE_RANGE_CLOEXEC) } == 0 {
+        return Ok(());
+    }
+    // Older Android kernels lack close_range/CLOEXEC. Enumerate actual open
+    // descriptors; a reduced soft limit must not hide an inherited high fd.
+    let complete = unsafe {
+        visit_open_fds(|fd| {
+            if fd < 3 {
+                return true;
+            }
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags < 0 {
+                return super::child_errno() == libc::EBADF;
+            }
+            libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) == 0
+        })
+    };
+    if complete {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
 // A fork-only worker must not retain the parent's pipes, executable writers,
 // or locks. Do not use allocating directory iterators in a multithreaded fork.
 //
@@ -47,6 +78,15 @@ pub(crate) unsafe fn close_inherited_fds_except(keep_a: RawFd, keep_b: RawFd) {
 }
 
 unsafe fn close_from_proc(keep_a: RawFd, keep_b: RawFd) -> bool {
+    visit_open_fds(|fd| {
+        if fd != keep_a && fd != keep_b {
+            libc::close(fd);
+        }
+        true
+    })
+}
+
+unsafe fn visit_open_fds(mut visit: impl FnMut(RawFd) -> bool) -> bool {
     let directory = libc::open(
         c"/proc/self/fd".as_ptr(),
         libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
@@ -81,8 +121,9 @@ unsafe fn close_from_proc(keep_a: RawFd, keep_b: RawFd) -> bool {
                 break;
             };
             if let Some(fd) = descriptor_number(name) {
-                if fd != directory && fd != keep_a && fd != keep_b {
-                    libc::close(fd);
+                if fd != directory && !visit(fd) {
+                    valid = false;
+                    break;
                 }
             }
             remaining = rest;

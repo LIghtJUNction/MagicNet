@@ -52,6 +52,73 @@ fn wait_for_published_pid(path: &std::path::Path, deadline: Instant) -> i32 {
 }
 
 #[test]
+fn launcher_lock_descriptors_do_not_reach_runtime_shells() {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::process::CommandExt;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let fixture = std::env::temp_dir().join(format!(
+        "magicnet-launcher-fds-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(fixture.join("bin")).unwrap();
+    fs::create_dir_all(fixture.join("lib/kamfw")).unwrap();
+    fs::write(fixture.join("module.prop"), "id=MagicNet\n").unwrap();
+    fs::write(fixture.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+    fs::write(
+        fixture.join("lib/magicnet.sh"),
+        r#"magicnet_fswatch_start() {
+    if [ "/proc/self/fd/$MAGICNET_TEST_LAUNCHER_FD" -ef "$MODDIR/launcher.lock" ]; then
+        echo 'runtime shell inherited launcher lock' >&2
+        return 42
+    fi
+    echo runtime-descriptor-closed
+}
+"#,
+    )
+    .unwrap();
+    let fixture_cli = fixture.join("bin/magicnet-cli");
+    install_fixture_cli(&fixture_cli);
+    let lock = fs::File::create(fixture.join("launcher.lock")).unwrap();
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+    for inherited_fd in [9, 256] {
+        let mut command = Command::new(&fixture_cli);
+        command
+            .args(["supervisor", "start", "fswatch"])
+            .env("MAGICNET_TEST_LAUNCHER_FD", inherited_fd.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let source = lock.as_raw_fd();
+        // Model a shell launcher that holds flock on an inheritable fd.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::dup2(source, inherited_fd) < 0
+                    || libc::fcntl(inherited_fd, libc::F_SETFD, 0) < 0
+                {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let output = spawn_fixture_cli(&mut command).wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "fd {inherited_fd}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("runtime-descriptor-closed"));
+    }
+    // The child's isolation must not change the launcher's own descriptor.
+    assert!(lock.metadata().unwrap().is_file());
+    drop(lock);
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn process_is_live_treats_a_zombie_as_terminated() {
     let mut child = Command::new("sh")
         .args(["-c", "exit 0"])

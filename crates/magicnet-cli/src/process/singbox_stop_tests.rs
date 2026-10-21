@@ -8,11 +8,20 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 fn write_candidate_stat(proc_dir: &Path, state: &str, starttime: u64) {
+    write_candidate_stat_flags(proc_dir, state, starttime, 1);
+}
+
+fn write_candidate_stat_flags(proc_dir: &Path, state: &str, starttime: u64, flags: u32) {
     fs::write(
-        proc_dir.join("stat"),
-        format!("42 (sing-box) {state} {}{starttime}\n", "1 ".repeat(18)),
+        proc_dir.join("stat.next"),
+        format!(
+            "42 (sing-box) {state} {}{flags} {}{starttime}\n",
+            "1 ".repeat(5),
+            "1 ".repeat(12)
+        ),
     )
     .unwrap();
+    fs::rename(proc_dir.join("stat.next"), proc_dir.join("stat")).unwrap();
 }
 
 fn owned_candidate_fixture() -> (crate::test_support::TempApp, PathBuf) {
@@ -98,8 +107,41 @@ fn exit_between_owned_argv_and_executable_read_completes_stop_without_kill() {
 }
 
 #[test]
+fn missing_executable_during_kernel_exit_waits_for_confirmed_exit() {
+    for state in ["Z", "gone"] {
+        let (app, proc_dir) = owned_candidate_fixture();
+        let mut exit = None;
+        let result = inspect_candidate(&app, &proc_dir, |dir, expected| {
+            fs::remove_file(dir.join("exe")).unwrap();
+            // Linux releases mm/exe before exit_notify publishes a zombie.
+            write_candidate_stat_flags(dir, "R", 100, 4);
+            let dir = dir.to_owned();
+            let delayed_dir = dir.clone();
+            exit = Some(std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(20));
+                if state == "gone" {
+                    fs::remove_dir_all(delayed_dir).unwrap();
+                } else {
+                    write_candidate_stat_flags(&delayed_dir, state, 100, 4);
+                }
+            }));
+            singbox_executable_owned(&dir, expected)
+        });
+        exit.unwrap().join().unwrap();
+        assert_eq!(result, Ok(false), "{state}: {result:?}");
+    }
+}
+
+#[test]
 fn unreadable_executable_for_live_unknown_or_reused_pid_still_blocks_stop() {
-    for observation in ["live", "unknown", "unreadable_stat", "reused_live"] {
+    for observation in [
+        "live",
+        "exiting",
+        "unknown",
+        "unreadable_stat",
+        "reused_live",
+        "reused_dead",
+    ] {
         let (app, proc_dir) = owned_candidate_fixture();
         let mut signals = Vec::new();
         let result = stop_singbox_with(
@@ -113,7 +155,9 @@ fn unreadable_executable_for_live_unknown_or_reused_pid_still_blocks_stop() {
                             fs::remove_file(dir.join("stat")).unwrap();
                             fs::create_dir(dir.join("stat")).unwrap();
                         }
+                        "exiting" => write_candidate_stat_flags(dir, "R", 100, 4),
                         "reused_live" => write_candidate_stat(dir, "R", 200),
+                        "reused_dead" => write_candidate_stat(dir, "Z", 200),
                         _ => {}
                     }
                     singbox_executable_owned(dir, expected)
@@ -140,6 +184,38 @@ fn unreadable_executable_for_live_unknown_or_reused_pid_still_blocks_stop() {
             "{observation}",
         );
         assert_eq!(signals, vec![false]);
+    }
+}
+
+#[test]
+fn script_argv_fallback_cannot_override_unknown_or_reused_process_identity() {
+    for observation in ["live", "unknown", "reused_live", "reused_dead"] {
+        let (app, proc_dir) = owned_candidate_fixture();
+        let argv = fs::read_to_string(proc_dir.join("cmdline")).unwrap();
+        fs::write(
+            proc_dir.join("cmdline"),
+            argv.replacen(
+                "sing-box\0",
+                &format!("{}\0", app.moddir.join("bin/sing-box").display()),
+                1,
+            ),
+        )
+        .unwrap();
+        let result = inspect_candidate(&app, &proc_dir, |dir, expected| {
+            fs::remove_file(dir.join("exe")).unwrap();
+            match observation {
+                "unknown" => fs::write(dir.join("stat"), "malformed\n").unwrap(),
+                "reused_live" => write_candidate_stat(dir, "R", 200),
+                "reused_dead" => write_candidate_stat(dir, "Z", 200),
+                _ => {}
+            }
+            singbox_executable_owned(dir, expected)
+        });
+        if observation == "live" {
+            assert_eq!(result, Ok(true));
+        } else {
+            assert!(result.is_err(), "{observation}: {result:?}");
+        }
     }
 }
 

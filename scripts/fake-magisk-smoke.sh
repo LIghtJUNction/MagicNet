@@ -55,7 +55,7 @@ cleanup() {
 trap cleanup EXIT
 on_error() {
     local status=$?
-    echo "fake Magisk smoke failed with status $status" >&2
+    echo "fake Magisk smoke failed with status $status at line ${BASH_LINENO[0]}" >&2
     if [[ -f "$TMP/runtime-path.log" ]]; then
         echo "--- runtime path log ---" >&2
         cat "$TMP/runtime-path.log" >&2
@@ -778,13 +778,22 @@ count_exact_script_processes() {
 }
 
 generated_fswatch_prune_names() {
-    local loop_file="$1"
-    local assignment value
-    assignment="$(sed -n 's/^KAM_FSWATCH_PRUNE_NAMES=//p' "$loop_file")"
-    [[ "$assignment" == \'*\' ]] || return 1
-    value="${assignment#\'}"
-    value="${value%\'}"
-    printf '%s\n' "$value"
+    # The generated value is one shell literal, which can contain newlines
+    # and escaped quotes. Read that literal without executing the watcher.
+    python3 - "$1" <<'PY'
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    tokens = shlex.shlex(source, posix=True)
+    tokens.whitespace_split = True
+    for token in tokens:
+        if token.startswith("KAM_FSWATCH_PRUNE_NAMES="):
+            print(token.partition("=")[2])
+            break
+    else:
+        raise SystemExit("generated watcher has no prune-name assignment")
+PY
 }
 
 fswatch_changed_with_prune_names() {
@@ -1379,7 +1388,6 @@ _fswatch_first_pid="$(sed -n '1p' "$_fswatch_pid_file")"
 kill -0 "$_fswatch_first_pid"
 test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
 _fswatch_snapshot_file="$MODDIR/.state/fswatch/magicnet-config.snapshot"
-_fswatch_expected_prune_names="ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal mcp.conf config-override.json config-override-active.json selector-selections.json"
 _fswatch_prune_names="$(generated_fswatch_prune_names "$_fswatch_loop_file")"
 for _fswatch_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal mcp.conf config-override.json config-override-active.json selector-selections.json; do
     printf 'runtime-cache\n' >"$MODDIR/.config/sing-box/$_fswatch_cache_name"
@@ -1388,10 +1396,19 @@ for _fswatch_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal m
         exit 1
     fi
 done
-if [[ "$_fswatch_prune_names" != "$_fswatch_expected_prune_names" ]]; then
-    echo "unexpected generated fswatch prune names: $_fswatch_prune_names" >&2
-    exit 1
-fi
+# Exercise the generated exclusions through the real snapshotter. Keeping an
+# exact copy of the implementation's token list here missed multiline values
+# and made every new generated output fail the packaged-module smoke.
+mkdir -p "$MODDIR/.config/sing-box/"{.magicnet-staging,ui,zashboard}
+for _fswatch_output in sing-box/config.json sing-box/config.json.hotspot-policy.new \
+    sing-box/.magicnet-staging/fingerprint-probe sing-box/ui/fswatch-probe sing-box/zashboard/fswatch-probe; do
+    # A trailing newline changes the checksum without invalidating live JSON.
+    printf '\n' >>"$MODDIR/.config/$_fswatch_output"
+    if fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
+        echo "fswatch detected its own generated output: $_fswatch_output" >&2
+        exit 1
+    fi
+done
 printf 'watched-near-match\n' >"$MODDIR/.config/sing-box/not-cache.db"
 if ! fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
     echo "fswatch ignored non-exact cache basename: not-cache.db" >&2
@@ -1437,7 +1454,7 @@ fi
 kill -0 "$_fswatch_restarted_pid"
 test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
 unset _fswatch_pid_file _fswatch_loop_file _fswatch_first_pid _fswatch_second_pid _fswatch_restarted_pid
-unset _fswatch_snapshot_file _fswatch_expected_prune_names _fswatch_prune_names _fswatch_cache_name
+unset _fswatch_snapshot_file _fswatch_prune_names _fswatch_cache_name _fswatch_output
 mkdir -p "$MODDIR/.state/sing-box/subscription-update.lock"
 printf '999999:0:dead\n' >"$MODDIR/.state/sing-box/subscription-update.lock/owner"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \

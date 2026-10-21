@@ -18,8 +18,9 @@ not a generic cleanup API for arbitrary custom routing tables.
 
 Normal core shutdown remains the first owner of its own routes. Only after the
 core is confirmed stopped can residual cleanup remove an exact recorded policy
-rule and routes targeting `magicnet0`. There is no whole-table flush or heuristic
-hotspot orphan scan. Foreign routes in table 2022 and different rules at the same
+rule and routes targeting `magicnet0`. There is no whole-table flush or cleanup
+based only on a conventional priority. Foreign routes in table 2022 and different
+rules at the same
 priority must survive. A competing rule at the same priority/table is treated as ambiguous:
 netlink deletion treats some omitted or zero-valued selectors as wildcards, so
 printed full selectors alone do not prove an exact deletion. Cleanup refuses the
@@ -42,6 +43,24 @@ uses a private `tun-rules.list.pending` write-ahead journal before the first rul
 insertion; only verified installation promotes it to `tun-rules.list`. Cleanup
 also marks the installation pending before changing it. Partial apply or rollback
 retains the journal, and canonical `hotspot.state` reports `pending`, not `active`.
+
+Hotspot reconcile and cleanup also share the shell configuration lock, including
+direct boot/recovery callers. For each interface in a validated hotspot journal,
+cleanup observes all exact `from all iif <interface> lookup 2022` copies. Older
+concurrent writers could leave several priorities while recording only the last
+one. Their observed priorities are added to the pending journal before deletion;
+failed deletion retains that evidence. This recovery never adopts another
+interface, another table, or a rule with additional selectors. Ambiguous siblings
+still block deletion. Without a valid journal, discovery alone cannot authorize
+orphan removal. Human `hotspot status` reports `policy_rule_observed` and
+`policy_rule_duplicates`; extra ingress copies cannot report `ready`, and a
+disabled policy with observed ingress rules reports `degraded`.
+
+Hotspot selector changes compare the required source policy before configuration
+materialization. An unchanged policy uses the selector API and resource
+reconciliation without a complete apply. A confirmed topology change still
+materializes under the lifecycle lock; unknown discovery fails visibly and
+restores the prior intent and owned resources. Rollback uses the same predicate.
 
 Hotspot TUN ownership keeps the existing `priority|interface` ingress rows and
 adds one `return4|priority|peer/32` row. This rule selects the main table only for

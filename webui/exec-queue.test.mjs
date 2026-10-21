@@ -83,7 +83,7 @@ for (const outcome of ["resolve", "reject"]) {
   });
 }
 
-test("the timeout budget includes queue wait and is not reset on execution", async (t) => {
+test("a queued command receives its full execution budget when it starts", async (t) => {
   useClock(t);
   const queue = new SerialExecQueue();
   const firstOperation = deferred();
@@ -99,11 +99,35 @@ test("the timeout budget includes queue wait and is not reset on execution", asy
   assert.equal(queue.depth, 1);
 
   t.mock.timers.tick(20);
+  assert.equal(queue.depth, 1);
+  let settled = false;
+  void second.finally(() => { settled = true; }).catch(() => {});
+  await setImmediate();
+  assert.equal(settled, false, "waiting behind the first command must not consume execution time");
+  t.mock.timers.tick(30);
   await secondRejected;
   assert.equal(queue.depth, 1, "a started command retains its slot after its caller times out");
   secondOperation.resolve("late");
   await setImmediate();
   assert.equal(queue.depth, 0);
+});
+
+test("a command that expires before dispatch reports that it never started", async (t) => {
+  useClock(t);
+  const queue = new SerialExecQueue();
+  const operation = deferred();
+  const active = queue.enqueue(() => operation.promise, 100, "active");
+  const waiting = queue.enqueue(async () => assert.fail("expired write must never run"), 20, "waiting");
+  const rejected = assert.rejects(waiting, (error) => {
+    assert.equal(error.name, "ExecTimeoutError");
+    assert.equal(error.started, false);
+    assert.match(error.message, /命令未执行/);
+    return true;
+  });
+  t.mock.timers.tick(20);
+  await rejected;
+  operation.resolve("done");
+  await active;
 });
 
 test("expired commands are skipped even before their delayed timer fires", async (t) => {

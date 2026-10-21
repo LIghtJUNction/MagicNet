@@ -172,21 +172,43 @@ magicnet_singbox_runtime_fingerprint() (
             [ "$_runtime_json_file" = "$_runtime_config" ] || [ -f "$_runtime_json_file" ] || continue
             _runtime_json=$("$_runtime_jq" -e -S -c . "$_runtime_json_file") || exit 1
             [ -n "$_runtime_json" ] || exit 1
-            printf '%s\n' "$_runtime_json" | cksum || exit 1
+            cksum <<EOF || exit 1
+$_runtime_json
+EOF
         done
         if [ -d "${_runtime_root}/rules" ]; then
             _runtime_rules=$(find "${_runtime_root}/rules" -type f -name '*.srs' -print 2>/dev/null) || exit 1
-            _runtime_rules=$(printf '%s\n' "$_runtime_rules" | sort) || exit 1
+            _runtime_rules=$(sort <<EOF
+$_runtime_rules
+EOF
+            ) || exit 1
+            # cksum preserves argument order. Batch without word splitting so
+            # rule names remain literal, and bound argv for Android shells.
+            set --
             while IFS= read -r _runtime_rule || [ -n "$_runtime_rule" ]; do
                 [ -n "$_runtime_rule" ] || continue
-                cksum "$_runtime_rule" || exit 1
+                set -- "$@" "$_runtime_rule"
+                if [ "$#" -eq 32 ]; then
+                    cksum "$@" || exit 1
+                    set --
+                fi
             done <<EOF
 $_runtime_rules
 EOF
+            if [ "$#" -gt 0 ]; then cksum "$@" || exit 1; fi
         fi
     ) || return 1
-    _runtime_checksum=$(printf '%s\n' "$_runtime_input" | cksum) || return 1
-    printf '%s\n' "$_runtime_checksum" | awk '{ print $1 ":" $2 }'
+    _runtime_checksum=$(cksum <<EOF
+$_runtime_input
+EOF
+    ) || return 1
+    IFS=' ' read -r _runtime_crc _runtime_bytes _runtime_extra <<EOF
+$_runtime_checksum
+EOF
+    case "$_runtime_crc" in '' | *[!0-9]*) return 1 ;; esac
+    case "$_runtime_bytes" in '' | *[!0-9]*) return 1 ;; esac
+    [ -z "$_runtime_extra" ] || return 1
+    echo "$_runtime_crc:$_runtime_bytes"
 )
 
 magicnet_singbox_record_runtime_fingerprint() {

@@ -87,7 +87,11 @@ magicnet_hotspot_watchdog_stop() {
 }
 magicnet_apply_runtime_config() { step materialize; }
 magicnet_singbox_runtime_fingerprint_matches() { return 0; }
-magicnet_singbox_hotspot_policy_current() { return 0; }
+magicnet_singbox_hotspot_policy_current() {
+    step policy-check || return $?
+    if [ -f "$MODDIR/policy-status" ]; then return "$(cat "$MODDIR/policy-status")"; fi
+    return 0
+}
 "#,
     )
     .unwrap();
@@ -99,6 +103,7 @@ root=${0%/bin/curl}
 case "$*" in
     */proxies/hotspot*)
         printf 'select\n' >>"$root/api-calls"
+        printf 'select\n' >>"$root/calls"
         if [ -f "$root/fail-select-always" ]; then exit 7; fi
         if [ -f "$root/fail-select-once" ]; then rm "$root/fail-select-once"; exit 7; fi
         case "$*" in
@@ -161,6 +166,9 @@ fn hotspot_each_enable_failure_restores_direct_and_preserves_other_selectors() {
         "watcher-start",
     ] {
         let app = fixture(Some("direct"));
+        if step == "materialize" {
+            fs::write(app.moddir.join("policy-status"), "1").unwrap();
+        }
         fs::write(app.moddir.join("fail-once"), step).unwrap();
         assert!(action(&app, "enable").is_err(), "{step}");
         assert_policy(&app, "direct");
@@ -225,6 +233,7 @@ fn hotspot_busy_config_lock_rejects_toggle_before_changing_any_policy() {
 #[test]
 fn hotspot_rollback_failure_is_reported_and_saved_intent_is_still_restored() {
     let app = fixture(Some("proxy"));
+    fs::write(app.moddir.join("policy-status"), "1").unwrap();
     fs::write(app.moddir.join("fail-always"), "materialize").unwrap();
     let error = action(&app, "disable").unwrap_err();
     assert!(error.contains("rollback"), "{error}");
@@ -238,6 +247,51 @@ fn hotspot_successful_toggle_commits_saved_runtime_and_owned_resources() {
     assert_policy(&app, "proxy");
     action(&app, "disable").unwrap();
     assert_policy(&app, "direct");
+    let calls = fs::read_to_string(app.moddir.join("calls")).unwrap();
+    assert_eq!(
+        calls.lines().filter(|step| *step == "policy-check").count(),
+        2
+    );
+    assert!(!calls.lines().any(|step| step == "materialize"));
+}
+
+#[test]
+fn hotspot_changed_topology_materializes_before_switching_the_selector() {
+    for previous in ["direct", "proxy"] {
+        let app = fixture(Some(previous));
+        fs::write(app.moddir.join("policy-status"), "1").unwrap();
+        let (name, member) = if previous == "direct" {
+            ("enable", "proxy")
+        } else {
+            ("disable", "direct")
+        };
+        action(&app, name).unwrap();
+        assert_policy(&app, member);
+        let calls = fs::read_to_string(app.moddir.join("calls")).unwrap();
+        assert_eq!(
+            calls.lines().filter(|step| *step == "materialize").count(),
+            1
+        );
+        assert!(calls.find("materialize\n").unwrap() < calls.find("select\n").unwrap());
+    }
+}
+
+#[test]
+fn hotspot_unknown_topology_restores_intent_without_materializing() {
+    for previous in ["direct", "proxy"] {
+        let app = fixture(Some(previous));
+        fs::write(app.moddir.join("policy-status"), "2").unwrap();
+        let name = if previous == "direct" {
+            "enable"
+        } else {
+            "disable"
+        };
+        let error = action(&app, name).unwrap_err();
+        assert!(error.contains("hotspot discovery failed"), "{error}");
+        assert_policy(&app, previous);
+        let calls = fs::read_to_string(app.moddir.join("calls")).unwrap();
+        assert!(!calls.lines().any(|step| step == "materialize"));
+    }
 }
 
 #[test]
@@ -275,7 +329,7 @@ fn hotspot_failed_rollback_put_does_not_skip_offload_or_route_compensation() {
     assert!(!app.moddir.join("watcher").exists());
     let calls = fs::read_to_string(app.moddir.join("calls")).unwrap();
     let rollback = calls.split_once("watcher-start\n").unwrap().1;
-    for step in ["watcher-stop", "offload-restore", "cleanup", "materialize"] {
+    for step in ["watcher-stop", "offload-restore", "cleanup", "policy-check"] {
         assert!(
             rollback.lines().any(|line| line == step),
             "missing {step}: {rollback}"

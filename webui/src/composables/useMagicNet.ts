@@ -264,7 +264,9 @@ async function runShellOutcome(
     return outcome;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const timedOut = error instanceof ExecTimeoutError;
+    // An expired queue entry was never dispatched. Only an execution timeout
+    // leaves an unknown device outcome that needs background reconciliation.
+    const timedOut = error instanceof ExecTimeoutError && error.started;
     const text = `${timedOut ? "[exec-timeout]" : "[error] errno=-1"} ${message}`;
     const output = `$ ${commandPreview}\n${text}`;
     if (
@@ -645,14 +647,18 @@ function followBackgroundLogs(
           output,
         );
       }
+      const trackingSlow = !done && !failed && attempt + 1 >= maxAttempts;
       state.backgroundTask.status = done
         ? "done"
         : failed
           ? "error"
-          : "running";
+          : trackingSlow ? "timeout" : "running";
       state.backgroundTask.updatedAt = now;
       state.backgroundTask.finishedAt = done || failed ? now : 0;
-      if (!done && !failed && attempt + 1 < maxAttempts) {
+      if (!done && !failed) {
+        // A tracking limit is not evidence that the device operation ended.
+        // Continue less often so a late exit can release the write gate without
+        // a page reload. Keep at most one outstanding read and one timer.
         followBackgroundLogs(
           log,
           label,
@@ -660,32 +666,22 @@ function followBackgroundLogs(
           operationId,
           operationSequence,
           foregroundToken,
-          attempt + 1,
+          Math.min(attempt + 1, maxAttempts),
           redactOutput,
         );
+        if (trackingSlow && ownsForegroundUi) {
+          publishTrackedOperation(
+            operationSequence,
+            "running",
+            t("{p0} 仍在后台运行或等待对账", { p0: t(label) }),
+            output + t("\n\n[warn] 尚未确认任务完成，将每 15 秒继续检查。可以刷新状态或查看日志。"),
+          );
+        }
       } else {
         backgroundLogTimer = 0;
-        if (!done && !failed) {
-          state.backgroundTask.status = "timeout";
-          state.backgroundTask.updatedAt = Date.now();
-          state.backgroundTask.finishedAt = 0;
-          const timeoutOutput =
-            state.output +
-            (redactOutput
-              ? t("\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。")
-              : t("\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。"));
-          if (ownsForegroundUi) {
-            publishTrackedOperation(
-              operationSequence,
-              "running",
-              t("{p0} 仍在后台运行或等待对账", { p0: t(label) }),
-              timeoutOutput,
-            );
-          }
-        }
       }
     },
-    attempt === 0 ? 700 : 1000,
+    attempt >= maxAttempts ? 15000 : attempt === 0 ? 700 : 1000,
   );
 }
 

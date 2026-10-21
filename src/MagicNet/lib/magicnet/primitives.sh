@@ -2,6 +2,21 @@
 #
 # Kamfw-free helpers shared by common.sh and isolated subscribe loads.
 
+# Keep dynamic materializer files beside their target for atomic replacement,
+# under one private directory that the configuration watcher can exclude.
+magicnet_config_staging_file() (
+    _mcs_config="$1"
+    _mcs_kind="$2"
+    case "$_mcs_kind" in '' | *[!A-Za-z0-9._-]*) return 1 ;; esac
+    _mcs_dir="${_mcs_config%/*}/.magicnet-staging"
+    [ ! -L "$_mcs_dir" ] || return 1
+    if [ ! -d "$_mcs_dir" ]; then
+        (umask 077; mkdir -p "$_mcs_dir") || return 1
+    fi
+    [ -d "$_mcs_dir" ] && [ ! -L "$_mcs_dir" ] || return 1
+    printf '%s/%s.%s.%s\n' "$_mcs_dir" "${_mcs_config##*/}" "$_mcs_kind" "$$"
+)
+
 # High-bit fwmark reserved for direct sing-box UDP DNS sockets. Android's
 # netd fwmark rules use the low bits, so this mark distinguishes resolver
 # traffic without changing the selected network route.

@@ -117,6 +117,7 @@ check python3 scripts/test-fake-magisk-curl.py
 check bash scripts/test-process-cgroup-detach.sh
 check bash scripts/test-supervisor-orphan-prefilter.sh
 check bash scripts/test-supervisor-start-policy.sh
+check bash scripts/test-hotspot-watchdog-lifecycle.sh
 check bash scripts/test-tun-interface-safety.sh
 check bash scripts/test-singbox-dataplane-preflight.sh
 check bash scripts/test-transparent-mode-config-safety.sh

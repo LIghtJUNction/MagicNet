@@ -10,8 +10,8 @@ type QueuedTask = {
 };
 
 /**
- * Bound each caller's total wait, including time spent in the queue. A timed-out
- * command still occupies the execution slot until its underlying promise settles;
+ * Bound queue wait and execution separately. Give a dispatched command its full
+ * execution budget. It retains the slot until its underlying promise settles;
  * expired waiting commands are removed so they can never mutate the device later.
  */
 export class SerialExecQueue {
@@ -32,6 +32,8 @@ export class SerialExecQueue {
       const job: QueuedTask = {
         deadline: Date.now() + timeoutMs,
         run: () => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(job.expire, timeoutMs);
           // Resolve synchronous throws and asynchronous failures through the same
           // path, releasing the slot only when the actual operation settles.
           void Promise.resolve().then(task).then(resolve, reject).finally(() => {
@@ -43,11 +45,15 @@ export class SerialExecQueue {
         },
         expire: () => {
           window.clearTimeout(timer);
-          if (this.waiting.delete(job)) this.onDepthChange(this.depth);
-          reject(new ExecTimeoutError(t("{p0} 超过 {p1} 秒仍未返回，请到“输出”页查看日志或稍后重试。", { p0: t(label), p1: Math.round(timeoutMs / 1000) })));
+          const queued = this.waiting.delete(job);
+          if (queued) this.onDepthChange(this.depth);
+          const message = queued
+            ? t("{p0} 等待前一个操作超过 {p1} 秒，命令未执行。请稍后重试。", { p0: t(label), p1: Math.round(timeoutMs / 1000) })
+            : t("{p0} 超过 {p1} 秒仍未返回，请到“输出”页查看日志或稍后重试。", { p0: t(label), p1: Math.round(timeoutMs / 1000) });
+          reject(new ExecTimeoutError(message, !queued));
         },
       };
-      const timer = window.setTimeout(job.expire, timeoutMs);
+      let timer = window.setTimeout(job.expire, timeoutMs);
       this.waiting.add(job);
       this.onDepthChange(this.depth);
       this.startNext();

@@ -142,15 +142,32 @@ fn sync_persisted_hotspot_offload(app: &App) {
 }
 
 fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
+    if hotspot_policy_is_stale(app)? {
+        apply_config(app)?;
+    }
+    Ok(())
+}
+
+fn hotspot_policy_is_stale(app: &App) -> Result<bool, String> {
     // Only a confirmed topology change should restart the core. Discovery
     // failures are retried by the watcher without interrupting live sockets.
     match run_magicnet_function_status(app, "magicnet_singbox_hotspot_policy_current")?.code() {
-        Some(0) => Ok(()),
-        Some(1) => apply_config(app),
+        Some(0) => Ok(false),
+        Some(1) => Ok(true),
         status => Err(format!(
             "hotspot discovery failed with status {status:?}; retaining the current configuration"
         )),
     }
+}
+
+fn refresh_hotspot_policy_locked(
+    app: &App,
+    guard: &crate::service::ConfigApplyGuard,
+) -> Result<(), String> {
+    if hotspot_policy_is_stale(app)? {
+        crate::service::apply_config_locked(app, guard)?;
+    }
+    Ok(())
 }
 
 fn apply_hotspot_policy_locked(
@@ -163,7 +180,7 @@ fn apply_hotspot_policy_locked(
         run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
         // Persisted intent must be visible before the core snapshots its
         // source policy. Reuse the lifecycle guard instead of locking twice.
-        crate::service::apply_config_locked(app, guard)?;
+        refresh_hotspot_policy_locked(app, guard)?;
         if let Some(runtime_member) = runtime_member {
             curl_put_selection(app, "hotspot", &json!({"name": runtime_member}).to_string())?;
         }
@@ -173,7 +190,7 @@ fn apply_hotspot_policy_locked(
         run_magicnet_function(app, "magicnet_hotspot_watchdog_stop")?;
         run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
         run_magicnet_function(app, "magicnet_hotspot_route_cleanup")?;
-        crate::service::apply_config_locked(app, guard)?;
+        refresh_hotspot_policy_locked(app, guard)?;
         if let Some(runtime_member) = runtime_member {
             curl_put_selection(app, "hotspot", &json!({"name": runtime_member}).to_string())?;
         }
@@ -221,7 +238,7 @@ fn restore_hotspot_policy_locked(
     // Do not materialize the failed operation's intent if saving the previous
     // choice failed. Still attempt independent resource and API compensation.
     if saved_restored {
-        attempt("config", crate::service::apply_config_locked(app, guard));
+        attempt("config", refresh_hotspot_policy_locked(app, guard));
     }
     if let Some(runtime) = runtime {
         attempt(
@@ -320,13 +337,7 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "reconcile" => {
             let guard = crate::service::config_apply_lock(app)?;
             run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
-            match run_magicnet_function_status(app, "magicnet_singbox_hotspot_policy_current")?.code() {
-                Some(0) => Ok(()),
-                Some(1) => crate::service::apply_config_locked(app, &guard),
-                status => Err(format!(
-                    "hotspot discovery failed with status {status:?}; retaining the current configuration"
-                )),
-            }
+            refresh_hotspot_policy_locked(app, &guard)
         }
         "enable" => set_hotspot_policy(app, "proxy"),
         "disable" => set_hotspot_policy(app, "direct"),

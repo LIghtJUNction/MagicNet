@@ -114,8 +114,10 @@ for package in requested:
         names = [step.get("name") for step in self.steps]
         for consumer in ("Build application-UID network probe", "Create pristine Android 15 AVD", "Boot pristine Android 15 AVD"):
             self.assertLess(names.index("Locate Android SDK tools"), names.index(consumer))
+        self.assertLess(names.index("Locate Android SDK tools"), names.index("Install Android emulator runtime"))
+        self.assertLess(names.index("Install Android emulator runtime"), names.index("Boot pristine Android 15 AVD"))
 
-    def test_sdk_bootstrap_exports_all_tools_without_global_path_assumptions(self):
+    def test_sdk_bootstrap_discovers_tools_without_invoking_installers(self):
         for layout in ("latest", "versioned"):
             with self.subTest(layout=layout), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -126,7 +128,7 @@ for package in requested:
                     toolbin.mkdir(parents=True)
                     for tool in ("sdkmanager", "avdmanager"):
                         file = toolbin / tool
-                        file.write_text("#!/bin/sh\nexit 0\n")
+                        file.write_text("#!/bin/sh\nexit 19\n")
                         file.chmod(0o755)
                 pathfile = root / "github-path"
                 env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), ANDROID_HOME="/not/the/sdk", GITHUB_PATH=str(pathfile))
@@ -157,22 +159,24 @@ for package in requested:
                 self.assertFalse(pathfile.exists(), "invalid SDK must not publish paths")
 
 
-    def test_failed_sdk_install_does_not_publish_paths(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            sdk = root / "sdk"
-            tools = sdk / "cmdline-tools/latest/bin"
-            tools.mkdir(parents=True)
-            for tool in ("sdkmanager", "avdmanager"):
-                file = tools / tool
-                file.write_text("#!/bin/sh\nexit 19\n")
-                file.chmod(0o755)
-            pathfile = root / "github-path"
-            env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), GITHUB_PATH=str(pathfile))
-            result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step("Locate Android SDK tools")["run"]],
-                                    env=env, text=True, capture_output=True, timeout=10)
-            self.assertEqual(result.returncode, 19, result.stdout + result.stderr)
-            self.assertFalse(pathfile.exists())
+    def test_sdk_runtime_install_uses_selected_sdk_and_propagates_failures(self):
+        for status in (0, 19):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                sdk = root / "sdk with spaces"
+                tools = sdk / "cmdline-tools/latest/bin"
+                tools.mkdir(parents=True)
+                manager = tools / "sdkmanager"
+                manager.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$SDK_INSTALL_ARGS"\nexit "$SDK_INSTALL_STATUS"\n')
+                manager.chmod(0o755)
+                argsfile = root / "install-args"
+                env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), ANDROID_HOME="/not/the/sdk",
+                           PATH=str(tools) + ':' + os.environ['PATH'],
+                           SDK_INSTALL_ARGS=str(argsfile), SDK_INSTALL_STATUS=str(status))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step("Install Android emulator runtime")["run"]],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, status, result.stdout + result.stderr)
+                self.assertEqual(argsfile.read_text().splitlines(), [f"--sdk_root={sdk}", "platform-tools", "emulator"])
 
 
 PUBLIC_RUNTIME = ROOT / "scripts/android-public-runtime.py"

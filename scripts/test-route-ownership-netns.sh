@@ -22,6 +22,12 @@ parent_netns="$(readlink "/proc/$PPID/ns/net")"
 }
 MODDIR="$2/module"
 mkdir -p "$MODDIR/.state/network"
+ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
+import() { :; }
+# shellcheck source=/dev/null
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+# shellcheck source=/dev/null
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 kernel_state=stopped
 magicnet_kernel_running() { [[ "$kernel_state" == running ]] && return 0; return 1; }
 magicnet_transparent_mode() { printf 'tun\n'; }

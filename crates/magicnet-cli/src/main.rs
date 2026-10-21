@@ -98,6 +98,24 @@ fn reconcile_state(app: &App, phase: &str) {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if let Err(err) = utils::mark_inherited_fds_cloexec() {
+        if args.iter().any(|arg| arg == "--json") {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "schema": 1,
+                    "ok": false,
+                    "command": "machine.error",
+                    "error": {
+                        "code": "machine.io",
+                        "message": "unable to isolate inherited file descriptors"
+                    }
+                })
+            );
+        }
+        eprintln!("[error] isolate inherited file descriptors: {err}");
+        std::process::exit(1);
+    }
     let internal = match args.first().map(String::as_str) {
         Some("__proc-cmdline") => Some(utils::proc_cmdline_command(&args[1..])),
         Some("__proc-comm") => Some(utils::proc_comm_command(&args[1..])),

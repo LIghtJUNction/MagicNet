@@ -28,6 +28,9 @@ cp "$ROOT/src/MagicNet/lib/magicnet/transparent_dns.sh" "$MODDIR/lib/magicnet/tr
 cp "$ROOT/src/MagicNet/lib/magicnet/network.sh" "$MODDIR/lib/magicnet/network.sh"
 
 import() { :; }
+# Load the shared primitives exactly as the production aggregate loader does.
+# shellcheck disable=SC1091
+. "$MODDIR/lib/magicnet/primitives.sh"
 # shellcheck disable=SC1091
 . "$MODDIR/lib/magicnet/transparent_dns.sh"
 # shellcheck disable=SC1091

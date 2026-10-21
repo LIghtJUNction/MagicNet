@@ -2,6 +2,17 @@ import { t } from "@/i18n";
 import type { RuntimeState } from "@/types";
 import { startupFailure } from "@/components/pages/startupFailure";
 import { statusToneClasses } from "@/lib/statusTone";
+import { backgroundTaskBlocksLaunch, type BackgroundTaskState } from "@/composables/backgroundTasks";
+
+export function pendingServiceLabel(task: Pick<BackgroundTaskState, "args" | "status">): string {
+  if (!backgroundTaskBlocksLaunch(task)) return "";
+  const action = task.args.match(/^service (start|stop|restart|ensure)\b/)?.[1];
+  if (!action) return "";
+  if (task.status === "timeout") return t("等待服务操作结果");
+  if (action === "stop") return t("正在停止服务");
+  if (action === "restart") return t("正在重启服务");
+  return t("正在启动服务");
+}
 
 export type ControlRuntimeInsight = {
   status: "ok" | "warning" | "danger" | "info";
@@ -52,9 +63,11 @@ export function buildControlRuntimeInsight(
   if (busy) {
     return {
       status: "info",
-      title: t("后台任务进行中"),
-      detail: t("phase={phase} queue={queueDepth}，建议等待任务结束后再切换模式或重启。", { phase: input.phase, queueDepth: input.queueDepth }),
-      actions: [t("查看最近输出"), t("等待队列清空")],
+      title: input.backgroundStatus === "timeout" ? t("等待任务结果") : t("后台任务进行中"),
+      detail: input.backgroundStatus === "timeout"
+        ? t("任务尚未确认完成，面板会继续检查。可以刷新状态或查看输出。")
+        : t("请等待当前操作完成。期间可以刷新状态或查看输出。"),
+      actions: [t("刷新状态"), t("查看最近输出")],
     };
   }
   if (input.phase === "error") {

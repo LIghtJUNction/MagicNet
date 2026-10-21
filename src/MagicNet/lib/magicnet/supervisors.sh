@@ -11,6 +11,7 @@ magicnet_supervisor_target_pid_matches() (
 
 magicnet_supervisor_orphan_pids() (
     _mso_target="$1"
+    _mso_keep_pid="${2:-}"
     case "$_mso_target" in
     fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
     watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
@@ -31,6 +32,7 @@ magicnet_supervisor_orphan_pids() (
     _mso_result=''
     for _mso_pid in $_mso_candidates; do
         [ "$_mso_pid" = "$$" ] && continue
+        [ "$_mso_pid" = "$_mso_keep_pid" ] && continue
         if magicnet_supervisor_target_pid_matches "$_mso_target" "$_mso_pid_file" "$_mso_pid"; then
             _mso_match_rc=0
         else
@@ -68,7 +70,8 @@ magicnet_trim_log_file() {
 
 magicnet_supervisor_kill_orphans() (
     _msko_target="$1"
-    if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target"); then
+    _msko_keep_pid="${2:-}"
+    if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target" "$_msko_keep_pid"); then
         _msko_rc=0
     else
         _msko_rc=$?
@@ -80,7 +83,7 @@ magicnet_supervisor_kill_orphans() (
     done
     _msko_attempt=0
     while [ "$_msko_attempt" -lt 20 ]; do
-        if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target"); then
+        if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target" "$_msko_keep_pid"); then
             _msko_rc=0
         else
             _msko_rc=$?
@@ -282,20 +285,70 @@ magicnet_hotspot_watchdog_interval() {
     printf '%s\n' "${MAGICNET_HOTSPOT_WATCH_INTERVAL:-3}"
 }
 
+# Serialize the check, orphan cleanup and PID publication, including stop.
+# The guard stays in this short-lived parent; the worker closes fd 8 before
+# calling a launcher that can detach children. Never unlink a flock file.
+magicnet_hotspot_watchdog_locked() (
+    _mhw_action="$1"
+    case "$_mhw_action" in start | stop) ;; *) return 2 ;; esac
+    _mhw_dir="${KAM_HOME:-$MODDIR}/.state/watchdog"
+    mkdir -p "$_mhw_dir" || return 1
+    exec 8>"$_mhw_dir/magicnet-hotspot-route.lifecycle.lock" || return 1
+    _mhw_busybox=$(magicnet_fswatch_busybox_bin 2>/dev/null || true)
+    if [ -n "$_mhw_busybox" ]; then
+        set -- "$_mhw_busybox" flock
+    else
+        _mhw_flock=$(magicnet_trusted_flock 2>/dev/null) || return 1
+        set -- "$_mhw_flock"
+    fi
+    _mhw_attempt=0
+    while :; do
+        # mksh marks exec-opened descriptors close-on-exec. Explicitly pass
+        # the guard to flock so Android does not mistake EBADF for contention.
+        if "$@" -n 8 8>&8; then break; else _mhw_lock_rc=$?; fi
+        # flock reports contention as 1. Unsupported options or I/O failures
+        # cannot be fixed by waiting on this lock.
+        [ "$_mhw_lock_rc" -eq 1 ] || return 1
+        _mhw_attempt=$((_mhw_attempt + 1))
+        [ "$_mhw_attempt" -lt 100 ] || {
+            magicnet_warn "Timed out waiting for the hotspot watchdog lifecycle lock"
+            return 1
+        }
+        sleep 0.1 || return 1
+    done
+    (
+        exec 8>&-
+        "magicnet_hotspot_watchdog_${_mhw_action}_unlocked"
+    )
+    # BusyBox ash can elide a final subshell. Keep this lock-owning parent
+    # alive until its descriptor-free worker has finished publishing its PID.
+    _mhw_rc=$?
+    return "$_mhw_rc"
+)
+
 magicnet_hotspot_watchdog_start() {
+    magicnet_hotspot_watchdog_locked start
+}
+
+magicnet_hotspot_watchdog_start_unlocked() {
     if magicnet_module_disabled || ! magicnet_hotspot_proxy_enabled || ! magicnet_kernel_running; then
-        magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
+        magicnet_hotspot_watchdog_stop_unlocked >/dev/null 2>&1 || true
         return 0
     fi
     import watchdog
     _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
-    if watchdog status "$_hotspot_watch_name" >/dev/null 2>&1; then
+    if _hotspot_watch_pid=$(watchdog status "$_hotspot_watch_name" 2>/dev/null); then
+        # An older concurrent boot may have left extra exact module loops.
+        # Keep the published live instance and reclaim only verified extras.
+        magicnet_supervisor_kill_orphans hotspot-watchdog "$_hotspot_watch_pid"
+        _hotspot_watch_rc=$?
         unset _hotspot_watch_name
-        return 0
+        return "$_hotspot_watch_rc"
     else
         _hotspot_watch_status_rc=$?
     fi
     [ "$_hotspot_watch_status_rc" -ne 2 ] || return 2
+    magicnet_supervisor_kill_orphans hotspot-watchdog || return $?
     # magicnet_start_kernel already performs the synchronous initial
     # reconciliation.  The watcher owns only later interface transitions and
     # must not repeat slow OEM tethering discovery on the start button path.
@@ -312,6 +365,10 @@ magicnet_hotspot_watchdog_start() {
 }
 
 magicnet_hotspot_watchdog_stop() {
+    magicnet_hotspot_watchdog_locked stop
+}
+
+magicnet_hotspot_watchdog_stop_unlocked() {
     _hotspot_watch_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid"
     magicnet_supervisor_stop_pidfile "$_hotspot_watch_pid_file" || return $?
     magicnet_supervisor_kill_orphans hotspot-watchdog
@@ -385,6 +442,22 @@ magicnet_fswatch_command() {
     printf '%s\n' "[ ! -f '$(magicnet_json_escape "$MODDIR")/disable' ] && [ ! -f '$(magicnet_json_escape "$MODDIR")/remove' ] || exit 0; MODDIR='$(magicnet_json_escape "$MODDIR")' '$(magicnet_json_escape "$MODDIR")/cli' config apply >/dev/null 2>&1"
 }
 
+magicnet_fswatch_prune_names() {
+    # These files are outputs of explicit controllers, not editable inputs.
+    # kamfw treats names literally, so list every current materializer stage.
+    # Keep the mandatory exclusions even when the user customizes extra ones.
+    printf '%s\n' \
+        "${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
+        'sing-box/.magicnet-staging sing-box/config.json sing-box/config.json.new sing-box/config.json.route.new' \
+        'sing-box/tailscale-auth.json.new sing-box/tailscale-auth.json.merged' \
+        'sing-box/config.json.tailscale.new sing-box/config.json.tailscale-auth.new sing-box/config.json.tailscale-scrub.new' \
+        'sing-box/config.json.magicnet-selectors.new sing-box/config.json.magicnet-block.new sing-box/config.json.zashboard.new' \
+        'sing-box/config.json.app-policy.new sing-box/config.json.include-packages.tmp sing-box/config.json.include-uids.tmp' \
+        'sing-box/config.json.exclude-uids.tmp sing-box/config.json.exclude-uids.tmp.new sing-box/config.json.magicnet-warp.new' \
+        'sing-box/config.json.magicnet-dns.new sing-box/config.json.hotspot-policy.new sing-box/config.json.magicnet-route.new' \
+        'sing-box/config.json.transparent-mode.new'
+}
+
 magicnet_fswatch_start() {
     if magicnet_module_disabled; then
         magicnet_fswatch_stop >/dev/null 2>&1 || true
@@ -422,7 +495,7 @@ magicnet_fswatch_start() {
     # These intent files have dedicated controllers. Watching them here would
     # race explicit activation or restart the core for an unrelated MCP edit.
     PATH="$_fswatch_exec_path" \
-        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
+        KAM_FSWATCH_PRUNE_NAMES="$(magicnet_fswatch_prune_names)" \
         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
         fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?

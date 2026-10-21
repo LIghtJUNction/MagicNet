@@ -18,6 +18,12 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 FIXTURE = r'''import json, os, pathlib, sys
+if sys.argv[1] == 'proc-stat':
+    raw = (pathlib.Path(sys.argv[2]) / sys.argv[3] / 'stat').read_text()
+    assert len(raw) <= 4096
+    fields = raw.rsplit(') ', 1)[1].split()
+    print(fields[0], fields[19])
+    raise SystemExit(0)
 root = pathlib.Path(os.environ['FIXTURE_ROOT'])
 path = root / 'kernel.json'
 s = json.loads(path.read_text())
@@ -110,6 +116,7 @@ class OwnershipTests(unittest.TestCase):
         self.mod = self.root / 'module'
         (self.mod / '.state/network').mkdir(parents=True)
         (self.mod / '.state/hotspot').mkdir()
+        (self.mod / 'lib').symlink_to(ROOT / 'src/MagicNet/lib', target_is_directory=True)
         self.state = self.mod / '.state/network/kernel-route-table.state'
         self.pending = self.mod / '.state/hotspot/tun-rules.list.pending'
         self.hotspot = self.mod / '.state/hotspot/tun-rules.list'
@@ -121,7 +128,19 @@ class OwnershipTests(unittest.TestCase):
         self.prefix = f'''
 set -eu
 MODDIR={shlex.quote(str(self.mod))}
+import() {{ :; }}
+. {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/primitives.sh'))}
+. {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/common.sh'))}
+# IPv6 exemptions have a stateful fixture in test-hotspot-routing.sh. Host
+# ip6tables availability must not enable unmodeled firewall operations here.
+magicnet_cmd_exists() {{
+    [ "$1" != ip6tables ] && command -v "$1" >/dev/null 2>&1
+}}
 fixture() {{ {shlex.quote(sys.executable)} -S {shlex.quote(str(self.fixture))} "$@"; }}
+magicnet_proc_reader_test_hook() {{
+    [ "$1" = stat ] || return 1
+    fixture proc-stat "$2" "$3"
+}}
 ip() {{ fixture ip "$@"; }}
 magicnet_kernel_running() {{ fixture kernel; }}
 magicnet_transparent_mode() {{ fixture mode; }}
@@ -404,6 +423,89 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertEqual(self.read()['writes'], before)
         self.assertEqual(self.hotspot.stat().st_mtime_ns, stamp)
         self.assertFalse(self.pending.exists())
+
+    def test_hotspot_lifecycle_does_not_use_host_ipv6_firewall(self):
+        self.change(kernel=0, route4=['default dev magicnet0'])
+        self.run_helper('''
+ip6tables() { touch "$FIXTURE_ROOT/host-firewall"; return 99; }
+magicnet_ip6tables_cmd() { ip6tables "$@"; }
+command -v ip6tables >/dev/null
+magicnet_hotspot_reconcile
+magicnet_hotspot_route_cleanup
+''')
+        self.assertFalse((self.root / 'host-firewall').exists())
+        self.assertFalse(self.read()['rule4'])
+        self.assertFalse(self.read()['forward'])
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.pending.exists())
+
+    def test_hotspot_observed_duplicate_priorities_cannot_look_ready(self):
+        self.change(kernel=0, route4=['default dev magicnet0'])
+        self.run_helper('magicnet_hotspot_reconcile')
+        extra = ['8997: from all iif wlan2 lookup 2022',
+                 '8996: from all iif wlan2 lookup 2022']
+        self.change(rule4=self.read()['rule4'] + extra)
+        before = self.read()['writes'][:]
+        status = self.run_helper('magicnet_hotspot_route_status').stdout
+        self.assertIn('route_status=degraded\n', status)
+        self.assertIn('policy_rule_observed=3\n', status)
+        self.assertIn('policy_rule_duplicates=2\n', status)
+        self.assertEqual(self.read()['writes'], before)
+        self.run_helper("magicnet_hotspot_routes_current 'wlan2|10.1.1.0/24'", 1)
+        self.run_helper('magicnet_hotspot_reconcile')
+        self.assertEqual(sum('iif wlan2 lookup 2022' in r for r in self.read()['rule4']), 1)
+        self.assertIn('route_status=ready\n', self.run_helper('magicnet_hotspot_route_status').stdout)
+        before = self.read()['writes'][:]
+        self.run_helper('magicnet_hotspot_reconcile')
+        self.assertEqual(self.read()['writes'], before)
+
+    def test_hotspot_cleanup_removes_exact_copies_only_for_recorded_interfaces(self):
+        self.hotspot.write_text('8997|wlan2\n')
+        owned = [f'{p}: from all iif wlan2 lookup 2022' for p in (8997, 8998, 8999)]
+        foreign = ['7000: from all iif usb0 lookup 2022',
+                   '7001: from all iif wlan2 lookup 20220',
+                   '7002: from 192.0.2.0/24 iif wlan2 lookup 2022',
+                   '7003: from all iif wlan2 lookup 2022 suppress_prefixlength 0']
+        self.change(rule4=owned + foreign)
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertEqual(self.read()['rule4'], foreign)
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.pending.exists())
+        before = self.read()['writes'][:]
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertEqual(self.read()['writes'], before)
+
+    def test_hotspot_duplicate_cleanup_retains_new_priorities_after_failed_delete(self):
+        self.hotspot.write_text('8997|wlan2\n')
+        owned = [f'{p}: from all iif wlan2 lookup 2022' for p in (8997, 8998, 8999)]
+        self.change(rule4=owned, fail_delete=True)
+        self.run_helper('magicnet_hotspot_route_cleanup', 1)
+        for priority in (8997, 8998, 8999):
+            self.assertIn(f'{priority}|wlan2\n', self.pending.read_text())
+        self.hotspot.unlink()
+        self.change(fail_delete=False)
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertEqual(self.read()['rule4'], [])
+        self.assertFalse(self.pending.exists())
+
+    def test_hotspot_journal_absence_does_not_authorize_orphan_deletion(self):
+        orphan = '8999: from all iif wlan2 lookup 2022'
+        self.change(enabled=False, rule4=[orphan])
+        self.run_helper('magicnet_hotspot_route_cleanup')
+        self.assertEqual(self.read()['rule4'], [orphan])
+        self.assertFalse(self.read()['writes'])
+        self.assertIn('route_status=degraded\n', self.run_helper('magicnet_hotspot_route_status').stdout)
+
+    def test_hotspot_reconcile_and_cleanup_share_the_config_transaction_lock(self):
+        self.change(kernel=0, route4=['default dev magicnet0'])
+        for helper in ('magicnet_hotspot_reconcile', 'magicnet_hotspot_route_cleanup'):
+            cp = self.run_helper(f'''
+magicnet_config_lock_acquire
+if MAGICNET_CONFIG_LOCK_TIMEOUT=0 {helper}; then exit 90; fi
+magicnet_config_lock_release
+''')
+            self.assertIn('Timed out waiting for config lock', cp.stderr)
+            self.assertFalse(self.read()['writes'])
 
     def test_hotspot_failed_install_and_rollback_retains_pending_record(self):
         self.change(kernel=0, route4=['default dev magicnet0'], fail_ingress_add=True, fail_forward_delete=True)
