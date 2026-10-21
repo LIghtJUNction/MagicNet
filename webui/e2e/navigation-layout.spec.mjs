@@ -56,4 +56,6 @@ test("a direct link keeps the selected section label fully visible", async ({ pa
     await expect(page.locator('.desktop-rail [data-tab="webui"][aria-current="page"]')).toBeInViewport({ ratio: 1 });
   }
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".mn-skip-link")).toBeFocused();
 });

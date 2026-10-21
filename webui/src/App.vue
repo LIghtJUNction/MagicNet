@@ -526,10 +526,21 @@ function warnBeforeDiscardingConfig(event: BeforeUnloadEvent): void {
   event.returnValue = "";
 }
 
+function revealInitialSectionTab(): void {
+  const track = document.querySelector<HTMLElement>(".mn-section-tabs");
+  const selected = track?.querySelector<HTMLElement>('[aria-current="page"]');
+  if (!track || !selected) return;
+  const label = selected.getBoundingClientRect();
+  const visible = track.getBoundingClientRect();
+  if (label.left >= visible.left && label.right <= visible.right) return;
+  // Avoid scrollIntoView here: it can change the keyboard navigation starting point.
+  // Move only this track so the first Tab still reaches the skip link.
+  track.scrollLeft += label.left - visible.left - (visible.width - label.width) / 2;
+}
+
 onMounted(() => {
   void refreshStatus();
-  // Initial deep links still need their selected phone section label revealed.
-  setTab(activeTab.value, { updateLocation: false });
+  void nextTick(revealInitialSectionTab);
   // A deep link is already the active tab, so setTab would not warm it.
   warmActiveTab(activeTab.value);
   document.addEventListener("keydown", handleEscape);
