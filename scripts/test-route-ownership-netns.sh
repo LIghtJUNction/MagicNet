@@ -182,6 +182,10 @@ read_return_record 172.20.0.2
 old_return_priority="$return_priority"
 ip addr del 172.20.0.1/30 dev magicnet0
 ip addr add 172.21.0.1/30 dev magicnet0
+# Deleting the last IPv4 address also flushes this device's table 2022 route.
+# Model the core rebuilding its route before reconciling module-owned rules.
+ip route replace default dev magicnet0 table 2022
+magicnet_hotspot_tun_route_table_ready
 expect_route 172.21.0.2 172.21.0.1 upstream0
 expect_not_ready
 magicnet_hotspot_reconcile
