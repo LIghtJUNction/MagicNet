@@ -303,7 +303,9 @@ magicnet_hotspot_watchdog_locked() (
     fi
     _mhw_attempt=0
     while :; do
-        if "$@" -n 8; then break; else _mhw_lock_rc=$?; fi
+        # mksh marks exec-opened descriptors close-on-exec. Explicitly pass
+        # the guard to flock so Android does not mistake EBADF for contention.
+        if "$@" -n 8 8>&8; then break; else _mhw_lock_rc=$?; fi
         # flock reports contention as 1. Unsupported options or I/O failures
         # cannot be fixed by waiting on this lock.
         [ "$_mhw_lock_rc" -eq 1 ] || return 1

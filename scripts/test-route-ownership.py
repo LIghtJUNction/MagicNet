@@ -131,6 +131,11 @@ MODDIR={shlex.quote(str(self.mod))}
 import() {{ :; }}
 . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/primitives.sh'))}
 . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/common.sh'))}
+# IPv6 exemptions have a stateful fixture in test-hotspot-routing.sh. Host
+# ip6tables availability must not enable unmodeled firewall operations here.
+magicnet_cmd_exists() {{
+    [ "$1" != ip6tables ] && command -v "$1" >/dev/null 2>&1
+}}
 fixture() {{ {shlex.quote(sys.executable)} -S {shlex.quote(str(self.fixture))} "$@"; }}
 magicnet_proc_reader_test_hook() {{
     [ "$1" = stat ] || return 1
@@ -417,6 +422,21 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.run_helper('magicnet_hotspot_reconcile')
         self.assertEqual(self.read()['writes'], before)
         self.assertEqual(self.hotspot.stat().st_mtime_ns, stamp)
+        self.assertFalse(self.pending.exists())
+
+    def test_hotspot_lifecycle_does_not_use_host_ipv6_firewall(self):
+        self.change(kernel=0, route4=['default dev magicnet0'])
+        self.run_helper('''
+ip6tables() { touch "$FIXTURE_ROOT/host-firewall"; return 99; }
+magicnet_ip6tables_cmd() { ip6tables "$@"; }
+command -v ip6tables >/dev/null
+magicnet_hotspot_reconcile
+magicnet_hotspot_route_cleanup
+''')
+        self.assertFalse((self.root / 'host-firewall').exists())
+        self.assertFalse(self.read()['rule4'])
+        self.assertFalse(self.read()['forward'])
+        self.assertFalse(self.hotspot.exists())
         self.assertFalse(self.pending.exists())
 
     def test_hotspot_observed_duplicate_priorities_cannot_look_ready(self):

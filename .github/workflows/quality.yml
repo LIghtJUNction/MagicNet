@@ -143,6 +143,7 @@ jobs:
           set -euo pipefail
           packages=()
           command -v shellcheck >/dev/null 2>&1 || packages+=(shellcheck)
+          command -v mksh >/dev/null 2>&1 || packages+=(mksh)
           command -v jq >/dev/null 2>&1 || packages+=(jq)
           command -v rg >/dev/null 2>&1 || packages+=(ripgrep)
           command -v curl >/dev/null 2>&1 || packages+=(curl)

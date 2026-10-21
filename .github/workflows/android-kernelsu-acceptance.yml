@@ -144,8 +144,13 @@ jobs:
             echo '::error::Matching sdkmanager and avdmanager executables are required' >&2
             exit 2
           fi
-          timeout 600 "$manager" --sdk_root="$sdk" "platform-tools" "emulator"
           printf '%s\n' "$tools" "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
+
+      - name: Install Android emulator runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600 sdkmanager --sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}" "platform-tools" "emulator"
 
       - name: Setup Go
         id: go

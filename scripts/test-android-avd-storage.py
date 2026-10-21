@@ -72,7 +72,9 @@ def sdk_smoke():
         pathfile=root/'path';envfile=root/'env'
         env=dict(os.environ,HOME=str(home),GITHUB_ENV=str(envfile),GITHUB_PATH=str(pathfile),
                  AVD_NAME='MagicNet_API_35',SYSTEM_IMAGE='system-images;android-35;google_apis;x86_64')
-        for name, budget in (('Locate Android SDK tools',660),('Pin Android AVD storage',10),('Create pristine Android 15 AVD',1250)):
+        # Creating and discovering an AVD needs command-line tools and its
+        # system image; the separate emulator-runtime install is for booting.
+        for name, budget in (('Locate Android SDK tools',10),('Pin Android AVD storage',10),('Create pristine Android 15 AVD',1250)):
             cp=execute(name,env,budget)
             print(cp.stdout)
             if cp.returncode: raise RuntimeError(name+' failed: '+cp.stderr[-3000:])

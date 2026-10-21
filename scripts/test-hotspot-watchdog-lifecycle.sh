@@ -156,8 +156,9 @@ if magicnet_supervisor_orphan_pids hotspot-watchdog >/dev/null; then
 fi
 
 # ash can optimize away a final subshell. Exercise the actual lock wrapper
-# under the production shell as well as the host shell: closing the worker's
-# fd must not release the parent's guard before the worker returns.
+# under Android mksh, BusyBox ash and the host shell: the external flock must
+# receive its descriptor, and closing the worker's fd must not release the
+# parent's guard before the worker returns.
 cat >"$fixture/lock-lifetime.sh" <<'EOF'
 set -eu
 MODDIR="$1"
@@ -180,7 +181,7 @@ wait "$first"
 wait "$second"
 EOF
 printf 'begin\nend\nbegin\nend\n' >"$fixture/expected-events"
-for shell in sh busybox; do
+for shell in sh busybox mksh; do
     command -v "$shell" >/dev/null || continue
     shell_command=("$shell")
     test "$shell" != busybox || shell_command+=(sh)

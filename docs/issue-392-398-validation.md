@@ -44,6 +44,52 @@ Baseline: `968ddb65f4c7ad01bc26d74471e00e71392cb74f`.
   a full execution budget after dispatch, and automatic recovery when a task
   completes after the quick polling window.
 
+## PR #399 CI follow-up (2026-10-22)
+
+The failed CI runs on `85e4183` exposed the following gaps. This follow-up
+keeps the existing network acceptance criteria and fixes their causes:
+
+- **Android core restart:** the app-UID positive, reject, and second positive
+  controls succeeded. Restoring the original configuration failed because Linux
+  can release `/proc/PID/exe` before publishing a zombie state. The process reader
+  now waits within its existing 750 ms budget only while the same PID/starttime
+  has `PF_EXITING` set. It still requires a confirmed exit, rejects reused or
+  unreadable identities, and never treats the flag itself as proof of shutdown.
+- **Android watchdog lock:** mksh marks descriptors opened by `exec` close-on-exec.
+  Explicitly passing descriptor 8 to `flock` prevents `EBADF` from being mistaken
+  for lock contention. The parent continues to own the guard and detached
+  workers still close it. Shell CI now installs mksh and runs the existing
+  concurrent lock-lifetime regression under sh, BusyBox ash, and mksh.
+- **Route ownership fixture:** host-installed `ip6tables` enabled an unmodeled
+  IPv6 path. This IPv4 fixture now declares its capabilities explicitly and
+  verifies that a discoverable host IPv6 command is never invoked. The separate
+  stateful IPv6 routing regressions remain enabled.
+- **Packaged-module smoke:** the generated fswatch exclusions became a multiline
+  shell literal. The test now decodes that literal without executing the worker
+  and checks observable snapshot behavior for generated outputs, caches, and
+  editable inputs instead of matching an obsolete exact token list.
+- **AVD storage evidence:** creating and discovering an AVD does not require
+  installing the emulator runtime. SDK tool discovery is now separate from
+  runtime installation. The full Android acceptance job still installs the
+  runtime before boot and propagates installation failures; the storage job
+  continues to install the system image and create/discover a real isolated AVD.
+
+The new missing-executable regression fails on the previous process reader,
+then passes with the fix. The old mksh lock call fails with a bad descriptor;
+the fixed concurrent fixture records serialized begin/end events. The route
+fixture regression reproduces the old rollback failure when IPv6 tools are
+present, then passes after explicit capability isolation.
+
+Follow-up local verification: the complete Rust quality gate (format, strict
+Clippy, and workspace tests) passed with caching disabled; all 50 ownership
+cases passed separately under sh, Bash, and KernelSU BusyBox ash; the complete
+watchdog lifecycle regression passed with mksh available; the 32 Android
+acceptance contract tests and two AVD storage contract tests passed. The complete
+source-tree fake-Magisk smoke also passed, including configuration activation,
+core stop/restart, supervisor reuse, and TUN/eBPF rollback controls. Actual
+Android kernel/AVD and packaged ZIP acceptance must be confirmed by the
+subsequent PR workflows, rather than inferred from these host fixtures.
+
 ## Validation commands
 
 These checks passed in the host environment used for this patch:

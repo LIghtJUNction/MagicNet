@@ -333,7 +333,14 @@ fn singbox_candidate_owned_with(
     expected_workdir: &Path,
     inspect_executable: impl FnOnce(&Path, &Path) -> Option<bool>,
 ) -> Result<bool, String> {
-    if !proc_pid_is_live(proc_dir)? {
+    let Some(stat) = read_live_proc_text(proc_dir, "stat", MAX_PROC_STAT_BYTES)? else {
+        return Ok(false);
+    };
+    let identity = proc_pid_stat_identity(&stat)?;
+    if pid.parse::<u32>() != Ok(identity.pid) {
+        return Err("sing-box process generation changed during inspection".to_string());
+    }
+    if !identity.live {
         return Ok(false);
     }
     let Some(comm) = read_live_proc_text(proc_dir, "comm", MAX_PROC_COMM_BYTES)? else {
@@ -348,7 +355,7 @@ fn singbox_candidate_owned_with(
         // reads. Only a second liveness observation can prove that this
         // error is an exit race. Empty/invalid argv can also belong to a
         // live process and must keep ownership indeterminate.
-        Err(_) if matches!(proc_pid_is_live(proc_dir), Ok(false)) => return Ok(false),
+        Err(_) if singbox_candidate_exited(proc_dir, &identity) == Some(true) => return Ok(false),
         Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
     };
     if !singbox_commandline_owned(&argv, expected_binary, expected_config, expected_workdir) {
@@ -361,11 +368,53 @@ fn singbox_candidate_owned_with(
         // TERM can finish after the owned argv read but before /proc/PID/exe.
         // Ignore this missing executable only after a confirmed exit. Otherwise
         // preserve the existing ownership decision and its script argv exception.
-        None if matches!(proc_pid_is_live(proc_dir), Ok(false)) => Ok(false),
-        None if singbox_script_arg_owned(&argv, expected_binary) => Ok(true),
-        None => Err(format!(
-            "cannot verify executable identity for live sing-box candidate {pid}"
-        )),
+        None => match singbox_candidate_exited(proc_dir, &identity) {
+            Some(true) => Ok(false),
+            Some(false) if singbox_script_arg_owned(&argv, expected_binary) => Ok(true),
+            _ => Err(format!(
+                "cannot verify executable identity for live sing-box candidate {pid}"
+            )),
+        },
+    }
+}
+
+fn singbox_candidate_exited(proc_dir: &Path, before: &ProcStatIdentity) -> Option<bool> {
+    // Linux do_exit drops mm/exe before exit_notify publishes a zombie. Wait
+    // only while the same process has PF_EXITING set. That flag alone does
+    // not prove exit: replacement startup still requires Z/X or disappearance.
+    // Ordinary live, reused and unreadable candidates remain indeterminate.
+    let deadline = Instant::now() + PROC_SCAN_TIMEOUT;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Some(false);
+        }
+        let stat = match read_proc_file_bounded_with_timeout(
+            &proc_dir.join("stat"),
+            MAX_PROC_STAT_BYTES,
+            remaining,
+        ) {
+            Ok(stat) => String::from_utf8(stat).ok()?,
+            Err(_)
+                if fs::metadata(proc_dir)
+                    .is_err_and(|err| err.kind() == io::ErrorKind::NotFound) =>
+            {
+                return Some(true);
+            }
+            Err(_) => return None,
+        };
+        let after = proc_pid_stat_identity(&stat).ok()?;
+        if before.pid != after.pid || before.starttime != after.starttime {
+            return None;
+        }
+        if !after.live {
+            return Some(true);
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !after.exiting || remaining.is_zero() {
+            return Some(false);
+        }
+        thread::sleep(Duration::from_millis(10).min(remaining));
     }
 }
 
@@ -590,6 +639,7 @@ struct ProcStatIdentity {
     pid: u32,
     starttime: u64,
     live: bool,
+    exiting: bool,
 }
 
 fn proc_pid_stat_identity(stat: &str) -> Result<ProcStatIdentity, String> {
@@ -608,6 +658,11 @@ fn proc_pid_stat_identity(stat: &str) -> Result<ProcStatIdentity, String> {
         .ok_or_else(|| "malformed proc stat identity".to_string())? as u32;
     let mut fields = fields.split_whitespace();
     let state = fields.next();
+    let flags = fields
+        .clone()
+        .nth(5)
+        .and_then(|value| value.parse::<u32>().ok())
+        .ok_or_else(|| "malformed proc stat flags".to_string())?;
     // A partial stat ending at the state token is not a complete liveness
     // observation. Field 22 (starttime) must be present and numeric too.
     let starttime = fields
@@ -623,6 +678,7 @@ fn proc_pid_stat_identity(stat: &str) -> Result<ProcStatIdentity, String> {
         pid,
         starttime,
         live,
+        exiting: flags & 0x00000004 != 0, // Linux PF_EXITING, not a completed exit.
     })
 }
 
