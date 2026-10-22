@@ -3,7 +3,7 @@ set -Eeuo pipefail
 handle_error() {
     local status="$1"
     local line="$2"
-    printf 'signature test failed at line %s (exit %s)\n' "$line" "$status" >&2
+    printf 'artifact cleanup test failed at line %s (exit %s)\n' "$line" "$status" >&2
     exit "$status"
 }
 trap 'handle_error "$?" "$LINENO"' ERR
@@ -71,44 +71,17 @@ require_command() { command -v "$1" >/dev/null; }
 FIXTURE
 printf '#!/bin/bash\nexit 0\n' > "$KAM_PROJECT_ROOT/scripts/package-smoke.sh"
 chmod +x "$KAM_PROJECT_ROOT/scripts/package-smoke.sh"
-openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$test_root/key.pem" 2>/dev/null
-openssl pkey -in "$test_root/key.pem" -pubout -out "$test_root/public.pem"
 artifact="$KAM_PROJECT_ROOT/dist/MagicNet.zip"
 sanitize_hooks=("$repo_root"/hooks/post-build/*.sanitize_zip.sh)
 test "${#sanitize_hooks[@]}" -eq 1
 sanitize_hook="${sanitize_hooks[0]}"
 
 make_archive() {
-    rm -f "$artifact" "${artifact}.sig"
+    rm -f "$artifact"
     (cd "$test_root/source" && zip -qr "$artifact" .)
 }
-sign_archive() {
-    openssl dgst -sha256 -sign "$test_root/key.pem" -out "$test_root/signature.der" "$artifact"
-    openssl base64 -A -in "$test_root/signature.der" -out "${artifact}.sig"
-}
-verify_archive() {
-    "$repo_root/scripts/verify-artifact-signature.sh" "$artifact" "$test_root/public.pem"
-}
-
-# Reproduce the original failure: a valid signature becomes invalid after cleanup.
 make_archive
-sign_archive
-verify_archive
 bash "$sanitize_hook"
-if verify_archive; then
-    echo 'Post-sign cleanup must invalidate the original signature' >&2
-    exit 1
-fi
-
-# KAM merges base and overlay hooks in filename order; exercise that order.
-make_archive
-while IFS= read -r hook; do
-    case "$hook" in
-        8000.SIGN_IF_ENABLE.sh) sign_archive ;;
-        *) bash "$sanitize_hook" ;;
-    esac
-done < <(printf '%s\n' "${sanitize_hook##*/}" 8000.SIGN_IF_ENABLE.sh | LC_ALL=C sort)
-verify_archive
 if unzip -Z1 "$artifact" | grep -Fq '.dns-test.json'; then
     echo 'Archive cleanup did not remove its fixture' >&2
     exit 1
@@ -126,23 +99,11 @@ for entry in "${preserved_entries[@]}"; do
     unzip -p "$artifact" "$entry" > "$test_root/preserved-entry"
     cmp "$test_root/source/$entry" "$test_root/preserved-entry"
 done
-# A second pass must neither change the archive nor invalidate its signature.
+# A second pass must preserve the sanitized archive byte for byte.
 cp "$artifact" "$test_root/clean.zip"
 bash "$sanitize_hook"
 cmp "$artifact" "$test_root/clean.zip"
-verify_archive
-# The final artifact check must reject later mutation and a missing signature.
-printf 'changed\n' >> "$artifact"
-if verify_archive; then
-    echo 'Modified archive passed signature verification' >&2
-    exit 1
-fi
-rm "${artifact}.sig"
-if verify_archive; then
-    echo 'Unsigned archive passed signature verification' >&2
-    exit 1
-fi
-# Refuse to proceed to signing when zip cannot remove an unwanted entry.
+# Refuse to continue when zip cannot remove an unwanted entry.
 make_archive
 mkdir -p "$test_root/failing-bin"
 printf '#!/bin/sh\nexit 1\n' > "$test_root/failing-bin/zip"
@@ -152,4 +113,4 @@ if PATH="$test_root/failing-bin:$PATH" bash "$sanitize_hook" > "$test_root/failu
     exit 1
 fi
 grep -Fq 'Failed to remove archive entry:' "$test_root/failure.log"
-printf 'Artifact cleanup, signing order and integrity checks passed\n'
+printf 'Artifact cleanup and integrity checks passed\n'

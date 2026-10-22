@@ -66,8 +66,6 @@ def bump(kind):
     prerelease = os.environ.get("PRERELEASE_INPUT") == "true"
     if prerelease and not release:
         raise ValueError("prerelease requires release=true")
-    if release and os.environ.get("KAM_PRIVATE_KEY_AVAILABLE") != "1":
-        raise ValueError("Publishing requires the KAM_PRIVATE_KEY signing secret")
     parts = list(map(int, version[1:].split(".")))
     index = ("major", "minor", "patch").index(kind)
     parts[index] += 1
@@ -148,12 +146,10 @@ def prepare():
         print(f"Validated {version}; build only")
         return
     require_main_checkout()
-    if os.environ.get("KAM_PRIVATE_KEY_AVAILABLE") != "1":
-        raise ValueError("Publishing requires the KAM_PRIVATE_KEY signing secret")
     require_new_tag(version)
     with open(os.environ["GITHUB_ENV"], "a") as output:
         output.write(f"RELEASE_REQUESTED=1\nRELEASE_VERSION={version}\n")
-        output.write(f"RELEASE_VERSION_CODE={code}\nMAGICNET_SIGN_REQUIRED=1\n")
+        output.write(f"RELEASE_VERSION_CODE={code}\n")
         output.write(f"RELEASE_PRERELEASE={str(prerelease).lower()}\n")
     print(f"Release requested: {version} at {release_commit()}")
 

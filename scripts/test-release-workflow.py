@@ -72,7 +72,6 @@ class ReleaseWorkflowTest(unittest.TestCase):
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                    GITHUB_SHA=self.git("rev-parse", "HEAD"), PUSH_BEFORE=self.before,
                    RELEASE_COMMIT_SHA="", RELEASE_INPUT="false", PRERELEASE_INPUT="false",
-                   KAM_PRIVATE_KEY_AVAILABLE="1",
                    GITHUB_ENV=str(self.output), GITHUB_OUTPUT=str(self.step_output),
                    GITHUB_STEP_SUMMARY=str(self.root / "summary"))
         env.update(overrides)
@@ -129,7 +128,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(dict(line.split("=", 1) for line in self.output.read_text().splitlines()), {
             "RELEASE_REQUESTED": "1", "RELEASE_VERSION": version,
-            "RELEASE_VERSION_CODE": str(code), "MAGICNET_SIGN_REQUIRED": "1",
+            "RELEASE_VERSION_CODE": str(code),
             "RELEASE_PRERELEASE": str(prerelease).lower(),
         })
 
@@ -323,13 +322,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assert_release(self.run_workflow(
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true"))
 
-    def test_releases_require_a_signing_key_before_exporting_release_state(self):
+    def test_releases_do_not_require_a_signing_key(self):
         self.commit(RELEASE_MARKER, "v1.2.3\n")
         for event in ("push", "workflow_dispatch"):
             with self.subTest(event=event):
-                self.assert_rejected(self.run_workflow(
-                    GITHUB_EVENT_NAME=event, RELEASE_INPUT="true",
-                    KAM_PRIVATE_KEY_AVAILABLE="0"), "KAM_PRIVATE_KEY")
+                self.assert_release(self.run_workflow(
+                    GITHUB_EVENT_NAME=event, RELEASE_INPUT="true"))
 
     def test_builds_without_release_do_not_require_a_signing_key(self):
         self.commit(RELEASE_MARKER, "v1.2.3\n")
@@ -337,8 +335,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                            ("pull_request", "refs/pull/42/merge")):
             with self.subTest(event=event):
                 self.assert_build_only(self.run_workflow(
-                    GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
-                    KAM_PRIVATE_KEY_AVAILABLE="0"))
+                    GITHUB_EVENT_NAME=event, GITHUB_REF=ref))
 
     def test_manual_release_from_another_branch_is_rejected(self):
         self.git("checkout", "-b", "feature")
@@ -370,8 +367,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true",
             GITHUB_SHA=self.before), "Checkout differs")
 
-    def test_bump_release_requires_signing_key_before_edits(self):
-        self.assert_bump_rejected(RELEASE_INPUT="true", KAM_PRIVATE_KEY_AVAILABLE="0")
+    def test_bump_release_without_signing_key(self):
+        self.assert_bump(self.run_bump(RELEASE_INPUT="true"), "v1.2.4")
+        self.assertEqual((self.repo / RELEASE_MARKER).read_text(), "v1.2.4\n")
 
     def test_manual_prerelease_without_release_is_rejected(self):
         self.assert_rejected(self.run_workflow(
@@ -439,12 +437,17 @@ class WorkflowStructureTest(unittest.TestCase):
         self.assertIn("--verify-build", release["run"])
         package = next(step for step in steps if step["name"] == "Package core, components and offline full module")
         installer = next(step for step in steps if step["name"] == "Verify incremental MagicNet installer")
-        signing = next(step for step in steps if step["name"] == "Sign and verify final release assets")
+        checksums = next(step for step in steps if step["name"] == "Generate release checksums")
         self.assertIn("package-components.py", package["run"])
         self.assertIn("test-downloader-installer.py dist/magicnet_installer.zip", installer["run"])
         self.assertIn("--core dist/MagicNet-core.zip", installer["run"])
         self.assertLess(steps.index(package), steps.index(installer))
-        self.assertLess(steps.index(installer), steps.index(signing))
+        self.assertLess(steps.index(installer), steps.index(checksums))
+        self.assertNotIn("private-key", text)
+        self.assertNotIn("KAM_PRIVATE_KEY", text)
+        self.assertNotIn("sign-release-assets", text)
+        self.assertNotIn("if", checksums)
+        self.assertIn("sha256sum -c SHA256SUMS", release["run"])
         self.assertNotIn("kam installer", text)
         self.assertNotIn("--id magicnet_installer", text)
         self.assertIn("magicnet_installer.zip", release["run"])

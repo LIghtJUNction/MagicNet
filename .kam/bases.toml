@@ -18,7 +18,6 @@ include = [
   "pre-build/3000.BUILD_CRATES.sh",
   "pre-build/4000.XTASK.sh",
   "post-build/7000.SANITIZE_MODULE_ZIP.sh",
-  "post-build/8000.SIGN_IF_ENABLE.sh",
   "post-build/8900.UPDATE_CHANGE_LOG.sh",
   "post-build/9000.UPLOAD_IF_ENABLED.sh",
   "post-build/9800.INTERACTIVE_INSTALL.sh",

@@ -53,7 +53,7 @@ env:
 jobs:
   version-bump:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write
@@ -74,7 +74,6 @@ jobs:
           BUMP_KIND: ${{ inputs.bump }}
           RELEASE_INPUT: ${{ inputs.release }}
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
-          KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
         run: |
           git checkout -B main "$GITHUB_SHA"
           python3 scripts/prepare-release.py --bump "$BUMP_KIND"
@@ -121,11 +120,8 @@ jobs:
   build:
     needs: release-android
     if: ${{ !cancelled() && (needs.release-android.result == 'success' || needs.release-android.result == 'skipped') && (github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
-      KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      MAGICNET_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      MAGICNET_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: "0"
       GH_TOKEN: ${{ github.token }}
       RELEASE_COMMIT_SHA: ${{ github.sha }}
@@ -170,14 +166,6 @@ jobs:
           bash scripts/verify-submodule-revisions.sh
           git submodule status --recursive > "$RUNNER_TEMP/build-submodules.txt"
 
-      - name: Prepare signing verification key
-        if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
-        env:
-          SIGNING_KEY_PEM: ${{ secrets.KAM_PRIVATE_KEY }}
-        run: |
-          printf '%s' "$SIGNING_KEY_PEM" | openssl pkey -pubout \
-            -out "$RUNNER_TEMP/magicnet-signing-public.pem"
-
       - name: Setup Go for forked sing-box
         id: go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -186,14 +174,13 @@ jobs:
           cache: false
 
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
+        uses: MemDeco-WG/setup-kam@2a0e9193a7e84dc7da78e99af586f8a4bb823bcb
         with:
           github-token: ${{ github.token }}
           enable-cache: "true"
           # Do not restore ~/.rustup over the freshly installed Rust toolchain.
           cache-targets: kam
           install-commitizen: "false"
-          private-key: ${{ secrets.KAM_PRIVATE_KEY }}
 
       - name: Fingerprint build toolchains
         id: toolchain
@@ -326,10 +313,6 @@ jobs:
           module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml | head -n1)"
           test -n "$module_id"
           test -f "dist/${module_id}.zip"
-          if [ "${MAGICNET_SIGN_ENABLED}" = "1" ]; then
-            scripts/verify-artifact-signature.sh "dist/${module_id}.zip" \
-              "$RUNNER_TEMP/magicnet-signing-public.pem"
-          fi
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
@@ -363,11 +346,8 @@ jobs:
           python3 scripts/test-downloader-installer.py dist/magicnet_installer.zip \
             --core dist/MagicNet-core.zip
 
-      - name: Sign and verify final release assets
-        if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
-        env:
-          SIGNING_KEY_PEM: ${{ secrets.KAM_PRIVATE_KEY }}
-        run: bash scripts/sign-release-assets.sh dist
+      - name: Generate release checksums
+        run: bash scripts/checksum-release-assets.sh dist
 
       # A parallel standalone workflow is not a release dependency. Run the
       # SAME shared checks against THIS built checkout, including manual bumps
@@ -432,11 +412,6 @@ jobs:
           set -euo pipefail
           python3 scripts/prepare-release.py --verify-build
           (cd dist && sha256sum -c SHA256SUMS)
-          for asset in dist/*; do
-            [[ "$asset" == *.sig ]] && continue
-            scripts/verify-artifact-signature.sh "$asset" \
-              "$RUNNER_TEMP/magicnet-signing-public.pem"
-          done
           notes_file="$RUNNER_TEMP/magicnet-release-notes.md"
           printf '%s\n\n' "安装器下载：https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}/magicnet_installer.zip" > "$notes_file"
           if [ -f "docs/releases/${RELEASE_VERSION}.md" ]; then

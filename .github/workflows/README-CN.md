@@ -12,7 +12,7 @@
 仍需单独配置，不能把新增工作流等同于已经修改分支保护。
 
 原 `init.yml` 已移除，其中 `kam validate`、`kam check`、发布工作流、订阅用量
-和签名测试已迁入 Android 构建任务，位于打包之前。Code Quality 的 shell lint
+和产物清理测试已迁入 Android 构建任务，位于打包之前。Code Quality 的 shell lint
 继续保留，没有以减少工作流为由删除这些检查。
 
 ## exec.yml
@@ -49,12 +49,12 @@
   手动发布时可选择 `prerelease=true`，将 Release 标记为预发布。
   此时 `bump` 保持 `none`，且当前版本标签必须尚不存在。
 
-普通 push 和 pull request 只构建并上传 workflow artifact；如果存在
-`KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
+普通 push 和 pull request 只构建并上传 workflow artifact。构建和发布不需要
+KernelSU 开发者私钥；最终产物附带已验证的 `SHA256SUMS` 校验和清单。
 
 发布前会检查已提交的版本元数据是否一致；使用发布请求文件时，
 其中的版本号也必须一致。目标 tag 和 Release 必须尚不存在。
-发布要求签名成功，并通过产物内容及安装检查。Release 的 tag 指向实际构建的
+发布要求通过校验和、产物内容及安装检查。Release 的 tag 指向实际构建的
 `GITHUB_SHA`。已有 tag 或 Release 会被拒绝，发布资产不会被覆盖。
 
 ### 构建缓存
@@ -70,7 +70,7 @@ Rust 缓存覆盖 registry/git 依赖与 `target/`；模块构建和质量检查
 
 `cargo-ndk` 固定版本并单独缓存安装目录，精确命中后不再执行 `cargo install`。
 补充 Node/npm 与 Bun 下载缓存，覆盖 WebUI 的两种包管理器。测试、类型检查、
-打包、签名和冒烟检查照常执行；这些新增缓存不包含最终发布 ZIP 或签名私钥。
+打包、校验和及冒烟检查照常执行；这些新增缓存不包含最终发布 ZIP。
 
 setup-kam 只保留 Kam 自身缓存，关闭整个 `~/.rustup` 的恢复，避免旧缓存覆盖
 刚安装的 Rust 工具链。发布构建安装 `aarch64-linux-android` target；AVD 任务另行

@@ -246,26 +246,20 @@ class PackageTests(unittest.TestCase):
         self.assertEqual((module / "bin/sing-box").read_bytes(), b"engine")
         self.assertTrue((module / "components.installed.json").exists())
 
-    def test_final_assets_signed_after_transformation(self):
+    def test_final_assets_checksummed_after_transformation(self):
         output, _ = self.build()
-        key, public = self.root / "private.pem", self.root / "public.pem"
-        subprocess.run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048",
-                        "-out", str(key)], check=True, capture_output=True)
-        subprocess.run(["openssl", "pkey", "-in", str(key), "-pubout", "-out", str(public)], check=True,
-                       capture_output=True)
-        # A stale pre-split signature must not survive transformation.
-        (output / "MagicNet.zip.sig").write_text("old signature")
-        subprocess.run(["bash", str(ROOT / "scripts/sign-release-assets.sh"), str(output)],
-                       env=dict(os.environ, SIGNING_KEY_PEM=key.read_text()), check=True, capture_output=True)
-        for asset in output.iterdir():
-            if asset.suffix == ".sig":
-                continue
-            signature = self.root / "signature"
-            import base64
-            signature.write_bytes(base64.b64decode(Path(str(asset) + ".sig").read_bytes()))
-            subprocess.run(["openssl", "dgst", "-sha256", "-verify", str(public), "-signature",
-                            str(signature), str(asset)], check=True, capture_output=True)
-        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=output, check=True, stdout=subprocess.DEVNULL)
+        command = ["bash", str(ROOT / "scripts/checksum-release-assets.sh"), str(output)]
+        subprocess.run(command, check=True, capture_output=True)
+        manifest = (output / "SHA256SUMS").read_bytes()
+        names = [line.split("  ", 1)[1] for line in manifest.decode().splitlines()]
+        self.assertEqual(names, sorted(p.name for p in output.iterdir() if p.name != "SHA256SUMS"))
+        self.assertFalse(any(p.suffix == ".sig" for p in output.iterdir()))
+        subprocess.run(command, check=True, capture_output=True)
+        self.assertEqual((output / "SHA256SUMS").read_bytes(), manifest)
+        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=output, check=True, capture_output=True)
+        (output / "MagicNet-core.zip").write_bytes(b"tampered")
+        result = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=output, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
 
 
 class GateTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Split a validated KAM archive into a core, immutable components and offline full ZIP.
 
-Only Python's standard library is needed. Re-run detached signing AFTER this step.
+Only Python's standard library is needed. Generate release checksums AFTER this step.
 The embedded manifest, not a mutable latest/version endpoint, defines compatibility.
 """
 from __future__ import annotations

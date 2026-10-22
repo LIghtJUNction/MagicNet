@@ -80,7 +80,7 @@ class ReleaseCacheTest(unittest.TestCase):
         sha = self.git("rev-parse", "HEAD")
         env = dict(self.env, GITHUB_EVENT_NAME="workflow_dispatch", GITHUB_REF="refs/heads/main",
                    GITHUB_SHA=sha, RELEASE_COMMIT_SHA=sha, RELEASE_INPUT="true",
-                   PRERELEASE_INPUT="false", KAM_PRIVATE_KEY_AVAILABLE="1", BUMP_KIND="patch",
+                   PRERELEASE_INPUT="false", BUMP_KIND="patch",
                    GITHUB_OUTPUT=str(self.output), GITHUB_ENV=str(self.env_file),
                    GITHUB_STEP_SUMMARY=str(self.root / "summary"))
         env.update(overrides)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Complete archive changes before the base 8000 signing hook runs.
+# Remove development files before verifying and splitting the module archive.
 # shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 

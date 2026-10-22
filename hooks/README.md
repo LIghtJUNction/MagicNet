@@ -21,7 +21,7 @@ legacy layout.
 - `lib/release_utils.sh`: locked download/cache handling, integrity checks, safe
   archive extraction, and atomic promotion helpers.
 - `pre-build/`: ordered build/update/config-validation hooks.
-- `post-build/`: final archive sanitation before signing.
+- `post-build/`: final archive sanitation before verification and component packaging.
 
 ## Important hooks
 

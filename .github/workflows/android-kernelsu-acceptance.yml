@@ -115,7 +115,7 @@ jobs:
   android-kernelsu:
     name: Android 15 / KernelSU / x86_64
     needs: harness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout repository
@@ -160,7 +160,7 @@ jobs:
           cache: false
 
       - name: Setup kam and Rust
-        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
+        uses: MemDeco-WG/setup-kam@2a0e9193a7e84dc7da78e99af586f8a4bb823bcb
         with:
           github-token: ${{ github.token }}
           enable-cache: "true"
@@ -242,7 +242,7 @@ jobs:
           kam check
           python3 scripts/test-release-workflow.py
           bash scripts/test-subscription-usage.sh
-          bash scripts/test-artifact-signature.sh
+          bash scripts/test-artifact-cleanup.sh
 
       - name: Build host core for package routing checks
         shell: bash
@@ -262,7 +262,6 @@ jobs:
 
       - name: Build current MagicNet module
         env:
-          MAGICNET_SIGN_ENABLED: "0"
           KAM_CHANGELOG_ENABLED: "0"
         shell: bash
         run: |

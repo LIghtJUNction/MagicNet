@@ -181,7 +181,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse((WORKFLOWS / 'init.yml').exists())
         validation = self.step('Validate repository')['run']
         for command in ('kam validate', 'kam check', 'python3 scripts/test-release-workflow.py',
-                        'bash scripts/test-subscription-usage.sh', 'bash scripts/test-artifact-signature.sh'):
+                        'bash scripts/test-subscription-usage.sh', 'bash scripts/test-artifact-cleanup.sh'):
             self.assertIn(command, validation)
 
     def test_final_gate_fails_on_failure_cancellation_or_skipped_jobs(self):

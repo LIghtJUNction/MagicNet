@@ -17,7 +17,7 @@ local fixture, real KernelSU installation/reboots and app-UID TUN controls.
 status in branch protection must be configured separately.
 
 The former `init.yml` was removed. Its `kam validate`, `kam check`, release-workflow,
-subscription-usage and artifact-signature tests now run in the Android build job
+subscription-usage and artifact-cleanup tests now run in the Android build job
 before packaging. The Code Quality shell lint remains in place.
 
 ## exec.yml
@@ -57,12 +57,12 @@ There are two ways to publish after review:
   Keep `bump=none`; the committed version tag must not already exist.
 
 Pull requests and ordinary pushes build and upload workflow artifacts without
-publishing a release. When `KAM_PRIVATE_KEY` is available, the uploaded artifact
-also includes the module signature sidecar.
+publishing a release. Builds and releases do not require a KernelSU developer
+key; final release assets include a verified `SHA256SUMS` manifest.
 
 Release checks require matching committed version metadata,
 a matching release-request version when used, and a new tag and release.
-Publishing requires signing and successful artifact and installation checks.
+Publishing requires successful checksum, artifact and installation checks.
 The release tag targets the exact `GITHUB_SHA` that was built. Existing tags
 or releases are rejected; release assets are never overwritten.
 
@@ -81,8 +81,8 @@ checks fingerprints; the workflow never skips compilation based only on a cache 
 
 `cargo-ndk` is pinned and cached in its own install directory; exact hits skip
 `cargo install`. Node/npm and Bun download caches cover either WebUI package
-manager. Tests, type checks, packaging, signatures, and smoke tests still run.
-No final release ZIP or signing key is included in these new caches.
+manager. Tests, type checks, packaging, checksums, and smoke tests still run.
+No final release ZIP is included in these new caches.
 
 Only Kam's own cache is enabled in setup-kam. Its whole-`~/.rustup` cache is
 disabled so it cannot overwrite a freshly installed Rust toolchain. The release
