@@ -188,8 +188,8 @@ fn apply_hotspot_policy_locked(
         run_magicnet_function(app, "magicnet_hotspot_watchdog_start")?;
     } else {
         run_magicnet_function(app, "magicnet_hotspot_watchdog_stop")?;
+        // Successful offload restoration already removed owned hotspot routes.
         run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
-        run_magicnet_function(app, "magicnet_hotspot_route_cleanup")?;
         refresh_hotspot_policy_locked(app, guard)?;
         if let Some(runtime_member) = runtime_member {
             curl_put_selection(app, "hotspot", &json!({"name": runtime_member}).to_string())?;
@@ -226,14 +226,17 @@ fn restore_hotspot_policy_locked(
             "watcher-stop",
             run_magicnet_function(app, "magicnet_hotspot_watchdog_stop"),
         );
-        attempt(
+        if !attempt(
             "offload-restore",
             run_magicnet_function(app, "magicnet_hotspot_offload_restore"),
-        );
-        attempt(
-            "route-cleanup",
-            run_magicnet_function(app, "magicnet_hotspot_route_cleanup"),
-        );
+        ) {
+            // Offload validation can fail before route cleanup. Keep that
+            // independent compensation, but do not repeat a successful pass.
+            attempt(
+                "route-cleanup",
+                run_magicnet_function(app, "magicnet_hotspot_route_cleanup"),
+            );
+        }
     }
     // Do not materialize the failed operation's intent if saving the previous
     // choice failed. Still attempt independent resource and API compensation.

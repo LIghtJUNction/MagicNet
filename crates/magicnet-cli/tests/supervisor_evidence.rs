@@ -14,6 +14,109 @@ const FSWATCH_PID: &str = ".state/fswatch/magicnet-config.pid";
 const KERNEL_PID: &str = ".state/watchdog/magicnet-kernel.pid";
 
 #[test]
+fn invalid_restart_target_preserves_live_supervisor_and_skips_lifecycle() {
+    for target in ["typo", "", "clash"] {
+        let fixture = Fixture::new();
+        fixture.script(
+            ".state/fswatch/magicnet-config.loop.sh",
+            "#!/bin/sh\ntrap 'exit 0' TERM\nprintf 'ready\\n'\nread hold\n",
+        );
+        let mut child = Process::ready(
+            Command::new("/bin/sh").arg(fixture.path(".state/fswatch/magicnet-config.loop.sh")),
+        );
+        let pid = format!("{}\n", child.0.id());
+        fixture.write(FSWATCH_PID, &pid);
+        assert_eq!(fixture.fswatch(), child.0.id().to_string());
+
+        let output = fixture.run(&["service", "restart", target]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Usage: cli service restart [current|sing-box]"),
+            "{target:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "invalid restart target {target:?} stopped the live supervisor"
+        );
+        assert_eq!(fs::read_to_string(fixture.path(FSWATCH_PID)).unwrap(), pid);
+        for side_effect in [
+            ".state/config-apply.lock",
+            "cleanup-entered",
+            "cleanup-finished",
+            ".state/machines",
+        ] {
+            assert!(
+                !fixture.path(side_effect).exists(),
+                "invalid restart target {target:?} created {side_effect}"
+            );
+        }
+    }
+}
+
+#[test]
+fn invalid_restart_target_does_not_republish_existing_state() {
+    let fixture = Fixture::new();
+    fixture.write(".state/machines/service.state", "unchanged-observation\n");
+    let output = fixture.run(&["service", "restart", "typo"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("Usage: cli service restart [current|sing-box]"));
+    assert_eq!(
+        fs::read_to_string(fixture.path(".state/machines/service.state")).unwrap(),
+        "unchanged-observation\n"
+    );
+    assert_eq!(
+        fs::read_dir(fixture.path(".state/machines"))
+            .unwrap()
+            .count(),
+        1,
+        "invalid restart published other canonical state domains"
+    );
+}
+
+#[test]
+fn valid_restart_targets_publish_state_after_start_success_or_failure() {
+    for target in [None, Some("current"), Some("sing-box"), Some("singbox")] {
+        for start_status in [1, 0] {
+            let fixture = Fixture::new();
+            fixture.write(
+                "lib/magicnet.sh",
+                &format!(
+                    "magicnet_prepare_network_for_core_stop() {{ printf prepare > \"$MODDIR/cleanup-entered\"; }}\n\
+                     magicnet_lifecycle_after_stop() {{ printf final > \"$MODDIR/cleanup-finished\"; }}\n\
+                     magicnet_start_kernel() {{ printf start > \"$MODDIR/core-started\"; return {start_status}; }}\n\
+                     magicnet_supervisors_start_detached() {{ printf start > \"$MODDIR/supervisors-started\"; }}\n"
+                ),
+            );
+            let mut args = vec!["service", "restart"];
+            if let Some(target) = target {
+                args.push(target);
+            }
+            let output = fixture.run(&args);
+            assert_eq!(
+                output.status.success(),
+                start_status == 0,
+                "{target:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(fixture.path("cleanup-entered").exists());
+            assert!(fixture.path("cleanup-finished").exists());
+            assert!(fixture.path("core-started").exists());
+            assert_eq!(
+                fixture.path("supervisors-started").exists(),
+                start_status == 0
+            );
+            assert!(
+                fixture.path(".state/machines/service.state").is_file(),
+                "valid restart {target:?} must publish state after either result"
+            );
+        }
+    }
+}
+
+#[test]
 fn repair_propagates_materialization_failure_before_disruptive_recovery() {
     for apply_status in [1, 0] {
         let fixture = Fixture::new();

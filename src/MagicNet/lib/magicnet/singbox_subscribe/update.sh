@@ -295,19 +295,66 @@ magicnet_singbox_transaction_dir() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-transaction"
 }
 
+# Read the complete bounded metadata before recovery mutates any active file.
+# Optional fields may be absent in legacy journals; existing fields must not
+# be pipes, symlinks or unreadable files that look like absent ownership markers.
+magicnet_singbox_transaction_metadata() (
+    _txm_dir="$1"
+    _txm_generation=''
+    LC_ALL=C
+    export LC_ALL
+    for _txm_name in generation-id phase input-mode \
+        had-config had-work had-url had-local was-running \
+        owns-generation owns-config-candidate; do
+        _txm_file="$_txm_dir/$_txm_name"
+        [ -e "$_txm_file" ] || [ -L "$_txm_file" ] || continue
+        [ -f "$_txm_file" ] && [ ! -L "$_txm_file" ] && [ -r "$_txm_file" ] || return 1
+        # Text fields retain their token vocabulary (128 bytes plus one LF).
+        # Presence/ownership markers are published as empty regular files.
+        case "$_txm_name" in
+        generation-id | phase | input-mode) _txm_limit=129 ;;
+        *) _txm_limit=0 ;;
+        esac
+        _txm_bytes=$(stat -c '%s' "$_txm_file" 2>/dev/null) || return 1
+        case "$_txm_bytes" in '' | *[!0-9]*) return 1 ;; esac
+        [ "${#_txm_bytes}" -le 3 ] && [ "$_txm_bytes" -le "$_txm_limit" ] || return 1
+
+        # The sentinel preserves trailing newlines in command substitution.
+        # Comparing byte counts also rejects NULs discarded by the shell and
+        # short/oversized reads instead of normalizing damaged metadata.
+        _txm_value=$(head -c "$((_txm_limit + 1))" "$_txm_file" 2>/dev/null && printf '.') || return 1
+        _txm_value=${_txm_value%.}
+        [ "${#_txm_value}" -eq "$_txm_bytes" ] || return 1
+        case "$_txm_value" in
+        *'
+') _txm_value=${_txm_value%?} ;;
+        esac
+        case "$_txm_value" in *[!A-Za-z0-9._-]*) return 1 ;; esac
+        [ "${#_txm_value}" -le 128 ] || return 1
+        if [ "$_txm_name" = generation-id ]; then
+            case "$_txm_value" in . | ..) return 1 ;; esac
+            _txm_generation="$_txm_value"
+        fi
+    done
+    printf '%s' "$_txm_generation"
+)
+
 magicnet_singbox_transaction_reconcile() {
     _tx_dir=$(magicnet_singbox_transaction_dir)
-    [ -d "$_tx_dir" ] || {
+    [ -e "$_tx_dir" ] || [ -L "$_tx_dir" ] || {
         unset _tx_dir
         return 0
     }
+    [ -d "$_tx_dir" ] && [ ! -L "$_tx_dir" ] || return 1
+    _tx_generation=$(magicnet_singbox_transaction_metadata "$_tx_dir") || return 1
 
     _tx_active_config="${MODDIR}/.config/sing-box/config.json"
     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
-    # A damaged legacy journal must not overwrite a usable active generation.
-    if [ -f "$_tx_dir/had-config" ] &&
+    # Current publication requires a validated config baseline. Older journals
+    # without one are indeterminate, never permission to delete a usable config.
+    if [ ! -f "$_tx_dir/had-config" ] ||
         ! magicnet_singbox_recovery_config_valid "$_tx_dir/old-config"; then
         return 1
     fi
@@ -319,14 +366,16 @@ magicnet_singbox_transaction_reconcile() {
         { [ -f "$_tx_dir/had-local" ] && [ ! -f "$_tx_dir/old-local" ]; }; then
         return 1
     fi
-    _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
-    # Journal metadata can name one generation, never a cleanup path. Reject
-    # corrupt identifiers before restoring anything and retain the journal.
-    # Empty identifiers remain compatible with journals predating generations.
-    case "$_tx_generation" in
-    . | .. | *[!A-Za-z0-9._-]*) return 1 ;;
-    esac
-    [ "${#_tx_generation}" -le 128 ] || return 1
+    # A surviving backup contradicts an absent marker; do not interpret a lost
+    # marker as evidence that the active component should be removed.
+    for _tx_optional in work url local; do
+        if [ ! -f "$_tx_dir/had-$_tx_optional" ] &&
+            { [ -e "$_tx_dir/old-$_tx_optional" ] || [ -L "$_tx_dir/old-$_tx_optional" ]; }; then
+            unset _tx_optional
+            return 1
+        fi
+    done
+    unset _tx_optional
     _tx_restart_required=0
     if [ -f "$_tx_dir/was-running" ]; then
         _tx_restart_required=1
@@ -345,21 +394,17 @@ magicnet_singbox_transaction_reconcile() {
     fi
 
     mkdir -p "${_tx_active_config%/*}" "${_tx_active_work%/*}" || return 1
-    if [ -f "$_tx_dir/had-config" ]; then
-        [ -f "$_tx_dir/old-config" ] || return 1
-        _tx_tmp="${_tx_active_config}.reconcile.$$"
-        if ! (
-            umask 077
-            cp -f "$_tx_dir/old-config" "$_tx_tmp" &&
-                magicnet_singbox_recovery_config_valid "$_tx_tmp" &&
-                chmod 600 "$_tx_tmp"
-        ) ||
-            ! mv -f "$_tx_tmp" "$_tx_active_config"; then
-            rm -f "$_tx_tmp" 2>/dev/null || true
-            return 1
-        fi
-    else
-        rm -f "$_tx_active_config" 2>/dev/null || return 1
+    [ -f "$_tx_dir/had-config" ] && [ -f "$_tx_dir/old-config" ] || return 1
+    _tx_tmp="${_tx_active_config}.reconcile.$$"
+    if ! (
+        umask 077
+        cp -f "$_tx_dir/old-config" "$_tx_tmp" &&
+            magicnet_singbox_recovery_config_valid "$_tx_tmp" &&
+            chmod 600 "$_tx_tmp"
+    ) ||
+        ! mv -f "$_tx_tmp" "$_tx_active_config"; then
+        rm -f "$_tx_tmp" 2>/dev/null || true
+        return 1
     fi
 
     if [ -f "$_tx_dir/had-work" ]; then

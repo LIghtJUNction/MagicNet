@@ -153,3 +153,216 @@ test ! -e "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture"
 test ! -e "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture.new"
 test ! -e "$TRANSACTION_DIR"
 printf '%s\n' 'subscription transaction generation safety test passed'
+
+# Run malformed journal recovery in a bounded child. A FIFO must fail closed,
+# not hang the lifecycle lock; a read error must not look like a legacy field.
+cat >"$WORKDIR/reconcile.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+magicnet_source_primitives() { :; }
+# shellcheck disable=SC1090
+. "$1"
+magicnet_singbox_recovery_config_valid() {
+    [ "$(cat "$1" 2>/dev/null)" = old-config ]
+}
+head() {
+    if [ "${*: -1}" = "$MODDIR/.state/sing-box/subscription-transaction/${MAGICNET_TEST_METADATA_FIELD:-}" ]; then
+        case "${MAGICNET_TEST_METADATA_FAILURE:-}" in
+        read) return 1 ;;
+        short-read) command head -c 1 "${*: -1}"; return ;;
+        esac
+    fi
+    command head "$@"
+}
+stat() {
+    if [ "${MAGICNET_TEST_METADATA_FAILURE:-}" = stat ] &&
+        [ "${*: -1}" = "$MODDIR/.state/sing-box/subscription-transaction/${MAGICNET_TEST_METADATA_FIELD:-}" ]; then
+        return 1
+    fi
+    command stat "$@"
+}
+magicnet_singbox_transaction_reconcile
+EOF
+
+journal_recovery_fixture() {
+    rm -rf "$TRANSACTION_DIR"
+    mkdir -p "$TRANSACTION_DIR/old-work" "$MODDIR/.state/sing-box/subscription-work" \
+        "$GENERATION_ROOT/journal-fixture"
+    printf '%s\n' active-config >"$MODDIR/.config/sing-box/config.json"
+    printf '%s\n' active-work >"$MODDIR/.state/sing-box/subscription-work/marker"
+    printf '%s\n' active-url >"$MODDIR/.config/sing-box/subscription.url"
+    printf '%s\n' active-local >"$MODDIR/.config/sing-box/subscription.local"
+    printf '%s\n' old-config >"$TRANSACTION_DIR/old-config"
+    printf '%s\n' old-work >"$TRANSACTION_DIR/old-work/marker"
+    printf '%s\n' old-url >"$TRANSACTION_DIR/old-url"
+    printf '%s\n' old-local >"$TRANSACTION_DIR/old-local"
+    printf '%s\n' journal-fixture >"$TRANSACTION_DIR/generation-id"
+    printf '%s\n' prepared >"$TRANSACTION_DIR/phase"
+    printf '%s\n' url >"$TRANSACTION_DIR/input-mode"
+    touch "$TRANSACTION_DIR/had-config" "$TRANSACTION_DIR/had-work" \
+        "$TRANSACTION_DIR/had-url" "$TRANSACTION_DIR/had-local"
+    : >"$MODDIR/.config/sing-box/config.json.candidate-journal-fixture"
+    : >"$MODDIR/.config/sing-box/config.json.candidate-journal-fixture.new"
+}
+
+assert_journal_recovery_rejected() {
+    recovery_rc=0
+    MAGICNET_TEST_METADATA_FAILURE="${2:-}" MAGICNET_TEST_METADATA_FIELD="${3:-}" \
+        timeout 3 bash "$WORKDIR/reconcile.sh" \
+        "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh" \
+        >"$WORKDIR/recovery.out" 2>"$WORKDIR/recovery.err" || recovery_rc=$?
+    if [ "$recovery_rc" -ne 1 ]; then
+        printf '%s\n' "$1: expected rejected recovery, got exit $recovery_rc" >&2
+        cat "$WORKDIR/recovery.err" >&2
+        exit 1
+    fi
+    test "$(cat "$MODDIR/.config/sing-box/config.json")" = active-config
+    test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = active-work
+    test "$(cat "$MODDIR/.config/sing-box/subscription.url")" = active-url
+    test "$(cat "$MODDIR/.config/sing-box/subscription.local")" = active-local
+    test -d "$GENERATION_ROOT/journal-fixture"
+    test -f "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture"
+    test -f "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture.new"
+    test -e "$TRANSACTION_DIR" || test -L "$TRANSACTION_DIR"
+}
+
+# Presence markers have the same safety boundary as generation-id: a damaged
+# had-config marker must never be mistaken for permission to delete config.
+for metadata_field in generation-id phase input-mode \
+    had-config had-work had-url had-local was-running \
+    owns-generation owns-config-candidate; do
+    for metadata_kind in fifo directory symlink dangling-symlink content read stat; do
+        journal_recovery_fixture
+        metadata_file="$TRANSACTION_DIR/$metadata_field"
+        rm -f "$metadata_file"
+        case "$metadata_kind" in
+        fifo) mkfifo "$metadata_file" ;;
+        directory) mkdir "$metadata_file" ;;
+        symlink)
+            : >"$WORKDIR/metadata-target"
+            ln -s "$WORKDIR/metadata-target" "$metadata_file"
+            ;;
+        dangling-symlink) ln -s "$WORKDIR/missing-metadata" "$metadata_file" ;;
+        content) printf '%s\n' 'invalid token' >"$metadata_file" ;;
+        read | stat)
+            case "$metadata_field" in
+            generation-id | phase | input-mode) printf '%s\n' journal-fixture >"$metadata_file" ;;
+            *) : >"$metadata_file" ;;
+            esac
+            ;;
+        esac
+        assert_journal_recovery_rejected "$metadata_field/$metadata_kind" "$metadata_kind" "$metadata_field"
+        # Preserve the damaged evidence itself as well as the active files.
+        case "$metadata_kind" in
+        fifo) test -p "$metadata_file" ;;
+        directory) test -d "$metadata_file" ;;
+        symlink | dangling-symlink) test -L "$metadata_file" ;;
+        *) test -f "$metadata_file" ;;
+        esac
+    done
+done
+
+for corrupt_text in second-line extra-newline nul oversized short-read; do
+    journal_recovery_fixture
+    case "$corrupt_text" in
+    second-line) printf 'journal-fixture\nother-generation\n' >"$TRANSACTION_DIR/generation-id" ;;
+    extra-newline) printf 'journal-fixture\n\n' >"$TRANSACTION_DIR/generation-id" ;;
+    nul) printf 'journal-\000fixture\n' >"$TRANSACTION_DIR/generation-id" ;;
+    oversized) printf '%0130d' 0 >"$TRANSACTION_DIR/generation-id" ;;
+    esac
+    cp "$TRANSACTION_DIR/generation-id" "$WORKDIR/generation-evidence"
+    assert_journal_recovery_rejected "$corrupt_text" "$corrupt_text" generation-id
+    cmp -s "$WORKDIR/generation-evidence" "$TRANSACTION_DIR/generation-id"
+done
+
+journal_recovery_fixture
+mv "$TRANSACTION_DIR" "$WORKDIR/linked-journal"
+ln -s "$WORKDIR/linked-journal" "$TRANSACTION_DIR"
+assert_journal_recovery_rejected 'symlink journal directory'
+test -L "$TRANSACTION_DIR"
+test "$(cat "$WORKDIR/linked-journal/old-config")" = old-config
+rm -f "$TRANSACTION_DIR"
+: >"$TRANSACTION_DIR"
+assert_journal_recovery_rejected 'non-directory journal'
+test -f "$TRANSACTION_DIR"
+rm -f "$TRANSACTION_DIR"
+mkfifo "$TRANSACTION_DIR"
+assert_journal_recovery_rejected 'FIFO journal'
+test -p "$TRANSACTION_DIR"
+rm -f "$TRANSACTION_DIR"
+ln -s "$WORKDIR/missing-journal" "$TRANSACTION_DIR"
+assert_journal_recovery_rejected 'dangling journal symlink'
+test -L "$TRANSACTION_DIR"
+
+# A published journal must prove the previous config. Missing ownership is
+# indeterminate, even when a generation/phase or an orphan backup survived.
+for incomplete_journal in empty metadata-only orphan-config; do
+    journal_recovery_fixture
+    if [ "$incomplete_journal" = orphan-config ]; then
+        rm -f "$TRANSACTION_DIR/had-config"
+    else
+        rm -rf "$TRANSACTION_DIR"
+        mkdir "$TRANSACTION_DIR"
+        if [ "$incomplete_journal" = metadata-only ]; then
+            printf '%s\n' journal-fixture >"$TRANSACTION_DIR/generation-id"
+            printf '%s\n' prepared >"$TRANSACTION_DIR/phase"
+        fi
+    fi
+    assert_journal_recovery_rejected "$incomplete_journal journal"
+    test -d "$TRANSACTION_DIR"
+    test ! -e "$TRANSACTION_DIR/had-config"
+    if [ "$incomplete_journal" = orphan-config ]; then
+        test "$(cat "$TRANSACTION_DIR/old-config")" = old-config
+    fi
+done
+
+for missing_marker in work url local; do
+    journal_recovery_fixture
+    rm -f "$TRANSACTION_DIR/had-$missing_marker"
+    assert_journal_recovery_rejected "orphan $missing_marker backup"
+    test ! -e "$TRANSACTION_DIR/had-$missing_marker"
+    if [ "$missing_marker" = work ]; then
+        test "$(cat "$TRANSACTION_DIR/old-work/marker")" = old-work
+    else
+        test "$(cat "$TRANSACTION_DIR/old-$missing_marker")" = "old-$missing_marker"
+    fi
+done
+
+# Legacy absence remains distinct from corrupt metadata. Empty generation IDs
+# and valid IDs with/without one terminal LF must still recover. Textual phase
+# and mode values are bounded tokens, not a new closed vocabulary.
+for legacy_generation in missing empty newline max-token max-token-no-newline; do
+    journal_recovery_fixture
+    rm -f "$TRANSACTION_DIR/phase" "$TRANSACTION_DIR/input-mode"
+    case "$legacy_generation" in
+    missing) rm -f "$TRANSACTION_DIR/generation-id" ;;
+    empty) : >"$TRANSACTION_DIR/generation-id" ;;
+    newline) printf '\n' >"$TRANSACTION_DIR/generation-id" ;;
+    max-token) printf '%0128d\n' 0 >"$TRANSACTION_DIR/generation-id" ;;
+    max-token-no-newline)
+        printf '%0128d' 0 >"$TRANSACTION_DIR/generation-id"
+        printf '%s\n' old-phase >"$TRANSACTION_DIR/phase"
+        printf '%s\n' local >"$TRANSACTION_DIR/input-mode"
+        ;;
+    esac
+    magicnet_singbox_transaction_reconcile
+    test "$(cat "$MODDIR/.config/sing-box/config.json")" = old-config
+    test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
+    test "$(cat "$MODDIR/.config/sing-box/subscription.url")" = old-url
+    test "$(cat "$MODDIR/.config/sing-box/subscription.local")" = old-local
+    test ! -e "$TRANSACTION_DIR"
+done
+
+# An optional component can genuinely have been absent before the update;
+# both its marker and backup must be absent to establish that baseline.
+journal_recovery_fixture
+rm -rf "$TRANSACTION_DIR/had-work" "$TRANSACTION_DIR/old-work"
+rm -f "$TRANSACTION_DIR/had-url" "$TRANSACTION_DIR/old-url" \
+    "$TRANSACTION_DIR/had-local" "$TRANSACTION_DIR/old-local"
+magicnet_singbox_transaction_reconcile
+test "$(cat "$MODDIR/.config/sing-box/config.json")" = old-config
+test ! -e "$MODDIR/.state/sing-box/subscription-work"
+test ! -e "$MODDIR/.config/sing-box/subscription.url"
+test ! -e "$MODDIR/.config/sing-box/subscription.local"
+test ! -e "$TRANSACTION_DIR"
+printf '%s\n' 'subscription transaction bounded metadata safety test passed'

@@ -73,6 +73,7 @@ magicnet_hotspot_offload_enable() {
 }
 magicnet_hotspot_offload_restore() {
     step offload-restore || return $?
+    magicnet_hotspot_route_cleanup || return $?
     rm -f "$MODDIR/.state/hotspot/tether-offload.previous"
 }
 magicnet_hotspot_reconcile() { step reconcile; }
@@ -253,6 +254,7 @@ fn hotspot_successful_toggle_commits_saved_runtime_and_owned_resources() {
         2
     );
     assert!(!calls.lines().any(|step| step == "materialize"));
+    assert_eq!(calls.lines().filter(|step| *step == "cleanup").count(), 1);
 }
 
 #[test]
@@ -335,6 +337,33 @@ fn hotspot_failed_rollback_put_does_not_skip_offload_or_route_compensation() {
             "missing {step}: {rollback}"
         );
     }
+    assert_eq!(
+        rollback.lines().filter(|step| *step == "cleanup").count(),
+        1
+    );
+}
+
+#[test]
+fn hotspot_failed_offload_compensation_still_cleans_owned_routes() {
+    let app = fixture(Some("direct"));
+    fs::write(app.moddir.join("fail-once"), "watcher-start").unwrap();
+    fs::write(app.moddir.join("fail-always"), "offload-restore").unwrap();
+    let error = action(&app, "enable").unwrap_err();
+    assert!(
+        error.contains("rollback failed: offload-restore"),
+        "{error}"
+    );
+    assert_eq!(choices(&app)["hotspot"], "direct");
+    assert!(app.moddir.join(OWNER).exists());
+    assert!(!app.moddir.join("watcher").exists());
+    let calls = fs::read_to_string(app.moddir.join("calls")).unwrap();
+    let rollback = calls.split_once("watcher-start\n").unwrap().1;
+    assert_eq!(
+        rollback.lines().filter(|step| *step == "cleanup").count(),
+        1
+    );
+    assert!(rollback.lines().any(|step| step == "policy-check"));
+    assert!(rollback.lines().any(|step| step == "select"));
 }
 
 #[test]

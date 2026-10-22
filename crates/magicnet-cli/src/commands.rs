@@ -99,7 +99,7 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
     (command.handler)(app, &args[1..])
 }
 
-/// Opt out only known observations and commands that own publication themselves.
+/// Opt out known observations, rejected restart targets, and explicit publishers.
 /// Other registered operations still publish after failure as well as success.
 pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
     let name = args.first().map_or("help", String::as_str);
@@ -123,6 +123,10 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ("state", _) => false,
         ("health" | "topology" | "pingtest" | "speedtest", _) => false,
         ("service", "" | "status" | "logs") => false,
+        ("service", "restart") => {
+            crate::service::validate_restart_target(args.get(2).map_or("current", String::as_str))
+                .is_ok()
+        }
         (
             "supervisor" | "transparent" | "network" | "core" | "chain" | "wifi" | "hotspot"
             | "dns" | "warp",
@@ -320,6 +324,8 @@ mod tests {
             "service",
             "service status",
             "service logs",
+            "service restart typo",
+            "service restart clash",
             "health",
             "core selected",
             "network status",
@@ -367,6 +373,9 @@ mod tests {
             "service ensure",
             "service stop",
             "service restart",
+            "service restart current",
+            "service restart sing-box",
+            "service restart singbox",
             "config apply",
             "config-editor save-file",
             "config-editor repo reset",
