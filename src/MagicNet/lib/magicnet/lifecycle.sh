@@ -57,7 +57,10 @@ magicnet_kernel_route_state_begin() (
     if magicnet_kernel_running; then return 2; else _rc=$?; fi
     [ "$_rc" -eq 1 ] || return 2
     _state="$(magicnet_kernel_route_state_file)"
-    if [ -e "$_state" ]; then
+    if [ -e "$_state" ] || [ -L "$_state" ]; then
+        # The prepared-ledger shortcut must use the same file-type contract
+        # as cleanup. Never block on a FIFO or replace symlinked evidence.
+        [ ! -L "$_state" ] && [ -f "$_state" ] && [ -r "$_state" ] || return 2
         # A crash can leave a prepared ledger behind after Android (or another
         # owner) has recreated table 2022.  If the table no longer points at
         # magicnet0, preserve every observed rule as the new foreign baseline

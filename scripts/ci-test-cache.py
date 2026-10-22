@@ -30,13 +30,17 @@ SCOPES = {
     "rust": (
         "Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml",
         "src/MagicNet/.config/sing-box",
+        # Rust integration tests execute this Python fixture and copy/source
+        # shipped shell modules, including subscription lock interoperability.
+        "scripts/test-transparent-recovery.py", "src/MagicNet/lib/magicnet",
     ),
-    # Host regressions intentionally cover the module/build surface, but Rust
-    # crate-only and WebUI-only edits cannot affect these fixture-based checks.
+    # Host regressions cover the module/build surface and read these exact Rust
+    # lifecycle contracts. Unrelated crate and WebUI edits remain excluded.
     "host": (
         "src", "scripts", "hooks", "installer", ".github", "sing-box",
         "sing-box.version", "README.md", "kam.toml", "update.json", ".gitmodules",
         "rules", "rules-release.json",
+        "crates/magicnet-cli/src/service.rs", "crates/magicnet-cli/src/commands.rs",
     ),
     # Network regression jobs use production network/DNS policy plus the exact
     # test command operand. Keep UI, packaging, and unrelated Rust edits out.

@@ -121,6 +121,7 @@ check bash scripts/test-hotspot-watchdog-lifecycle.sh
 check bash scripts/test-tun-interface-safety.sh
 check bash scripts/test-singbox-dataplane-preflight.sh
 check bash scripts/test-transparent-mode-config-safety.sh
+check python3 scripts/test-transparent-recovery.py
 check bash scripts/test-dataplane-policy-pins.sh
 check bash scripts/test-ebpf-transparent-mode.sh
 check bash scripts/test-config-permissions.sh

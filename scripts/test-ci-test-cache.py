@@ -103,6 +103,34 @@ class CacheTests(unittest.TestCase):
         self.run_check(scope='rust')
         self.assertEqual(self.count(), 3)
 
+    def test_rust_fingerprint_tracks_external_integration_test_inputs(self):
+        # These are repository files copied/sourced by the actual Rust tests,
+        # not operands of the cargo command and not files inside a crate.
+        inputs = (
+            'scripts/test-transparent-recovery.py',
+            'src/MagicNet/lib/magicnet/primitives.sh',
+            'src/MagicNet/lib/magicnet/common.sh',
+            'src/MagicNet/lib/magicnet/subscribe_bootstrap.sh',
+            'src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh',
+            'src/MagicNet/lib/magicnet/network.sh',
+            'src/MagicNet/lib/magicnet/core.sh',
+            'src/MagicNet/lib/magicnet/transparent.sh',
+            'src/MagicNet/lib/magicnet/singbox_subscribe/update.sh',
+        )
+        for name in inputs:
+            self.write(name, 'original')
+        subprocess.run(['git', 'add', '--', *inputs], cwd=self.root, check=True)
+        command = ['cargo', 'test', '--workspace', '--locked']
+        before = CACHE.fingerprint('rust', command)
+        for name in inputs:
+            with self.subTest(input=name):
+                self.write(name, 'changed')
+                try:
+                    self.assertNotEqual(CACHE.fingerprint('rust', command), before,
+                                        f'Rust success could be reused after changing {name}')
+                finally:
+                    self.write(name, 'original')
+
     def test_host_scope_ignores_rust_webui_and_docs_but_tracks_module(self):
         self.run_check(scope='host')
         self.write('crates/lib.rs', 'changed')
@@ -115,6 +143,26 @@ class CacheTests(unittest.TestCase):
         self.write('src/MagicNet/service.sh', 'changed')
         self.run_check(scope='host')
         self.assertEqual(self.count(), 2)
+
+    def test_host_fingerprint_tracks_cli_lifecycle_contract_sources(self):
+        # The host start/stop regression reads these production Rust command
+        # contracts even though it does not compile or execute a Rust crate.
+        inputs = ('crates/magicnet-cli/src/service.rs',
+                  'crates/magicnet-cli/src/commands.rs')
+        self.write('scripts/test-start-stop-rollback.py', 'fixture')
+        for name in inputs:
+            self.write(name, 'original')
+        subprocess.run(['git', 'add', '--', *inputs], cwd=self.root, check=True)
+        command = ['python3', 'scripts/test-start-stop-rollback.py', '--all-shells']
+        before = CACHE.fingerprint('host', command)
+        for name in inputs:
+            with self.subTest(input=name):
+                self.write(name, 'changed')
+                try:
+                    self.assertNotEqual(CACHE.fingerprint('host', command), before,
+                                        f'Host success could be reused after changing {name}')
+                finally:
+                    self.write(name, 'original')
 
     def test_host_scope_tracks_rule_recipe_and_reviewed_pin(self):
         self.run_check(scope='host')

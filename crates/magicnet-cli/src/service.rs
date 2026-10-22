@@ -294,7 +294,7 @@ fn apply_config_unlocked(app: &App) -> Result<(), String> {
     // recovered before fswatch can apply another config. A live transition
     // still owns this process lock, so reaching this branch means the journal
     // is safe to reconcile and the recovered core should be started again.
-    let recovered_transparent_transaction = if transparent_transaction_active(app) {
+    let recovered_transparent_transaction = if transparent_transaction_active(app)? {
         run_magicnet_function(app, "magicnet_recover_interrupted_transparent_transaction")?;
         true
     } else {
@@ -604,8 +604,15 @@ pub(crate) fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<
         .map_err(|err| format!("finalize stopped network: {err}"))
 }
 
-fn transparent_transaction_active(app: &App) -> bool {
-    app.moddir.join(TRANSPARENT_TRANSACTION).is_dir()
+fn transparent_transaction_active(app: &App) -> Result<bool, String> {
+    // Every existing directory entry must reach journal validation, including
+    // non-directories and dangling symlinks. An inspection error is not proof
+    // that there is no interrupted transition to recover.
+    match fs::symlink_metadata(app.moddir.join(TRANSPARENT_TRANSACTION)) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("inspect transparent transaction journal: {error}")),
+    }
 }
 
 fn prepare_network_for_stop_command() -> &'static str {

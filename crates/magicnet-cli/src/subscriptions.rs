@@ -7,7 +7,7 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -961,6 +961,35 @@ pub(crate) fn subscription_display_hostname(url: &str) -> Option<String> {
     })
 }
 
+fn pin_https_download_addresses(
+    command: &mut Command,
+    authority: &SubscriptionAuthority<'_>,
+    resolved: HashSet<IpAddr>,
+) -> Result<(), String> {
+    validate_resolved_subscription_addresses(&resolved)?;
+    // Public IP literals cannot be rebound by DNS and need no override.
+    // In particular, older curl versions reject IPv6 hosts in --resolve.
+    if IpAddr::from_str(authority.host).is_ok() {
+        return Ok(());
+    }
+    let mut addresses = resolved.into_iter().collect::<Vec<_>>();
+    addresses.sort_by_key(ToString::to_string);
+    let addresses = addresses
+        .into_iter()
+        .map(|address| match address {
+            IpAddr::V6(v6) => format!("[{v6}]"),
+            IpAddr::V4(v4) => v4.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    // Repeated --resolve entries for one host:port replace its address set.
+    // Keep every validated A/AAAA candidate available to curl in one entry.
+    command
+        .arg("--resolve")
+        .arg(format!("{}:{}:{addresses}", authority.host, authority.port));
+    Ok(())
+}
+
 /// Download an HTTPS URL with the same public-address and redirect policy as
 /// subscription fetches: resolve first, reject private targets, pin curl with
 /// `--resolve`, and refuse redirects that could re-target the request.
@@ -978,20 +1007,6 @@ pub(crate) fn download_pinned_https_url(
         .map_err(|_| "HTTPS hostname resolution failed".to_string())?
         .map(|address| address.ip())
         .collect::<HashSet<_>>();
-    validate_resolved_subscription_addresses(&resolved)?;
-
-    let mut addresses = resolved.into_iter().collect::<Vec<_>>();
-    addresses.sort_by_key(ToString::to_string);
-    let resolve_args = addresses
-        .into_iter()
-        .map(|address| {
-            let pinned = match address {
-                IpAddr::V6(v6) => format!("[{v6}]"),
-                IpAddr::V4(v4) => v4.to_string(),
-            };
-            format!("{}:{}:{pinned}", authority.host, authority.port)
-        })
-        .collect::<Vec<_>>();
 
     let max_bytes_arg = max_bytes.to_string();
     let connect_timeout = connect_timeout_secs.to_string();
@@ -1014,9 +1029,7 @@ pub(crate) fn download_pinned_https_url(
         "--max-time",
         &max_time,
     ]);
-    for resolve in &resolve_args {
-        command.args(["--resolve", resolve]);
-    }
+    pin_https_download_addresses(&mut command, &authority, resolved)?;
     command.arg(url);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|err| format!("run curl: {err}"))?;

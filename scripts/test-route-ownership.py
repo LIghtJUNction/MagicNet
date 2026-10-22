@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -169,10 +170,21 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         value.update(changes)
         self.save(value)
 
-    def run_helper(self, code, expected=0):
+    def run_helper(self, code, expected=0, timeout=15):
         cmd = ['busybox', 'sh'] if self.shell == 'busybox' else [self.shell]
-        cp = subprocess.run(cmd + ['-c', self.prefix + '\n' + code], text=True, capture_output=True,
-                            env=dict(os.environ, FIXTURE_ROOT=str(self.root)), timeout=15)
+        # A malformed FIFO can leave a blocked grep child behind. Bound the
+        # whole helper process group so a failing regression cannot leak it.
+        with subprocess.Popen(cmd + ['-c', self.prefix + '\n' + code], text=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              env=dict(os.environ, FIXTURE_ROOT=str(self.root)),
+                              start_new_session=True) as proc:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.communicate()
+                self.fail(f'route helper did not complete within {timeout} seconds')
+            cp = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
         self.assertEqual(cp.returncode, expected, cp.stdout + cp.stderr)
         return cp
 
@@ -204,6 +216,40 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertIn('phase=prepared', self.state.read_text())
         self.assertEqual(self.state.stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.read()['writes'])
+
+    def test_baseline_rejects_fifo_without_blocking_or_removing_evidence(self):
+        os.mkfifo(self.state)
+        before = self.state.lstat()
+        self.run_helper('magicnet_kernel_route_state_begin', 2, timeout=2)
+        after = self.state.lstat()
+        self.assertEqual((after.st_ino, after.st_mode), (before.st_ino, before.st_mode))
+        self.assertEqual(self.read()['writes'], [])
+
+    def test_baseline_rejects_symlinked_prepared_ledger(self):
+        outside = self.root / 'outside.state'
+        outside.write_text('schema=2\nphase=prepared\nboot=outside\ntable=2022\ninterface=magicnet0\n')
+        self.state.symlink_to(outside)
+        before = self.state.lstat()
+        contents = outside.read_bytes()
+        self.run_helper('magicnet_kernel_route_state_begin', 2)
+        after = self.state.lstat()
+        self.assertEqual((after.st_ino, after.st_mode), (before.st_ino, before.st_mode))
+        self.assertTrue(self.state.is_symlink())
+        self.assertEqual(self.state.readlink(), outside)
+        self.assertEqual(outside.read_bytes(), contents)
+        self.assertEqual(self.read()['writes'], [])
+
+    def test_baseline_rejects_dangling_ledger_symlink(self):
+        outside = self.root / 'missing.state'
+        self.state.symlink_to(outside)
+        before = self.state.lstat()
+        self.run_helper('magicnet_kernel_route_state_begin', 2)
+        after = self.state.lstat()
+        self.assertEqual((after.st_ino, after.st_mode), (before.st_ino, before.st_mode))
+        self.assertTrue(self.state.is_symlink())
+        self.assertEqual(self.state.readlink(), outside)
+        self.assertFalse(outside.exists())
+        self.assertEqual(self.read()['writes'], [])
 
     def test_existing_rules_and_foreign_table_routes_survive_stop(self):
         self.active()
