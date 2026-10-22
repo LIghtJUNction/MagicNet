@@ -707,34 +707,83 @@ def tun_controls(device: Device, out: Path, phase: str):
             ('positive', 'reject', 'positive_after', 'restored')), 'app-UID TUN controls failed')
 
 
-def invalid_config_rollback(device: Device) -> dict:
+def invalid_config_rollback(device: Device, evidence: dict | None = None) -> dict:
+    # The caller publishes this object before the first command, so an early
+    # failure retains its exact operation instead of only "ADB shell exit 1".
+    evidence = {} if evidence is None else evidence
+    evidence['status'] = 'failed'
+    proof = load_script('android-tun-proof')
     bad = MOD + '/.tmp/webui-payload/ci-invalid.json'
     save = f'{MOD}/cli config-editor save-file sing-box {bad}'
     validator = f'{MOD}/bin/sing-box check -c {bad} -D {MOD}/.config/sing-box'
+
+    def failure(operation, result):
+        output = (result.stdout or '')[:proof.MAX_OUTPUT_BYTES] + '\n' + (result.stderr or '')[:proof.MAX_OUTPUT_BYTES]
+        return {'operation': operation, 'exit_code': bounded_exit_code(result.returncode),
+                **proof.sanitized_failure(output, operation='config_save'),
+                **proof.output_counts(result.stdout, result.stderr)}
+
+    def command(operation, text, *, timeout=30, expected=0):
+        evidence['stage'] = operation
+        result = device.kshell(text, timeout=timeout, check=False)
+        # CLI exit 1 also means a busy lifecycle lock, a missing validator, or
+        # denied payload access. Only its own top-level validation error proves
+        # this save reached the validator; embedded user text is not evidence.
+        rejected = (operation != 'invalid_save' or
+                    (isinstance(result.stderr, str)
+                     and result.stderr.startswith('[error] config validation failed\n')))
+        if type(result.returncode) is not int or result.returncode != expected or not rejected:
+            evidence['failure'] = failure(operation, result)
+            raise RuntimeError(f'invalid config {operation} failed '
+                               f'(exit {bounded_exit_code(result.returncode)}; '
+                               f'diagnostic {evidence["failure"]["kind"]})')
+        return result
+
     try:
         # Positive control on the exact same path and command. A permission or
         # path-validation failure must not masquerade as malformed-JSON rejection.
-        device.kshell(f'mkdir -p {MOD}/.tmp/webui-payload && '
-                      f'cp {MOD}/.config/sing-box/config.json {bad} && chmod 0600 {bad}')
-        device.kshell(save, timeout=90)
+        command('prepare_payload', f'mkdir -p {MOD}/.tmp/webui-payload && '
+                f'cp {MOD}/.config/sing-box/config.json {bad} && chmod 0600 {bad}')
+        command('valid_save', save, timeout=90)
+        evidence['stage'] = 'valid_ready'
         device.ready()
-        device.kshell(validator, timeout=30)
-        before = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
-        device.kshell(f'printf "{{" >{bad}')
+        command('valid_core_check', validator)
+        before = json.loads(command('before_snapshot', MOD + '/cli config-editor get sing-box').stdout)
+        command('write_invalid', f'printf "{{" >{bad}')
         # The CLI normalizes every child-validator failure to exit 1, including
         # crashes. Independently require the exact core's normal rejection on
         # the same payload/path; signals, panics and unavailable tools are failures.
-        rejected = device.kshell(validator, timeout=30, check=False)
-        require(rejected.returncode == 1, 'core validator did not reject malformed JSON normally')
-        result = device.kshell(save, timeout=90, check=False)
-        require(result.returncode == 1, 'config save did not reject malformed JSON normally')
-        after = json.loads(device.kshell(MOD + '/cli config-editor get sing-box').stdout)
+        rejected = command('invalid_core_check', validator, expected=1)
+        result = command('invalid_save', save, timeout=90, expected=1)
+        after = json.loads(command('after_snapshot', MOD + '/cli config-editor get sing-box').stdout)
         require(before == after, 'invalid config changed the active configuration')
+        evidence['stage'] = 'invalid_ready'
         device.ready()
-        return {'core_rejection_exit_code': rejected.returncode,
-                'save_rejection_exit_code': result.returncode, 'active_config_preserved': True}
+        evidence.update(status='passed', core_rejection_exit_code=rejected.returncode,
+                        save_rejection_exit_code=result.returncode, active_config_preserved=True)
+        return evidence
+    except Exception:
+        evidence.setdefault('failure', {'operation': evidence.get('stage', 'prepare_payload'),
+                                        'kind': 'check_failed'})
+        evidence['failure_service_observation'] = proof.service_observation(
+            lambda text, timeout: device.kshell(text, timeout=timeout, check=False))
+        raise
     finally:
-        device.kshell('rm -f ' + bad)
+        # Cleanup must not replace the original failure or silently turn a
+        # successful check with an uncleared private payload into a pass.
+        try:
+            cleanup = device.kshell('rm -f ' + bad, timeout=10, check=False)
+            if cleanup.returncode != 0:
+                evidence['cleanup_failure'] = failure('remove_payload', cleanup)
+        except Exception:
+            evidence['cleanup_failure'] = {'operation': 'remove_payload',
+                                            'kind': 'command_exception'}
+        evidence.pop('stage', None)
+        if 'cleanup_failure' in evidence:
+            passed = evidence['status'] == 'passed'
+            evidence['status'] = 'failed'
+            if passed:
+                raise RuntimeError('invalid config remove_payload failed')
 
 
 def migration_node() -> dict:
@@ -946,7 +995,9 @@ def main() -> int:
             with report.phase('app-uid-tun-controls'):
                 tun_controls(device, out, 'app-uid-tun-controls')
             with report.phase('invalid-config-rollback'):
-                report.provenance['invalid_config_rollback'] = invalid_config_rollback(device)
+                rollback = {}
+                report.provenance['invalid_config_rollback'] = rollback
+                invalid_config_rollback(device, rollback)
             with report.phase('stop-cleanup'):
                 device.stop_service()
                 device.stopped()

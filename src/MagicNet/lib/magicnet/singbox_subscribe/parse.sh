@@ -75,21 +75,13 @@ magicnet_singbox_extract_share_links() {
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
-        if command -v base64 >/dev/null 2>&1; then
-            base64 -d "$_source_file" 2>/dev/null |
-                tr -d '\r' |
+        _decoded_links_file="${_current_links_file}.decoded"
+        if magicnet_b64_decode_file "$_source_file" "$_decoded_links_file"; then
+            tr -d '\r' <"$_decoded_links_file" |
                 grep -E "$_share_pattern" |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
-            if [ ! -s "$_current_links_file" ]; then
-                tr '_-' '/+' <"$_source_file" 2>/dev/null |
-                    base64 -d 2>/dev/null |
-                    tr -d '\r' |
-                    grep -E "$_share_pattern" |
-                    sed 's/^[[:space:]]*//' >"$_current_links_file"
-            fi
-        else
-            : >"$_current_links_file"
         fi
+        rm -f "$_decoded_links_file"
         ;;
     esac
 

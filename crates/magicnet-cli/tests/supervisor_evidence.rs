@@ -14,6 +14,65 @@ const FSWATCH_PID: &str = ".state/fswatch/magicnet-config.pid";
 const KERNEL_PID: &str = ".state/watchdog/magicnet-kernel.pid";
 
 #[test]
+fn repair_propagates_materialization_failure_before_disruptive_recovery() {
+    for apply_status in [1, 0] {
+        let fixture = Fixture::new();
+        fixture.write(
+            "lib/magicnet.sh",
+            &format!(
+                "magicnet_apply_runtime_config() {{ printf apply > \"$MODDIR/applied\"; return {apply_status}; }}\n\
+                 magicnet_ensure_kernel() {{ printf recover > \"$MODDIR/recovered\"; }}\n"
+            ),
+        );
+        let output = fixture.run(&["repair"]);
+        assert!(fixture.path("applied").exists());
+        assert_eq!(
+            output.status.success(),
+            apply_status == 0,
+            "repair must propagate materialization failure: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fixture.path("recovered").exists(), apply_status == 0);
+    }
+}
+
+#[test]
+fn supervisor_restart_preserves_failed_stop_and_only_starts_after_success() {
+    for (target, prefix) in [
+        ("all", "magicnet_supervisors"),
+        ("fswatch", "magicnet_fswatch"),
+        ("wifi-policy", "magicnet_wifi_policy"),
+    ] {
+        for stop_status in [1, 0] {
+            let fixture = Fixture::new();
+            fixture.write(
+                "lib/magicnet.sh",
+                &format!(
+                    "{prefix}_stop() {{ printf stop > \"$MODDIR/stopped\"; return {stop_status}; }}\n\
+                     {prefix}_start() {{ printf start > \"$MODDIR/started\"; }}\n"
+                ),
+            );
+            let output = fixture.run(&["supervisor", "restart", target]);
+            assert!(
+                fixture.path("stopped").exists(),
+                "{target}: stop was skipped"
+            );
+            assert_eq!(
+                output.status.success(),
+                stop_status == 0,
+                "{target}: restart must propagate stop failure: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                fixture.path("started").exists(),
+                stop_status == 0,
+                "{target}: start must require successful stop"
+            );
+        }
+    }
+}
+
+#[test]
 fn enabled_mcp_does_not_project_unknown_pid_evidence_as_stopped() {
     let fixture = Fixture::new();
     fixture.write(".config/magicnet/mcp.conf", "MAGICNET_MCP_ENABLED=1\n");

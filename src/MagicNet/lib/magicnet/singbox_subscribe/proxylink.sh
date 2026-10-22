@@ -52,42 +52,6 @@ magicnet_singbox_proxylink_source_is_singbox_json() (
         "$_proxylink_detect_source_file" >/dev/null 2>&1
 )
 
-magicnet_singbox_proxylink_decode_source() {
-    _proxylink_decode_source_file="$1"
-    _proxylink_decode_file="$2"
-    command -v base64 >/dev/null 2>&1 || {
-        unset _proxylink_decode_source_file _proxylink_decode_file
-        return 1
-    }
-
-    if base64 -d "$_proxylink_decode_source_file" >"$_proxylink_decode_file" 2>/dev/null &&
-        [ -s "$_proxylink_decode_file" ]; then
-        unset _proxylink_decode_source_file _proxylink_decode_file
-        return 0
-    fi
-
-    : >"$_proxylink_decode_file" || {
-        unset _proxylink_decode_source_file _proxylink_decode_file
-        return 1
-    }
-    if tr -d '\r\n' <"$_proxylink_decode_source_file" | tr '_-' '/+' |
-        awk '{ value = value $0 }
-            END {
-                remainder = length(value) % 4
-                if (remainder == 1) exit 1
-                if (remainder == 2) value = value "=="
-                else if (remainder == 3) value = value "="
-                print value
-            }' |
-        base64 -d >"$_proxylink_decode_file" 2>/dev/null && [ -s "$_proxylink_decode_file" ]; then
-        unset _proxylink_decode_source_file _proxylink_decode_file
-        return 0
-    fi
-
-    unset _proxylink_decode_source_file _proxylink_decode_file
-    return 1
-}
-
 magicnet_singbox_run_proxylink_source() {
     _proxylink_source_bin="$1"
     _proxylink_source_file="$2"
@@ -96,7 +60,7 @@ magicnet_singbox_run_proxylink_source() {
     _proxylink_decoded_file="${_proxylink_source_file}.proxylink-decoded.$$"
 
     if ! magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_source_file" &&
-        magicnet_singbox_proxylink_decode_source "$_proxylink_source_file" "$_proxylink_decoded_file" &&
+        magicnet_b64_decode_file "$_proxylink_source_file" "$_proxylink_decoded_file" &&
         { magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_decoded_file" ||
             magicnet_singbox_source_is_clash "$_proxylink_decoded_file" ||
             grep -Eq '^[[:space:]]*[[:alpha:]][[:alnum:]+.-]*://' "$_proxylink_decoded_file"; }; then

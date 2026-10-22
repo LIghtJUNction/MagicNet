@@ -6,6 +6,9 @@ const baseURL = `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
+  // All six viewport projects exceed ten minutes on a cold shared runner.
+  // Stop inside Playwright so failures and traces finish before Actions' cap.
+  globalTimeout: 18 * 60_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),

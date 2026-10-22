@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 HOTSPOT_RETURN_WORK="$WORK/internal-return"
+HOTSPOT_DISABLED_WORK="$WORK/disabled-status"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 MODDIR="$WORK/module"
@@ -935,5 +936,45 @@ assert_hotspot_internal_return_routing() (
 )
 
 assert_hotspot_internal_return_routing
+
+# A disabled selector does not prove successful cleanup. Interrupted writes
+# and disappeared downstreams must retain their recovery/unknown status.
+(
+  WORK="$HOTSPOT_DISABLED_WORK"
+  MODDIR="$WORK/module"
+  RULES="$WORK/ip-rules"
+  mkdir -p "$MODDIR/.state/hotspot"
+  printf '%s\n' '10000: from all uidrange 0-0 lookup wlan0' >"$RULES"
+  : >"$WORK/forward-rules"
+  : >"$WORK/ip-writes"
+  : >"$WORK/route-lookups"
+  HOTSPOT_CIDR=
+  magicnet_transparent_mode() { printf 'tun\n'; }
+  assert_disabled_status() {
+    magicnet_hotspot_route_status >"$WORK/status"
+    grep -Fqx "route_status=$1" "$WORK/status" || {
+      printf 'expected disabled hotspot status %s\n' "$1" >&2
+      cat "$WORK/status" >&2
+      exit 1
+    }
+  }
+  assert_disabled_status disabled
+  printf '%s\n' 'return4|9999|172.20.0.2/32' >"$(magicnet_hotspot_route_pending_file)"
+  printf '%s\n' '9999: from all to 172.20.0.2 lookup main' >>"$RULES"
+  assert_disabled_status pending
+  printf '%s\n' '8999|wlan2' >>"$(magicnet_hotspot_route_pending_file)"
+  printf '%s\n' '8999: from all iif wlan2 lookup 2022' >>"$RULES"
+  assert_disabled_status pending
+  grep -Fqx 'policy_rule_observed=1' "$WORK/status"
+  printf '%s\n' 'corrupt' >"$(magicnet_hotspot_route_pending_file)"
+  assert_disabled_status unknown
+  printf '%s\n' 'return4|9999|172.20.0.2/32' '8999|wlan2' >"$(magicnet_hotspot_route_pending_file)"
+  mv "$(magicnet_hotspot_route_pending_file)" "$(magicnet_hotspot_route_state_file)"
+  assert_disabled_status degraded
+  magicnet_hotspot_route_cleanup
+  assert_disabled_status disabled
+  HOTSPOT_ROUTE_QUERY_FAIL=1
+  assert_disabled_status unknown
+)
 
 printf '%s\n' 'hotspot routing test passed'

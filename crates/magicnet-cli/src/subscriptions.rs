@@ -5,12 +5,12 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, ToSocketAddrs};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::{
     clean_module_lines, clear_node_cache, cstring_from_os_str, decode_base64,
@@ -114,6 +114,68 @@ pub(crate) struct SubscriptionSourceGuard {
     owner: String,
 }
 
+// Shared with the shell's magicnet_metadata_guard. Never unlink this inode:
+// all owner publication, reclamation and release must serialize on it.
+struct SubscriptionMetadataGuard {
+    _file: File,
+}
+
+impl Drop for SubscriptionMetadataGuard {
+    fn drop(&mut self) {
+        // CLOEXEC does not prevent a concurrent fork from retaining this
+        // open-file description until exec. End the critical section now,
+        // independently of when those inherited descriptors are closed.
+        unsafe {
+            libc::flock(self._file.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+impl SubscriptionMetadataGuard {
+    fn acquire(directory: &Path, timeout: Duration) -> Result<Self, String> {
+        let parent = directory.parent().expect("subscription lock has a parent");
+        fs::create_dir_all(parent).map_err(|_| "cannot prepare subscription lock".to_string())?;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(directory.with_file_name("subscription-update.lock.guard"))
+            .map_err(|_| "cannot open subscription metadata guard".to_string())?;
+        if !file
+            .metadata()
+            .map_err(|_| "cannot inspect subscription metadata guard")?
+            .is_file()
+        {
+            return Err("subscription metadata guard is not a regular file".to_string());
+        }
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|_| "cannot secure subscription metadata guard".to_string())?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                return Ok(Self { _file: file });
+            }
+            let error = io::Error::last_os_error();
+            if !matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+            ) {
+                return Err("cannot lock subscription metadata guard".to_string());
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return Err("subscription metadata is busy; retry after it completes".to_string());
+            }
+            std::thread::sleep(
+                Duration::from_millis(25).min(deadline.saturating_duration_since(now)),
+            );
+        }
+    }
+}
+
 impl SubscriptionSourceGuard {
     pub(crate) fn acquire(app: &App) -> Result<Self, String> {
         // The bounded reader forks: /proc/self would describe its worker,
@@ -123,10 +185,9 @@ impl SubscriptionSourceGuard {
             .map_err(|_| "cannot inspect subscription writer identity".to_string())?;
         let start = crate::proc_start_time(&stat)
             .ok_or_else(|| "cannot identify subscription writer".to_string())?;
-        cleanup_stale_update_lock(app);
         let directory = app.moddir.join(".state/sing-box/subscription-update.lock");
-        fs::create_dir_all(directory.parent().expect("subscription lock has a parent"))
-            .map_err(|_| "cannot prepare subscription lock".to_string())?;
+        let _metadata = SubscriptionMetadataGuard::acquire(&directory, Duration::ZERO)?;
+        cleanup_stale_update_lock_unlocked(&directory, Path::new("/proc"));
         fs::create_dir(&directory)
             .map_err(|_| "subscription update is busy; retry after it completes".to_string())?;
         let owner = format!(
@@ -140,6 +201,7 @@ impl SubscriptionSourceGuard {
             let mut file = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
+                .mode(0o600)
                 .open(directory.join("owner"))?;
             file.set_permissions(fs::Permissions::from_mode(0o600))?;
             file.write_all(owner.as_bytes())?;
@@ -156,12 +218,27 @@ impl SubscriptionSourceGuard {
 
 impl Drop for SubscriptionSourceGuard {
     fn drop(&mut self) {
+        let Ok(_metadata) =
+            SubscriptionMetadataGuard::acquire(&self.directory, Duration::from_secs(10))
+        else {
+            return;
+        };
         let owner_file = self.directory.join("owner");
-        if fs::read_to_string(&owner_file).ok().as_deref() == Some(self.owner.as_str()) {
+        if read_subscription_lock_owner(&owner_file).as_deref() == Some(self.owner.as_str()) {
             let _ = fs::remove_file(owner_file);
             let _ = fs::remove_dir(&self.directory);
         }
     }
+}
+
+fn read_subscription_lock_owner(path: &Path) -> Option<String> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > 129 {
+        return None;
+    }
+    // The bounded worker rejects symlinks and closes inherited descriptors;
+    // unreadable metadata cannot hang or outlive the metadata flock holder.
+    read_proc_text_bounded(path, 129).ok()
 }
 
 pub fn sub_user_agent(app: &App, args: &[String]) -> Result<(), String> {
@@ -620,12 +697,66 @@ pub(crate) fn cleanup_stale_update_lock(app: &App) {
 
 fn cleanup_stale_update_lock_from_proc(app: &App, proc_root: &Path) {
     let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
-    let owner_path = lock.join("owner");
-    let Ok(owner) = fs::read_to_string(&owner_path) else {
+    let Ok(_metadata) = SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO) else {
         return;
     };
-    let mut fields = owner.trim().split(':');
-    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
+    cleanup_stale_update_lock_unlocked(&lock, proc_root);
+}
+
+fn cleanup_stale_update_lock_unlocked(lock: &Path, proc_root: &Path) {
+    let Ok(directory) = fs::symlink_metadata(lock) else {
+        return;
+    };
+    if !directory.is_dir() {
+        return;
+    }
+    let owner_path = lock.join("owner");
+    match fs::symlink_metadata(&owner_path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            // Preserve the existing shell publication grace for old writers.
+            if directory
+                .modified()
+                .ok()
+                .and_then(|time| time.elapsed().ok())
+                .is_some_and(|age| age >= Duration::from_secs(5))
+            {
+                let _ = fs::remove_dir(lock);
+            }
+            return;
+        }
+        _ => return,
+    }
+    let Some(owner) = read_subscription_lock_owner(&owner_path) else {
+        return;
+    };
+    let record = owner.trim_end_matches('\n');
+    if record.is_empty() {
+        if directory
+            .modified()
+            .ok()
+            .and_then(|time| time.elapsed().ok())
+            .is_some_and(|age| age >= Duration::from_secs(5))
+        {
+            let _ = fs::remove_file(&owner_path);
+            let _ = fs::remove_dir(lock);
+        }
+        return;
+    }
+    if record.len() > 128 {
+        return;
+    }
+    let mut fields = record.split(':');
+    let Some(pid) = fields
+        .next()
+        .filter(|value| {
+            !value.is_empty()
+                && !value.starts_with('0')
+                && value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|pid| *pid > 0)
+    else {
         return;
     };
     let Some(expected_start) = fields
@@ -634,13 +765,32 @@ fn cleanup_stale_update_lock_from_proc(app: &App, proc_root: &Path) {
     else {
         return;
     };
+    let Some(nonce) = fields.next() else {
+        return;
+    };
+    if nonce.is_empty()
+        || !nonce
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        || fields.next().is_some()
+    {
+        return;
+    }
     let proc_dir = proc_root.join(pid.to_string());
-    let definitely_dead = if !proc_dir.is_dir() {
-        true
-    } else {
+    let proc_exists = match fs::metadata(&proc_dir) {
+        Ok(metadata) if metadata.is_dir() => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        _ => return,
+    };
+    let definitely_dead = if proc_exists {
         let stat = match read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES) {
             Ok(stat) => stat,
-            Err(_) if !proc_dir.is_dir() => String::new(),
+            Err(_)
+                if fs::metadata(&proc_dir)
+                    .is_err_and(|error| error.kind() == io::ErrorKind::NotFound) =>
+            {
+                String::new()
+            }
             Err(_) => return,
         };
         if stat.is_empty() {
@@ -657,18 +807,15 @@ fn cleanup_stale_update_lock_from_proc(app: &App, proc_root: &Path) {
             };
             state == "Z" || live_start != expected_start
         }
+    } else {
+        true
     };
     if !definitely_dead {
         return;
     }
-    if fs::read_to_string(&owner_path)
-        .ok()
-        .as_deref()
-        .map(str::trim)
-        == Some(owner.trim())
-    {
+    if read_subscription_lock_owner(&owner_path).as_deref() == Some(owner.as_str()) {
         let _ = fs::remove_file(&owner_path);
-        let _ = fs::remove_dir(&lock);
+        let _ = fs::remove_dir(lock);
     }
 }
 

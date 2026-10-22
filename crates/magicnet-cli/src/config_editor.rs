@@ -135,6 +135,7 @@ fn commit_standalone_config(
     text: &str,
 ) -> Result<(), String> {
     let _lifecycle = crate::service::config_apply_lock(app)?;
+    let _subscription = acquire_editor_subscription_guard(app)?;
     let protected = protect_tailscale_auth_keys(app, text)?;
     commit_config_text(
         app,
@@ -145,6 +146,24 @@ fn commit_standalone_config(
         protected.keys.as_deref(),
     )?;
     mark_standalone_config(app)
+}
+
+fn acquire_editor_subscription_guard(
+    app: &App,
+) -> Result<crate::subscriptions::SubscriptionSourceGuard, String> {
+    // Shell subscriptions use their own transaction lock. Match the existing
+    // lifecycle -> subscription ordering, and do not overwrite recovery inputs
+    // that a dead updater's journal may still restore.
+    let guard = crate::subscriptions::SubscriptionSourceGuard::acquire(app)?;
+    if app
+        .moddir
+        .join(".state/sing-box/subscription-transaction")
+        .try_exists()
+        .map_err(|_| "cannot inspect subscription recovery state".to_string())?
+    {
+        return Err("subscription recovery is pending; retry after recovery".to_string());
+    }
+    Ok(guard)
 }
 
 struct ProtectedConfig {
@@ -426,7 +445,11 @@ fn validate_and_commit_open_config_file_with(
 ) -> Result<(), String> {
     let name = OsStr::new(config_target_filename(target)?);
     let directory = open_config_destination_directory(app, target)?;
-    let (snapshot, staged_name) = snapshot_config_file(source, &directory)?;
+    // Stage beside the destination on the same filesystem, in the existing
+    // private namespace excluded from fswatch. A transient validator snapshot
+    // must not enqueue another config apply while this operation holds its lock.
+    let staging = ensure_directory_at(&directory, OsStr::new(".magicnet-staging"), 0o700)?;
+    let (snapshot, staged_name) = snapshot_config_file(source, &staging)?;
     let result = (|| {
         // sing-box resolves relative rule-set and UI paths from its data
         // directory. The candidate may originate in a private temporary
@@ -436,10 +459,10 @@ fn validate_and_commit_open_config_file_with(
         validate_config_from_open_file(app, target, &snapshot, &directory)?;
         before_commit()?;
         backup_config_at(&directory, name)?;
-        commit_staged_config_file(&directory, &staged_name, name, path)
+        commit_staged_config_file(&staging, &directory, &staged_name, name, path)
     })();
     let cleanup = if result.is_err() {
-        remove_staged_config_file(&directory, &staged_name)
+        remove_staged_config_file(&staging, &staged_name)
     } else {
         Ok(())
     };
@@ -447,6 +470,7 @@ fn validate_and_commit_open_config_file_with(
 }
 
 fn commit_staged_config_file(
+    staging: &File,
     directory: &File,
     staged_name: &OsStr,
     name: &OsStr,
@@ -456,7 +480,7 @@ fn commit_staged_config_file(
     let name_c = cstring_from_os_str(name, "config filename")?;
     let renamed = unsafe {
         libc::renameat(
-            directory.as_raw_fd(),
+            staging.as_raw_fd(),
             staged_c.as_ptr(),
             directory.as_raw_fd(),
             name_c.as_ptr(),
@@ -644,11 +668,12 @@ fn backup_config_at(directory: &File, name: &OsStr) -> Result<(), String> {
     require_regular_file(&source, "refusing to back up a non-regular config file")?;
 
     let backup_name = backup_name(name);
-    let (mut backup, staged_name) = create_staged_config_file(directory, "backup")?;
+    let staging = ensure_directory_at(directory, OsStr::new(".magicnet-staging"), 0o700)?;
+    let (mut backup, staged_name) = create_staged_config_file(&staging, "backup")?;
     if let Err(err) = copy_file_into_staging(&source, &mut backup) {
         return finish_with_cleanup(
             Err(err),
-            remove_staged_config_file(directory, &staged_name),
+            remove_staged_config_file(&staging, &staged_name),
             "config backup",
         );
     }
@@ -658,7 +683,7 @@ fn backup_config_at(directory: &File, name: &OsStr) -> Result<(), String> {
     let backup_c = cstring_from_os_str(&backup_name, "config backup filename")?;
     let renamed = unsafe {
         libc::renameat(
-            directory.as_raw_fd(),
+            staging.as_raw_fd(),
             staged_c.as_ptr(),
             directory.as_raw_fd(),
             backup_c.as_ptr(),
@@ -670,7 +695,7 @@ fn backup_config_at(directory: &File, name: &OsStr) -> Result<(), String> {
     let error = io::Error::last_os_error();
     finish_with_cleanup(
         Err(format!("replace config backup: {error}")),
-        remove_staged_config_file(directory, &staged_name),
+        remove_staged_config_file(&staging, &staged_name),
         "config backup",
     )
 }
@@ -1045,6 +1070,7 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let template = fetch_template(app, &url, repository.sha256.as_deref())?;
     {
         let _lifecycle = crate::service::config_apply_lock(app)?;
+        let _subscription = acquire_editor_subscription_guard(app)?;
         let current = read_current_config(app, target)?.unwrap_or_default();
         let merged = prepare_template(target, &template, &current)?;
         commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
@@ -1439,6 +1465,98 @@ mod tests {
         Ok(())
     }
 
+    fn subscription_editor_fixture() -> crate::test_support::TempApp {
+        let app = temp_app();
+        let bin = app.moddir.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let validator = bin.join("sing-box");
+        fs::write(
+            &validator,
+            "#!/bin/sh\nset -eu\ntest -s \"${0%/*}/../.state/sing-box/subscription-update.lock/owner\"\n: >\"${0%/*}/validator.called\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&validator, fs::Permissions::from_mode(0o700)).unwrap();
+        let curl = bin.join("curl");
+        fs::write(&curl, "#!/bin/sh\nprintf '%s\\n' '{\"outbounds\":[]}'\n").unwrap();
+        fs::set_permissions(&curl, fs::Permissions::from_mode(0o700)).unwrap();
+        let mut repository = default_repository();
+        repository.url = "https://github.com/example/config-fixture.git".to_string();
+        repository.sha256 = None;
+        write_repository_config(&app, &repository).unwrap();
+        let directory = app.moddir.join(".config/sing-box");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("config.json"), "{\"outbounds\":[]}\n").unwrap();
+        fs::write(directory.join("config.json.bak"), "previous backup").unwrap();
+        app
+    }
+
+    #[test]
+    fn editor_writers_reject_live_subscription_update_before_mutation() {
+        let app = subscription_editor_fixture();
+        let path = config_path(&app, "sing-box").unwrap();
+        let update = crate::subscriptions::SubscriptionSourceGuard::acquire(&app).unwrap();
+        let owner_path = app
+            .moddir
+            .join(".state/sing-box/subscription-update.lock/owner");
+        let owner = fs::read(&owner_path).unwrap();
+
+        let save = commit_standalone_config(&app, "sing-box", &path, "{\"outbounds\":[{}]}");
+        let sync = sync_template_one(&app, "sing-box");
+        for (operation, result) in [("save", save), ("sync", sync)] {
+            let error = result.unwrap_err();
+            assert!(
+                error.contains("subscription update is busy"),
+                "{operation}: {error}"
+            );
+        }
+        assert_eq!(fs::read(&owner_path).unwrap(), owner);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"outbounds\":[]}\n");
+        assert_eq!(
+            fs::read_to_string(path.with_file_name("config.json.bak")).unwrap(),
+            "previous backup"
+        );
+        assert!(!app.moddir.join("bin/validator.called").exists());
+        assert!(!app.moddir.join(STANDALONE_CONFIG_MARKER).exists());
+
+        drop(update);
+        // The same valid edit proceeds after release; the validator also proves
+        // that the editor retains subscription ownership throughout validation.
+        commit_standalone_config(&app, "sing-box", &path, "{\"outbounds\":[{}]}").unwrap();
+        assert!(app.moddir.join("bin/validator.called").exists());
+        assert!(app.moddir.join(STANDALONE_CONFIG_MARKER).exists());
+        assert!(!owner_path.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn editor_writers_preserve_config_while_subscription_recovery_is_pending() {
+        let app = subscription_editor_fixture();
+        let path = config_path(&app, "sing-box").unwrap();
+        let journal = app.moddir.join(".state/sing-box/subscription-transaction");
+        fs::create_dir_all(&journal).unwrap();
+
+        let save = commit_standalone_config(&app, "sing-box", &path, "{\"outbounds\":[{}]}");
+        let sync = sync_template_one(&app, "sing-box");
+        for (operation, result) in [("save", save), ("sync", sync)] {
+            let error = result.unwrap_err();
+            assert!(
+                error.contains("subscription recovery is pending"),
+                "{operation}: {error}"
+            );
+        }
+        assert!(journal.exists());
+        assert!(!app
+            .moddir
+            .join(".state/sing-box/subscription-update.lock")
+            .exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"outbounds\":[]}\n");
+        assert_eq!(
+            fs::read_to_string(path.with_file_name("config.json.bak")).unwrap(),
+            "previous backup"
+        );
+        assert!(!app.moddir.join("bin/validator.called").exists());
+        assert!(!app.moddir.join(STANDALONE_CONFIG_MARKER).exists());
+    }
+
     #[test]
     fn preserves_singbox_outbounds_block() -> Result<(), Box<dyn std::error::Error>> {
         let template = r#"{
@@ -1650,6 +1768,7 @@ mod tests {
         fs::write(
             &validator,
             r#"#!/bin/sh
+set -eu
 config=
 data=
 while [ "$#" -gt 0 ]; do
@@ -1661,6 +1780,11 @@ while [ "$#" -gt 0 ]; do
 done
 test -r "$config"
 test -r "$data/rules/required.srs"
+for stage in "$data"/.config-editor-*; do
+  test ! -e "$stage" || exit 1
+done
+set -- "$data"/.magicnet-staging/.config-editor-snapshot-*
+test "$#" -eq 1 && test -f "$1"
 "#,
         )
         .expect("write fake validator");
@@ -1760,6 +1884,61 @@ test -r "$data/rules/required.srs"
     }
 
     #[test]
+    fn config_staging_rejects_symlinks_without_changing_config_or_backup() {
+        let app = temp_app();
+        let directory =
+            open_config_destination_directory(&app, "sing-box").expect("open config parent");
+        let target = app.moddir.join(".config/sing-box/config.json");
+        let outside = app.moddir.join("outside");
+        fs::create_dir_all(&outside).expect("create outside directory");
+        fs::write(&target, "old config").expect("write current config");
+        fs::write(target.with_file_name("config.json.bak"), "old backup")
+            .expect("write current backup");
+        symlink(&outside, target.with_file_name(".magicnet-staging"))
+            .expect("redirect staging directory");
+        let source = File::open(&target).expect("open candidate");
+
+        assert!(validate_and_commit_open_config_file(&app, "sing-box", &target, &source).is_err());
+        assert!(backup_config_at(&directory, OsStr::new("config.json")).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "old config");
+        assert_eq!(
+            fs::read_to_string(target.with_file_name("config.json.bak")).unwrap(),
+            "old backup"
+        );
+        assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn failed_validation_cleans_private_staging_and_preserves_config_and_backup() {
+        let app = temp_app();
+        let target = app.moddir.join(".config/sing-box/config.json");
+        open_config_destination_directory(&app, "sing-box").expect("create config parent");
+        fs::write(&target, "old config").expect("write current config");
+        fs::write(target.with_file_name("config.json.bak"), "old backup")
+            .expect("write current backup");
+        fs::create_dir_all(app.moddir.join("bin")).expect("create bin directory");
+        let validator = app.moddir.join("bin/sing-box");
+        fs::write(&validator, "#!/bin/sh\nexit 1\n").expect("write rejecting validator");
+        fs::set_permissions(&validator, fs::Permissions::from_mode(0o700))
+            .expect("make validator executable");
+
+        let error = commit_config_text(&app, "sing-box", &target, b"{", "input", None)
+            .expect_err("invalid config must not commit");
+        assert!(error.starts_with("config validation failed"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "old config");
+        assert_eq!(
+            fs::read_to_string(target.with_file_name("config.json.bak")).unwrap(),
+            "old backup"
+        );
+        assert_eq!(
+            fs::read_dir(target.with_file_name(".magicnet-staging"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
     #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn save_file_snapshot_is_immutable_after_same_inode_mutation() {
         let app = temp_app();
@@ -1772,15 +1951,17 @@ test -r "$data/rules/required.srs"
         let target = config_path(&app, "sing-box").expect("config target");
         let directory =
             open_config_destination_directory(&app, "sing-box").expect("open config target parent");
+        let staging = ensure_directory_at(&directory, OsStr::new(".magicnet-staging"), 0o700)
+            .expect("open private staging directory");
         let (snapshot, staged_name) =
-            snapshot_config_file(&validated_file, &directory).expect("copy immutable snapshot");
+            snapshot_config_file(&validated_file, &staging).expect("copy immutable snapshot");
 
         let alias = payload_dir.join("candidate-alias.json");
         fs::hard_link(&candidate, &alias).expect("link same candidate inode");
         fs::write(&alias, "attacker same-inode mutation").expect("mutate candidate inode");
         let target_name = OsStr::new("config.json");
 
-        commit_staged_config_file(&directory, &staged_name, target_name, &target)
+        commit_staged_config_file(&staging, &directory, &staged_name, target_name, &target)
             .expect("commit the immutable snapshot");
         drop(snapshot);
 

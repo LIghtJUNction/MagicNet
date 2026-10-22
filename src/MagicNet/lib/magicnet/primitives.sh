@@ -84,6 +84,95 @@ magicnet_trusted_busybox_override() {
     return 1
 }
 
+# Prefer packaged or Android system flock. Host fixtures may still use PATH.
+magicnet_trusted_flock() {
+    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/flock" ]; then
+        printf '%s\n' "${MODDIR}/bin/flock"
+        return 0
+    fi
+    if [ -x /system/bin/flock ]; then
+        printf '%s\n' /system/bin/flock
+        return 0
+    fi
+    magicnet_android_runtime && return 1
+    command -v flock 2>/dev/null || return 1
+}
+
+magicnet_fswatch_busybox_bin() (
+    _mfb_busybox_bin="$(magicnet_trusted_busybox_override "${KAM_FSWATCH_BUSYBOX_BIN:-}" 2>/dev/null || true)"
+    if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
+        "$_mfb_busybox_bin" flock --help >/dev/null 2>&1; then
+        printf '%s\n' "$_mfb_busybox_bin"
+        return 0
+    fi
+
+    # Root solutions keep their private BusyBox in different fixed locations.
+    # Do not rely on the lifecycle shell exporting those directories in PATH.
+    for _mfb_candidate in \
+        /data/adb/ap/bin/busybox \
+        /data/adb/ksu/bin/busybox \
+        /data/adb/magisk/busybox \
+        "${MODDIR}/bin/busybox" \
+        "${MODDIR}/system/bin/busybox"; do
+        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
+            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
+            printf '%s\n' "$_mfb_candidate"
+            return 0
+        fi
+    done
+
+    # Host fixtures may still resolve BusyBox from PATH. Android must not.
+    if ! magicnet_android_runtime; then
+        _mfb_candidate="$(command -v busybox 2>/dev/null || true)"
+        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
+            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
+            printf '%s\n' "$_mfb_candidate"
+            return 0
+        fi
+    fi
+    return 1
+)
+
+# Serialize only ownership metadata, never the protected operation or its
+# live-owner wait. This persistent inode must not be unlinked: mkdir/pid
+# publication, reclamation and release all have to use the same guard.
+magicnet_metadata_guard() (
+    _guard_file="$1"
+    _guard_wait="$2"
+    shift 2
+    umask 077
+    mkdir -p "${_guard_file%/*}" || return 2
+    [ ! -L "$_guard_file" ] || return 2
+    [ ! -e "$_guard_file" ] || [ -f "$_guard_file" ] || return 2
+    exec 8>>"$_guard_file" || return 2
+    _guard_busybox="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
+    if [ -n "$_guard_busybox" ]; then
+        _guard_flock="$_guard_busybox"
+    else
+        _guard_flock="$(magicnet_trusted_flock 2>/dev/null)" || return 2
+    fi
+    _guard_attempt=0
+    while :; do
+        # mksh needs the explicit redirection to pass an exec-opened fd.
+        if [ -n "$_guard_busybox" ]; then
+            "$_guard_flock" flock -n 8 8>&8 && break
+        else
+            "$_guard_flock" -n 8 8>&8 && break
+        fi
+        _guard_rc=$?
+        [ "$_guard_rc" -eq 1 ] || return 2
+        [ "$_guard_attempt" -lt "$_guard_wait" ] || return 1
+        _guard_attempt=$((_guard_attempt + 1))
+        sleep 0.1 || return 2
+    done
+    # Keep ownership checks and mutations in this guard-owning shell. The
+    # bounded proc probes must explicitly close fd 8; no long operation runs
+    # until this subshell exits and releases the guard.
+    "$@"
+    _guard_rc=$?
+    return "$_guard_rc"
+)
+
 magicnet_lib_dir() {
     _requested="${MAGICNET_LIB_DIR:-}"
     _module_lib="${MODDIR}/lib/magicnet"

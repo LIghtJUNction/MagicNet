@@ -219,24 +219,52 @@ def output_digest(paths: list[str]) -> str | None:
 def run_check(command: list[str], timeout: int, name: str) -> int:
     print(f"[ci-test] RUN  {name}", flush=True)
     start = time.monotonic()
+    process = None
+    interrupted = 0
+
+    def kill_group():
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def interrupt(signum, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or signum
+        kill_group()
+
+    # The command owns a separate session. A runner cancellation must reach
+    # that whole group, and must stay a failure even if a child exits zero.
+    # Default SIGTERM handling bypasses Python's exception/finally cleanup.
+    handlers = {signum: signal.signal(signum, interrupt)
+                for signum in (signal.SIGINT, signal.SIGTERM)}
     # Successful negative cases stay in this log, not as misleading ERROR lines.
     # On failure print ALL diagnostics; never filter errors from a failed test.
-    with tempfile.TemporaryFile() as log:
-        process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            result = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            result = 124
-        except BaseException:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            raise
-        if result or os.environ.get("CI_TEST_VERBOSE") == "1":
-            log.seek(0)
-            shutil.copyfileobj(log, sys.stdout.buffer)
-            sys.stdout.flush()
+    try:
+        with tempfile.TemporaryFile() as log:
+            process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            if interrupted:
+                kill_group()
+            try:
+                result = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                kill_group()
+                process.wait()
+                result = 124
+            except BaseException:
+                kill_group()
+                process.wait()
+                raise
+            if result or interrupted or os.environ.get("CI_TEST_VERBOSE") == "1":
+                log.seek(0)
+                shutil.copyfileobj(log, sys.stdout.buffer)
+                sys.stdout.flush()
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+    if interrupted:
+        result = 128 + interrupted
     label = "PASS" if result == 0 else "FAIL"
     print(f"[ci-test] {label} {name} ({time.monotonic() - start:.2f}s, exit={result})", flush=True)
     return result if result >= 0 else 128 - result

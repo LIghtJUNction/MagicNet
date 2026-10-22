@@ -225,7 +225,7 @@ EOF
     printf 'route intent\n' >"$MODDIR/.config/magicnet/route-proxy-domain-suffix.list"
     printf 'generated\n' >"$MODDIR/.config/sing-box/config.json"
     fswatch_snapshot "$MODDIR/.config" >"$fixture/before.snapshot"
-    for suffix in '' .new .route.new .tailscale.new .tailscale-auth.new .tailscale-scrub.new \
+    for suffix in '' .bak .new .route.new .tailscale.new .tailscale-auth.new .tailscale-scrub.new \
         .magicnet-selectors.new .magicnet-block.new .zashboard.new .app-policy.new \
         .include-packages.tmp .include-uids.tmp .exclude-uids.tmp .exclude-uids.tmp.new \
         .magicnet-warp.new .magicnet-dns.new .hotspot-policy.new .magicnet-route.new \
