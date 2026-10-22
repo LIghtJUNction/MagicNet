@@ -691,6 +691,107 @@ magicnet_enable_dns_leak_guard
         self.assertFalse(journal.exists())
         self.assertFalse(self.read()['forward'])
 
+    def prepare_stopped_hotspot(self):
+        self.active()
+        self.run_helper('magicnet_hotspot_reconcile')
+        self.change(kernel=1)
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        owner.write_text('value=0\n')
+        (self.mod / 'current-offload').write_text('1\n')
+        return owner
+
+    def counted_offload_code(self, code):
+        # Keep the real cleanup implementation and lock; count only entries.
+        return r'''
+: >"$MODDIR/cleanup-calls"
+magicnet_hotspot_route_cleanup() {
+    printf 'cleanup\n' >>"$MODDIR/cleanup-calls"
+    magicnet_with_config_lock magicnet_hotspot_route_cleanup_locked
+}
+magicnet_hotspot_offload_value() { cat "$MODDIR/current-offload"; }
+settings() {
+    printf '%s\n' "$*" >>"$MODDIR/settings-writes"
+    [ ! -e "$MODDIR/offload-write-fails" ] || return 1
+    case "$1" in
+        put) printf '%s\n' "$4" >"$MODDIR/current-offload" ;;
+        delete) printf 'null\n' >"$MODDIR/current-offload" ;;
+        *) return 1 ;;
+    esac
+}
+''' + code
+
+    def hotspot_cleanup_count(self):
+        return len((self.mod / 'cleanup-calls').read_text().splitlines())
+
+    def test_stop_finalization_cleans_hotspot_once_with_or_without_offload_journal(self):
+        for saved in (None, 'value=0\n'):
+            with self.subTest(saved=saved):
+                owner = self.prepare_stopped_hotspot()
+                if saved is None:
+                    owner.unlink()
+                self.run_helper(self.counted_offload_code('magicnet_lifecycle_after_stop'))
+                self.assertEqual(self.hotspot_cleanup_count(), 1)
+                self.assertFalse(self.hotspot.exists())
+                self.assertFalse(self.pending.exists())
+                self.assertFalse(self.state.exists())
+                self.assertFalse(owner.exists())
+                self.assertFalse(self.read()['forward'])
+                self.assertEqual((self.mod / 'current-offload').read_text().strip(),
+                                 '1' if saved is None else '0')
+
+    def test_independent_cleanup_helpers_still_remove_hotspot_routes(self):
+        for helper in ('magicnet_kernel_route_cleanup_after_stop',
+                       'magicnet_hotspot_offload_restore'):
+            with self.subTest(helper=helper):
+                self.prepare_stopped_hotspot()
+                self.run_helper(self.counted_offload_code(helper))
+                self.assertEqual(self.hotspot_cleanup_count(), 1)
+                self.assertFalse(self.hotspot.exists())
+                self.assertFalse(self.pending.exists())
+                self.assertFalse(self.read()['forward'])
+
+    def test_kernel_preflight_failure_still_cleans_hotspot_and_restores_offload(self):
+        owner = self.prepare_stopped_hotspot()
+        self.change(fail_route6=True)
+        self.run_helper(self.counted_offload_code('magicnet_lifecycle_after_stop'), 2)
+        self.assertEqual(self.hotspot_cleanup_count(), 1)
+        self.assertEqual((self.mod / 'current-offload').read_text().strip(), '0')
+        self.assertFalse(owner.exists())
+        self.assertFalse(self.hotspot.exists())
+        self.assertTrue(self.state.exists())
+
+    def test_kernel_flush_failure_keeps_independent_offload_restoration(self):
+        owner = self.prepare_stopped_hotspot()
+        self.change(fail_flush=True)
+        self.run_helper(self.counted_offload_code('magicnet_lifecycle_after_stop'), 2)
+        self.assertEqual(self.hotspot_cleanup_count(), 2)
+        self.assertEqual((self.mod / 'current-offload').read_text().strip(), '0')
+        self.assertFalse(owner.exists())
+        self.assertFalse(self.hotspot.exists())
+        self.assertTrue(self.state.exists())
+
+    def test_failed_hotspot_cleanup_never_authorizes_offload_restore(self):
+        owner = self.prepare_stopped_hotspot()
+        self.change(fail_forward_delete=True)
+        self.run_helper(self.counted_offload_code('magicnet_lifecycle_after_stop'), 2)
+        self.assertEqual(self.hotspot_cleanup_count(), 2)
+        self.assertEqual((self.mod / 'current-offload').read_text().strip(), '1')
+        self.assertFalse((self.mod / 'settings-writes').exists())
+        self.assertTrue(owner.exists())
+        self.assertTrue(self.pending.exists())
+        self.assertTrue(self.state.exists())
+
+    def test_failed_offload_restore_retains_evidence_without_repeating_clean_routes(self):
+        owner = self.prepare_stopped_hotspot()
+        (self.mod / 'offload-write-fails').touch()
+        self.run_helper(self.counted_offload_code('magicnet_lifecycle_after_stop'), 2)
+        self.assertEqual(self.hotspot_cleanup_count(), 1)
+        self.assertEqual((self.mod / 'current-offload').read_text().strip(), '1')
+        self.assertTrue(owner.exists())
+        self.assertFalse(self.hotspot.exists())
+        self.assertFalse(self.pending.exists())
+        self.assertEqual(self.error.read_text().strip(), 'network-route-ownership')
+
     def test_offload_restore_verifies_write_and_retains_failed_journal(self):
         owner = self.mod / '.state/hotspot/tether-offload.previous'
         owner.write_text('value=0\n')

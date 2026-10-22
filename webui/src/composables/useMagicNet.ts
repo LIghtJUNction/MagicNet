@@ -25,7 +25,7 @@ import {
   parseBackgroundCompletion,
   reconcileSubscriptionCompletion,
 } from "@/composables/backgroundTasks";
-import { SerialExecQueue } from "@/composables/execQueue";
+import { ReadWriteExecQueue, type ExecAccess } from "@/composables/execQueue";
 import { execAsync, hasAsyncExec } from "@/composables/deviceExec";
 import { ForegroundUiGate } from "@/composables/foregroundUiGate";
 import {
@@ -140,7 +140,7 @@ const state = reactive({
   },
 });
 
-const execQueue = new SerialExecQueue((depth) => {
+const execQueue = new ReadWriteExecQueue((depth) => {
   state.queueDepth = depth;
 });
 const foregroundUiGate = new ForegroundUiGate();
@@ -181,6 +181,7 @@ async function runShellOutcome(
   quiet = false,
   previewOverride = "",
   trackCommand = true,
+  access: ExecAccess = "write",
 ): Promise<ExecOutcome> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
@@ -246,6 +247,7 @@ async function runShellOutcome(
       },
       CLI_TIMEOUT_MS,
       label,
+      access,
     );
     const outcome = normalizeExecOutcome(result);
     const text = outcome.text;
@@ -300,6 +302,7 @@ async function runTrackedQuietShellOutcome(
   commandBody: string,
   label: string,
   redactedPreview: string,
+  access: ExecAccess = "write",
 ): Promise<ExecOutcome> {
   const foregroundToken = foregroundUiGate.begin();
   const operationSequence = trackRedactedOperation(redactedPreview, label);
@@ -309,6 +312,7 @@ async function runTrackedQuietShellOutcome(
     true,
     redactedPreview,
     false,
+    access,
   );
   if (foregroundUiGate.owns(foregroundToken)) {
     const phase = outcome.ok ? "done" : "error";
@@ -332,11 +336,12 @@ async function runShell(
   label: string,
   quiet = false,
   previewOverride = "",
+  access: ExecAccess = "write",
 ): Promise<string> {
   const outcome =
     quiet && previewOverride
-      ? await runTrackedQuietShellOutcome(commandBody, label, previewOverride)
-      : await runShellOutcome(commandBody, label, quiet, previewOverride);
+      ? await runTrackedQuietShellOutcome(commandBody, label, previewOverride, access)
+      : await runShellOutcome(commandBody, label, quiet, previewOverride, true, access);
   return outcome.text;
 }
 
@@ -345,8 +350,9 @@ async function runCli(
   label = args,
   quiet = false,
   previewOverride = "",
+  access: ExecAccess = "write",
 ): Promise<string> {
-  return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
+  return runShell(`${CLI} ${args}`, label, quiet, previewOverride, access);
 }
 
 type ForegroundCommand = {
@@ -367,9 +373,10 @@ function startForegroundCommand(
   quiet = false,
   previewOverride = "",
   inheritedToken?: number,
+  access: ExecAccess = "write",
 ): ForegroundCommand {
   const before = foregroundUiGate.current();
-  const promise = runCli(args, label, quiet, previewOverride);
+  const promise = runCli(args, label, quiet, previewOverride, access);
   const after = foregroundUiGate.current();
   return {
     promise,
@@ -398,7 +405,7 @@ async function runPrivatePayloadCli(
   return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview, false);
 }
 
-/** Machine observers must not publish payloads or take foreground ownership. */
+/** Machine requests can mutate; JSON alone never opts into the read lane. */
 async function runMachineCli(args: string, label: string): Promise<ExecOutcome> {
   if (!/^--json(?: [A-Za-z0-9_.-]+)+$/.test(args)) {
     return { ok: false, timedOut: false, errno: -1, stdout: "", stderr: "", text: "machine.invalid_request" };
@@ -604,6 +611,8 @@ function followBackgroundLogs(
           backgroundLogCommand(log, args, operationId),
           t("跟踪 {p0}", { p0: t(label) }),
           true,
+          "",
+          "read",
         ),
         subscriptionTask,
       ]);
@@ -714,11 +723,14 @@ async function refreshStatus(
 ): Promise<boolean> {
   const command = startForegroundCommand(
     "--json service status", "刷新服务状态", true, "", foregroundToken,
+    "read",
   );
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
   const snapshot = execFailed(text) ? null : parseMachineRuntime(text);
-  if (canUpdateRefreshUi(command.token, allowBusy)) {
+  // Observations update the page during a running write, while shared progress
+  // still belongs to that write. A newer foreground owner invalidates old reads.
+  if (canUpdateRefreshUi(command.token, true)) {
     state.runtime = snapshot ?? { ...runtimeDefaults };
   }
   if (!snapshot) {
@@ -788,7 +800,7 @@ async function refreshCliState(
   quiet: boolean,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(args, label, quiet, "", foregroundToken);
+  const command = startForegroundCommand(args, label, quiet, "", foregroundToken, "read");
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
   if (markQuietFailure(t(label), text, command.token, allowBusy)) return false;
@@ -835,6 +847,7 @@ async function refreshPackages(
     quiet,
     "",
     foregroundToken,
+    "read",
   );
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
@@ -868,7 +881,7 @@ async function refreshSubs(
   const observation = ++subscriptionReadSequence;
   // Inspector payloads contain credentials. Quiet reads never enter command
   // capture, reactive output or diagnostics; show only structured failure codes.
-  const command = startForegroundCommand("--json sub inspect", "读取订阅状态", true, "", foregroundToken);
+  const command = startForegroundCommand("--json sub inspect", "读取订阅状态", true, "", foregroundToken, "read");
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
@@ -922,6 +935,7 @@ async function refreshDns(
     quiet,
     previewOverride,
     foregroundToken,
+    "read",
   );
   const uiToken = command.token;
   const allowBusy = foregroundTokenOrPreview !== undefined;
@@ -938,7 +952,7 @@ async function refreshDns(
 
 async function refreshNetwork(quiet = false): Promise<NetworkPolicyStatus | null> {
   const label = t("读取 UDP / IPv6 策略");
-  const command = startForegroundCommand("--json network status", label, quiet);
+  const command = startForegroundCommand("--json network status", label, quiet, "", undefined, "read");
   const text = await command.promise;
   if (markQuietFailure(label, text, command.token)) return null;
   const network = parseMachineNetwork(text);
@@ -964,7 +978,7 @@ async function refreshWifiPolicy(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand("--json wifi inspect", "读取 Wi-Fi 策略", true, "", foregroundToken);
+  const command = startForegroundCommand("--json wifi inspect", "读取 Wi-Fi 策略", true, "", foregroundToken, "read");
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;

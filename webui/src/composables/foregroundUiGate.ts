@@ -1,6 +1,6 @@
 /**
  * Gives the latest foreground command exclusive ownership of shared status
- * fields. Device commands remain serialized separately, but callers can still
+ * fields. Device mutations remain serialized, but callers can still
  * enqueue different actions through different UI locks; an older completion
  * must not clear or overwrite the newer action's progress.
  */

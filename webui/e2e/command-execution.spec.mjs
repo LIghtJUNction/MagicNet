@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("pending commands keep navigation responsive and execute in order", async ({ page }) => {
+test("pending writes keep navigation and observations responsive while writes execute in order", async ({ page }) => {
   // This models the native callback protocol; it does not execute Android commands.
   await page.addInitScript(() => {
     localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
@@ -65,6 +65,22 @@ test("pending commands keep navigation responsive and execute in order", async (
     started: window.__commandBridge.started,
     results: window.__commandBridge.results,
   }))).toEqual({ started: ["first"], results: {} });
+
+  // Status reads must finish before the held native write callback. Empty
+  // fixture output is allowed to fail parsing; it must not wait behind writes
+  // or take over the newer command's foreground progress.
+  await page.evaluate(async () => {
+    const { state, refreshStatus } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+    state.runtime.singBoxState = "sing-box";
+    state.runtime.singBoxRssKib = 1234;
+    void refreshStatus(undefined, false).then(() => { window.__commandBridge.readFinished = true; });
+  });
+  await expect.poll(() => page.evaluate(() => window.__commandBridge.readFinished)).toBe(true);
+  expect(await page.evaluate(async () => {
+    const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+    return { started: window.__commandBridge.started, busy: state.busy, phase: state.phase,
+      runtime: state.runtime.singBoxState, rss: state.runtime.singBoxRssKib };
+  })).toEqual({ started: ["first"], busy: true, phase: "queued", runtime: "unknown", rss: null });
 
   await finish("first", ["first stdout", "", "中文输出"], ["first stderr"], 0);
   await expect.poll(() => page.evaluate(() => window.__commandBridge.started))

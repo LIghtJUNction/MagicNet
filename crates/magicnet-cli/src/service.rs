@@ -10,9 +10,11 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::{
-    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid,
-    ebpf_runtime::inspect_ebpf_attachments, owned_singbox_pids, run_magicnet_function,
-    singbox_pid_summary, stop_owned_singbox, write_text_file, App,
+    cmdline_has_command, cmdline_has_script,
+    diagnostics::supervisor_pid,
+    ebpf_runtime::{inspect_ebpf_attachments, read_ebpf_active_report},
+    owned_singbox_pids, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
+    write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
@@ -469,7 +471,17 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+pub(crate) fn validate_restart_target(target: &str) -> Result<(), String> {
+    if matches!(target, "current" | "sing-box" | "singbox") {
+        Ok(())
+    } else {
+        Err("Usage: cli service restart [current|sing-box]".to_string())
+    }
+}
+
 fn restart(app: &App, target: &str) -> Result<(), String> {
+    // Rejected targets must not stop the watcher or acquire a lifecycle lock.
+    validate_restart_target(target)?;
     quiesce_config_apply(app)?;
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
     restart_with_options_unlocked(app, target, false)
@@ -488,15 +500,13 @@ fn restart_with_options_unlocked(
     target: &str,
     preserve_config_apply: bool,
 ) -> Result<(), String> {
-    stop_all_direct(app, preserve_config_apply)?;
+    validate_restart_target(target)?;
     let target = if target == "current" {
         selected_core(app)
     } else {
         target.to_string()
     };
-    if !matches!(target.as_str(), "sing-box" | "singbox") {
-        return Err("Usage: cli service restart [current|sing-box]".to_string());
-    }
+    stop_all_direct(app, preserve_config_apply)?;
     run_magicnet_function(app, restart_command(target.as_str()))
 }
 
@@ -1246,21 +1256,14 @@ fn transparent_status(app: &App) -> Result<(), String> {
             .filter(|value| matches!(value.as_str(), "ok" | "failed"))
             .unwrap_or_else(|| "unknown".to_string())
     };
-    let probe_fresh = effective != "ebpf"
-        || !running
-        || run_magicnet_function(app, "magicnet_ebpf_refresh_active_report").is_ok();
-    let probe_report = probe_fresh
-        .then(|| fs::read_to_string(app.moddir.join(TRANSPARENT_PROBE_REPORT)).ok())
-        .flatten()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
     let local_expected = matches!(ebpf_mode, "local" | "hybrid");
     let shared_expected = matches!(ebpf_mode, "shared" | "hybrid");
     let attachments = (effective == "ebpf" && running)
         .then(|| {
-            probe_report.as_ref().map(|report| {
+            read_ebpf_active_report(app).ok().map(|report| {
                 inspect_ebpf_attachments(
                     app,
-                    report,
+                    &report,
                     local_expected,
                     cgroup_path,
                     &network,

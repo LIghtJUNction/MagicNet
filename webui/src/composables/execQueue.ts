@@ -2,6 +2,7 @@ import { t } from "@/i18n";
 import { ExecTimeoutError } from "../utils.ts";
 
 export type QueueDepthListener = (depth: number) => void;
+export type ExecAccess = "read" | "write";
 
 type QueuedTask = {
   deadline: number;
@@ -74,5 +75,32 @@ export class SerialExecQueue {
       job.run();
       return;
     }
+  }
+}
+
+/**
+ * Keep one observation and one mutation in flight at most. Only reviewed
+ * read-only callers opt in; arbitrary shell commands and machine mutations
+ * default to the write lane. Each lane retains its slot until native exit,
+ * including after a caller timeout, so polling cannot unlock another write.
+ */
+export class ReadWriteExecQueue {
+  private readonly readers: SerialExecQueue;
+  private readonly writers: SerialExecQueue;
+
+  public constructor(onDepthChange: QueueDepthListener = () => {}) {
+    const notify = () => onDepthChange(this.depth);
+    this.readers = new SerialExecQueue(notify);
+    this.writers = new SerialExecQueue(notify);
+  }
+
+  public get depth(): number {
+    return this.readers.depth + this.writers.depth;
+  }
+
+  public enqueue<T>(
+    task: () => Promise<T>, timeoutMs: number, label: string, access: ExecAccess = "write",
+  ): Promise<T> {
+    return (access === "read" ? this.readers : this.writers).enqueue(task, timeoutMs, label);
   }
 }

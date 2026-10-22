@@ -11,8 +11,8 @@ use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
 use crate::{
     clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
-    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, run_magicnet_function,
-    singbox_pid_summary, App,
+    ebpf_runtime::{inspect_ebpf_attachments, read_ebpf_active_report},
+    mcp, pid_summary, singbox_pid_summary, App,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -526,9 +526,18 @@ fn read_only_command_result_with_timeout(
     args: &[&str],
     timeout: Duration,
 ) -> ReadOnlyCommandResult {
+    read_only_command_result_with_limit(program, args, timeout, 4096)
+}
+
+fn read_only_command_result_with_limit(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+    stream_limit: usize,
+) -> ReadOnlyCommandResult {
     let mut command = Command::new(program);
     command.args(args);
-    let output = match crate::run_bounded_command(command, timeout, 4096) {
+    let output = match crate::run_bounded_command(command, timeout, stream_limit) {
         Ok(output) => output,
         Err(err) => {
             return ReadOnlyCommandResult {
@@ -1096,12 +1105,7 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
     };
     let attachment = probe_ok
         .then(|| {
-            run_magicnet_function(app, "magicnet_ebpf_refresh_active_report")
-                .map_err(|_| "refresh-failed".to_string())?;
-            let text = fs::read_to_string(app.moddir.join(".state/transparent-ebpf/probe.json"))
-                .map_err(|_| "report-unreadable".to_string())?;
-            let report =
-                serde_json::from_str::<Value>(&text).map_err(|_| "report-invalid".to_string())?;
+            let report = read_ebpf_active_report(app)?;
             Ok::<_, String>(inspect_ebpf_attachments(
                 app,
                 &report,
@@ -1325,7 +1329,10 @@ fn ebpf_capability_probe(
     interface: Option<&str>,
 ) -> ReadOnlyCommandResult {
     let args = ebpf_probe_args(mode, cgroup, interface);
-    read_only_command_result_with_timeout(program, &args, Duration::from_secs(3))
+    // The shipped probe's findings alone exceed the generic diagnostic 4 KiB
+    // limit. Bound the full JSON report without treating normal truncation of
+    // its human-facing summary as a failed kernel capability check.
+    read_only_command_result_with_limit(program, &args, Duration::from_secs(3), 512 * 1024)
 }
 
 fn ebpf_probe_args<'a>(
@@ -2018,9 +2025,10 @@ fn looks_like_hostname(value: &str) -> bool {
 #[cfg(test)]
 mod mode_aware_tests {
     use super::{
-        dataplane_check, dns_capture_rule_summary, ebpf_probe_args, effective_ebpf_config,
-        network_policy_check, parse_transparent_mode, read_only_command_result_with_timeout,
-        traffic_loop_guard_check, transparent_mode, TransparentMode, TransparentModeSource,
+        dataplane_check, dns_capture_rule_summary, ebpf_capability_probe, ebpf_probe_args,
+        effective_ebpf_config, network_policy_check, parse_transparent_mode,
+        read_only_command_result_with_timeout, traffic_loop_guard_check, transparent_mode,
+        TransparentMode, TransparentModeSource,
     };
     use crate::App;
     use serde_json::json;
@@ -2151,6 +2159,78 @@ mod mode_aware_tests {
         );
 
         assert!(!result.success);
+    }
+
+    fn capability_probe_fixture(root: &std::path::Path, report: &str, completion: &str) -> PathBuf {
+        let binary = root.join("bin/sing-box");
+        fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        fs::write(root.join("bin/report.json"), report).unwrap();
+        fs::write(
+            &binary,
+            format!("#!/bin/sh\ncat \"${{0%/*}}/report.json\"\n{completion}\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+        binary
+    }
+
+    #[test]
+    fn ebpf_capability_accepts_complete_json_above_four_kib() {
+        let root = test_root("ebpf-full-capability").unwrap();
+        // The shipped local TCP+UDP probe emits 23 findings. Its pretty JSON
+        // already exceeds 4 KiB before any active programs are enumerated.
+        let finding = json!({
+            "status": "PASS", "scope": "local", "importance": "required",
+            "feature": "cgroup UDP6 recvmsg attach type",
+            "detail": "Required to restore the original IPv6 or IPv4-mapped UDP peer. Upstream Linux added recvmsg hooks in 5.2."
+        });
+        let report = serde_json::to_string_pretty(&json!({
+            "findings": vec![finding; 23], "active_programs": [], "result": "supported"
+        }))
+        .unwrap();
+        assert!(report.len() > 4096 && report.len() < 512 * 1024);
+        let binary = capability_probe_fixture(&root, &report, "exit 0");
+        let binary = binary.to_str().unwrap();
+        let result = ebpf_capability_probe(binary, "local", None, None);
+        assert!(
+            result.success,
+            "complete capability JSON was rejected: {}",
+            result.text
+        );
+
+        let generic = read_only_command_result_with_timeout(binary, &[], Duration::from_secs(1));
+        assert!(
+            !generic.success,
+            "other diagnostics must retain their smaller output bound"
+        );
+        assert!(generic.text.contains("[output truncated]"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ebpf_capability_still_rejects_oversized_valid_json() {
+        let root = test_root("ebpf-oversized-capability").unwrap();
+        let report = format!("{{\"active_programs\":[]}}{}", " ".repeat(512 * 1024));
+        let binary = capability_probe_fixture(&root, &report, "exit 0");
+        let result = ebpf_capability_probe(binary.to_str().unwrap(), "local", None, None);
+        assert!(!result.success);
+        assert!(result.text.contains("[output truncated]"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ebpf_capability_valid_json_does_not_hide_command_failure_or_timeout() {
+        let root = test_root("ebpf-failed-capability").unwrap();
+        for completion in ["exit 7", "exec sleep 10"] {
+            let binary = capability_probe_fixture(
+                &root,
+                r#"{"active_programs":[],"result":"supported"}"#,
+                completion,
+            );
+            let result = ebpf_capability_probe(binary.to_str().unwrap(), "local", None, None);
+            assert!(!result.success, "{completion}: {}", result.text);
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

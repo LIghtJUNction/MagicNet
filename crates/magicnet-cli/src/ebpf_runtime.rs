@@ -21,6 +21,53 @@ const MAX_QUERY_PROGRAMS: usize = 128;
 const MAX_FDINFO_FILES: usize = 2048;
 const MAX_FDINFO_BYTES: usize = 8192;
 const MAX_TC_OUTPUT_BYTES: usize = 16 * 1024;
+const ACTIVE_REPORT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_ACTIVE_REPORT_BYTES: usize = 512 * 1024;
+
+/// Observe the shipped core without publishing lifecycle recovery evidence.
+/// Its status probes load and close temporary, unattached BPF objects and only
+/// adjust the child process's memlock limit; they do not attach/pin programs or
+/// change cgroups, qdiscs, routes or sysctls. Keep stdout in memory so concurrent
+/// observations cannot replace (or delete on failure) the lifecycle report.
+pub(crate) fn read_ebpf_active_report(app: &App) -> Result<Value, String> {
+    read_ebpf_active_report_with_timeout(app, ACTIVE_REPORT_TIMEOUT)
+}
+
+fn read_ebpf_active_report_with_timeout(app: &App, timeout: Duration) -> Result<Value, String> {
+    let mut command = Command::new(app.moddir.join("bin/sing-box"));
+    command.args([
+        "tools",
+        "ebpf",
+        "status",
+        "--mode",
+        "local",
+        "--network",
+        "tcp,udp",
+        "--json",
+    ]);
+    crate::process::sanitize_cli_child_environment(&mut command);
+    let output = run_bounded_command(command, timeout, MAX_ACTIVE_REPORT_BYTES)
+        .map_err(|_| "active-status-unavailable".to_string())?;
+    if output.timed_out {
+        return Err("active-status-timeout".to_string());
+    }
+    if output.truncated {
+        return Err("active-status-output-limit".to_string());
+    }
+    if !output.status.is_some_and(|status| status.success()) {
+        return Err("active-status-failed".to_string());
+    }
+    let report: Value =
+        serde_json::from_slice(&output.stdout).map_err(|_| "active-report-invalid".to_string())?;
+    if !report.get("active_programs").is_some_and(Value::is_array)
+        || report
+            .get("active_state_error")
+            .is_some_and(|error| !error.is_null() && !error.is_string())
+    {
+        return Err("active-report-invalid".to_string());
+    }
+    Ok(report)
+}
 
 #[repr(C)]
 #[derive(Default)]
@@ -341,8 +388,117 @@ fn parse_tc_program_ids(text: &str, expected_name: &str) -> Vec<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{managed_program_matches, parse_fdinfo_program_ids, parse_tc_program_ids};
+    use super::{
+        managed_program_matches, parse_fdinfo_program_ids, parse_tc_program_ids,
+        read_ebpf_active_report_with_timeout,
+    };
+    use crate::test_support::{temp_app, TempApp};
     use std::collections::{BTreeMap, BTreeSet};
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    const VALID_REPORT: &[u8] = br#"{"active_programs":[],"active_state_error":null}"#;
+
+    fn active_report_fixture(stdout: &[u8], after_output: &str) -> TempApp {
+        let app = temp_app();
+        let bin = app.moddir.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(bin.join("report.json"), stdout).unwrap();
+        let core = bin.join("sing-box");
+        fs::write(
+            &core,
+            format!("#!/bin/sh\n/bin/cat \"${{0%/*}}/report.json\"\n{after_output}\n"),
+        )
+        .unwrap();
+        fs::set_permissions(core, fs::Permissions::from_mode(0o700)).unwrap();
+        app
+    }
+
+    #[test]
+    fn active_report_requires_successful_exit_even_with_valid_stdout() {
+        for status in [0, 7] {
+            let app = active_report_fixture(VALID_REPORT, &format!("exit {status}"));
+            let result = read_ebpf_active_report_with_timeout(&app, Duration::from_secs(2));
+            if status == 0 {
+                assert_eq!(
+                    result.unwrap(),
+                    serde_json::from_slice::<serde_json::Value>(VALID_REPORT).unwrap()
+                );
+            } else {
+                assert_eq!(result.unwrap_err(), "active-status-failed");
+            }
+        }
+    }
+
+    #[test]
+    fn active_report_timeout_cannot_accept_already_emitted_valid_json() {
+        let app =
+            active_report_fixture(VALID_REPORT, "printf sent > \"${0%/*}/sent\"\nexec sleep 5");
+        let started = Instant::now();
+        let result = read_ebpf_active_report_with_timeout(&app, Duration::from_secs(1));
+        assert!(
+            app.moddir.join("bin/sent").is_file(),
+            "fixture did not emit its valid report before the deadline"
+        );
+        assert_eq!(result.unwrap_err(), "active-status-timeout");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "observer waited for the timed-out producer to exit normally"
+        );
+    }
+
+    #[test]
+    fn active_report_enforces_the_512_kib_output_boundary() {
+        let mut report = serde_json::json!({"active_programs": [], "padding": ""});
+        let overhead = serde_json::to_vec(&report).unwrap().len();
+        for bytes in [512 * 1024, 512 * 1024 + 1] {
+            report["padding"] = serde_json::json!("x".repeat(bytes - overhead));
+            let body = serde_json::to_vec(&report).unwrap();
+            assert_eq!(body.len(), bytes);
+            let app = active_report_fixture(&body, "exit 0");
+            let result = read_ebpf_active_report_with_timeout(&app, Duration::from_secs(2));
+            if bytes == 512 * 1024 {
+                assert_eq!(result.unwrap(), report);
+            } else {
+                assert_eq!(result.unwrap_err(), "active-status-output-limit");
+            }
+        }
+    }
+
+    #[test]
+    fn active_report_rejects_invalid_json_and_malformed_report_fields() {
+        for body in [
+            "",
+            "not JSON",
+            "null",
+            "[]",
+            "{}",
+            r#"{"active_programs":null}"#,
+            r#"{"active_programs":{}}"#,
+            r#"{"active_programs":"program"}"#,
+            r#"{"active_programs":7}"#,
+            r#"{"active_programs":[],"active_state_error":true}"#,
+            r#"{"active_programs":[],"active_state_error":[]}"#,
+            r#"{"active_programs":[]} trailing data"#,
+        ] {
+            let app = active_report_fixture(body.as_bytes(), "exit 0");
+            assert_eq!(
+                read_ebpf_active_report_with_timeout(&app, Duration::from_secs(2)).unwrap_err(),
+                "active-report-invalid",
+                "body={body:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn active_report_missing_binary_is_unavailable() {
+        let app = temp_app();
+        assert_eq!(
+            read_ebpf_active_report_with_timeout(&app, Duration::from_secs(2)).unwrap_err(),
+            "active-status-unavailable"
+        );
+    }
 
     #[test]
     fn fdinfo_parser_collects_program_and_link_program_ids() {

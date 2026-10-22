@@ -1079,10 +1079,23 @@ magicnet_hotspot_offload_enable() {
     unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
 }
 
-magicnet_hotspot_offload_restore() (
+magicnet_hotspot_offload_restore() {
+    magicnet_hotspot_offload_restore_impl required
+}
+
+# Only stopped lifecycle finalization may reuse cleanup completed in the same
+# locked operation. Independent callers always use the full restore above.
+magicnet_hotspot_offload_restore_after_route_cleanup() {
+    magicnet_hotspot_offload_restore_impl complete
+}
+
+magicnet_hotspot_offload_restore_impl() (
+    _hotspot_cleanup="${1:-}"
+    case "$_hotspot_cleanup" in required | complete) ;; *) return 2 ;; esac
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
     [ ! -L "$_hotspot_state" ] || return 1
     [ -e "$_hotspot_state" ] || {
+        [ "$_hotspot_cleanup" != complete ] || return 0
         magicnet_hotspot_route_cleanup
         return $?
     }
@@ -1104,7 +1117,9 @@ magicnet_hotspot_offload_restore() (
         magicnet_warn "Tether offload ownership changed; rollback state retained."
         return 1
     fi
-    magicnet_hotspot_route_cleanup || return 1
+    if [ "$_hotspot_cleanup" = required ]; then
+        magicnet_hotspot_route_cleanup || return 1
+    fi
     if [ "$_hotspot_current" != "$_hotspot_expected" ]; then
         case "$_hotspot_previous" in
         unset) settings delete global tether_offload_disabled >/dev/null 2>&1 || return 1 ;;
