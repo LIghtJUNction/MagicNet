@@ -3,7 +3,7 @@
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{symlink, FileTypeExt, MetadataExt, PermissionsExt};
 use std::process::Command;
 
 use super::*;
@@ -42,6 +42,171 @@ fn stale_update_lock_is_not_stolen_when_proc_identity_is_indeterminate() {
     fs::write(&stat, test_proc_stat(4242, 'S', 999)).expect("write reused proc stat");
     cleanup_stale_update_lock_from_proc(&app, &proc_root);
     assert!(!lock.exists(), "PID reuse did not release stale lock");
+}
+
+#[test]
+fn subscription_metadata_guard_unlocks_before_inherited_descriptor_closes() {
+    let app = temp_app();
+    let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
+    let guard = SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).unwrap();
+    // A dup shares the open-file description exactly as a concurrent fork
+    // does, even when both descriptors have CLOEXEC set.
+    let inherited = guard._file.try_clone().unwrap();
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_err());
+    drop(guard);
+    let successor = SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO)
+        .expect("a completed metadata operation must unlock despite inherited descriptors");
+    drop(inherited);
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_err());
+    drop(successor);
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_ok());
+}
+
+#[test]
+fn subscription_metadata_guard_serializes_rust_and_shell_writers() {
+    let app = temp_app();
+    let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
+    let guard_path = lock.with_file_name("subscription-update.lock.guard");
+    let guard = SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).unwrap();
+    assert_ne!(
+        unsafe { libc::fcntl(guard._file.as_raw_fd(), libc::F_GETFD) } & libc::FD_CLOEXEC,
+        0,
+        "metadata flock must not leak into runtime children"
+    );
+    assert_eq!(fs::metadata(&guard_path).unwrap().mode() & 0o777, 0o600);
+    assert!(SubscriptionSourceGuard::acquire(&app).is_err());
+    assert!(!lock.exists(), "a blocked writer published its directory");
+
+    fs::create_dir(&lock).unwrap();
+    let owner = "999999:1:stale\n";
+    fs::write(lock.join("owner"), owner).unwrap();
+    cleanup_stale_update_lock_from_proc(&app, &app.moddir.join("missing-proc"));
+    assert_eq!(fs::read_to_string(lock.join("owner")).unwrap(), owner);
+
+    let shell = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../src/MagicNet/lib/magicnet/singbox_subscribe/update.sh");
+    let result = Command::new("bash")
+        .arg("-c")
+        .arg(
+            "error() { :; }; . \"$1\"; \
+             magicnet_singbox_update_lock_active && \
+             ! magicnet_singbox_update_lock_acquire",
+        )
+        .arg("subscription-guard-test")
+        .arg(shell)
+        .env("MODDIR", &app.moddir)
+        .status()
+        .unwrap();
+    assert!(
+        result.success(),
+        "shell did not honor the Rust metadata flock"
+    );
+    assert_eq!(fs::read_to_string(lock.join("owner")).unwrap(), owner);
+    let guard_inode = fs::metadata(&guard_path).unwrap().ino();
+    drop(guard);
+    let source = SubscriptionSourceGuard::acquire(&app).unwrap();
+    drop(source);
+    assert!(!lock.exists());
+    assert_eq!(fs::metadata(guard_path).unwrap().ino(), guard_inode);
+}
+
+#[test]
+fn subscription_lock_preserves_unknown_or_nonregular_owners() {
+    let app = temp_app();
+    let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
+    let owner = lock.join("owner");
+    fs::create_dir_all(&lock).unwrap();
+    let proc_root = app.moddir.join("test-proc");
+    for malformed in [
+        "broken",
+        "+4242:777:nonce",
+        "04242:777:nonce",
+        "0:777:nonce",
+        "4242:not-a-time:nonce",
+        "4242:777:",
+        "4242:777:nonce:extra",
+    ] {
+        fs::write(&owner, malformed).unwrap();
+        cleanup_stale_update_lock_from_proc(&app, &proc_root);
+        assert_eq!(fs::read_to_string(&owner).unwrap(), malformed);
+        assert!(SubscriptionSourceGuard::acquire(&app).is_err());
+    }
+    fs::write(&owner, "x".repeat(130)).unwrap();
+    cleanup_stale_update_lock_from_proc(&app, &proc_root);
+    assert!(owner.exists());
+    fs::remove_file(&owner).unwrap();
+
+    let outside = app.moddir.join("outside-owner");
+    fs::write(&outside, "999999:1:stale").unwrap();
+    symlink(&outside, &owner).unwrap();
+    cleanup_stale_update_lock_from_proc(&app, &proc_root);
+    assert!(owner.is_symlink());
+    fs::remove_file(&owner).unwrap();
+    let owner_c = CString::new(owner.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(owner_c.as_ptr(), 0o600) }, 0);
+    let started = Instant::now();
+    cleanup_stale_update_lock_from_proc(&app, &proc_root);
+    assert!(SubscriptionSourceGuard::acquire(&app).is_err());
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(fs::symlink_metadata(&owner).unwrap().file_type().is_fifo());
+    fs::remove_file(&owner).unwrap();
+
+    fs::create_dir_all(proc_root.join("4242")).unwrap();
+    for state in ['T', 't'] {
+        fs::write(&owner, "4242:777:paused\n").unwrap();
+        fs::write(
+            proc_root.join("4242/stat"),
+            test_proc_stat(4242, state, 777),
+        )
+        .unwrap();
+        cleanup_stale_update_lock_from_proc(&app, &proc_root);
+        assert!(owner.exists(), "a paused owner was stolen");
+    }
+}
+
+#[test]
+fn subscription_release_waits_for_metadata_and_preserves_replacement_owner() {
+    let app = temp_app();
+    let source = SubscriptionSourceGuard::acquire(&app).unwrap();
+    let lock = source.directory.clone();
+    let metadata = SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).unwrap();
+    let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+    let release = std::thread::spawn(move || {
+        drop(source);
+        finished_tx.send(()).unwrap();
+    });
+    assert!(finished_rx.recv_timeout(Duration::from_millis(75)).is_err());
+    assert!(lock.join("owner").exists());
+    fs::write(lock.join("owner"), "999999:1:replacement\n").unwrap();
+    drop(metadata);
+    finished_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    release.join().unwrap();
+    assert_eq!(
+        fs::read_to_string(lock.join("owner")).unwrap(),
+        "999999:1:replacement\n"
+    );
+}
+
+#[test]
+fn subscription_metadata_guard_rejects_nonregular_paths_without_blocking() {
+    let app = temp_app();
+    let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
+    fs::create_dir_all(lock.parent().unwrap()).unwrap();
+    let guard = lock.with_file_name("subscription-update.lock.guard");
+    let outside = app.moddir.join("outside-guard");
+    fs::write(&outside, "unchanged").unwrap();
+    symlink(&outside, &guard).unwrap();
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_err());
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "unchanged");
+    fs::remove_file(&guard).unwrap();
+    let guard_c = CString::new(guard.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(guard_c.as_ptr(), 0o600) }, 0);
+    let started = Instant::now();
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_err());
+    assert!(started.elapsed() < Duration::from_secs(1));
+    fs::remove_file(&guard).unwrap();
+    fs::create_dir(&guard).unwrap();
+    assert!(SubscriptionMetadataGuard::acquire(&lock, Duration::ZERO).is_err());
 }
 
 #[test]

@@ -851,6 +851,7 @@ magicnet_hotspot_route_status() (
     fi
     [ "$_hotspot_mode" = tun ] || { printf 'route_status=unknown\n'; return 0; }
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
+    _hotspot_pending_file="$(magicnet_hotspot_route_pending_file)"
     _hotspot_ready_rc=0
     magicnet_hotspot_tun_route_table_ready || _hotspot_ready_rc=$?
     case "$_hotspot_ready_rc" in
@@ -875,7 +876,7 @@ magicnet_hotspot_route_status() (
     # not turn that into a failed address query; retained ownership still needs
     # observation so a stale or interrupted installation cannot look clean.
     if [ -n "$_hotspot_pairs" ] || [ "$_hotspot_inventory_present" -ne 0 ] ||
-        [ -e "$(magicnet_hotspot_route_pending_file)" ] || [ -L "$(magicnet_hotspot_route_pending_file)" ]; then
+        [ -e "$_hotspot_pending_file" ] || [ -L "$_hotspot_pending_file" ]; then
         _hotspot_return_rc=0
         _hotspot_return_path="$(magicnet_hotspot_return_path)" || _hotspot_return_rc=$?
     fi
@@ -930,6 +931,19 @@ ${_hotspot_iface}"
     fi
     printf 'policy_rule_count=%s\n' "$_hotspot_rule_count"
     printf 'policy_rule_missing=%s\n' "$_hotspot_missing_rule_count"
+    _hotspot_pending_present=0
+    if [ -e "$_hotspot_pending_file" ] || [ -L "$_hotspot_pending_file" ]; then
+        _hotspot_pending_present=1
+        if magicnet_hotspot_route_journal_valid "$_hotspot_pending_file"; then
+            # A vanished downstream can still have rules from an interrupted
+            # install. The pending journal scopes observation, not active state.
+            _hotspot_pending_ifaces="$(awk -F'|' 'NF == 2 {print $2}' "$_hotspot_pending_file")"
+            _hotspot_observed_ifaces="${_hotspot_observed_ifaces}
+${_hotspot_pending_ifaces}"
+        else
+            _hotspot_rule_unknown=1
+        fi
+    fi
     _hotspot_observed_count=0
     _hotspot_duplicate_count=0
     if _hotspot_observed="$(magicnet_hotspot_observed_rules "$_hotspot_observed_ifaces")"; then
@@ -941,16 +955,20 @@ ${_hotspot_iface}"
         printf 'policy_rule_observed=unknown\npolicy_rule_duplicates=unknown\n'
     fi
     if ! magicnet_hotspot_proxy_enabled; then
-        if [ "$_hotspot_rule_unknown" -ne 0 ]; then
+        if [ "$_hotspot_rule_unknown" -ne 0 ] || [ "$_hotspot_discovery_error" -ne 0 ]; then
             printf 'route_status=unknown\n'
-        elif [ "$_hotspot_observed_count" -ne 0 ]; then
+        elif [ "$_hotspot_pending_present" -ne 0 ]; then
+            printf 'route_status=pending\n'
+        elif [ "$_hotspot_inventory_present" -ne 0 ] || [ "$_hotspot_observed_count" -ne 0 ]; then
             printf 'route_status=degraded\n'
         else
             printf 'route_status=disabled\n'
         fi
-    elif [ -e "$(magicnet_hotspot_route_pending_file)" ] || [ -L "$(magicnet_hotspot_route_pending_file)" ]; then
+    elif [ "$_hotspot_rule_unknown" -ne 0 ]; then
+        printf 'route_status=unknown\n'
+    elif [ "$_hotspot_pending_present" -ne 0 ]; then
         printf 'route_status=pending\n'
-    elif [ "$_hotspot_ready_rc" -gt 1 ] || [ "$_hotspot_rule_unknown" -ne 0 ] ||
+    elif [ "$_hotspot_ready_rc" -gt 1 ] ||
         [ "$_hotspot_return_rc" -gt 1 ]; then
         printf 'route_status=unknown\n'
     elif [ "$_hotspot_discovery_error" -ne 0 ]; then

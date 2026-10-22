@@ -4,9 +4,11 @@ import importlib.util
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -153,6 +155,56 @@ class CacheTests(unittest.TestCase):
         result = self.run_check('--timeout', '1', command=[sys.executable, '-c', 'import time; time.sleep(20)'])
         self.assertEqual(result, 124)
         self.assertFalse(list(self.root.glob('.cache/**/*.json')))
+
+    def test_interrupted_runner_reaps_child_and_never_caches_success(self):
+        # Run outside the unittest process so a broken signal handler cannot
+        # terminate the test runner. The child deliberately treats cancellation
+        # as a clean exit; that must never make the enclosing check successful.
+        child = ('import os, signal, sys, time; from pathlib import Path; '
+                 'signal.signal(signal.SIGINT, lambda *_: sys.exit(0)); '
+                 'signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); '
+                 'Path("count.tmp").write_text(str(os.getpid())); '
+                 'Path("count.tmp").rename("count"); time.sleep(30)')
+        bootstrap = (
+            'import importlib.util, sys; from pathlib import Path; '
+            f'spec=importlib.util.spec_from_file_location("cache", {CACHE.__file__!r}); '
+            'cache=importlib.util.module_from_spec(spec); spec.loader.exec_module(cache); '
+            f'cache.ROOT=Path({str(self.root)!r}); '
+            'cache.tool_fingerprint=lambda: {"tool":"fixture"}; '
+            f'sys.argv=["ci-test-cache.py","repo","signal-test","--",sys.executable,"-c",{child!r}]; '
+            'sys.exit(cache.main())'
+        )
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signum):
+                (self.root / 'count').unlink(missing_ok=True)
+                child_pid = None
+                process = subprocess.Popen([sys.executable, '-c', bootstrap],
+                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                try:
+                    deadline = time.monotonic() + 5
+                    while not (self.root / 'count').exists() and time.monotonic() < deadline:
+                        if process.poll() is not None:
+                            break
+                        time.sleep(0.01)
+                    self.assertTrue((self.root / 'count').exists(), 'check child did not start')
+                    child_pid = int((self.root / 'count').read_text())
+                    process.send_signal(signum)
+                    output = process.communicate(timeout=5)[0]
+                    self.assertEqual(process.returncode, 128 + signum, output)
+                    self.assertIn('[ci-test] FAIL signal-test', output)
+                    self.assertNotIn('[ci-test] PASS', output)
+                    self.assertFalse(list(self.root.glob('.cache/**/*.json')))
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(child_pid, 0)
+                finally:
+                    if child_pid is not None:
+                        try:
+                            os.killpg(child_pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate(timeout=5)
 
     def test_missing_or_modified_output_rebuilds(self):
         command = [sys.executable, '-c', self.command[2] +

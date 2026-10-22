@@ -20,7 +20,9 @@ magicnet_supervisor_orphan_pids() (
     *) return 1 ;;
     esac
 
-    _mso_ps=$(ps -A -o pid=,args= 2>/dev/null || true)
+    # A failed ps may still emit a partial list. It cannot prove that no
+    # managed process remains, nor authorize cleanup of only the visible set.
+    _mso_ps=$(ps -A -o pid=,args= 2>/dev/null) || return 2
     if [ -n "$_mso_ps" ]; then
         _mso_candidates=$(printf '%s\n' "$_mso_ps" |
             awk -v root="$MODDIR" 'index($0, root) { print $1 }')
@@ -97,6 +99,13 @@ magicnet_supervisor_kill_orphans() (
         kill -9 "$_msko_pid" 2>/dev/null || true
     done
     sleep 0.05
+    if magicnet_supervisor_orphan_pids "$_msko_target" "$_msko_keep_pid" >/dev/null; then
+        return 1
+    else
+        _msko_rc=$?
+    fi
+    [ "$_msko_rc" -ne 2 ] || return 2
+    return 0
 )
 
 set_i18n "MAGICNET_FSWATCH_START_FAILED" \
@@ -389,55 +398,6 @@ magicnet_fswatch_path() {
     printf '%s\n' "${MODDIR}/.config"
 }
 
-# Prefer packaged or Android system flock. Host fixtures may still use PATH.
-magicnet_trusted_flock() {
-    if [ -n "${MODDIR:-}" ] && [ -x "${MODDIR}/bin/flock" ]; then
-        printf '%s\n' "${MODDIR}/bin/flock"
-        return 0
-    fi
-    if [ -x /system/bin/flock ]; then
-        printf '%s\n' /system/bin/flock
-        return 0
-    fi
-    magicnet_android_runtime && return 1
-    command -v flock 2>/dev/null || return 1
-}
-
-magicnet_fswatch_busybox_bin() (
-    _mfb_busybox_bin="$(magicnet_trusted_busybox_override "${KAM_FSWATCH_BUSYBOX_BIN:-}" 2>/dev/null || true)"
-    if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
-        "$_mfb_busybox_bin" flock --help >/dev/null 2>&1; then
-        printf '%s\n' "$_mfb_busybox_bin"
-        return 0
-    fi
-
-    # Root solutions keep their private BusyBox in different fixed locations.
-    # Do not rely on the lifecycle shell exporting those directories in PATH.
-    for _mfb_candidate in \
-        /data/adb/ap/bin/busybox \
-        /data/adb/ksu/bin/busybox \
-        /data/adb/magisk/busybox \
-        "${MODDIR}/bin/busybox" \
-        "${MODDIR}/system/bin/busybox"; do
-        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
-            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
-            printf '%s\n' "$_mfb_candidate"
-            return 0
-        fi
-    done
-
-    # Host fixtures may still resolve BusyBox from PATH. Android must not.
-    if ! magicnet_android_runtime; then
-        _mfb_candidate="$(command -v busybox 2>/dev/null || true)"
-        if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
-            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
-            printf '%s\n' "$_mfb_candidate"
-            return 0
-        fi
-    fi
-    return 1
-)
-
 magicnet_fswatch_command() {
     printf '%s\n' "[ ! -f '$(magicnet_json_escape "$MODDIR")/disable' ] && [ ! -f '$(magicnet_json_escape "$MODDIR")/remove' ] || exit 0; MODDIR='$(magicnet_json_escape "$MODDIR")' '$(magicnet_json_escape "$MODDIR")/cli' config apply >/dev/null 2>&1"
 }
@@ -448,7 +408,7 @@ magicnet_fswatch_prune_names() {
     # Keep the mandatory exclusions even when the user customizes extra ones.
     printf '%s\n' \
         "${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
-        'sing-box/.magicnet-staging sing-box/config.json sing-box/config.json.new sing-box/config.json.route.new' \
+        'sing-box/.magicnet-staging sing-box/config.json sing-box/config.json.bak sing-box/config.json.new sing-box/config.json.route.new' \
         'sing-box/tailscale-auth.json.new sing-box/tailscale-auth.json.merged' \
         'sing-box/config.json.tailscale.new sing-box/config.json.tailscale-auth.new sing-box/config.json.tailscale-scrub.new' \
         'sing-box/config.json.magicnet-selectors.new sing-box/config.json.magicnet-block.new sing-box/config.json.zashboard.new' \
@@ -1434,6 +1394,8 @@ magicnet_supervisors_stop() {
             [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
         }
     fi
-    [ "$_mss_stop_rc" -ne 0 ] || magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
+    if [ "$_mss_stop_rc" -eq 0 ]; then
+        magicnet_hotspot_route_cleanup || _mss_stop_rc=$?
+    fi
     return "$_mss_stop_rc"
 }

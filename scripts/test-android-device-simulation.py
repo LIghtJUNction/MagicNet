@@ -771,7 +771,9 @@ class TunControlTests(unittest.TestCase):
 
 class InvalidConfigTests(unittest.TestCase):
     def device(self, reject_rc=1, changed=False, deny_valid=False,
-               core_reject_rc=1, deny_core_valid=False):
+               core_reject_rc=1, deny_core_valid=False,
+               reject_stderr='[error] config validation failed\nmalformed fixture',
+               valid_save_result=None, cleanup_result=None):
         calls = []
         reads = 0
         saves = 0
@@ -785,9 +787,9 @@ class InvalidConfigTests(unittest.TestCase):
                 if saves == 1:
                     if deny_valid:
                         raise RuntimeError('valid payload path denied')
-                    return cp()
+                    return valid_save_result if valid_save_result is not None else cp()
                 self.assertIs(options.get('check'), False)
-                return cp(rc=reject_rc)
+                return cp('', reject_rc, reject_stderr)
             if '/bin/sing-box check' in command:
                 validations += 1
                 if validations == 1:
@@ -799,6 +801,10 @@ class InvalidConfigTests(unittest.TestCase):
             if 'config-editor get' in command:
                 reads += 1
                 return cp(json.dumps({'fixture': 2 if changed and reads > 1 else 1}))
+            if command.startswith('rm -f ') and cleanup_result is not None:
+                if isinstance(cleanup_result, Exception):
+                    raise cleanup_result
+                return cleanup_result
             return cp()
 
         return Mock(kshell=Mock(side_effect=shell)), calls
@@ -816,7 +822,7 @@ class InvalidConfigTests(unittest.TestCase):
         self.assertLess(malformed, validators[1])
         self.assertLess(validators[1], saves[1])
         self.assertEqual(calls[validators[0]], calls[validators[1]])
-        self.assertEqual(report, {'core_rejection_exit_code': 1,
+        self.assertEqual(report, {'status': 'passed', 'core_rejection_exit_code': 1,
                                   'save_rejection_exit_code': 1, 'active_config_preserved': True})
         self.assertTrue(calls[-1].startswith('rm -f '))
         self.assertEqual(device.ready.call_count, 2)
@@ -836,11 +842,22 @@ class InvalidConfigTests(unittest.TestCase):
                     SIM.invalid_config_rollback(device)
                 self.assertTrue(calls[-1].startswith('rm -f '))
 
+    def test_busy_or_permission_errors_cannot_count_as_validator_rejection(self):
+        for error in ('[error] config apply is still busy after 2000 ms; retry the lifecycle action',
+                      '[error] open private payload: Permission denied',
+                      '[error] unexpected failure\nconfig validation failed'):
+            with self.subTest(error=error):
+                device, calls = self.device(reject_stderr=error)
+                with self.assertRaises(RuntimeError):
+                    SIM.invalid_config_rollback(device)
+                self.assertEqual(sum('config-editor save-file' in c for c in calls), 2)
+                self.assertTrue(calls[-1].startswith('rm -f '))
+
     def test_abnormal_core_control_fails_even_when_cli_would_return_one(self):
         for code in (0, 2, 101, 124, 126, 127, 134, 137, 139, 255, -6, -11):
             with self.subTest(code=code):
                 device, calls = self.device(core_reject_rc=code)
-                with self.assertRaisesRegex(RuntimeError, 'core validator'):
+                with self.assertRaisesRegex(RuntimeError, 'invalid_core_check'):
                     SIM.invalid_config_rollback(device)
                 self.assertEqual(sum('config-editor save-file' in c for c in calls), 1)
                 self.assertTrue(calls[-1].startswith('rm -f '))
@@ -857,6 +874,60 @@ class InvalidConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'changed the active configuration'):
             SIM.invalid_config_rollback(device)
         self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_failed_positive_save_retains_private_bounded_evidence_without_retry(self):
+        result = cp('private-config', 1,
+                    '[error] config apply is still busy after 2000 ms; retry the lifecycle action\n'
+                    'private-error' * 100000)
+        device, calls = self.device(valid_save_result=result)
+        evidence = {}
+        with self.assertRaisesRegex(RuntimeError, 'valid_save.*config_apply_busy') as error:
+            SIM.invalid_config_rollback(device, evidence)
+        self.assertEqual(evidence['status'], 'failed')
+        failure = evidence['failure']
+        self.assertEqual(failure['operation'], 'valid_save')
+        self.assertEqual(failure['exit_code'], 1)
+        self.assertEqual(failure['kind'], 'config_apply_busy')
+        self.assertTrue(failure['stderr_bytes_capped'])
+        self.assertLessEqual(failure['stderr_bytes'], 1024 * 1024)
+        self.assertNotIn('private', json.dumps(evidence) + str(error.exception))
+        self.assertEqual(sum('config-editor save-file' in c for c in calls), 1)
+        self.assertFalse(any('printf "{"' in c for c in calls))
+        self.assertIn('--json service status', calls[-2])
+        self.assertTrue(calls[-1].startswith('rm -f '))
+
+    def test_cleanup_failure_cannot_erase_primary_failure_or_count_as_pass(self):
+        for rejected_first in (False, True):
+            with self.subTest(rejected_first=rejected_first):
+                device, _ = self.device(
+                    valid_save_result=cp('', 1, '[error] private-primary') if rejected_first else None,
+                    cleanup_result=cp('private-output', 1, 'private-cleanup'))
+                evidence = {}
+                expected = 'valid_save' if rejected_first else 'remove_payload'
+                with self.assertRaisesRegex(RuntimeError, expected):
+                    SIM.invalid_config_rollback(device, evidence)
+                self.assertEqual(evidence['status'], 'failed')
+                self.assertEqual(evidence['cleanup_failure']['operation'], 'remove_payload')
+                self.assertNotIn('private', json.dumps(evidence))
+                if rejected_first:
+                    self.assertEqual(evidence['failure']['operation'], 'valid_save')
+
+    def test_cleanup_exception_retains_primary_failure_and_discards_private_details(self):
+        for rejected_first in (False, True):
+            with self.subTest(rejected_first=rejected_first):
+                device, _ = self.device(
+                    valid_save_result=cp('', 1, '[error] private-primary') if rejected_first else None,
+                    cleanup_result=OSError('private transport diagnostic'))
+                evidence = {}
+                expected = 'valid_save' if rejected_first else 'remove_payload'
+                with self.assertRaisesRegex(RuntimeError, expected) as error:
+                    SIM.invalid_config_rollback(device, evidence)
+                self.assertEqual(evidence['status'], 'failed')
+                self.assertEqual(evidence['cleanup_failure'], {
+                    'operation': 'remove_payload', 'kind': 'command_exception'})
+                self.assertNotIn('private', json.dumps(evidence) + str(error.exception))
+                if rejected_first:
+                    self.assertEqual(evidence['failure']['operation'], 'valid_save')
 
 
 class UpgradeFailureContextTests(unittest.TestCase):

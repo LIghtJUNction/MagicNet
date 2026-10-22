@@ -21,7 +21,7 @@ const START_KERNEL_COMMAND: &str =
 const PREPARE_NETWORK_FOR_STOP_COMMAND: &str = "magicnet_prepare_network_for_core_stop";
 const RESTORE_NETWORK_AFTER_FAILED_STOP_COMMAND: &str = "magicnet_after_kernel_start_unlocked";
 const REPAIR_COMMAND: &str =
-    "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
+    "magicnet_apply_runtime_config && MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const TRANSPARENT_CONFIG: &str = ".config/sing-box/config.json";
@@ -764,19 +764,21 @@ fn supervisor_target(app: &App, target: &str, action: &str) -> Result<(), String
     match (target, action) {
         ("all", "start") => run_magicnet_function(app, "magicnet_supervisors_start"),
         ("all", "stop") => run_magicnet_function(app, "magicnet_supervisors_stop"),
-        ("all", "restart") => {
-            run_magicnet_function(app, "magicnet_supervisors_stop; magicnet_supervisors_start")
-        }
+        ("all", "restart") => run_magicnet_function(
+            app,
+            "magicnet_supervisors_stop && magicnet_supervisors_start",
+        ),
         ("fswatch", "start") => run_magicnet_function(app, "magicnet_fswatch_start"),
         ("fswatch", "stop") => run_magicnet_function(app, "magicnet_fswatch_stop"),
         ("fswatch", "restart") => {
-            run_magicnet_function(app, "magicnet_fswatch_stop; magicnet_fswatch_start")
+            run_magicnet_function(app, "magicnet_fswatch_stop && magicnet_fswatch_start")
         }
         ("wifi-policy", "start") => run_magicnet_function(app, "magicnet_wifi_policy_start"),
         ("wifi-policy", "stop") => run_magicnet_function(app, "magicnet_wifi_policy_stop"),
-        ("wifi-policy", "restart") => {
-            run_magicnet_function(app, "magicnet_wifi_policy_stop; magicnet_wifi_policy_start")
-        }
+        ("wifi-policy", "restart") => run_magicnet_function(
+            app,
+            "magicnet_wifi_policy_stop && magicnet_wifi_policy_start",
+        ),
         _ => Err(
             "Usage: cli supervisor {status|start|stop|restart} [fswatch|wifi-policy|all]"
                 .to_string(),

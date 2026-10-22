@@ -103,3 +103,53 @@ unset MAGICNET_TEST_FAIL_PHASE_WRITE
 }
 
 printf '%s\n' 'subscription transaction phase safety test passed'
+
+# A corrupt generation identifier is metadata, never a path for recursive
+# cleanup. Reject it before changing the active config, work, or source files.
+GENERATION_ROOT="$MODDIR/.state/sing-box/subscription-generations"
+UNRELATED_DIR="$MODDIR/.state/sing-box/unrelated-data"
+mkdir -p "$GENERATION_ROOT" "$UNRELATED_DIR"
+printf '%s\n' preserve-me >"$UNRELATED_DIR/marker"
+printf '%s\n' active-local >"$MODDIR/.config/sing-box/subscription.local"
+for invalid_generation in '../unrelated-data' . .. 'invalid token' "$(printf '%0129d' 0)"; do
+    rm -rf "$TRANSACTION_DIR"
+    mkdir -p "$TRANSACTION_DIR/old-work"
+    : >"$TRANSACTION_DIR/had-config"
+    : >"$TRANSACTION_DIR/had-work"
+    : >"$TRANSACTION_DIR/had-url"
+    : >"$TRANSACTION_DIR/had-local"
+    printf '%s\n' old-config >"$TRANSACTION_DIR/old-config"
+    printf '%s\n' old-work >"$TRANSACTION_DIR/old-work/marker"
+    printf '%s\n' old-url >"$TRANSACTION_DIR/old-url"
+    printf '%s\n' old-local >"$TRANSACTION_DIR/old-local"
+    printf '%s\n' "$invalid_generation" >"$TRANSACTION_DIR/generation-id"
+    if magicnet_singbox_transaction_reconcile; then
+        printf '%s\n' 'transaction recovery accepted an invalid generation identifier' >&2
+        exit 1
+    fi
+    test "$(cat "$MODDIR/.config/sing-box/config.json")" = active-config
+    test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = active-work
+    test "$(cat "$MODDIR/.config/sing-box/subscription.url")" = active-url
+    test "$(cat "$MODDIR/.config/sing-box/subscription.local")" = active-local
+    test "$(cat "$UNRELATED_DIR/marker")" = preserve-me
+    test -d "$TRANSACTION_DIR"
+done
+
+# A valid interrupted generation still restores its backup and removes only
+# its own staged files. The malformed journal can be retried after correction.
+printf '%s\n' journal-fixture >"$TRANSACTION_DIR/generation-id"
+mkdir -p "$GENERATION_ROOT/journal-fixture" "$GENERATION_ROOT/unrelated-generation"
+: >"$MODDIR/.config/sing-box/config.json.candidate-journal-fixture"
+: >"$MODDIR/.config/sing-box/config.json.candidate-journal-fixture.new"
+magicnet_singbox_transaction_reconcile
+test "$(cat "$MODDIR/.config/sing-box/config.json")" = old-config
+test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
+test "$(cat "$MODDIR/.config/sing-box/subscription.url")" = old-url
+test "$(cat "$MODDIR/.config/sing-box/subscription.local")" = old-local
+test "$(cat "$UNRELATED_DIR/marker")" = preserve-me
+test -d "$GENERATION_ROOT/unrelated-generation"
+test ! -e "$GENERATION_ROOT/journal-fixture"
+test ! -e "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture"
+test ! -e "$MODDIR/.config/sing-box/config.json.candidate-journal-fixture.new"
+test ! -e "$TRANSACTION_DIR"
+printf '%s\n' 'subscription transaction generation safety test passed'

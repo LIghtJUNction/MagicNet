@@ -4,6 +4,7 @@
 MAGICNET_KSU_BUSYBOX selects the unmodified KernelSU v3.2.0 x86_64 binary.
 These host tests do not attest to Android networking or installation.
 """
+import base64
 import hashlib
 import os
 from pathlib import Path
@@ -51,6 +52,10 @@ class Utf8ParserTests(unittest.TestCase):
                 '    password: fixture\r\nproxy-groups:\r\n'
                 '  - name: 不是节点\r\n').encode())
             (module / 'share-links').write_text('  trojan://fixture@example.invalid:443#测试🌍\n')
+            encoded = base64.urlsafe_b64encode('trojan://fixture@example.invalid:443#测试🌍\n'.encode()).decode().rstrip('=')
+            encoded = '\r\n'.join(encoded[i:i + 17] for i in range(0, len(encoded), 17))
+            (module / 'encoded-share-links').write_text(encoded)
+            (module / 'corrupt-share-links').write_text(encoded + '!invalid!')
             (module / '.config/sing-box/standalone-config').touch()
             script = r'''
 set -eu
@@ -152,6 +157,15 @@ magicnet_singbox_emit_node_json "$MODDIR/scalar-single.yaml" >"$MODDIR/scalar-si
 test "$(magicnet_singbox_extract_share_links "$MODDIR/share-links" "$MODDIR/link-nodes")" = 1
 magicnet_singbox_emit_share_link_json "$MODDIR/link-nodes/node-1.link" >"$MODDIR/link-node.json"
 "$MODDIR/bin/jq" -e '.tag == "测试🌍" and .server_port == 443' "$MODDIR/link-node.json" >/dev/null
+test "$(magicnet_singbox_extract_share_links "$MODDIR/encoded-share-links" "$MODDIR/encoded-link-nodes")" = 1
+cmp "$MODDIR/link-nodes/node-1.link" "$MODDIR/encoded-link-nodes/node-1.link"
+test "$(magicnet_singbox_extract_share_links "$MODDIR/corrupt-share-links" "$MODDIR/encoded-link-nodes")" = 0
+test ! -e "$MODDIR/encoded-link-nodes/node-2.link"
+(
+    base64() { printf '%s\n' 'trojan://fixture@example.invalid:443#partial'; return 1; }
+    test "$(magicnet_singbox_extract_share_links "$MODDIR/encoded-share-links" "$MODDIR/encoded-link-nodes")" = 0
+    test ! -e "$MODDIR/encoded-link-nodes/node-2.link"
+)
 test "$(magicnet_app_proxy_packages "$MODDIR/values")" = '测试'
 test "$(magicnet_list_file_values "$MODDIR/values")" = ' 测试 
 测试'
@@ -174,7 +188,7 @@ magicnet_singbox_config_has_nodes
             for shell in shells:
                 with self.subTest(shell=shlex.join(shell)):
                     # Every interpreter must generate its own outputs.
-                    for directory in ('yaml-nodes', 'link-nodes'):
+                    for directory in ('yaml-nodes', 'link-nodes', 'encoded-link-nodes'):
                         shutil.rmtree(module / directory, ignore_errors=True)
                     env = dict(os.environ, MODDIR=str(module), ASH_STANDALONE='1')
                     result = subprocess.run([*shell, '-c', script], env=env,

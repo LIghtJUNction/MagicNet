@@ -218,7 +218,7 @@ jobs:
   webui:
     needs: ci
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -289,7 +289,9 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk
 
       - name: Verify mobile layouts and interactions
-        timeout-minutes: 10
+        # Playwright has an 18-minute suite deadline, leaving time to publish
+        # the failure report before Actions terminates the process tree.
+        timeout-minutes: 20
         run: bash scripts/quality-gate.sh webui-browser
 
       - name: Upload browser failure diagnostics

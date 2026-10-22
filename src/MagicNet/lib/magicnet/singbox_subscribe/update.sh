@@ -19,11 +19,26 @@ magicnet_reapply_post_start_policy() {
     fi
 }
 
-# Read-only lock probe for status/reporting paths.
+magicnet_singbox_update_lock_owner() (
+    _owner_file="$1"
+    [ -f "$_owner_file" ] && [ ! -L "$_owner_file" ] || return 1
+    _owner_bytes=$(stat -c '%s' "$_owner_file" 8>&- 2>/dev/null) || return 1
+    case "$_owner_bytes" in '' | *[!0-9]*) return 1 ;; esac
+    [ "${#_owner_bytes}" -le 3 ] && [ "$_owner_bytes" -le 129 ] || return 1
+    head -c 130 "$_owner_file" 8>&- 2>/dev/null
+)
+
+# Read-only probe: 0 live/initializing, 1 definitely dead/absent, 2 unknown.
+# Unknown or malformed ownership must never authorize another writer.
 magicnet_singbox_update_lock_live() (
     _lock="${MODDIR}/.state/sing-box/subscription-update.lock"
-    [ -d "$_lock" ] || return 1
-    _owner=$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)
+    [ ! -L "$_lock" ] && [ ! -L "$_lock/owner" ] || return 2
+    [ -e "$_lock" ] || return 1
+    [ -d "$_lock" ] || return 2
+    _owner=''
+    if [ -e "$_lock/owner" ]; then
+        _owner=$(magicnet_singbox_update_lock_owner "$_lock/owner") || return 2
+    fi
     if [ -z "$_owner" ]; then
         _grace="${MAGICNET_SUB_UPDATE_LOCK_INIT_GRACE:-5}"
         case "$_grace" in '' | *[!0-9]*) _grace=5 ;; esac
@@ -38,53 +53,89 @@ magicnet_singbox_update_lock_live() (
     _pid=${_owner%%:*}
     _rest=${_owner#*:}
     _start=${_rest%%:*}
-    case "$_pid:$_start" in *[!0-9:]* | :* | *:) return 1 ;; esac
-    _live_start=$(magicnet_singbox_proc_start "/proc/${_pid}/stat")
-    kill -0 "$_pid" 2>/dev/null && [ "$_start" = "$_live_start" ]
+    _nonce=${_rest#*:}
+    [ "${#_owner}" -le 128 ] || return 2
+    case "$_pid" in '' | *[!0-9]* | 0*) return 2 ;; esac
+    [ "${#_pid}" -le 10 ] && [ "$_pid" -le 4294967295 ] || return 2
+    case "$_start" in '' | *[!0-9]*) return 2 ;; esac
+    case "$_nonce" in '' | *[!A-Za-z0-9._-]*) return 2 ;; esac
+    [ "$_rest" != "$_nonce" ] || return 2
+    if _identity=$(magicnet_proc_stat_identity "$_pid" /proc 8>&-); then
+        _state=${_identity%% *}
+        _live_start=${_identity#* }
+        case "$_state" in [A-Za-z]) ;; *) return 2 ;; esac
+        case "$_live_start" in '' | *[!0-9]*) return 2 ;; esac
+        [ "$_state" != Z ] && [ "$_start" = "$_live_start" ]
+    else
+        return "$?"
+    fi
+)
+
+magicnet_singbox_update_lock_active_unlocked() (
+    _lock="${MODDIR}/.state/sing-box/subscription-update.lock"
+    [ ! -L "$_lock" ] && [ ! -L "$_lock/owner" ] || return 0
+    [ -d "$_lock" ] || return 3
+    if magicnet_singbox_update_lock_live; then return 0; else _owner_rc=$?; fi
+    [ "$_owner_rc" -eq 1 ] || return 0
+    rm -f "$_lock/owner" 2>/dev/null && rmdir "$_lock" 2>/dev/null || return 0
+    # Distinguish confirmed inactivity from metadata-guard contention (1).
+    return 3
 )
 
 magicnet_singbox_update_lock_active() (
-    _lock="${MODDIR}/.state/sing-box/subscription-update.lock"
-    [ -d "$_lock" ] || return 1
-    _owner=$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)
-    magicnet_singbox_update_lock_live && return 0
-    [ "$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)" = "$_owner" ] || return 1
-    [ -z "$_owner" ] || rm -f "$_lock/owner" 2>/dev/null || true
-    rmdir "$_lock" 2>/dev/null || true
-    return 1
+    if magicnet_metadata_guard "${MODDIR}/.state/sing-box/subscription-update.lock.guard" \
+        0 magicnet_singbox_update_lock_active_unlocked; then
+        return 0
+    else
+        [ "$?" -eq 3 ] && return 1
+        return 0
+    fi
 )
 
-magicnet_singbox_update_lock_acquire() {
+magicnet_singbox_update_lock_acquire_unlocked() {
     _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
-    mkdir -p "${_update_lock%/*}"
     if ! mkdir "$_update_lock" 2>/dev/null; then
-        if magicnet_singbox_update_lock_active; then
+        if magicnet_singbox_update_lock_active_unlocked; then
             error "Subscription update already running"
             return 1
         fi
         mkdir "$_update_lock" 2>/dev/null || return 1
     fi
-    _update_start=$(magicnet_proc_start "$$")
-    _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
-    _update_token="$$:${_update_start:-unknown}:${_update_nonce}"
-    if ! printf '%s\n' "$_update_token" >"$_update_lock/owner"; then
+    if ! printf '%s\n' "$1" >"$_update_lock/owner"; then
         # Do not leave an empty lock directory behind when publishing the
         # owner marker fails.  Such a directory is indistinguishable from a
         # crashed updater and would force every later update through stale
         # reclamation/timeouts.
-        rm -f "$_update_lock/owner" 2>/dev/null || true
-        rmdir "$_update_lock" 2>/dev/null || true
+        rm -f "$_update_lock/owner" 2>/dev/null || return 1
+        rmdir "$_update_lock" 2>/dev/null || return 1
         return 1
     fi
 }
 
-magicnet_singbox_update_lock_release() {
+magicnet_singbox_update_lock_acquire() {
+    _update_start=$(magicnet_proc_start "$$") || return 1
+    case "$_update_start" in '' | *[!0-9]*) return 1 ;; esac
+    _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
+    _update_candidate_token="$$:${_update_start}:${_update_nonce}"
+    magicnet_metadata_guard "${MODDIR}/.state/sing-box/subscription-update.lock.guard" \
+        0 magicnet_singbox_update_lock_acquire_unlocked "$_update_candidate_token" || return 1
+    _update_token="$_update_candidate_token"
+}
+
+magicnet_singbox_update_lock_release_unlocked() {
     _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
-    _update_owner=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
+    [ ! -L "$_update_lock" ] && [ ! -L "$_update_lock/owner" ] || return 1
+    [ -e "$_update_lock/owner" ] || return 0
+    _update_owner=$(magicnet_singbox_update_lock_owner "$_update_lock/owner") || return 1
     if [ -n "${_update_token:-}" ] && [ "$_update_owner" = "$_update_token" ]; then
-        rm -f "$_update_lock/owner" 2>/dev/null || true
-        rmdir "$_update_lock" 2>/dev/null || true
+        rm -f "$_update_lock/owner" 2>/dev/null || return 1
+        rmdir "$_update_lock" 2>/dev/null || return 1
     fi
+}
+
+magicnet_singbox_update_lock_release() {
+    magicnet_metadata_guard "${MODDIR}/.state/sing-box/subscription-update.lock.guard" \
+        100 magicnet_singbox_update_lock_release_unlocked
 }
 
 magicnet_singbox_status_value() {
@@ -269,6 +320,13 @@ magicnet_singbox_transaction_reconcile() {
         return 1
     fi
     _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
+    # Journal metadata can name one generation, never a cleanup path. Reject
+    # corrupt identifiers before restoring anything and retain the journal.
+    # Empty identifiers remain compatible with journals predating generations.
+    case "$_tx_generation" in
+    . | .. | *[!A-Za-z0-9._-]*) return 1 ;;
+    esac
+    [ "${#_tx_generation}" -le 128 ] || return 1
     _tx_restart_required=0
     if [ -f "$_tx_dir/was-running" ]; then
         _tx_restart_required=1
@@ -679,9 +737,17 @@ magicnet_singbox_status() {
     _status_tx_pending=0
     [ -d "$_status_tx_dir" ] && _status_tx_pending=1
     _status_last_result=$(magicnet_singbox_status_value result never)
-    _status_update_active=0
-    magicnet_singbox_update_lock_live && _status_update_active=1
-    if [ "$_status_update_active" -eq 1 ]; then
+    # Indeterminate ownership proves neither a running nor an interrupted
+    # operation. Preserve that evidence state without mutating diagnostics.
+    _status_update_active=2
+    if magicnet_singbox_update_lock_live; then
+        _status_update_active=1
+    else
+        [ "$?" -ne 1 ] || _status_update_active=0
+    fi
+    if [ "$_status_update_active" -eq 2 ]; then
+        _status_recovery_result=unknown
+    elif [ "$_status_update_active" -eq 1 ]; then
         if [ "$_status_tx_pending" -eq 1 ]; then
             _status_recovery_result=active
         else
@@ -712,6 +778,9 @@ magicnet_singbox_status() {
     if [ "$_status_update_active" -eq 1 ]; then
         _status_running=1
         _status_lock_owner=active
+    elif [ "$_status_update_active" -eq 2 ]; then
+        _status_running=0
+        _status_lock_owner=unknown
     else
         _status_running=0
         _status_lock_owner=none
@@ -813,7 +882,7 @@ magicnet_singbox_update_interrupt() {
     fi
     unset _update_restore_fswatch _update_interrupt_had_config_lock
     unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING MAGICNET_SUB_FSWATCH_WAS_ACTIVE
-    magicnet_singbox_update_lock_release
+    magicnet_singbox_update_lock_release || true
     exit "$_update_interrupt_code"
 }
 
@@ -849,7 +918,10 @@ magicnet_singbox_update_subscription() {
     fi
     unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING
     trap - EXIT HUP INT TERM
-    magicnet_singbox_update_lock_release
+    if ! magicnet_singbox_update_lock_release; then
+        error "Subscription update lock cleanup failed"
+        _update_rc=1
+    fi
     return "$_update_rc"
 }
 

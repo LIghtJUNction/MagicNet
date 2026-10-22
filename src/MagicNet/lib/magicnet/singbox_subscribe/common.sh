@@ -274,6 +274,51 @@ magicnet_b64_decode() {
     printf '%s' "$_value" | base64 -d 2>/dev/null
 }
 
+magicnet_b64_decode_file() (
+    _decode_source="$1"
+    _decode_output="$2"
+    command -v base64 >/dev/null 2>&1 || return 1
+    umask 077
+    _decode_normalized=$(mktemp "${_decode_output}.base64.XXXXXX") || return 1
+    trap 'rm -f "$_decode_normalized"' 0
+    trap 'exit 1' 1 2 15
+
+    # Normalize the complete source before decoding. A decoder can emit valid
+    # URI lines and still fail; neither callers nor filters may use that prefix.
+    if ! LC_ALL=C awk '
+        {
+            gsub(/\r/, "")
+            gsub(/_/, "/")
+            gsub(/-/, "+")
+            unpadded = $0
+            sub(/=.*/, "", unpadded)
+            suffix = substr($0, length(unpadded) + 1)
+            if ($0 ~ /[^A-Za-z0-9+\/=]/ || suffix ~ /[^=]/ ||
+                (padding > 0 && unpadded != "")) invalid = 1
+            padding += length(suffix)
+            if (invalid || padding > 2) { invalid = 1; exit 1 }
+            size += length(unpadded)
+            printf "%s", unpadded
+        }
+        END {
+            remainder = size % 4
+            if (invalid || size == 0 || remainder == 1) exit 1
+            if (padding > 0 && (size + padding) % 4 != 0) exit 1
+            if (remainder == 2) printf "=="
+            else if (remainder == 3) printf "="
+            printf "\n"
+        }
+    ' "$_decode_source" >"$_decode_normalized"; then
+        rm -f "$_decode_output"
+        return 1
+    fi
+    if base64 -d "$_decode_normalized" >"$_decode_output" 2>/dev/null && [ -s "$_decode_output" ]; then
+        return 0
+    fi
+    rm -f "$_decode_output"
+    return 1
+)
+
 magicnet_singbox_normalize_port() {
     _port="$1"
     case "$_port" in

@@ -189,3 +189,106 @@ unset MAGICNET_TEST_FAIL_OWNER_WRITE
 }
 
 printf '%s\n' 'subscription update lock write-failure safety test passed'
+
+# Pause a stale reclaimer after its last owner comparison, then let another
+# contender run. Both must serialize metadata: the old reclaimer must not
+# remove a new live owner between the comparison and unlink.
+mkdir -p "$UPDATE_LOCK"
+printf '%s\n' '999999:1:stale' >"$UPDATE_LOCK/owner"
+(
+    rm() {
+        if [ "${2:-}" = "$UPDATE_LOCK/owner" ]; then
+            : >"$WORKDIR/reclaimer-paused"
+            while [ ! -f "$WORKDIR/reclaimer-resume" ]; do sleep 0.01; done
+        fi
+        command rm "$@"
+    }
+    magicnet_singbox_update_lock_active || true
+) &
+reclaimer_pid=$!
+for _ in {1..300}; do
+    [ ! -f "$WORKDIR/reclaimer-paused" ] || break
+    sleep 0.01
+done
+test -f "$WORKDIR/reclaimer-paused"
+contender_acquired=0
+magicnet_singbox_update_lock_acquire && contender_acquired=1
+: >"$WORKDIR/reclaimer-resume"
+wait "$reclaimer_pid"
+if [ "$contender_acquired" -eq 1 ]; then
+    printf '%s\n' 'subscription contender published an owner inside a stale reclaim' >&2
+    exit 1
+fi
+magicnet_singbox_update_lock_acquire
+# The sourced acquisition helper publishes the token in the caller's shell.
+# shellcheck disable=SC2154
+test "$(cat "$UPDATE_LOCK/owner")" = "$_update_token"
+magicnet_singbox_update_lock_release
+test ! -e "$UPDATE_LOCK"
+printf '%s\n' 'subscription update lock ABA safety test passed'
+
+# Incomplete/corrupt evidence must fail closed without blocking on a FIFO or
+# following a symlink. Diagnostics retain unknown instead of inventing death.
+mkdir -p "$UPDATE_LOCK"
+for bad_owner in broken '+4242:777:nonce' '04242:777:nonce' '0:777:nonce' \
+    '4242:not-a-time:nonce' '4242:777:' '4242:777:nonce:extra'; do
+    printf '%s\n' "$bad_owner" >"$UPDATE_LOCK/owner"
+    if magicnet_singbox_update_lock_live; then exit 1; else test "$?" -eq 2; fi
+    magicnet_singbox_update_lock_active
+    if magicnet_singbox_update_lock_acquire; then exit 1; fi
+    test "$(cat "$UPDATE_LOCK/owner")" = "$bad_owner"
+done
+(
+    magicnet_singbox_subscription_status_file() { printf '%s\n' "$WORKDIR/status"; }
+    magicnet_singbox_subscription_cache_dir() { printf '%s\n' "$WORKDIR/cache"; }
+    magicnet_singbox_subscription_fingerprint() { printf '%064d\n' 0; }
+    mkdir -p "$WORKDIR/cache"
+    printf '%s\n' 'result=running' >"$WORKDIR/status"
+    status_output=$(magicnet_singbox_status)
+    for expected in update_running=0 update_lock_owner=unknown recovery_result=unknown last_result=running; do
+        grep -qx "$expected" <<<"$status_output"
+    done
+    test "$(cat "$WORKDIR/status")" = result=running
+)
+rm -f "$UPDATE_LOCK/owner"
+mkfifo "$UPDATE_LOCK/owner"
+magicnet_singbox_update_lock_active
+if magicnet_singbox_update_lock_acquire; then exit 1; fi
+test -p "$UPDATE_LOCK/owner"
+rm -f "$UPDATE_LOCK/owner"
+printf '%s\n' '999999:1:stale' >"$WORKDIR/outside-owner"
+ln -s "$WORKDIR/outside-owner" "$UPDATE_LOCK/owner"
+magicnet_singbox_update_lock_active
+if magicnet_singbox_update_lock_acquire; then exit 1; fi
+test -L "$UPDATE_LOCK/owner"
+test "$(cat "$WORKDIR/outside-owner")" = '999999:1:stale'
+rm -f "$UPDATE_LOCK/owner"
+rmdir "$UPDATE_LOCK"
+printf '%s\n' 'subscription unknown owner and diagnostic safety test passed'
+
+# Release must compare the token under the same guard and report a failed
+# unlink, so a successful updater cannot silently report successful cleanup.
+magicnet_singbox_update_lock_acquire
+(
+    rm() {
+        if [ "${2:-}" = "$UPDATE_LOCK/owner" ]; then return 1; fi
+        command rm "$@"
+    }
+    if magicnet_singbox_update_lock_release; then exit 1; fi
+    test -f "$UPDATE_LOCK/owner"
+)
+printf '%s\n' '999999:1:replacement' >"$UPDATE_LOCK/owner"
+magicnet_singbox_update_lock_release
+test "$(cat "$UPDATE_LOCK/owner")" = '999999:1:replacement'
+magicnet_singbox_update_lock_acquire
+magicnet_singbox_update_lock_release
+(
+    magicnet_singbox_update_lock_acquire() { :; }
+    magicnet_with_config_lock() { "$@"; }
+    magicnet_singbox_transaction_reconcile() { :; }
+    magicnet_singbox_cleanup_stale_candidates() { :; }
+    magicnet_singbox_update_subscription_unlocked() { :; }
+    magicnet_singbox_update_lock_release() { return 1; }
+    if magicnet_singbox_update_subscription; then exit 1; fi
+)
+printf '%s\n' 'subscription update lock release failure safety test passed'

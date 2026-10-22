@@ -415,6 +415,42 @@ magicnet_singbox_update_subscription_unlocked
         self.assertIsNone(nodes)
         self.assertIn('convert failed incomplete_conversion', status)
 
+    def test_corrupt_base64_source_cannot_import_a_decoded_prefix(self):
+        encoded = base64.b64encode(LINK.encode()).decode()
+        for content in (encoded + '!broken-encoding!', encoded + 'A', encoded + '===='):
+            for converter in (False, 'failed'):
+                with self.subTest(content=content, converter=converter):
+                    nodes, status = self.native_update(content, converter=converter)
+                    self.assertIsNone(nodes, 'a corrupt encoded source reached configuration staging')
+                    self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_failed_base64_decoder_cannot_import_its_output(self):
+        # A decoder can produce complete URI lines before reporting an I/O or
+        # syntax error. Its exit status must survive subsequent text filters.
+        self.prefix += f"base64() {{ printf '%s' {shlex.quote(LINK)}; return 1; }}\n"
+        encoded = base64.b64encode(LINK.encode()).decode()
+        nodes, status = self.native_update(encoded, converter='failed')
+        self.assertIsNone(nodes)
+        self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_native_base64_alphabets_wrapping_and_padding_remain_supported(self):
+        link = 'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid#???~~~x\n'
+        encoded = base64.b64encode(link.encode()).decode()
+        urlsafe = base64.urlsafe_b64encode(link.encode()).decode()
+        self.assertIn('+', encoded)
+        self.assertIn('/', encoded)
+        self.assertTrue(encoded.endswith('='))
+        cases = (encoded, '\r\n'.join(encoded[i:i + 17] for i in range(0, len(encoded), 17)),
+                 urlsafe, urlsafe.rstrip('='))
+        for content in cases:
+            with self.subTest(content=content):
+                nodes, status = self.native_update(content, converter='failed')
+                self.assertIsNotNone(nodes, status)
+                imported = [node for node in nodes if node.get('server')]
+                self.assertEqual(len(imported), 1)
+                self.assertEqual(imported[0]['tag'], '???~~~x')
+                self.assertEqual(imported[0]['tls']['server_name'], 'tls.example.invalid')
+
     def test_native_share_unsupported_schemes_and_options_require_converter(self):
         valid = 'trojan://fixture@192.0.2.10:443?sni=tls.example.invalid#ordinary\n'
         cases = [

@@ -326,33 +326,60 @@ magicnet_config_lock_proc_start() {
     magicnet_proc_start "$1"
 }
 
-# Return 0 only for the same live owner, 1 only when the owner is definitely
-# dead/reused, and 2 when proc identity cannot be read safely. Callers must not
-# reclaim an indeterminate lock.
+# Missing/empty markers use the acquisition grace period. Other file types
+# are indeterminate ownership: never follow a link or block opening a FIFO.
+magicnet_config_lock_read_owner() (
+    _owner_file="$1"
+    [ -e "$_owner_file" ] || [ -L "$_owner_file" ] || return 0
+    [ -f "$_owner_file" ] && [ ! -L "$_owner_file" ] && [ -r "$_owner_file" ] || return 2
+    _owner_bytes="$(stat -c '%s' "$_owner_file" 8>&- 2>/dev/null)" || return 2
+    case "$_owner_bytes" in '' | *[!0-9]*) return 2 ;; esac
+    [ "${#_owner_bytes}" -le 3 ] && [ "$_owner_bytes" -le 128 ] || return 2
+    # Read the whole bounded marker: trailing nonempty lines are corruption,
+    # and a concurrent growth must not become an unbounded shell allocation.
+    head -c 129 "$_owner_file" 8>&- 2>/dev/null || return 2
+)
+
+# Return 0 for the same live owner, 1 for dead/reused or empty ownership
+# (subject to acquisition grace), and 2 for malformed/unreadable ownership.
+# Callers must not reclaim an indeterminate lock.
 magicnet_config_lock_owner_matches() {
     _owner_check="$1"
+    if [ -z "$_owner_check" ]; then
+        unset _owner_check
+        return 1
+    fi
+    [ "${#_owner_check}" -le 128 ] || { unset _owner_check; return 2; }
     _owner_check_pid=${_owner_check%%:*}
     case "$_owner_check_pid" in
-    '' | *[!0-9]*)
+    '' | *[!0-9]* | 0*)
         unset _owner_check _owner_check_pid
-        return 1
+        return 2
         ;;
     esac
+    [ "${#_owner_check_pid}" -le 10 ] && [ "$_owner_check_pid" -le 4294967295 ] || {
+        unset _owner_check _owner_check_pid
+        return 2
+    }
     _owner_check_start=''
     if [ "$_owner_check" != "$_owner_check_pid" ]; then
         _owner_check_start=${_owner_check#*:}
         case "$_owner_check_start" in
         '' | *[!0-9]*)
             unset _owner_check _owner_check_pid _owner_check_start
-            return 1
+            return 2
             ;;
         esac
+        [ "${#_owner_check_start}" -le 20 ] || {
+            unset _owner_check _owner_check_pid _owner_check_start
+            return 2
+        }
     fi
     if [ ! -d "/proc/$_owner_check_pid" ]; then
         unset _owner_check _owner_check_pid _owner_check_start
         return 1
     fi
-    _owner_check_identity="$(magicnet_proc_stat_identity "$_owner_check_pid" /proc)" || {
+    _owner_check_identity="$(magicnet_proc_stat_identity "$_owner_check_pid" /proc 8>&-)" || {
         if [ ! -d "/proc/$_owner_check_pid" ]; then
             _owner_check_rc=1
         else
@@ -364,10 +391,10 @@ magicnet_config_lock_owner_matches() {
     }
     _owner_check_state=${_owner_check_identity%% *}
     _owner_check_live_start=${_owner_check_identity#* }
-    if [ "$_owner_check_state" = Z ] || [ "$_owner_check_state" = T ] || [ "$_owner_check_state" = t ]; then
-        # A stopped orphan is the expected result of PR_SET_PDEATHSIG(SIGSTOP)
-        # when a detached updater loses its launcher. It cannot make progress
-        # or release this marker, so it is reclaimable like a zombie.
+    if [ "$_owner_check_state" = Z ]; then
+        # A zombie cannot resume. Stopped/traced owners can: the parent-death
+        # watchdog resumes its worker to run rollback, so T/t must retain the
+        # lock until the owner exits or its start identity no longer matches.
         _owner_check_rc=1
     elif [ -n "$_owner_check_start" ] &&
         [ "$_owner_check_live_start" != "$_owner_check_start" ]; then
@@ -381,10 +408,18 @@ magicnet_config_lock_owner_matches() {
     return "$1"
 }
 
+magicnet_config_lock_guard() {
+    magicnet_metadata_guard "$(magicnet_config_lock_dir).guard" "$@"
+}
+
 magicnet_config_lock_reclaim() {
+    magicnet_config_lock_guard 0 magicnet_config_lock_reclaim_unlocked "$1"
+}
+
+magicnet_config_lock_reclaim_unlocked() {
     _reclaim_expected="$1"
     _reclaim_dir="$(magicnet_config_lock_dir)"
-    _reclaim_current="$(sed -n '1p' "$_reclaim_dir/pid" 2>/dev/null || true)"
+    _reclaim_current="$(magicnet_config_lock_read_owner "$_reclaim_dir/pid")" || return 2
     [ "$_reclaim_current" = "$_reclaim_expected" ] || {
         unset _reclaim_expected _reclaim_dir _reclaim_current
         return 1
@@ -401,8 +436,8 @@ magicnet_config_lock_reclaim() {
         unset _reclaim_expected _reclaim_dir _reclaim_current _reclaim_owner_rc
         return 1
     }
-    # Use rmdir instead of recursive deletion. A concurrent new owner can make
-    # rmdir fail, but cannot have its marker recursively removed by us.
+    # The shared guard keeps this checked directory from being replaced
+    # before unlink. rmdir additionally preserves unexpected foreign entries.
     rm -f "$_reclaim_dir/pid" 2>/dev/null || {
         unset _reclaim_expected _reclaim_dir _reclaim_current _reclaim_owner_rc
         return 1
@@ -414,10 +449,32 @@ magicnet_config_lock_reclaim() {
     return "$1"
 }
 
-magicnet_config_lock_acquire() {
+# Called only under the metadata guard. Empty directories can be reclaimed
+# after the caller's grace budget; a writer cannot still be publishing its PID
+# because it must hold this same guard throughout mkdir and publication.
+magicnet_config_lock_try_acquire() {
+    _try_dir="$(magicnet_config_lock_dir)"
+    if ! mkdir "$_try_dir" 2>/dev/null; then
+        _try_pid="$(magicnet_config_lock_read_owner "$_try_dir/pid")" || return 2
+        [ -n "$_try_pid" ] || [ "$1" = 1 ] || return 1
+        magicnet_config_lock_reclaim_unlocked "$_try_pid" || return $?
+        mkdir "$_try_dir" 2>/dev/null || return 1
+    fi
+    _try_start="$(magicnet_config_lock_proc_start "$$" 8>&-)"
+    if [ -n "$_try_start" ]; then
+        printf '%s:%s\n' "$$" "$_try_start" >"$_try_dir/pid" && return 0
+    else
+        # Legacy PID ownership stays fail-closed when start time is unavailable.
+        printf '%s\n' "$$" >"$_try_dir/pid" && return 0
+    fi
+    rm -f "$_try_dir/pid" 2>/dev/null || true
+    rmdir "$_try_dir" 2>/dev/null || true
+    return 2
+}
+
+magicnet_config_lock_acquire() (
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = "1" ] && return 0
     _lock_dir="$(magicnet_config_lock_dir)"
-    _lock_parent="${_lock_dir%/*}"
     _lock_waited=0
     _lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-20}"
     _lock_no_pid_wait=0
@@ -434,77 +491,49 @@ magicnet_config_lock_acquire() {
             return 1
         fi
     done
-    unset _lock_budget
-    mkdir -p "$_lock_parent"
-    while ! mkdir "$_lock_dir" 2>/dev/null; do
-        _lock_pid="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"
-        if [ -n "$_lock_pid" ]; then
-            if magicnet_config_lock_owner_matches "$_lock_pid"; then
-                _lock_owner_rc=0
-            else
-                _lock_owner_rc=$?
-            fi
-            if [ "$_lock_owner_rc" -eq 1 ]; then
-                magicnet_config_lock_reclaim "$_lock_pid" && continue
-            fi
-        fi
-        if [ -z "$_lock_pid" ]; then
+    while :; do
+        _lock_allow_empty=0
+        if [ ! -s "$_lock_dir/pid" ]; then
             _lock_no_pid_wait=$((_lock_no_pid_wait + 1))
-            if [ "$_lock_no_pid_wait" -ge "$_lock_no_pid_timeout" ]; then
-                _lock_no_pid_wait=0
-                # A foreign file/permission error can make rmdir fail. Only a
-                # successful reclaim may retry immediately; otherwise account
-                # for the wait so an orphan cannot defeat the overall timeout.
-                magicnet_config_lock_reclaim "$_lock_pid" && continue
-            fi
+            [ "$_lock_no_pid_wait" -lt "$_lock_no_pid_timeout" ] || _lock_allow_empty=1
         else
             _lock_no_pid_wait=0
         fi
+        if magicnet_config_lock_guard 0 magicnet_config_lock_try_acquire "$_lock_allow_empty"; then
+            return 0
+        else
+            _lock_guard_rc=$?
+        fi
+        [ "$_lock_guard_rc" -ne 2 ] || return 1
         if [ "$_lock_waited" -ge "$_lock_timeout" ]; then
             magicnet_warn "Timed out waiting for config lock: $_lock_dir"
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_owner_rc
             return 1
         fi
-        sleep 1
+        sleep 1 || return 1
         _lock_waited=$((_lock_waited + 1))
     done
-    _lock_start="$(magicnet_config_lock_proc_start "$$")"
-    if [ -n "$_lock_start" ]; then
-        if ! printf '%s:%s\n' "$$" "$_lock_start" >"$_lock_dir/pid"; then
-            rm -f "$_lock_dir/pid" 2>/dev/null || true
-            rmdir "$_lock_dir" 2>/dev/null || true
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
-            return 1
-        fi
-    else
-        # Keep compatibility with environments without /proc start times;
-        # the legacy PID form remains fail-closed for a live process.
-        if ! printf '%s\n' "$$" >"$_lock_dir/pid"; then
-            rm -f "$_lock_dir/pid" 2>/dev/null || true
-            rmdir "$_lock_dir" 2>/dev/null || true
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
-            return 1
-        fi
-    fi
-    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
-}
+)
 
 magicnet_config_lock_release() {
+    # Normal contention is brief; bound cleanup if another metadata owner is
+    # stopped or its probe cannot finish. Failed cleanup must remain visible.
+    magicnet_config_lock_guard 100 magicnet_config_lock_release_unlocked
+}
+
+magicnet_config_lock_release_unlocked() {
     _lock_dir="$(magicnet_config_lock_dir)"
-    _lock_owner="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"
-    _lock_start="$(magicnet_config_lock_proc_start "$$")"
+    _lock_owner="$(magicnet_config_lock_read_owner "$_lock_dir/pid")" || return 2
+    _lock_start="$(magicnet_config_lock_proc_start "$$" 8>&-)"
     if [ -n "$_lock_start" ]; then
         _lock_self="$$:$_lock_start"
     else
         _lock_self="$$"
     fi
-    # A signal trap from an old owner must never remove a lock that another
-    # process has already acquired after the old owner died.  Remove our
-    # marker first and use rmdir so a newly-created non-empty lock directory
-    # cannot be recursively deleted by the stale trap.
+    # The guard keeps ownership stable across this check and removal. A stale
+    # signal trap cannot remove another owner; rmdir preserves foreign files.
     if [ "$_lock_owner" = "$_lock_self" ]; then
-        rm -f "$_lock_dir/pid" 2>/dev/null || true
-        rmdir "$_lock_dir" 2>/dev/null || true
+        rm -f "$_lock_dir/pid" 2>/dev/null || return 1
+        rmdir "$_lock_dir" 2>/dev/null || return 1
     fi
     unset _lock_dir _lock_owner _lock_start _lock_self
 }
@@ -524,7 +553,9 @@ magicnet_with_config_lock() {
     # caller can reclaim it.
     "$@"
     _lock_rc=$?
-    magicnet_config_lock_release
+    magicnet_config_lock_release || {
+        [ "$_lock_rc" -ne 0 ] || _lock_rc=1
+    }
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD
     return "$_lock_rc"

@@ -38,4 +38,23 @@ output="$(magicnet_supervisor_orphan_pids fswatch)"
     exit 1
 }
 
+# A failed ps can still print a partial inventory. It cannot authorize an
+# orphan-free status or cleanup based on the incomplete set of processes.
+ps() {
+    printf '202 com.example.unrelated\n'
+    return 1
+}
+for operation in magicnet_supervisor_orphan_pids magicnet_supervisor_kill_orphans; do
+    if "$operation" fswatch; then actual=0; else actual=$?; fi
+    [ "$actual" -eq 2 ] || {
+        printf '%s accepted a failed process inventory (exit=%s)\n' "$operation" "$actual" >&2
+        exit 1
+    }
+done
+if magicnet_fswatch_status; then actual=0; else actual=$?; fi
+[ "$actual" -eq 2 ] || {
+    printf 'fswatch status hid a failed process inventory (exit=%s)\n' "$actual" >&2
+    exit 1
+}
+
 printf '%s\n' 'supervisor orphan ps-prefilter test passed'

@@ -45,6 +45,49 @@ ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 # shellcheck disable=SC1091
 . "$ROOT/scripts/test-lib/proc-reader-hook.sh"
 
+# A completed process stop does not prove that the owned network resources
+# were removed. Preserve the cleanup result, including unknown ownership.
+(
+  magicnet_watchdog_stop() { return 0; }
+  magicnet_fswatch_stop() { return 0; }
+  magicnet_wifi_policy_stop() { return 0; }
+  magicnet_subscription_refresh_stop() { return 0; }
+  magicnet_hotspot_route_cleanup() { return "$cleanup_status"; }
+  for cleanup_status in 0 1 2; do
+    if magicnet_supervisors_stop; then actual=0; else actual=$?; fi
+    test "$actual" -eq "$cleanup_status" || {
+      printf 'supervisor stop lost route cleanup status %s (exit=%s)\n' "$cleanup_status" "$actual" >&2
+      exit 1
+    }
+  done
+  magicnet_fswatch_stop() { return 2; }
+  magicnet_hotspot_route_cleanup() { printf 'cleanup ran with an unknown live supervisor\n' >&2; exit 99; }
+  if magicnet_supervisors_stop; then actual=0; else actual=$?; fi
+  test "$actual" -eq 2
+)
+
+# SIGKILL can be denied or remain pending on an uninterruptible process.
+# Report stopped only after an independent final inventory confirms exit.
+(
+  magicnet_supervisor_orphan_pids() {
+    if test "$kill_sent" -eq 1 && test "$after_kill" -ne 0; then
+      return "$after_kill"
+    fi
+    printf '999999\n'
+  }
+  kill() { test "$1" != -9 || kill_sent=1; return 1; }
+  sleep() { :; }
+  for after_kill in 0 1 2; do
+    kill_sent=0
+    case "$after_kill" in 0) expected=1 ;; 1) expected=0 ;; 2) expected=2 ;; esac
+    if magicnet_supervisor_kill_orphans hotspot-watchdog; then actual=0; else actual=$?; fi
+    test "$actual" -eq "$expected" || {
+      printf 'orphan stop misreported final inventory %s (exit=%s)\n' "$after_kill" "$actual" >&2
+      exit 1
+    }
+  done
+)
+
 # Subscription refresh process identity checks must use the same proc root as
 # the scanner.  This makes disappearing-PID races testable and avoids mixing a
 # synthetic/isolated proc view with the host's /proc.
