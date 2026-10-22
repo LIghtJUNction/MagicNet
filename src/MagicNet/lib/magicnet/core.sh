@@ -317,18 +317,11 @@ magicnet_kernel_start_preamble() {
         return 1
     }
     if [ "${MAGICNET_TRANSPARENT_TRANSACTION_ACTIVE:-0}" != 1 ] &&
-        [ -d "$(magicnet_transparent_transaction_dir)" ]; then
-        # The interrupted target may already be running even though its journal
-        # was never committed. Stop it before restoring the previous files so
-        # the loaded dataplane cannot disagree with configured_mode.
-        if magicnet_cmd_exists sing-box; then
-            import __singbox__
-            singbox_stop >/dev/null 2>&1 || return 1
-        fi
-        magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
-        magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
-        magicnet_disable_dns_capture >/dev/null 2>&1 || true
-        magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
+        { [ -e "$(magicnet_transparent_transaction_dir)" ] ||
+            [ -L "$(magicnet_transparent_transaction_dir)" ]; }; then
+        # Recovery owns the shared cleanup-before-stop sequence. Do not stop
+        # the interrupted target before that helper has removed interception,
+        # or failed DNS cleanup could leave traffic aimed at a dead listener.
         if ! magicnet_recover_interrupted_transparent_transaction; then
             magicnet_warn "Interrupted transparent mode transaction recovery failed"
             return 1

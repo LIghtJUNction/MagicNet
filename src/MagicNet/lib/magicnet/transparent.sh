@@ -470,15 +470,72 @@ magicnet_transparent_transaction_dir() {
     printf '%s\n' "${MODDIR}/.state/transparent-transaction"
 }
 
+# Journal tokens contain at most "ebpf" plus one LF. Reject unexpected file
+# types before opening them, and retain every byte while validating the token.
+magicnet_transparent_journal_token() (
+    _journal_token_file="$1"
+    _journal_token_kind="$2"
+    LC_ALL=C
+    export LC_ALL
+    [ -f "$_journal_token_file" ] && [ ! -L "$_journal_token_file" ] &&
+        [ -r "$_journal_token_file" ] || return 1
+    _journal_token_bytes=$(stat -c '%s' "$_journal_token_file" 2>/dev/null) || return 1
+    case "$_journal_token_bytes" in '' | *[!0-9]*) return 1 ;; esac
+    [ "${#_journal_token_bytes}" -eq 1 ] && [ "$_journal_token_bytes" -le 5 ] || return 1
+    _journal_token_value=$(head -c 6 "$_journal_token_file" 2>/dev/null && printf '.') || return 1
+    _journal_token_value=${_journal_token_value%.}
+    [ "${#_journal_token_value}" -eq "$_journal_token_bytes" ] || return 1
+    case "$_journal_token_value" in
+    *'
+') _journal_token_value=${_journal_token_value%?} ;;
+    esac
+    case "$_journal_token_kind:$_journal_token_value" in
+    present:0 | present:1 | mode:tun | mode:ebpf | version:1) ;;
+    *) return 1 ;;
+    esac
+    printf '%s' "$_journal_token_value"
+)
+
+magicnet_transparent_journal_backup_valid() {
+    case "$2" in
+    1) [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ] ;;
+    0) [ ! -e "$1" ] && [ ! -L "$1" ] ;;
+    *) return 1 ;;
+    esac
+}
+
+magicnet_transparent_state_snapshot_valid() (
+    _snapshot_journal="$1"
+    _snapshot_version="${_snapshot_journal}/old-ebpf-state-version"
+    if [ ! -e "$_snapshot_version" ] && [ ! -L "$_snapshot_version" ]; then
+        # Legacy publication predates every old-ebpf-* field. A missing version
+        # alongside any snapshot evidence is an incomplete current journal.
+        set +f
+        for _snapshot_file in "$_snapshot_journal"/old-ebpf-*; do
+            [ ! -e "$_snapshot_file" ] && [ ! -L "$_snapshot_file" ] || return 1
+        done
+        return 0
+    fi
+    magicnet_transparent_journal_token "$_snapshot_version" version >/dev/null || return 1
+    for _snapshot_name in capability probe shared-pending shared-interfaces; do
+        _snapshot_present=$(magicnet_transparent_journal_token \
+            "${_snapshot_journal}/old-ebpf-${_snapshot_name}-present" present) || return 1
+        magicnet_transparent_journal_backup_valid \
+            "${_snapshot_journal}/old-ebpf-${_snapshot_name}" "$_snapshot_present" || return 1
+    done
+)
+
 magicnet_restore_transparent_state_file() {
     _restore_state_transaction="$1"
     _restore_state_name="$2"
     _restore_state_destination="$3"
-    _restore_state_present="$(cat "${_restore_state_transaction}/old-ebpf-${_restore_state_name}-present" 2>/dev/null)" || return 1
+    _restore_state_present=$(magicnet_transparent_journal_token \
+        "${_restore_state_transaction}/old-ebpf-${_restore_state_name}-present" present) || return 1
+    magicnet_transparent_journal_backup_valid \
+        "${_restore_state_transaction}/old-ebpf-${_restore_state_name}" "$_restore_state_present" || return 1
     case "$_restore_state_present" in
     1)
         _restore_state_source="${_restore_state_transaction}/old-ebpf-${_restore_state_name}"
-        [ -f "$_restore_state_source" ] || return 1
         mkdir -p "${_restore_state_destination%/*}" || return 1
         _restore_state_tmp="${_restore_state_destination}.transaction-restore.$$"
         if ! (
@@ -500,13 +557,13 @@ magicnet_restore_transparent_state_file() {
 magicnet_restore_transparent_state_snapshot() {
     _restore_snapshot_transaction="$1"
     _restore_snapshot_version_file="${_restore_snapshot_transaction}/old-ebpf-state-version"
+    magicnet_transparent_state_snapshot_valid "$_restore_snapshot_transaction" || return 1
     # Journals published before runtime-state snapshots were introduced remain
     # recoverable; their restored core startup will republish current evidence.
     [ -e "$_restore_snapshot_version_file" ] || {
         unset _restore_snapshot_transaction _restore_snapshot_version_file
         return 0
     }
-    [ "$(cat "$_restore_snapshot_version_file" 2>/dev/null)" = 1 ] || return 1
     _restore_snapshot_dir="$(magicnet_ebpf_state_dir)"
     magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" capability "${_restore_snapshot_dir}/capability" || return 1
     magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" probe "${_restore_snapshot_dir}/probe.json" || return 1
@@ -517,22 +574,29 @@ magicnet_restore_transparent_state_snapshot() {
 
 magicnet_recover_interrupted_transparent_transaction() {
     _transaction_dir="$(magicnet_transparent_transaction_dir)"
-    [ -d "$_transaction_dir" ] || return 0
-    _old_mode_present="$(cat "${_transaction_dir}/old-mode-present" 2>/dev/null || true)"
-    _old_config_present="$(cat "${_transaction_dir}/old-config-present" 2>/dev/null || true)"
-    _old_mode="$(cat "${_transaction_dir}/old-mode" 2>/dev/null || true)"
-    case "$_old_mode_present:$_old_config_present:$_old_mode" in
-    0:0:tun | 0:0:ebpf | 0:1:tun | 0:1:ebpf | 1:0:tun | 1:0:ebpf | 1:1:tun | 1:1:ebpf) ;;
-    *)
+    [ -e "$_transaction_dir" ] || [ -L "$_transaction_dir" ] || return 0
+    [ -d "$_transaction_dir" ] && [ ! -L "$_transaction_dir" ] || return 1
+    # Prove the entire published snapshot is usable before quiescing any live
+    # resources. Discovering a missing later backup after restoring mode/config
+    # would leave a stopped core and a mixture of transaction generations.
+    if ! {
+        _old_mode_present=$(magicnet_transparent_journal_token "${_transaction_dir}/old-mode-present" present) &&
+            _old_config_present=$(magicnet_transparent_journal_token "${_transaction_dir}/old-config-present" present) &&
+            _old_mode=$(magicnet_transparent_journal_token "${_transaction_dir}/old-mode" mode) &&
+            magicnet_transparent_journal_backup_valid "${_transaction_dir}/old-config.json" "$_old_config_present" &&
+            magicnet_transparent_state_snapshot_valid "$_transaction_dir"
+    }; then
         magicnet_warn "transparent transaction journal is invalid"
         return 1
-        ;;
-    esac
-    import __singbox__
-    singbox_stop >/dev/null 2>&1 || true
-    magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
-    magicnet_disable_dns_capture >/dev/null 2>&1 || true
-    magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
+    fi
+    # Every recovery caller must detach interception while its listener is
+    # still available. Keep the journal and configured files untouched when
+    # quiescing, cleanup or graceful shutdown cannot be confirmed; restoring
+    # another mode under a surviving core would discard its recovery evidence.
+    magicnet_hotspot_watchdog_stop || return $?
+    magicnet_prepare_network_for_core_stop || return $?
+    import __singbox__ || return $?
+    singbox_stop || return $?
     if [ "$_old_mode_present" = 1 ]; then
         magicnet_transparent_set_mode "$_old_mode" || return 1
     else

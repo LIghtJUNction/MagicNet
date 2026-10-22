@@ -326,6 +326,91 @@ fn resolved_subscription_addresses_fail_closed() {
 }
 
 #[test]
+fn https_download_pins_all_addresses_in_one_curl_entry() {
+    let authority =
+        parse_subscription_authority("https://downloads.example.invalid:8443/list").unwrap();
+    for (addresses, expected) in [
+        (vec!["1.1.1.1"], "downloads.example.invalid:8443:1.1.1.1"),
+        (
+            vec!["8.8.8.8", "1.1.1.1"],
+            "downloads.example.invalid:8443:1.1.1.1,8.8.8.8",
+        ),
+        (
+            vec!["2606:4700:4700::1111", "2001:4860:4860::8888"],
+            "downloads.example.invalid:8443:[2001:4860:4860::8888],[2606:4700:4700::1111]",
+        ),
+        (
+            vec!["2606:4700:4700::1111", "1.1.1.1", "8.8.8.8", "1.1.1.1"],
+            "downloads.example.invalid:8443:1.1.1.1,[2606:4700:4700::1111],8.8.8.8",
+        ),
+    ] {
+        let resolved = addresses
+            .iter()
+            .map(|address| IpAddr::from_str(address).unwrap())
+            .collect();
+        let mut command = Command::new("curl");
+        pin_https_download_addresses(&mut command, &authority, resolved).unwrap();
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec![OsStr::new("--resolve"), OsStr::new(expected)],
+            "all addresses must share one curl DNS-cache entry: {addresses:?}"
+        );
+    }
+}
+
+#[test]
+fn https_download_rejects_an_empty_or_partly_private_address_set_before_pinning() {
+    let authority = parse_subscription_authority("https://downloads.example.invalid/list").unwrap();
+    for addresses in [
+        vec![],
+        vec!["1.1.1.1", "127.0.0.1"],
+        vec!["2606:4700:4700::1111", "::1"],
+    ] {
+        let resolved = addresses
+            .iter()
+            .map(|address| IpAddr::from_str(address).unwrap())
+            .collect();
+        let mut command = Command::new("curl");
+        assert!(pin_https_download_addresses(&mut command, &authority, resolved).is_err());
+        assert_eq!(command.get_args().count(), 0);
+    }
+}
+
+#[test]
+fn https_download_public_ip_literals_need_no_curl_dns_override() {
+    for url in [
+        "https://1.1.1.1/list",
+        "https://8.8.8.8:8443/list",
+        "https://[2606:4700:4700::1111]/list",
+        "https://[2001:4860:4860::8888]:8443/list",
+    ] {
+        validate_subscription_url(url).unwrap();
+        let authority = parse_subscription_authority(url).unwrap();
+        let resolved = HashSet::from([IpAddr::from_str(authority.host).unwrap()]);
+        let mut command = Command::new("curl");
+        pin_https_download_addresses(&mut command, &authority, resolved).unwrap();
+        assert_eq!(command.get_args().count(), 0, "literal URL: {url}");
+    }
+}
+
+#[test]
+fn https_download_private_ip_literals_are_rejected_before_skipping_pinning() {
+    for (host, url) in [
+        ("127.0.0.1", "https://127.0.0.1/list"),
+        ("192.168.1.1", "https://192.168.1.1/list"),
+        ("::1", "https://[::1]/list"),
+        ("fc00::1", "https://[fc00::1]/list"),
+    ] {
+        assert!(validate_subscription_url(url).is_err());
+        let authority = SubscriptionAuthority { host, port: 443 };
+        let resolved = HashSet::from([IpAddr::from_str(host).unwrap()]);
+        let mut command = Command::new("curl");
+        assert!(pin_https_download_addresses(&mut command, &authority, resolved).is_err());
+        assert_eq!(command.get_args().count(), 0);
+    }
+}
+
+#[test]
 fn subscription_user_agent_is_validated_and_persisted() {
     let app = temp_app();
     let value = "sing-box/1.12.0 (Android)";

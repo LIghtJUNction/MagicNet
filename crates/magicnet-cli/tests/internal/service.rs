@@ -158,10 +158,23 @@ fn lifecycle_commands_detach_optional_supervisors_after_core_start() {
 #[test]
 fn config_apply_detects_a_journaled_transparent_transition() {
     let (app, root) = fixture_app("transparent-apply-gate");
-    fs::create_dir_all(root.join(TRANSPARENT_TRANSACTION)).unwrap();
-    assert!(transparent_transaction_active(&app));
-    fs::remove_dir_all(root.join(TRANSPARENT_TRANSACTION)).unwrap();
-    assert!(!transparent_transaction_active(&app));
+    let journal = root.join(TRANSPARENT_TRANSACTION);
+    fs::create_dir_all(&journal).unwrap();
+    assert!(transparent_transaction_active(&app).unwrap());
+    fs::remove_dir_all(&journal).unwrap();
+    assert!(!transparent_transaction_active(&app).unwrap());
+
+    fs::write(&journal, "invalid journal").unwrap();
+    assert!(transparent_transaction_active(&app).unwrap());
+    fs::remove_file(&journal).unwrap();
+    std::os::unix::fs::symlink(root.join("missing-journal"), &journal).unwrap();
+    assert!(transparent_transaction_active(&app).unwrap());
+    fs::remove_file(&journal).unwrap();
+
+    // A failed lookup through a symlink loop must not be treated as absent.
+    fs::remove_dir(root.join(".state")).unwrap();
+    std::os::unix::fs::symlink(".state", root.join(".state")).unwrap();
+    assert!(transparent_transaction_active(&app).is_err());
     let _ = fs::remove_dir_all(root);
 }
 
