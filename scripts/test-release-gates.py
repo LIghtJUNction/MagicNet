@@ -89,20 +89,28 @@ class ReleaseGateTests(unittest.TestCase):
             result = subprocess.run(['bash', '-c', verify['run']], capture_output=True,
                                     env=dict(os.environ, EXPECTED_SHA=expected, GITHUB_SHA='a' * 40))
             self.assertEqual(result.returncode == 0, expected != 'b' * 40)
-        command = flow['jobs']['version-bump']['steps'][-1]['run']
+        command = next(step['run'] for step in flow['jobs']['version-bump']['steps']
+                       if step.get('name') == 'Open version pull request')
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-            (work / 'git').write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_SHA"\n')
             (work / 'gh').write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
             for path in work.iterdir():
                 path.chmod(0o755)
             result = subprocess.run(['bash', '-c', command], capture_output=True, text=True,
                                     env=dict(os.environ, PATH=tmp + ':' + os.environ['PATH'],
-                                             TEST_SHA='a' * 40, RELEASE_INPUT='true', PRERELEASE_INPUT='false'))
+                                             VERSION='v1.2.4', GITHUB_RUN_ID='42',
+                                             RUNNER_TEMP=tmp, RELEASE_INPUT='true',
+                                             PRERELEASE_INPUT='false'))
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('expected_sha=' + 'a' * 40, result.stdout.splitlines())
-            self.assertIn('bump=none', result.stdout.splitlines())
-            self.assertIn('release=true', result.stdout.splitlines())
+            output = result.stdout.splitlines()
+            self.assertIn('pr', output)
+            self.assertIn('create', output)
+            self.assertIn('--base', output)
+            self.assertIn('main', output)
+            self.assertIn('--head', output)
+            self.assertIn('release/version-1.2.4-42', output)
+            self.assertIn('--title', output)
+            self.assertIn('chore(release): prepare v1.2.4', output)
 
     def test_shared_suite_preserves_all_original_checks(self):
         script = (ROOT / 'scripts/quality-gate.sh').read_text()

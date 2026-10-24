@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       bump:
-        description: Commit a version bump directly to main before building
+        description: Prepare a version bump on a review branch and open a PR
         required: false
         type: choice
         options:
@@ -57,6 +57,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      pull-requests: write
     concurrency:
       group: magicnet-version-bump
       cancel-in-progress: false
@@ -79,34 +80,45 @@ jobs:
           python3 scripts/prepare-release.py --bump "$BUMP_KIND"
           git add -- kam.toml src/MagicNet/module.prop update.json .github/release-request
 
-      - name: Commit and push version bump
+      - name: Commit version bump on a review branch
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          branch="release/version-${VERSION#v}-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(release): prepare ${VERSION}"
-          git push origin HEAD:main
-          printf 'Pushed %s directly to main: %s\n' "$VERSION" "$(git rev-parse HEAD)" \
+          git push --set-upstream origin "HEAD:$branch"
+          printf 'Prepared %s on review branch %s at %s\n' "$VERSION" "$branch" "$(git rev-parse HEAD)" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Trigger build for the pushed version
+      - name: Open version pull request
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
           RELEASE_INPUT: ${{ inputs.release }}
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          # A GITHUB_TOKEN-authored push does not fire GitHub's push-event
-          # trigger (loop prevention), so the build job would otherwise never
-          # run. workflow_dispatch/repository_dispatch are the documented
-          # exception: an explicit dispatch call still starts a new run even
-          # when made with GITHUB_TOKEN, so dispatch the build against the
-          # commit we just pushed instead of relying on the push event.
-          gh workflow run exec.yml --ref main \
-            -f bump=none -f release="$RELEASE_INPUT" -f prerelease="$PRERELEASE_INPUT" \
-            -f expected_sha="$(git rev-parse HEAD)"
+          branch="release/version-${VERSION#v}-${GITHUB_RUN_ID}"
+          body_file="$RUNNER_TEMP/version-pr-body"
+          {
+            printf 'This PR was prepared by the release workflow from the reviewed main commit.\n\n'
+            printf '%s\n' "Version: ${VERSION}"
+            if [ "$RELEASE_INPUT" = true ]; then
+              printf '%s\n' 'Merging this PR requests a release through the normal main push checks.'
+              if [ "$PRERELEASE_INPUT" = true ]; then
+                printf '%s\n' 'The requested release is a prerelease.'
+              fi
+            else
+              printf '%s\n' 'This is a version-only bump; it does not request a release.'
+            fi
+          } > "$body_file"
+          gh pr create --base main --head "$branch" \
+            --title "chore(release): prepare ${VERSION}" \
+            --body-file "$body_file"
 
   # A bot push does not start push workflows. Run the SAME acceptance workflow
   # as a dependency of dispatched releases, at this run's immutable github.sha.
