@@ -166,9 +166,10 @@ configuration inspections, advertised separately in `capabilities.private_comman
 They are **not** safe diagnostic payloads. `sub.inspect` includes the configured
 subscription URLs, user agent, filters and provider quota metadata. `wifi.inspect`
 includes configured SSID/BSSID lists and current network identifiers needed by
-the Wi-Fi editor. An authenticated generic MCP CLI call may explicitly request
-these just as it could request the existing private human configuration commands;
-no automatic MCP status resource calls them.
+the Wi-Fi editor. Generic MCP `magicnet_cli` refuses these inspect commands, human
+`sub status` / `wifi status` / `wifi list`, and `sub filter list`; use the named
+private tools or `--json sub status` / `--json wifi status` for redacted envelopes.
+No automatic MCP status resource calls the inspectors.
 
 The WebUI always reads inspectors quietly without command capture or reactive
 stdout, validates the complete envelope, and only then updates editor/state

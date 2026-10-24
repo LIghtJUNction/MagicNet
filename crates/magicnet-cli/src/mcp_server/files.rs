@@ -169,6 +169,8 @@ fn private_module_path(relative: &Path) -> bool {
             "config-override.json",
             "config-override-active.json",
             "module-update.conf",
+            "wifi-ssid.list",
+            "wifi-bssid.list",
         ]
         .iter()
         .any(|secret| private_name_or_copy(name, secret))
@@ -284,6 +286,12 @@ mod tests {
             "schema=1\naction=check\nrequest_id=request_1234\n",
         )
         .unwrap();
+        fs::write(root.join(".config/magicnet/wifi-ssid.list"), "Home WiFi\n").unwrap();
+        fs::write(
+            root.join(".config/magicnet/wifi-bssid.list"),
+            "12:34:56:78:9a:bc\n",
+        )
+        .unwrap();
         fs::write(root.join("notes.txt"), "visible").unwrap();
         symlink(
             root.join(".config/magicnet/mcp.conf"),
@@ -296,6 +304,8 @@ mod tests {
             ".config/magicnet/.env",
             ".config/magicnet/warp-endpoint.json",
             ".config/magicnet/module-update.conf",
+            ".config/magicnet/wifi-ssid.list",
+            ".config/magicnet/wifi-bssid.list",
             ".config/sing-box/subscription.url",
             ".config/sing-box/subscription.local",
             ".config/sing-box/tailscale-auth.json",
@@ -325,6 +335,8 @@ mod tests {
             ".config/sing-box/config.json",
             ".config/sing-box/config.json.bak",
             ".config/magicnet/mcp.conf.bak",
+            ".config/magicnet/wifi-ssid.list.bak",
+            ".config/magicnet/wifi-bssid.list.bak",
             ".config/magicnet/config-override.json",
             ".config/magicnet/config-override-active.json",
             ".config/magicnet/.magicnet-app-123-0.tmp",
