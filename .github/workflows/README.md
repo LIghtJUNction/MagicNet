@@ -25,18 +25,18 @@ before packaging. The Code Quality shell lint remains in place.
 `exec.yml` builds the module. It runs on `push`, `pull_request`, and manual
 `workflow_dispatch`.
 
-Dispatch on `main` with `bump=patch`, `minor`, or `major` to commit a version bump
-directly to `main`. For example, `v1.3.9` becomes `v1.3.10`, `v1.4.0`, or
-`v2.0.0`, respectively. All three metadata files (`kam.toml`,
-`src/MagicNet/module.prop`, `update.json`) are updated together and `versionCode`
-increases by one. The workflow then explicitly dispatches the build for the new
-commit because a `GITHUB_TOKEN` push does not start another `push` run.
+Dispatch on `main` with `bump=patch`, `minor`, or `major` to prepare a version
+bump on a unique review branch and open a pull request. For example, `v1.3.9`
+becomes `v1.3.10`, `v1.4.0`, or `v2.0.0`, respectively. All three metadata files
+(`kam.toml`, `src/MagicNet/module.prop`, `update.json`) are updated together and
+`versionCode` increases by one. The pull request runs the normal quality and
+package checks; merging it to `main` starts the ordinary build/release path.
 
 With `bump=none`, the workflow builds the existing committed version and can
 publish it when `release=true`.
 
-With a bump, `release=true` adds a release request before the direct commit, so the
-follow-up build publishes it. `prerelease=true` is preserved in that request and
+With a bump, `release=true` adds a release request to the review branch, so the
+merge to `main` publishes it. `prerelease=true` is preserved in that request and
 requires `release=true`. A version-only bump builds without publishing.
 
 Reruns whose original commit is no longer the head of `main` fail and require a

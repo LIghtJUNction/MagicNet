@@ -409,22 +409,24 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
 
 class WorkflowStructureTest(unittest.TestCase):
-    def test_version_bump_pushes_directly_to_main_without_a_pr(self):
+    def test_version_bump_opens_a_review_pr_instead_of_pushing_main(self):
         text = (WORKFLOWS / "exec.yml").read_text()
         workflow = yaml.safe_load(text)
         self.assertEqual(set(workflow["jobs"]), {"version-bump", "release-android", "build"})
         self.assertNotIn("RELEASE_TOKEN", text)
         version_job = workflow["jobs"]["version-bump"]
-        self.assertNotIn("pull-requests", version_job["permissions"])
+        self.assertEqual(version_job["permissions"]["pull-requests"], "write")
         self.assertEqual(version_job["permissions"]["contents"], "write")
         self.assertIn("workflow_dispatch", version_job["if"])
         self.assertIn("inputs.bump", version_job["if"])
         version_steps = version_job["steps"]
         self.assertEqual(version_steps[0]["with"]["ref"], "${{ github.sha }}")
         self.assertTrue(version_steps[0]["with"]["persist-credentials"])
-        self.assertFalse(any("create-pull-request@" in step.get("uses", "")
-                             for step in version_steps))
-        self.assertIn("git push origin HEAD:main", text)
+        self.assertTrue(any(step.get("name") == "Open version pull request"
+                            for step in version_steps))
+        self.assertIn('git push --set-upstream origin "HEAD:$branch"', text)
+        self.assertIn("gh pr create", text)
+        self.assertNotIn("git push origin HEAD:main", text)
         self.assertIn("inputs.bump == 'none'", workflow["jobs"]["build"]["if"])
 
     def test_release_build_keeps_exact_target_and_artifact_checks(self):
