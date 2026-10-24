@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      actions: write
+      actions: read
       pull-requests: write
     concurrency:
       group: magicnet-version-bump
