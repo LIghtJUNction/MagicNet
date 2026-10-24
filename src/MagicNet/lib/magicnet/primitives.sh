@@ -649,23 +649,6 @@ magicnet_proc_state() {
     unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state _proc_state_read_rc
 }
 
-magicnet_singbox_proc_start() {
-    _proc_stat_path="$1"
-    case "$_proc_stat_path" in
-    */[0-9]*/stat)
-        _proc_pid="${_proc_stat_path%/stat}"
-        _proc_pid="${_proc_pid##*/}"
-        _proc_root="${_proc_stat_path%/"$_proc_pid"/stat}"
-        magicnet_proc_start "$_proc_pid" "$_proc_root"
-        _proc_rc=$?
-        unset _proc_stat_path _proc_pid _proc_root
-        return "$_proc_rc"
-        ;;
-    esac
-    unset _proc_stat_path
-    return 1
-}
-
 # KernelSU WebUI commands inherit the manager app's killable cgroups. Move an
 # explicitly selected MagicNet launcher into each matching stable parent before
 # the bridge exits, so its persistent children are not reclaimed with the app.

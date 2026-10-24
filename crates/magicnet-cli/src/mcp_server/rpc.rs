@@ -524,12 +524,23 @@ fn refuse_private_cli() -> String {
 }
 
 fn cli_args_reveal_secret(args: &[String]) -> bool {
+    let has_json = args.iter().any(|item| item == "--json");
     let command = args
         .iter()
         .map(String::as_str)
         .filter(|item| *item != "--json")
         .collect::<Vec<_>>();
     if command.first().is_some_and(|item| item.starts_with("__")) {
+        return true;
+    }
+    // Human wifi/sub status prints SSID/BSSID or subscription hostnames.
+    // Machine --json status remains the redacted path.
+    if !has_json
+        && matches!(
+            command.as_slice(),
+            ["wifi", "status" | "list", ..] | ["sub", "status", ..]
+        )
+    {
         return true;
     }
     // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
@@ -539,6 +550,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
         ["mcp", "secret" | "logs", ..]
             | ["sub", "get" | "list" | "file" | "copy-path" | "inspect", ..]
             | ["sub", "user-agent", "get", ..]
+            | ["sub", "filter", "list", ..]
             | ["backup", "export", ..]
             | ["config-editor", "get" | "path", ..]
             | ["config-editor", "repo", "get" | "get-json", ..]
@@ -822,6 +834,11 @@ mod tests {
             ["sub", "inspect"].as_slice(),
             ["--json", "sub", "inspect"].as_slice(),
             ["wifi", "inspect"].as_slice(),
+            ["wifi", "status"].as_slice(),
+            ["wifi", "list"].as_slice(),
+            ["sub", "status"].as_slice(),
+            ["sub", "filter", "list"].as_slice(),
+            ["--json", "sub", "filter", "list"].as_slice(),
             ["network-access", "inspect"].as_slice(),
             ["__proc-stat"].as_slice(),
             ["--json", "__proc-stat", "/proc", "1"].as_slice(),
@@ -839,10 +856,11 @@ mod tests {
         }
         for args in [
             ["service", "status"].as_slice(),
-            ["sub", "status"].as_slice(),
             ["health"].as_slice(),
             ["mcp", "status"].as_slice(),
             ["--json", "sub", "status"].as_slice(),
+            ["--json", "wifi", "status"].as_slice(),
+            ["--json", "wifi", "list"].as_slice(),
             ["config-editor", "validate", "sing-box"].as_slice(),
             ["node", "test", "__edge"].as_slice(),
             ["api", "select", "proxy", "__edge"].as_slice(),
