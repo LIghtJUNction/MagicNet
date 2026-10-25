@@ -434,6 +434,7 @@ export function connectionBuckets(
     .filter((item): item is { name: string; query: string; bytes: number } =>
       Boolean(item),
     );
+  // Connection metadata is arbitrary text, including Object prototype keys.
   return Object.values(
     seeds.reduce<Record<string, ConnectionBucket>>((acc, seed) => {
       acc[seed.name] ||= {
@@ -445,7 +446,7 @@ export function connectionBuckets(
       acc[seed.name].count += 1;
       acc[seed.name].bytes += seed.bytes;
       return acc;
-    }, {}),
+    }, Object.create(null)),
   )
     .sort((left, right) => right.bytes - left.bytes || right.count - left.count)
     .slice(0, 4);

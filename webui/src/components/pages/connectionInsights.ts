@@ -58,13 +58,14 @@ export function formatConnectionBytes(value: number): string {
 }
 
 function topBy(connections: ConnectionTarget[], keyOf: (item: ConnectionTarget) => string): { name: string; count: number; bytes: number } | null {
+  // Connection metadata is arbitrary text, including Object prototype keys.
   const buckets = connections.reduce<Record<string, { name: string; count: number; bytes: number }>>((acc, item) => {
     const name = keyOf(item);
     acc[name] ||= { name, count: 0, bytes: 0 };
     acc[name].count += 1;
     acc[name].bytes += item.totalBytes;
     return acc;
-  }, {});
+  }, Object.create(null));
   return Object.values(buckets).sort((left, right) => right.bytes - left.bytes || right.count - left.count)[0] || null;
 }
 
