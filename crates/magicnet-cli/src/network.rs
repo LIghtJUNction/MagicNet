@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::service::restart_current_core;
+use crate::service::{config_apply_lock, restart_current_core_locked, ConfigApplyGuard};
 use crate::{read_kv, run_magicnet_function, write_kv, App};
 
 const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
@@ -97,6 +97,9 @@ impl DnsCaptureCapabilities {
         if self.kernel_capture_required == Some(false) {
             return "none";
         }
+        if self.kernel_capture_required.is_none() {
+            return "nat_capability_unknown";
+        }
         match (self.ipv4_nat, self.ipv6_nat) {
             (Supported, Supported) => "none",
             (Unsupported, _) => "ipv4_nat_unavailable",
@@ -155,16 +158,46 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "set" => {
             let policy = NetworkPolicy::from_args(&args[1..])?;
+            let guard = config_apply_lock(app)?;
             preflight_policy(app, &policy)?;
+            let before = crate::utils::read_module_text_bounded(
+                app,
+                Path::new(NETWORK_POLICY_CONF),
+                64 * 1024,
+            )?;
             policy.write(app)?;
-            apply_network_policy(app)?;
+            let mut materialized = false;
+            let result = run_magicnet_function(app, "magicnet_transparent_apply").and_then(|()| {
+                materialized = true;
+                restart_current_core_locked(app, &guard)
+            });
+            if let Err(error) = result {
+                let restored = match before {
+                    Some(text) => {
+                        crate::write_text_file(app, Path::new(NETWORK_POLICY_CONF), &text)
+                    }
+                    None => crate::utils::remove_module_file(app, Path::new(NETWORK_POLICY_CONF)),
+                };
+                restored.map_err(|restore| {
+                    format!(
+                        "network apply failed: {error}; saved policy rollback failed: {restore}"
+                    )
+                })?;
+                if materialized {
+                    apply_network_policy(app, &guard).map_err(|restore| format!("network apply failed: {error}; previous network policy restored, runtime recovery failed: {restore}"))?;
+                }
+                return Err(format!(
+                    "network apply failed; previous network policy restored: {error}"
+                ));
+            }
             print_status(app, &policy);
             println!("[info] Network policy applied");
             Ok(())
         }
         "apply" => {
+            let guard = config_apply_lock(app)?;
             preflight_policy(app, &NetworkPolicy::load(app))?;
-            apply_network_policy(app)?;
+            apply_network_policy(app, &guard)?;
             print_status(app, &NetworkPolicy::load(app));
             Ok(())
         }
@@ -172,11 +205,11 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn apply_network_policy(app: &App) -> Result<(), String> {
+fn apply_network_policy(app: &App, guard: &ConfigApplyGuard) -> Result<(), String> {
     run_magicnet_function(app, "magicnet_transparent_apply")?;
     // sing-box reads the TUN inbound and DNS strategy at process start; a
     // successful file rewrite alone leaves a running core on the old policy.
-    restart_current_core(app)
+    restart_current_core_locked(app, guard)
 }
 
 impl NetworkPolicy {
@@ -397,10 +430,6 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
     println!("dns_capture_port={}", configured_dns_capture_port(&values));
     println!("tun_inet={}", configured_tun_inet(&values));
     println!("tun_inet6={}", configured_tun_inet6(&values));
-    let capabilities = DnsCaptureCapabilities::observe(app);
-    println!("ipv4_nat={}", capabilities.ipv4_nat.token());
-    println!("ipv6_nat={}", capabilities.ipv6_nat.token());
-    println!("strict_ipv6_blocker={}", capabilities.blocker());
 
     let effective = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .ok()
@@ -466,6 +495,66 @@ mod tests {
     use super::*;
     use crate::test_support::temp_app;
     use std::fs;
+
+    #[test]
+    fn unknown_capture_requirement_is_not_reported_as_ready() {
+        let capabilities = DnsCaptureCapabilities {
+            ipv4_nat: NatCapability::Supported,
+            ipv6_nat: NatCapability::Supported,
+            kernel_capture_required: None,
+        };
+        assert_eq!(capabilities.as_value()["strict_ipv6_ready"], Value::Null);
+        assert_eq!(capabilities.blocker(), "nat_capability_unknown");
+    }
+
+    #[test]
+    fn network_set_waits_for_shared_lifecycle_owner_before_changing_intent() {
+        let fixture = temp_app();
+        let app = App::for_test(fixture.moddir.clone());
+        let _owner = config_apply_lock(&app).unwrap();
+        let error = network_cmd(
+            &app,
+            &["set", "prefer_ipv4", "1500", "10m"].map(String::from),
+        )
+        .unwrap_err();
+        assert!(error.contains("still busy"), "{error}");
+        assert!(!app.moddir.join(NETWORK_POLICY_CONF).exists());
+    }
+
+    #[test]
+    fn failed_apply_restores_saved_network_intent() {
+        for before in [None, Some("# previous intent\nMAGICNET_IPV6_MODE=prefer_ipv4\nMAGICNET_TUN_MTU=1400\nMAGICNET_UDP_TIMEOUT=5m\nMAGICNET_DNS_CAPTURE_PORT=15353\n")] {
+            let fixture = temp_app();
+            let app = App::for_test(fixture.moddir.clone());
+            fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+            fs::create_dir_all(app.moddir.join("lib/kamfw")).unwrap();
+            if let Some(before) = before {
+                fs::write(app.moddir.join(NETWORK_POLICY_CONF), before).unwrap();
+            }
+            fs::write(app.moddir.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+            fs::write(app.moddir.join("lib/magicnet.sh"),
+                "magicnet_dns_capture_capabilities() { printf 'ipv4_nat=supported\\nipv6_nat=supported\\nkernel_capture_required=1\\n'; }\nmagicnet_transparent_apply() { touch \"$MODDIR/applied\"; return 1; }\n").unwrap();
+            let error = network_cmd(&app, &["set", "prefer_ipv6", "1500", "10m"].map(String::from)).unwrap_err();
+            assert!(app.moddir.join("applied").exists());
+            assert_eq!(fs::read_to_string(app.moddir.join(NETWORK_POLICY_CONF)).ok().as_deref(), before);
+            assert!(error.contains("previous network policy restored"), "{error}");
+        }
+    }
+
+    #[test]
+    fn human_network_status_does_not_spawn_capability_probes() {
+        let fixture = temp_app();
+        let app = App::for_test(fixture.moddir.clone());
+        fs::create_dir_all(app.moddir.join("lib/kamfw")).unwrap();
+        fs::write(app.moddir.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(
+            app.moddir.join("lib/magicnet.sh"),
+            "magicnet_dns_capture_capabilities() { touch \"$MODDIR/probed\"; }\n",
+        )
+        .unwrap();
+        network_cmd(&app, &["status".into()]).unwrap();
+        assert!(!app.moddir.join("probed").exists());
+    }
 
     #[test]
     fn strict_ipv6_preflight_preserves_saved_policy_and_running_config() {

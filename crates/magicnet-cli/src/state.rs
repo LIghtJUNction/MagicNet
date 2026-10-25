@@ -779,21 +779,9 @@ fn hotspot_record(app: &App) -> StateRecord {
 
 fn dns_record(app: &App) -> StateRecord {
     let interface_count = clean_line_count(&app.moddir.join(DNS_GUARD_INTERFACES));
-    let capabilities = crate::network::DnsCaptureCapabilities::observe(app);
     StateRecord::new(Domain::Dns)
         .field("state", if interface_count > 0 { "owned" } else { "idle" })
         .field("guard_interface_count", interface_count.to_string())
-        .field("ipv4_nat", capabilities.ipv4_nat.token())
-        .field("ipv6_nat", capabilities.ipv6_nat.token())
-        .field(
-            "kernel_capture_required",
-            match capabilities.kernel_capture_required {
-                Some(true) => "1",
-                Some(false) => "0",
-                None => "unknown",
-            },
-        )
-        .field("strict_ipv6_blocker", capabilities.blocker())
 }
 
 fn mcp_record(app: &App) -> StateRecord {
@@ -957,6 +945,22 @@ mod tests {
         fs::create_dir_all(root.join(".state/sing-box")).expect("create subscription state");
         let app = App::for_test(root.clone());
         (root, app)
+    }
+
+    #[test]
+    fn dns_reconcile_does_not_spawn_capability_probe() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join("lib/kamfw")).unwrap();
+        fs::write(root.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(
+            root.join("lib/magicnet.sh"),
+            "magicnet_dns_capture_capabilities() { touch \"$MODDIR/probed\"; }\n",
+        )
+        .unwrap();
+        let record = super::dns_record(&app).encode();
+        assert!(record.contains("guard_interface_count=0\n"));
+        assert!(!root.join("probed").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

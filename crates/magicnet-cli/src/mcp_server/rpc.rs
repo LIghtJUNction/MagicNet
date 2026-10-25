@@ -92,6 +92,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
             run_cli(server, &["--json", "network-access", "inspect"])
         }
         "magicnet_network_status" => run_cli(server, &["--json", "network", "status"]),
+        "magicnet_network_preflight" => run_cli(server, &["--json", "network", "preflight"]),
         "magicnet_subscription_status" => run_cli(server, &["--json", "sub", "status"]),
         "magicnet_wifi_status" => run_cli(server, &["--json", "wifi", "status"]),
         "magicnet_hotspot_status" => run_cli(server, &["--json", "hotspot", "status"]),
@@ -727,6 +728,13 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{cli_args_reveal_secret, handle_jsonrpc, run_cli_with_timeout, Server};
+
+    #[test]
+    fn network_preflight_is_an_explicit_read_only_machine_request() {
+        let response = call_echo_tool("magicnet_network_preflight", json!({}));
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        assert_eq!(text, "--json network preflight\n\nrc=0");
+    }
 
     #[test]
     fn protocol_discovery_and_notifications_do_not_spawn_cli() {

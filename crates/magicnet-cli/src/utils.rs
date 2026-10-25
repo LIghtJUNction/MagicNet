@@ -1139,10 +1139,21 @@ pub(crate) fn clean_module_lines_bounded(
     relative: &Path,
     max_bytes: u64,
 ) -> Result<Vec<String>, String> {
+    Ok(read_module_text_bounded(app, relative, max_bytes)?
+        .map(|text| filter_clean_lines(&text))
+        .unwrap_or_default())
+}
+
+/// Reads exact optional configuration bytes through the module-root boundary.
+pub(crate) fn read_module_text_bounded(
+    app: &App,
+    relative: &Path,
+    max_bytes: u64,
+) -> Result<Option<String>, String> {
     let target = split_module_relative_file(relative)?;
     let directory = open_module_directory(app, &target.directory)?;
     let Some(file) = open_existing_private_module_file(&directory, &target.name)? else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let mut text = String::new();
     file.take(max_bytes.saturating_add(1))
@@ -1151,7 +1162,28 @@ pub(crate) fn clean_module_lines_bounded(
     if text.len() as u64 > max_bytes {
         return Err("configuration exceeds the read limit".to_string());
     }
-    Ok(filter_clean_lines(&text))
+    Ok(Some(text))
+}
+
+/// Removes a verified ordinary module file; the caller serializes its writers.
+pub(crate) fn remove_module_file(app: &App, relative: &Path) -> Result<(), String> {
+    let target = split_module_relative_file(relative)?;
+    let directory = open_module_directory(app, &target.directory)?;
+    if open_existing_private_module_file(&directory, &target.name)?.is_none() {
+        return Ok(());
+    }
+    let name = cstring_from_os_str(&target.name, "module file name")?;
+    // SAFETY: both the directory descriptor and the NUL-terminated name live
+    // through unlinkat. The name is one validated relative path component.
+    if unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+        return Err(format!(
+            "remove module file: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    directory
+        .sync_all()
+        .map_err(|error| format!("sync module directory: {error}"))
 }
 
 pub(crate) fn first_clean_module_line(app: &App, relative: &Path) -> String {

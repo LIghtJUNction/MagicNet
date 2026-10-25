@@ -101,7 +101,7 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
             transition,
             has_recent_error,
             dataplane_ready: ready,
-            local_ready: ready,
+            local_ready: None,
             shared_ready: None,
         };
     }
@@ -322,6 +322,31 @@ fn regular_file_nonempty(path: &Path) -> bool {
 mod tests {
     use super::{network_values, valid_interface_name};
     use serde_json::json;
+
+    #[test]
+    fn tun_never_reports_ebpf_plane_readiness() {
+        let fixture = crate::test_support::temp_app();
+        let app = crate::App::for_test(fixture.moddir.clone());
+        std::fs::create_dir_all(app.moddir.join(".config/sing-box")).unwrap();
+        std::fs::write(
+            app.moddir.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"tag":"tun-in","type":"tun","interface_name":"lo"}]}"#,
+        )
+        .unwrap();
+        for state in ["running", "stopped", "unknown"] {
+            let status = super::snapshot(&app, state, "tun");
+            assert_eq!(status.local_ready, None, "{state}");
+            assert_eq!(status.shared_ready, None, "{state}");
+            assert_eq!(
+                status.dataplane_ready,
+                match state {
+                    "running" => Some(true),
+                    "stopped" => Some(false),
+                    _ => None,
+                }
+            );
+        }
+    }
 
     #[test]
     fn hybrid_without_downstream_keeps_local_ready_and_shared_pending() {

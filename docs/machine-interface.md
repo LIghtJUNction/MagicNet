@@ -61,6 +61,7 @@ supervisor.status
 transparent.status
 dns.status
 network.status
+network.preflight
 network-access.status
 network-access.inspect
 network-access.check
@@ -214,7 +215,8 @@ and quota displays, and reports unknown rather than keeping an old green state.
 
 ### DNS capture preflight
 
-The `dns_capture_preflight` capability adds `network.status.data.dns_capture`:
+The `dns_capture_preflight` capability adds the explicit read-only
+`cli --json network preflight` command (`network.preflight` envelope):
 `ipv4_nat` and `ipv6_nat` are `supported`, `unsupported`, `error`, or `unknown`.
 `kernel_capture_required` is a nullable boolean describing whether the current
 transparent mode uses kernel DNS capture; eBPF and explicitly disabled capture
@@ -222,15 +224,24 @@ do not require NAT interception. `strict_ipv6_ready` is nullable and `blocker`
 is one of `none`, `ipv4_nat_unavailable`, `ipv6_nat_unavailable`,
 `nat_probe_failed`, or `nat_capability_unknown`. Probe errors, permission
 failures and observation timeouts are never reported as supported or absent.
-The canonical DNS record publishes the same capability tokens and blocker.
+The command has a three-second probe deadline and returns only normalized
+capability observations. Routine `network.status`, human `network status`, and
+canonical state reconciliation do not run NAT probes. The ephemeral observation
+is not a second public state file or proof of active DNS rule ownership.
 
 `network set prefer_ipv6` and `network apply` check capability before changing
-saved policy or restarting a service. The shell startup path also checks strict
+saved policy or restarting a service. Set holds the shared lifecycle lock across
+intent publication, apply and compensation. A later apply failure restores the
+previous intent, including an absent file; a restart failure also attempts to
+reapply that intent and reports runtime recovery failures explicitly.
+The shell startup path also checks strict
 capture before network teardown or launching a core. A failed preflight leaves
 the existing configuration and network in place and asks for an explicit
 `prefer_ipv4` choice or the missing kernel support. There is no automatic
-downgrade. WebUI displays the machine result beside the IPv6 policy editor;
-MCP receives the same redacted status projection.
+downgrade. WebUI requests this preflight when loading or refreshing the IPv6
+policy editor, separately from ordinary status reads. A failed or unsupported
+preflight clears the previous observation. MCP exposes the same explicit probe
+through `magicnet_network_preflight`; `magicnet_network_status` remains cheap.
 
 ### Hotspot status
 

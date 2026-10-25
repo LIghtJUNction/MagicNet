@@ -23,6 +23,35 @@ use super::{
 };
 
 #[test]
+fn optional_module_text_snapshot_is_exact_bounded_and_rejects_links() {
+    let root = test_directory("optional-module-text");
+    let app = App::for_test(root.clone());
+    let relative = Path::new(".config/magicnet/network-policy.conf");
+    assert_eq!(
+        super::read_module_text_bounded(&app, relative, 64).unwrap(),
+        None
+    );
+    let text = "# previous intent\nMAGICNET_TUN_MTU=1400\n";
+    write_text_file(&app, relative, text).unwrap();
+    assert_eq!(
+        super::read_module_text_bounded(&app, relative, 64)
+            .unwrap()
+            .as_deref(),
+        Some(text)
+    );
+    assert!(super::read_module_text_bounded(&app, relative, 8).is_err());
+    super::remove_module_file(&app, relative).unwrap();
+    assert!(!root.join(relative).exists());
+    let outside = root.join("outside");
+    fs::write(&outside, "preserved").unwrap();
+    symlink(&outside, root.join(relative)).unwrap();
+    assert!(super::read_module_text_bounded(&app, relative, 64).is_err());
+    assert!(super::remove_module_file(&app, relative).is_err());
+    assert_eq!(fs::read_to_string(outside).unwrap(), "preserved");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn proc_start_time_allows_spaces_and_parentheses_in_comm() {
     let stat = "42 (worker name (stage)) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 424242 20";
     assert_eq!(proc_start_time(stat).as_deref(), Some("424242"));

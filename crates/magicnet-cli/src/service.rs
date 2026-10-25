@@ -491,6 +491,13 @@ pub(crate) fn restart_current_core(app: &App) -> Result<(), String> {
     restart(app, "current")
 }
 
+pub(crate) fn restart_current_core_locked(
+    app: &App,
+    _guard: &ConfigApplyGuard,
+) -> Result<(), String> {
+    restart_current_core_preserving_config_apply(app)
+}
+
 fn restart_current_core_preserving_config_apply(app: &App) -> Result<(), String> {
     restart_with_options_unlocked(app, "current", true)
 }

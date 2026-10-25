@@ -11,7 +11,6 @@ export type MachineEnvelope<T extends Record<string, unknown>> = {
 };
 
 export type NetworkPolicyStatus = {
-  dns_capture?: DnsCaptureStatus;
   configured: {
     ipv6_mode: string;
     mtu: number;
@@ -51,6 +50,10 @@ function parseDnsCapture(value: unknown): DnsCaptureStatus | null {
     (blocker !== "none" && blocker !== "ipv4_nat_unavailable" && blocker !== "ipv6_nat_unavailable" &&
       blocker !== "nat_probe_failed" && blocker !== "nat_capability_unknown")) return null;
   return { ipv4_nat, ipv6_nat, kernel_capture_required, strict_ipv6_ready, blocker };
+}
+
+export function parseMachineNetworkPreflight(text: string): DnsCaptureStatus | null {
+  return parseDnsCapture(decodeMachineData(text, "network.preflight"));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,8 +126,6 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
   const data = decodeMachineData(text, "network.status");
   if (!data || !isRecord(data.configured) || !isRecord(data.effective)) return null;
   const { configured, effective } = data;
-  const capture = data.dns_capture === undefined ? undefined : parseDnsCapture(data.dns_capture);
-  if (capture === null) return null;
   if (
     typeof configured.ipv6_mode !== "string" ||
     !["ipv4_only", "prefer_ipv4", "prefer_ipv6"].includes(configured.ipv6_mode) ||
@@ -177,7 +178,7 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
   if (effectivePort !== undefined) parsedEffective.dns_capture_port = effectivePort;
   if (effectiveInet !== undefined) parsedEffective.tun_inet = effectiveInet;
   if (effectiveInet6 !== undefined) parsedEffective.tun_inet6 = effectiveInet6;
-  return { configured: parsedConfigured, effective: parsedEffective, ...(capture ? { dns_capture: capture } : {}) };
+  return { configured: parsedConfigured, effective: parsedEffective };
 }
 
 

@@ -6,13 +6,13 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import type { NetworkPolicyStatus } from "@/composables/machineStatus";
+import type { DnsCaptureStatus, NetworkPolicyStatus } from "@/composables/machineStatus";
 import { execFailed } from "@/utils";
 
-const { state, runCli, refreshNetwork } = useMagicNet();
+const { state, runCli, refreshNetwork, refreshNetworkPreflight } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const configured = ref<NetworkPolicyStatus["configured"] | null>(null);
-const dnsCapture = ref<NetworkPolicyStatus["dns_capture"]>();
+const dnsCapture = ref<DnsCaptureStatus | null>(null);
 const readFailed = ref(false);
 const ipv6Mode = ref("prefer_ipv4");
 const mtu = ref("1400");
@@ -45,7 +45,8 @@ const modeHint = computed(() => {
 
 const captureHint = computed(() => {
   const capture = dnsCapture.value;
-  if (ipv6Mode.value !== "prefer_ipv6" || !capture || capture.kernel_capture_required === false) return "";
+  if (ipv6Mode.value !== "prefer_ipv6" || capture?.kernel_capture_required === false) return "";
+  if (!capture) return t("无法确认 DNS 捕获能力，请检查 root 权限和 xtables 后再应用 IPv6 优先。");
   if (capture.blocker === "ipv6_nat_unavailable") return t("内核缺少 IPv6 NAT，无法启用严格 DNS 捕获。请选择 IPv4 优先，或补齐内核能力。");
   if (capture.blocker === "ipv4_nat_unavailable") return t("内核缺少 IPv4 NAT，无法启用严格 DNS 捕获。请选择 IPv4 优先，或补齐内核能力。");
   if (capture.blocker !== "none") return t("无法确认 DNS 捕获能力，请检查 root 权限和 xtables 后再应用 IPv6 优先。");
@@ -56,7 +57,7 @@ async function readStatus(silent: boolean, acceptSaved: boolean): Promise<void> 
   const keepDraft = dirty.value && !acceptSaved;
   const status = await refreshNetwork(silent);
   readFailed.value = !status;
-  dnsCapture.value = status?.dns_capture;
+  dnsCapture.value = null;
   if (!status) return;
   configured.value = status.configured;
   if (!keepDraft) {
@@ -78,6 +79,7 @@ async function readStatus(silent: boolean, acceptSaved: boolean): Promise<void> 
     : String(status.effective.dns_capture_port);
   effectiveTunInet.value = status.effective.tun_inet ?? "unavailable";
   effectiveTunInet6.value = status.effective.tun_inet6 ?? "unavailable";
+  dnsCapture.value = await refreshNetworkPreflight();
 }
 
 async function refreshStatus(silent = false, acceptSaved = false): Promise<void> {
