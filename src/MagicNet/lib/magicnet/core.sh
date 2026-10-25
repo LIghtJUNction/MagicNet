@@ -368,6 +368,7 @@ magicnet_start_kernel() {
         ;;
     esac
 
+    magicnet_dns_capture_preflight || return 1
     magicnet_disable_dns_capture || true
     magicnet_disable_dns_leak_guard || true
     magicnet_require_subscription_or_stop || return 1

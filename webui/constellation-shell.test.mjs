@@ -91,6 +91,15 @@ test("eBPF dataplane is described by attachments, never by magicnet0", () => {
   assert.doesNotMatch(JSON.stringify(ebpf), /magicnet0/);
 });
 
+test("a ready hybrid local plane never labels its pending shared plane as ready", () => {
+  const ebpf = buildConstellation({ ...ready, transparentMode:"ebpf", transparentEffectiveMode:"hybrid",
+    transparentLocalCgroup:"attached", transparentSharedTc:"pending",
+    transparentLocalReady:true, transparentSharedReady:false }, true);
+  assert.equal(ebpf.stars[1].state, "ok");
+  assert.equal(ebpf.stars[1].detail, "本机已就绪 · 共享待就绪");
+  assert.equal(ebpf.stars[3].state, "ok");
+});
+
 test("runtime parser keeps dataplane evidence separate and never carries a stale true", () => {
   const status = (core, dataplaneReady) => envelope("service.status", {
     core: { sing_box: core },

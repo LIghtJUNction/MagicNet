@@ -779,9 +779,21 @@ fn hotspot_record(app: &App) -> StateRecord {
 
 fn dns_record(app: &App) -> StateRecord {
     let interface_count = clean_line_count(&app.moddir.join(DNS_GUARD_INTERFACES));
+    let capabilities = crate::network::DnsCaptureCapabilities::observe(app);
     StateRecord::new(Domain::Dns)
         .field("state", if interface_count > 0 { "owned" } else { "idle" })
         .field("guard_interface_count", interface_count.to_string())
+        .field("ipv4_nat", capabilities.ipv4_nat.token())
+        .field("ipv6_nat", capabilities.ipv6_nat.token())
+        .field(
+            "kernel_capture_required",
+            match capabilities.kernel_capture_required {
+                Some(true) => "1",
+                Some(false) => "0",
+                None => "unknown",
+            },
+        )
+        .field("strict_ipv6_blocker", capabilities.blocker())
 }
 
 fn mcp_record(app: &App) -> StateRecord {

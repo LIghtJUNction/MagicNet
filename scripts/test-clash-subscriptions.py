@@ -104,6 +104,49 @@ magicnet_singbox_subscription_filter_file() {{ printf '/dev/null\\n'; }}
         cp = self.shell(f'magicnet_singbox_source_is_clash {source}\nmagicnet_singbox_extract_clash_nodes {source} {self.root / "nodes"}')
         self.assertEqual(cp.stdout.strip(), '0')
 
+    def test_nested_proxies_outside_root_sequence_are_not_nodes(self):
+        for placement in ('before', 'after'):
+            for indent in (0, 2, 4):
+                with self.subTest(placement=placement, indent=indent):
+                    real = 'proxies:\n' + ''.join(
+                        ' ' * indent + f'- name: real-{i}\n'
+                        + ' ' * (indent + 2) + 'type: trojan\n'
+                        for i in range(46)
+                    )
+                    nested = 'metadata:\n  proxies:\n' + ''.join(
+                        f'  - name: not-a-node-{i}\n' for i in range(10)
+                    )
+                    source = self.file('nested-proxies.yaml',
+                                       nested + real if placement == 'before' else real + nested)
+                    nodes = self.root / f'nodes-{placement}-{indent}'
+                    cp = self.shell(f'magicnet_singbox_extract_clash_nodes {source} {nodes}')
+                    self.assertEqual(cp.stdout.strip(), '46')
+                    extracted = list(nodes.glob('node-*.yaml'))
+                    self.assertEqual(len(extracted), 46)
+                    self.assertFalse(any('not-a-node' in node.read_text() for node in extracted))
+
+    def test_nested_proxies_do_not_reject_complete_converter_or_hide_node_loss(self):
+        content, expected = self.reality_fixture()
+        content += 'metadata:\n  proxies:\n  - not-a-node\n'
+        for output, complete in ((expected, True), (expected[:-1], False)):
+            with self.subTest(complete=complete):
+                nodes, status = self.native_update(content, converter=self.converter_output(output))
+                if complete:
+                    self.assertIsNotNone(nodes, status)
+                    self.assertEqual((self.root / 'native-counts').read_text(), '10 10\n')
+                else:
+                    self.assertIsNone(nodes, 'converter node loss reached configuration staging')
+                    self.assertIn('convert failed incomplete_conversion', status)
+
+    def test_indented_root_mapping_still_extracts_only_real_nodes(self):
+        for offset in (2, 4):
+            source = self.file(f'root-{offset}.yaml', '# fixture\n%YAML 1.2\n---\n' +
+                               ''.join(' ' * offset + line + '\n' for line in NESTED.splitlines()))
+            nodes = self.root / f'root-{offset}-nodes'
+            cp = self.shell(f'magicnet_singbox_extract_clash_nodes {source} {nodes}')
+            self.assertEqual(cp.stdout.strip(), '2')
+            self.assertNotIn('not-a-node', (nodes / 'node-2.yaml').read_text())
+
     def test_multiple_json_sources_do_not_stop_at_the_second_source(self):
         # Only replace the external executable; run the real merge/validation.
         converter = self.file('converter', '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do case "$1" in -singbox) src="$2"; shift;; -o) out="$2"; shift;; esac; shift; done\ncp "$src" "$out"\n')

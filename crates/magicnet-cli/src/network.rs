@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -14,6 +15,120 @@ const DEFAULT_UDP_TIMEOUT: &str = "5m";
 pub(crate) const DEFAULT_DNS_CAPTURE_PORT: u16 = 1053;
 pub(crate) const DEFAULT_TUN_INET: &str = "172.19.0.1/30";
 pub(crate) const DEFAULT_TUN_INET6: &str = "fdfe:dcba:9876::1/126";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NatCapability {
+    Supported,
+    Unsupported,
+    Error,
+    Unknown,
+}
+
+impl NatCapability {
+    pub(crate) fn token(self) -> &'static str {
+        match self {
+            Self::Supported => "supported",
+            Self::Unsupported => "unsupported",
+            Self::Error => "error",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    fn parse(value: &str) -> Self {
+        match value {
+            "supported" => Self::Supported,
+            "unsupported" => Self::Unsupported,
+            "error" => Self::Error,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+pub(crate) struct DnsCaptureCapabilities {
+    pub(crate) ipv4_nat: NatCapability,
+    pub(crate) ipv6_nat: NatCapability,
+    pub(crate) kernel_capture_required: Option<bool>,
+}
+
+impl DnsCaptureCapabilities {
+    pub(crate) fn observe(app: &App) -> Self {
+        let unknown = Self {
+            ipv4_nat: NatCapability::Unknown,
+            ipv6_nat: NatCapability::Unknown,
+            kernel_capture_required: None,
+        };
+        let command =
+            crate::process::magicnet_function_command(app, "magicnet_dns_capture_capabilities");
+        let Ok(output) = crate::run_bounded_command(command, Duration::from_secs(3), 1024) else {
+            return unknown;
+        };
+        if output.timed_out
+            || output.truncated
+            || !output.status.is_some_and(|status| status.success())
+        {
+            return unknown;
+        }
+        let Ok(text) = std::str::from_utf8(&output.stdout) else {
+            return unknown;
+        };
+        let lines: Vec<_> = text.lines().collect();
+        let [ipv4, ipv6, required] = lines.as_slice() else {
+            return unknown;
+        };
+        let (Some(ipv4), Some(ipv6)) = (
+            ipv4.strip_prefix("ipv4_nat="),
+            ipv6.strip_prefix("ipv6_nat="),
+        ) else {
+            return unknown;
+        };
+        Self {
+            ipv4_nat: NatCapability::parse(ipv4),
+            ipv6_nat: NatCapability::parse(ipv6),
+            kernel_capture_required: match *required {
+                "kernel_capture_required=0" => Some(false),
+                "kernel_capture_required=1" => Some(true),
+                _ => None,
+            },
+        }
+    }
+
+    pub(crate) fn blocker(&self) -> &'static str {
+        use NatCapability::*;
+        if self.kernel_capture_required == Some(false) {
+            return "none";
+        }
+        match (self.ipv4_nat, self.ipv6_nat) {
+            (Supported, Supported) => "none",
+            (Unsupported, _) => "ipv4_nat_unavailable",
+            (_, Unsupported) => "ipv6_nat_unavailable",
+            (Error, _) | (_, Error) => "nat_probe_failed",
+            _ => "nat_capability_unknown",
+        }
+    }
+
+    pub(crate) fn as_value(&self) -> Value {
+        let ready = match self.blocker() {
+            "none" => Some(true),
+            "nat_capability_unknown" => None,
+            _ => Some(false),
+        };
+        serde_json::json!({"ipv4_nat":self.ipv4_nat.token(),"ipv6_nat":self.ipv6_nat.token(),
+            "kernel_capture_required":self.kernel_capture_required,
+            "strict_ipv6_ready":ready,"blocker":self.blocker()})
+    }
+}
+
+fn preflight_policy(app: &App, policy: &NetworkPolicy) -> Result<(), String> {
+    if policy.ipv6_mode != "prefer_ipv6" {
+        return Ok(());
+    }
+    match DnsCaptureCapabilities::observe(app).blocker() {
+        "none" => Ok(()),
+        "ipv6_nat_unavailable" => Err("IPv6 NAT is unavailable; prefer_ipv6 requires strict DNS capture. Select prefer_ipv4 explicitly or provide IPv6 NAT support; saved policy and service were preserved".into()),
+        "ipv4_nat_unavailable" => Err("IPv4 NAT is unavailable; prefer_ipv6 requires strict DNS capture. Select prefer_ipv4 explicitly or provide NAT support; saved policy and service were preserved".into()),
+        _ => Err("NAT capability could not be verified; prefer_ipv6 was not applied. Check root access and xtables, or select prefer_ipv4 explicitly".into()),
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct NetworkPolicy {
@@ -40,6 +155,7 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "set" => {
             let policy = NetworkPolicy::from_args(&args[1..])?;
+            preflight_policy(app, &policy)?;
             policy.write(app)?;
             apply_network_policy(app)?;
             print_status(app, &policy);
@@ -47,6 +163,7 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "apply" => {
+            preflight_policy(app, &NetworkPolicy::load(app))?;
             apply_network_policy(app)?;
             print_status(app, &NetworkPolicy::load(app));
             Ok(())
@@ -280,6 +397,10 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
     println!("dns_capture_port={}", configured_dns_capture_port(&values));
     println!("tun_inet={}", configured_tun_inet(&values));
     println!("tun_inet6={}", configured_tun_inet6(&values));
+    let capabilities = DnsCaptureCapabilities::observe(app);
+    println!("ipv4_nat={}", capabilities.ipv4_nat.token());
+    println!("ipv6_nat={}", capabilities.ipv6_nat.token());
+    println!("strict_ipv6_blocker={}", capabilities.blocker());
 
     let effective = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .ok()
@@ -345,6 +466,34 @@ mod tests {
     use super::*;
     use crate::test_support::temp_app;
     use std::fs;
+
+    #[test]
+    fn strict_ipv6_preflight_preserves_saved_policy_and_running_config() {
+        let fixture = temp_app();
+        let app = App::for_test(fixture.moddir.clone());
+        fs::create_dir_all(app.moddir.join(".config/magicnet")).unwrap();
+        fs::create_dir_all(app.moddir.join("lib/kamfw")).unwrap();
+        let before =
+            "MAGICNET_IPV6_MODE=prefer_ipv4\nMAGICNET_TUN_MTU=1400\nMAGICNET_UDP_TIMEOUT=5m\n";
+        fs::write(app.moddir.join(NETWORK_POLICY_CONF), before).unwrap();
+        fs::write(app.moddir.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(app.moddir.join("lib/magicnet.sh"),
+            "magicnet_dns_capture_capabilities() { printf 'ipv4_nat=supported\\nipv6_nat=unsupported\\nkernel_capture_required=1\\n'; }\nmagicnet_transparent_apply() { touch \"$MODDIR/applied\"; return 1; }\n").unwrap();
+        let error = network_cmd(
+            &app,
+            &["set", "prefer_ipv6", "1400", "5m"].map(String::from),
+        )
+        .unwrap_err();
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(NETWORK_POLICY_CONF)).unwrap(),
+            before
+        );
+        assert!(!app.moddir.join("applied").exists());
+        assert!(
+            error.contains("IPv6 NAT") && error.contains("prefer_ipv4"),
+            "{error}"
+        );
+    }
 
     #[test]
     fn aliases_normalize_to_canonical_ipv6_modes() {

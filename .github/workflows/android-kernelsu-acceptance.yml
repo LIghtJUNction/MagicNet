@@ -361,6 +361,18 @@ jobs:
           sha256sum "$kernel_dir/bzImage" > artifacts/android-kernelsu/kernel-bzimage.sha256
           printf 'MAGICNET_AVD_KERNEL=%s\n' "$kernel_dir/bzImage" >> "$GITHUB_ENV"
 
+      - name: Export verified kernel for local simulation
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-avd-kernel-${{ env.KSU_AVD_KERNEL_BUILD_ID }}-${{ github.run_id }}
+          path: |
+            ${{ env.KSU_RUNTIME }}/avd-kernel/bzImage
+            ${{ env.KSU_RUNTIME }}/avd-kernel/build-info.txt
+            ${{ env.KSU_RUNTIME }}/avd-kernel/provenance.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Save verified KernelSU kernel
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

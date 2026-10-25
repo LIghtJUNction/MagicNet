@@ -14,7 +14,7 @@ magicnet_singbox_extract_clash_nodes() (
             return value
         }
         BEGIN {
-            inside = 0; idx = 0; file = ""; item_indent = -1
+            inside = 0; idx = 0; file = ""; item_indent = -1; root_indent = -1
             ws = " \t\r\n\v\f"; bom = sprintf("%c%c%c", 239, 187, 191)
         }
         {
@@ -24,8 +24,10 @@ magicnet_singbox_extract_clash_nodes() (
             indent = 0
             while (substr(line, indent + 1, 1) == " ") indent++
             trimmed = ltrim(line)
+            if (root_indent < 0 && trimmed != "" && substr(trimmed, 1, 1) != "#" &&
+                substr(trimmed, 1, 1) != "%" && trimmed != "---" && trimmed != "...") root_indent = indent
             suffix = ltrim(substr(trimmed, 9))
-            if (substr(trimmed, 1, 8) == "proxies:" && (suffix == "" || substr(suffix, 1, 1) == "#")) {
+            if (indent == root_indent && substr(trimmed, 1, 8) == "proxies:" && (suffix == "" || substr(suffix, 1, 1) == "#")) {
                 inside = 1; key_indent = indent; next
             }
             if (inside && (trimmed == "" || substr(trimmed, 1, 1) == "#")) next

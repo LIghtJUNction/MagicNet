@@ -249,7 +249,9 @@ fn capabilities_value() -> Value {
                 "redacted_status",
                 "configured_effective_split",
                 "privacy_safe_network_identifiers",
-                "readiness_signals"
+                "readiness_signals",
+                "transparent_plane_readiness",
+                "dns_capture_preflight"
             ],
             "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
@@ -440,7 +442,8 @@ fn network_status_value(app: &App) -> Value {
                 "dns_capture_port": effective_dns_capture_port,
                 "tun_inet": effective_tun_inet,
                 "tun_inet6": effective_tun_inet6,
-            }
+            },
+            "dns_capture": crate::network::DnsCaptureCapabilities::observe(app).as_value(),
         }),
     )
 }

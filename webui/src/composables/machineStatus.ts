@@ -11,6 +11,7 @@ export type MachineEnvelope<T extends Record<string, unknown>> = {
 };
 
 export type NetworkPolicyStatus = {
+  dns_capture?: DnsCaptureStatus;
   configured: {
     ipv6_mode: string;
     mtu: number;
@@ -29,6 +30,28 @@ export type NetworkPolicyStatus = {
     tun_inet6?: string | null;
   };
 };
+
+type NatCapability = "supported" | "unsupported" | "error" | "unknown";
+export type DnsCaptureStatus = {
+  ipv4_nat: NatCapability;
+  ipv6_nat: NatCapability;
+  kernel_capture_required: boolean | null;
+  strict_ipv6_ready: boolean | null;
+  blocker: "none" | "ipv4_nat_unavailable" | "ipv6_nat_unavailable" | "nat_probe_failed" | "nat_capability_unknown";
+};
+
+function parseDnsCapture(value: unknown): DnsCaptureStatus | null {
+  if (!isRecord(value)) return null;
+  const natCapability = (token: unknown): token is NatCapability => token === "supported" ||
+    token === "unsupported" || token === "error" || token === "unknown";
+  const { ipv4_nat, ipv6_nat, kernel_capture_required, strict_ipv6_ready, blocker } = value;
+  if (!natCapability(ipv4_nat) || !natCapability(ipv6_nat) ||
+    (kernel_capture_required !== null && typeof kernel_capture_required !== "boolean") ||
+    (strict_ipv6_ready !== null && typeof strict_ipv6_ready !== "boolean") ||
+    (blocker !== "none" && blocker !== "ipv4_nat_unavailable" && blocker !== "ipv6_nat_unavailable" &&
+      blocker !== "nat_probe_failed" && blocker !== "nat_capability_unknown")) return null;
+  return { ipv4_nat, ipv6_nat, kernel_capture_required, strict_ipv6_ready, blocker };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -100,6 +123,8 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
   const data = decodeMachineData(text, "network.status");
   if (!data || !isRecord(data.configured) || !isRecord(data.effective)) return null;
   const { configured, effective } = data;
+  const capture = data.dns_capture === undefined ? undefined : parseDnsCapture(data.dns_capture);
+  if (capture === null) return null;
   if (
     typeof configured.ipv6_mode !== "string" ||
     !["ipv4_only", "prefer_ipv4", "prefer_ipv6"].includes(configured.ipv6_mode) ||
@@ -152,7 +177,7 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
   if (effectivePort !== undefined) parsedEffective.dns_capture_port = effectivePort;
   if (effectiveInet !== undefined) parsedEffective.tun_inet = effectiveInet;
   if (effectiveInet6 !== undefined) parsedEffective.tun_inet6 = effectiveInet6;
-  return { configured: parsedConfigured, effective: parsedEffective };
+  return { configured: parsedConfigured, effective: parsedEffective, ...(capture ? { dns_capture: capture } : {}) };
 }
 
 
@@ -174,6 +199,8 @@ export function parseMachineRuntime(text: string): RuntimeState | null {
     !pidSummary(core.pid_summary) || !pidSummary(data.supervisors.fswatch) ||
     !nullableBool(core.running) || !nullableBool(data.readiness.overall) ||
     !nullableBool(transparent.dataplane_ready) ||
+    (transparent.local_ready !== undefined && !nullableBool(transparent.local_ready)) ||
+    (transparent.shared_ready !== undefined && !nullableBool(transparent.shared_ready)) ||
     (core.rss_kib !== null && (typeof core.rss_kib !== "number" ||
       !Number.isSafeInteger(core.rss_kib) || core.rss_kib < 0)) ||
     !enumValue(transparent.configured_mode, ["tun", "ebpf", "invalid", "unknown"]) ||
@@ -207,6 +234,8 @@ export function parseMachineRuntime(text: string): RuntimeState | null {
     // A stopped core cannot keep a proven dataplane; never carry a stale true.
     transparentDataplaneReady: running ? transparent.dataplane_ready as boolean | null
       : transparent.dataplane_ready === true ? null : transparent.dataplane_ready as boolean | null,
+    transparentLocalReady: running && typeof transparent.local_ready === "boolean" ? transparent.local_ready : null,
+    transparentSharedReady: running && typeof transparent.shared_ready === "boolean" ? transparent.shared_ready : null,
     fswatch: data.supervisors.fswatch as string,
     transparentMode: enumValue(transparent.configured_mode, ["tun", "ebpf"])
       ? transparent.configured_mode as "tun" | "ebpf" : "unknown",

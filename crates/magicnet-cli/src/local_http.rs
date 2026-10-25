@@ -6,6 +6,13 @@ use std::time::{Duration, Instant};
 
 const MAX_BODY: usize = 8 * 1024 * 1024;
 const MAX_HEAD: usize = 16 * 1024;
+const MAX_LINE: usize = 16 * 1024;
+
+#[derive(Clone, Copy)]
+enum ResponseMode {
+    Complete,
+    FirstLine,
+}
 
 pub(crate) fn request(api: &str, method: &str, path: &str, body: &str) -> Result<Vec<u8>, String> {
     request_with_timeout(api, method, path, body, Duration::from_secs(3))
@@ -17,6 +24,28 @@ fn request_with_timeout(
     path: &str,
     body: &str,
     timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    request_response(api, method, path, body, timeout, ResponseMode::Complete)
+}
+
+pub(crate) fn first_line(api: &str, path: &str) -> Result<Vec<u8>, String> {
+    request_response(
+        api,
+        "GET",
+        path,
+        "",
+        Duration::from_secs(4),
+        ResponseMode::FirstLine,
+    )
+}
+
+fn request_response(
+    api: &str,
+    method: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+    mode: ResponseMode,
 ) -> Result<Vec<u8>, String> {
     let authority = api
         .strip_prefix("http://")
@@ -62,9 +91,16 @@ fn request_with_timeout(
             .set_read_timeout(Some(remaining(deadline)?))
             .map_err(|_| "local API timeout failed")?;
         let mut buffer = [0u8; 8192];
-        let count = stream
-            .read(&mut buffer)
-            .map_err(|_| "local API read failed")?;
+        let count = stream.read(&mut buffer).map_err(|error| {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) {
+                "local API deadline exceeded"
+            } else {
+                "local API read failed"
+            }
+        })?;
         if count == 0 {
             break;
         }
@@ -83,6 +119,16 @@ fn request_with_timeout(
             let size = response.len() - start;
             if size > MAX_BODY || length.is_some_and(|length| size > length) {
                 return Err("local API response too large or incorrectly framed".into());
+            }
+            if let ResponseMode::FirstLine = mode {
+                let line = &response[start..];
+                let end = line.iter().position(|byte| *byte == b'\n');
+                if end.unwrap_or(line.len()) > MAX_LINE {
+                    return Err("local API stream sample too large".into());
+                }
+                if let Some(end) = end {
+                    return Ok(line[..end].to_vec());
+                }
             }
             if length == Some(size) {
                 break;
@@ -243,6 +289,55 @@ mod tests {
         for path in ["configs", "/configs\r\nInjected: yes", "/with space"] {
             assert!(request("http://127.0.0.1:1", "GET", path, "").is_err());
         }
+    }
+
+    #[test]
+    fn stream_sample_requires_successful_http_and_bounded_headers_and_line() {
+        for response in [
+            b"HTTP/1.0 401 Unauthorized\r\n\r\n{\"up\":1,\"down\":2}\n".to_vec(),
+            format!(
+                "HTTP/1.0 200 OK\r\nX-Large: {}\r\n\r\n{{}}\n",
+                "x".repeat(MAX_HEAD)
+            )
+            .into_bytes(),
+            format!("HTTP/1.0 200 OK\r\n\r\n{}\n", "x".repeat(MAX_LINE + 1)).into_bytes(),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let api = format!("http://{}", listener.local_addr().unwrap());
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let _ = stream.read(&mut [0; 2048]);
+                let _ = stream.write_all(&response);
+            });
+            assert!(first_line(&api, "/traffic").is_err());
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn stream_without_a_complete_line_obeys_total_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let api = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0; 2048]);
+            for byte in b"HTTP/1.0 200 OK\r\n\r\n{\"up\":1,\"down\":2}" {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+        });
+        assert!(request_response(
+            &api,
+            "GET",
+            "/traffic",
+            "",
+            Duration::from_millis(80),
+            ResponseMode::FirstLine
+        )
+        .is_err());
+        server.join().unwrap();
     }
 
     #[test]

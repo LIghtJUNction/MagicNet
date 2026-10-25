@@ -4,7 +4,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use crate::{
-    ebpf_runtime::{inspect_ebpf_attachments, read_ebpf_active_report},
+    ebpf_runtime::{inspect_ebpf_attachments, read_ebpf_active_report, EbpfAttachmentEvidence},
     App,
 };
 
@@ -25,6 +25,8 @@ pub(super) struct Status {
     pub(super) transition: String,
     pub(super) has_recent_error: bool,
     pub(super) dataplane_ready: Option<bool>,
+    pub(super) local_ready: Option<bool>,
+    pub(super) shared_ready: Option<bool>,
 }
 
 impl Status {
@@ -42,6 +44,8 @@ impl Status {
             "transition": self.transition,
             "has_recent_error": self.has_recent_error,
             "dataplane_ready": self.dataplane_ready,
+            "local_ready": self.local_ready,
+            "shared_ready": self.shared_ready,
         })
     }
 }
@@ -97,6 +101,8 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
             transition,
             has_recent_error,
             dataplane_ready: ready,
+            local_ready: ready,
+            shared_ready: None,
         };
     }
 
@@ -165,13 +171,19 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
     } else {
         "unknown"
     };
-    let dataplane_ready = match process_state {
-        "stopped" => Some(false),
+    let readiness = match process_state {
+        "stopped" => Some(PlaneReadiness {
+            local: false,
+            shared: false,
+            dataplane: false,
+        }),
         "running" => attachments.as_ref().map(|evidence| {
-            let local_ready = !local_expected || evidence.local_attached;
-            let shared_ready =
-                !shared_expected || (!shared_interfaces.is_empty() && evidence.shared_attached);
-            capability == "ok" && local_ready && shared_ready
+            ebpf_readiness(
+                &effective_mode,
+                &capability,
+                shared_interfaces.len(),
+                evidence,
+            )
         }),
         _ => None,
     };
@@ -186,7 +198,43 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
         shared_interface_count: shared_interfaces.len(),
         transition,
         has_recent_error,
-        dataplane_ready,
+        dataplane_ready: readiness.as_ref().map(|ready| ready.dataplane),
+        local_ready: if local_expected {
+            readiness.as_ref().map(|ready| ready.local)
+        } else {
+            None
+        },
+        shared_ready: if shared_expected {
+            readiness.as_ref().map(|ready| ready.shared)
+        } else {
+            None
+        },
+    }
+}
+
+struct PlaneReadiness {
+    local: bool,
+    shared: bool,
+    dataplane: bool,
+}
+
+fn ebpf_readiness(
+    mode: &str,
+    capability: &str,
+    shared_count: usize,
+    evidence: &EbpfAttachmentEvidence,
+) -> PlaneReadiness {
+    let local_expected = matches!(mode, "local" | "hybrid");
+    let shared_expected = matches!(mode, "shared" | "hybrid");
+    let local = capability == "ok" && local_expected && evidence.local_attached;
+    let shared =
+        capability == "ok" && shared_expected && shared_count > 0 && evidence.shared_attached;
+    PlaneReadiness {
+        local,
+        shared,
+        dataplane: capability == "ok"
+            && (!local_expected || local)
+            && (!shared_expected || (mode == "hybrid" && shared_count == 0) || shared),
     }
 }
 
@@ -274,6 +322,49 @@ fn regular_file_nonempty(path: &Path) -> bool {
 mod tests {
     use super::{network_values, valid_interface_name};
     use serde_json::json;
+
+    #[test]
+    fn hybrid_without_downstream_keeps_local_ready_and_shared_pending() {
+        let evidence = crate::ebpf_runtime::EbpfAttachmentEvidence {
+            local_attached: true,
+            shared_attached: false,
+            shared_interfaces: Vec::new(),
+            detail: String::new(),
+        };
+        let ready = super::ebpf_readiness("hybrid", "ok", 0, &evidence);
+        assert!(ready.local);
+        assert!(!ready.shared);
+        assert!(
+            ready.dataplane,
+            "an absent optional downstream must not block the local service"
+        );
+    }
+
+    #[test]
+    fn optional_shared_plane_does_not_hide_required_attachment_failures() {
+        for (mode, count, capability, local_attached, shared_attached, expected) in [
+            ("hybrid", 0, "ok", false, false, false),
+            ("hybrid", 0, "failed", true, false, false),
+            ("hybrid", 0, "unknown", true, false, false),
+            ("hybrid", 1, "ok", true, false, false),
+            ("hybrid", 1, "ok", true, true, true),
+            ("shared", 0, "ok", false, false, false),
+            ("shared", 1, "ok", false, true, true),
+            ("local", 0, "ok", true, false, true),
+        ] {
+            let evidence = crate::ebpf_runtime::EbpfAttachmentEvidence {
+                local_attached,
+                shared_attached,
+                shared_interfaces: Vec::new(),
+                detail: String::new(),
+            };
+            let ready = super::ebpf_readiness(mode, capability, count, &evidence);
+            assert_eq!(
+                ready.dataplane, expected,
+                "mode={mode}, count={count}, capability={capability}, evidence={evidence:?}"
+            );
+        }
+    }
 
     #[test]
     fn interface_names_cannot_escape_sysfs_or_expose_paths() {

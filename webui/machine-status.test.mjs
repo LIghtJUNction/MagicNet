@@ -88,6 +88,33 @@ const runtime = {
 };
 const parseRuntime = (data) => parseMachineRuntime(envelope("service.status", data));
 
+test("network capabilities keep missing NAT distinct from probe failure", () => {
+  const capture = {ipv4_nat:"supported", ipv6_nat:"unsupported", kernel_capture_required:true,
+    strict_ipv6_ready:false, blocker:"ipv6_nat_unavailable"};
+  const parse = (dns_capture) => parseMachineNetwork(envelope("network.status", {...network,dns_capture}));
+  assert.deepEqual(parse(capture).dns_capture, capture);
+  assert.equal(parse({...capture,ipv6_nat:"private-fixture"}), null);
+  assert.equal(parse({...capture,blocker:"permission denied with private-fixture"}), null);
+  assert.equal(parse({...capture,kernel_capture_required:"true"}), null);
+  assert.equal(parse({...capture,strict_ipv6_ready:"ready"}), null);
+  assert.equal(parse({...capture,ipv6_nat:"unknown",strict_ipv6_ready:null,blocker:"nat_capability_unknown"}).dns_capture.strict_ipv6_ready, null);
+});
+
+test("hybrid local readiness survives an absent shared downstream", () => {
+  const data = {...runtime, transparent: {...runtime.transparent,
+    configured_mode:"ebpf", effective_type:"ebpf", effective_mode:"hybrid",
+    capability:"ok", local_cgroup:"attached", shared_tc:"pending",
+    local_ready:true, shared_ready:false, shared_interface_count:0}};
+  const value = parseRuntime(data);
+  assert.equal(value.serviceReady, true);
+  assert.equal(value.transparentLocalReady, true);
+  assert.equal(value.transparentSharedReady, false);
+  assert.equal(value.transparentSharedTc, "pending");
+  assert.equal(parseRuntime({...data, transparent:{...data.transparent,local_ready:"ready"}}), null);
+  assert.equal(parseRuntime({...data, transparent:{...data.transparent,shared_ready:1}}), null);
+  assert.equal(parseRuntime(runtime).transparentLocalReady, null);
+});
+
 test("service snapshot preserves measured memory, process and readiness independently", () => {
   const value=parseRuntime(runtime);
   assert.equal(value.singBoxState,"sing-box");

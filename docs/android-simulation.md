@@ -95,6 +95,13 @@ negative-control result. Root-shell connectivity is not application connectivity
 
 ## Reports and cache boundaries
 
+Manual dispatch also exports `android-avd-kernel-12525588-<run-id>` after the
+pinned kernel has been verified. It contains `bzImage`, `build-info.txt` and
+`provenance.json` for local AVD reuse. Extract it into one directory and run
+`python3 scripts/build-android-kernel.py --verify --output <directory>` before
+booting the matching API35 revision-9 image. This export does not alter or skip
+the acceptance phases, and does not certify a local boot or another SDK image.
+
 `artifacts/android-kernelsu/` contains `simulation.json`, `simulation-junit.xml`,
 `simulation-summary.md`, separate TUN-control results for each phase and bounded
 logcat/kernel/service diagnostics. Failed and unexecuted phases are explicit

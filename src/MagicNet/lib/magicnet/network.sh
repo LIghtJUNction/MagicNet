@@ -166,6 +166,49 @@ magicnet_xtables_table_probe() (
     return 1
 )
 
+# Read-only, bounded-token projection; never copy raw xtables diagnostics to
+# machine stdout or canonical state.
+magicnet_dns_capture_capabilities() (
+    for _cap_family in iptables ip6tables; do
+        _cap_rc=0
+        magicnet_xtables_table_probe "$_cap_family" nat >/dev/null 2>&1 || _cap_rc=$?
+        case "$_cap_rc" in
+        0) _cap_status=supported ;;
+        2) _cap_status=unsupported ;;
+        *) _cap_status=error ;;
+        esac
+        case "$_cap_family" in iptables) _cap_key=ipv4_nat ;; *) _cap_key=ipv6_nat ;; esac
+        printf '%s=%s\n' "$_cap_key" "$_cap_status"
+    done
+    if [ "${MAGIC_DNS_CAPTURE:-1}" = 0 ] || [ "$(magicnet_transparent_mode)" = ebpf ]; then
+        printf 'kernel_capture_required=0\n'
+    else
+        printf 'kernel_capture_required=1\n'
+    fi
+)
+
+magicnet_dns_capture_preflight() (
+    [ "${MAGIC_DNS_CAPTURE:-1}" != 0 ] || return 0
+    [ "$(magicnet_transparent_mode)" != ebpf ] || return 0
+    [ "${1:-$(magicnet_ipv6_mode)}" = prefer_ipv6 ] || return 0
+    for _preflight_family in iptables ip6tables; do
+        _preflight_rc=0
+        magicnet_xtables_table_probe "$_preflight_family" nat >/dev/null 2>&1 || _preflight_rc=$?
+        case "$_preflight_rc" in
+        0) ;;
+        2)
+            case "$_preflight_family" in iptables) _preflight_protocol=IPv4 ;; *) _preflight_protocol=IPv6 ;; esac
+            magicnet_warn "${_preflight_protocol} NAT unavailable: prefer_ipv6 requires strict DNS capture. Select prefer_ipv4 explicitly or provide NAT support."
+            return 1
+            ;;
+        *)
+            magicnet_warn "NAT capability check failed: verify root access and xtables before using prefer_ipv6; no automatic policy downgrade was made."
+            return 1
+            ;;
+        esac
+    done
+)
+
 # Preserve actionable stderr without logging expected absent-rule checks.
 magicnet_xtables_require() (
     _require_rc=0
