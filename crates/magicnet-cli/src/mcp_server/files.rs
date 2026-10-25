@@ -150,6 +150,7 @@ fn private_module_path(relative: &Path) -> bool {
                     "install-config",
                     "install-onboarding",
                     "module-update",
+                    "wifi-policy",
                 ]
                 .iter()
                 .any(|name| private_name_or_copy(&pair[1], name)))
@@ -357,6 +358,8 @@ mod tests {
             ".state/install-config.123/outbounds.json",
             ".state/module-update/headers",
             ".state/module-update/release.json",
+            ".state/wifi-policy/last-state.conf",
+            ".state/wifi-policy.new.123/last-state.conf",
         ];
         for (index, path) in private_paths.iter().enumerate() {
             let target = root.join(path);
@@ -377,6 +380,7 @@ mod tests {
             ".state/sing-box/subscription-transaction",
             ".state/transparent-transaction",
             ".state/override-materialization",
+            ".state/wifi-policy",
         ] {
             assert_eq!(
                 file_list(&server, directory),

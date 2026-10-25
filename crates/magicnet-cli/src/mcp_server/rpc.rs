@@ -534,23 +534,28 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
         return true;
     }
     // Human wifi/sub status prints SSID/BSSID or subscription hostnames.
-    // Machine --json status remains the redacted path.
+    // Omitted wifi action defaults to status. check/watch print the same
+    // identifiers. Machine --json status remains the redacted path.
     if !has_json
         && matches!(
             command.as_slice(),
-            ["wifi", "status" | "list", ..] | ["sub", "status", ..]
+            ["wifi"] | ["wifi", "status" | "list" | "check" | "watch", ..] | ["sub", "status", ..]
         )
     {
         return true;
     }
     // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
     // Named private tools remain the explicit path for those contents.
+    // Omitted user-agent/filter/backup actions default to their dump forms.
     matches!(
         command.as_slice(),
         ["mcp", "secret" | "logs", ..]
             | ["sub", "get" | "list" | "file" | "copy-path" | "inspect", ..]
+            | ["sub", "user-agent"]
             | ["sub", "user-agent", "get", ..]
+            | ["sub", "filter"]
             | ["sub", "filter", "list", ..]
+            | ["backup"]
             | ["backup", "export", ..]
             | ["config-editor", "get" | "path", ..]
             | ["config-editor", "repo", "get" | "get-json", ..]
@@ -833,12 +838,18 @@ mod tests {
             ["--json", "sub", "user-agent", "get"].as_slice(),
             ["sub", "inspect"].as_slice(),
             ["--json", "sub", "inspect"].as_slice(),
+            ["wifi"].as_slice(),
             ["wifi", "inspect"].as_slice(),
             ["wifi", "status"].as_slice(),
             ["wifi", "list"].as_slice(),
+            ["wifi", "check"].as_slice(),
+            ["wifi", "watch"].as_slice(),
             ["sub", "status"].as_slice(),
+            ["sub", "user-agent"].as_slice(),
+            ["sub", "filter"].as_slice(),
             ["sub", "filter", "list"].as_slice(),
             ["--json", "sub", "filter", "list"].as_slice(),
+            ["backup"].as_slice(),
             ["network-access", "inspect"].as_slice(),
             ["__proc-stat"].as_slice(),
             ["--json", "__proc-stat", "/proc", "1"].as_slice(),
@@ -859,6 +870,7 @@ mod tests {
             ["health"].as_slice(),
             ["mcp", "status"].as_slice(),
             ["--json", "sub", "status"].as_slice(),
+            ["--json", "wifi"].as_slice(),
             ["--json", "wifi", "status"].as_slice(),
             ["--json", "wifi", "list"].as_slice(),
             ["config-editor", "validate", "sing-box"].as_slice(),

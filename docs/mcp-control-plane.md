@@ -48,8 +48,8 @@ files and their staging/backup names, the `.config/sing-box` tree, module-update
 intent (`.config/magicnet/module-update.conf`), Wi-Fi SSID/BSSID lists
 (`.config/magicnet/wifi-ssid.list` / `wifi-bssid.list`), and private runtime
 trees under `.state` (`sing-box`, `transparent-transaction`,
-`override-materialization`, installer config, onboarding scratch, and
-`module-update` download state).
+`override-materialization`, installer config, onboarding scratch,
+`module-update` download state, and `wifi-policy` last-state copies).
 These trees hold subscription sources, node credentials, Tailscale identities
 and whole-config recovery copies under names such as `old-url` or `input-source`.
 In-module symlink aliases receive the same checks. Public canonical state under
@@ -59,12 +59,13 @@ private config editor, override inspect or subscription tools when the user
 requests those contents.
 
 The generic `magicnet_cli` tool refuses the same private dumps: `mcp secret`,
-`sub get` / `list` / `file` / `copy-path` / `inspect`, `sub user-agent get`,
-`sub filter list`, human `sub status` and `wifi status` / `list` (use `--json`
-for the redacted machine envelopes), `config-editor get` / `path` and repository
-getters, `backup export`, `override inspect`, `wifi inspect`,
-`network-access inspect`, raw `service` / `mcp` logs, and internal commands
-whose name starts with `__`.
+`sub get` / `list` / `file` / `copy-path` / `inspect`, `sub user-agent` (including
+the default `get`), `sub filter` (including the default `list`), human `sub
+status` and `wifi` status / `list` / `check` / `watch` (omitted wifi action
+defaults to status; use `--json` for the redacted machine envelopes),
+`config-editor get` / `path` and repository getters, `backup` (including the
+default `export`), `override inspect`, `wifi inspect`, `network-access inspect`,
+raw `service` / `mcp` logs, and internal commands whose name starts with `__`.
 Ordinary command arguments, such as node names or SSIDs, may still start with `__`.
 `magicnet_service_control` / `magicnet_mcp_control` log tails go through
 `magicnet_log_read` redaction. Use those named tools instead of generic argv.
