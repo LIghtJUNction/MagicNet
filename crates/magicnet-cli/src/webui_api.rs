@@ -43,7 +43,10 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "conns" => curl(app, "/connections"),
-        "stats" => curl(app, "/traffic"),
+        "stats" => {
+            println!("{}", traffic_sample(app)?);
+            Ok(())
+        }
         "close" => close_connection(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "close-top" => close_top_connections(app, args.get(1).map(String::as_str).unwrap_or("3")),
         "close-matching" => close_matching_connections(app, &args[1..].join(" ")),
@@ -380,6 +383,23 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
             "Usage: cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}".to_string(),
         ),
     }
+}
+
+fn traffic_sample(app: &App) -> Result<serde_json::Value, String> {
+    // /traffic never finishes. Use the bounded native sampler even when curl
+    // is installed so neither transport waits for the stream to close.
+    let body = crate::local_http::first_line(&app.api, "/traffic")?;
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Err("local API traffic stream returned no sample".into());
+    }
+    let sample: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|_| "local API traffic sample is not valid JSON")?;
+    if !sample.get("up").is_some_and(serde_json::Value::is_number)
+        || !sample.get("down").is_some_and(serde_json::Value::is_number)
+    {
+        return Err("local API traffic sample requires numeric up and down".into());
+    }
+    Ok(json!({"up": sample["up"], "down": sample["down"]}))
 }
 
 fn curl(app: &App, path: &str) -> Result<(), String> {
@@ -965,6 +985,71 @@ mod tests {
         let path = app.moddir.join("bin/curl");
         fs::write(&path, format!("#!{shell}\n{script}\n")).unwrap();
         fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[test]
+    fn api_stats_finishes_after_first_sample_without_waiting_for_stream_end() {
+        use std::net::TcpListener;
+        use std::time::Instant;
+        let fixture = temp_app();
+        let mut app = App::for_test(fixture.moddir.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        app.api = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(6)))
+                .unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                assert_eq!(stream.read(&mut byte).unwrap(), 1);
+                request.push(byte[0]);
+            }
+            assert!(request.starts_with(b"GET /traffic "));
+            stream.write_all(b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n{\"up\":1,\"down\":2}\n{\"up\":3,\"down\":4}\n").unwrap();
+            let _ = stream.read(&mut [0]);
+        });
+        let started = Instant::now();
+        let result = api_cmd(&app, &["stats".to_string()]);
+        server.join().unwrap();
+        assert!(result.is_ok(), "stream sample failed: {result:?}");
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn traffic_sample_returns_one_numeric_object_or_a_sanitized_error() {
+        use std::net::TcpListener;
+        for (body, valid) in [
+            ("{\"up\":1,\"down\":2}\n{\"up\":3,\"down\":4}\n", true),
+            ("{\"up\":1,\"down\":2}", true),
+            (
+                "{\"up\":1,\"down\":2,\"extra\":\"private-fixture\"}\n",
+                true,
+            ),
+            ("\n", false),
+            ("", false),
+            ("private-fixture\n", false),
+            ("{\"up\":\"private-fixture\",\"down\":2}\n", false),
+            ("{\"up\":1}\n", false),
+        ] {
+            let fixture = temp_app();
+            let mut app = App::for_test(fixture.moddir.clone());
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            app.api = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let _ = stream.read(&mut [0; 2048]);
+                write!(stream, "HTTP/1.0 200 OK\r\n\r\n{body}").unwrap();
+            });
+            let result = traffic_sample(&app);
+            server.join().unwrap();
+            if valid {
+                assert_eq!(result.unwrap(), json!({"up":1,"down":2}));
+            } else {
+                assert!(!result.unwrap_err().contains("private-fixture"));
+            }
+        }
     }
 
     #[test]

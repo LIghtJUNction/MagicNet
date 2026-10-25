@@ -61,6 +61,7 @@ supervisor.status
 transparent.status
 dns.status
 network.status
+network.preflight
 network-access.status
 network-access.inspect
 network-access.check
@@ -99,6 +100,19 @@ A running process is not proof that the proxy is ready.
 - `readiness.dataplane`: whether the selected transparent dataplane is actually present.
 
 `readiness.overall` is true only when both the API and dataplane are ready. Unknown evidence stays `null`; it is never promoted to ready.
+
+The `transparent_plane_readiness` capability adds `transparent.local_ready` and
+`transparent.shared_ready` to service/transparent snapshots. These are separate
+attachment proofs, with `null` for an inactive or unobserved plane. In hybrid mode,
+an empty configured downstream set leaves `shared_tc=pending` and
+`shared_ready=false`; it does not block an attached, capable local plane from
+making the service ready. Once downstream interfaces are configured, all their
+TC attachments are required for dataplane readiness. Shared-only mode always
+requires a downstream and verified TC attachments. A requested hotspot with no
+downstream therefore remains pending even when the local service is ready.
+MCP uses the same machine snapshots. WebUI preserves both plane signals and
+uses `readiness.overall` for the local service indicator; older schema-1 servers
+without the new capability leave the plane signals unknown.
 
 The service lifecycle is derived from those signals:
 
@@ -198,6 +212,36 @@ the policy watcher. Failure to detect a network is an error, not a confirmed
 disconnect. Detected policy/list edits during probing reject the observation.
 On failed refresh the WebUI retains editable configuration, clears live identity
 and quota displays, and reports unknown rather than keeping an old green state.
+
+### DNS capture preflight
+
+The `dns_capture_preflight` capability adds the explicit read-only
+`cli --json network preflight` command (`network.preflight` envelope):
+`ipv4_nat` and `ipv6_nat` are `supported`, `unsupported`, `error`, or `unknown`.
+`kernel_capture_required` is a nullable boolean describing whether the current
+transparent mode uses kernel DNS capture; eBPF and explicitly disabled capture
+do not require NAT interception. `strict_ipv6_ready` is nullable and `blocker`
+is one of `none`, `ipv4_nat_unavailable`, `ipv6_nat_unavailable`,
+`nat_probe_failed`, or `nat_capability_unknown`. Probe errors, permission
+failures and observation timeouts are never reported as supported or absent.
+The command has a three-second probe deadline and returns only normalized
+capability observations. Routine `network.status`, human `network status`, and
+canonical state reconciliation do not run NAT probes. The ephemeral observation
+is not a second public state file or proof of active DNS rule ownership.
+
+`network set prefer_ipv6` and `network apply` check capability before changing
+saved policy or restarting a service. Set holds the shared lifecycle lock across
+intent publication, apply and compensation. A later apply failure restores the
+previous intent, including an absent file; a restart failure also attempts to
+reapply that intent and reports runtime recovery failures explicitly.
+The shell startup path also checks strict
+capture before network teardown or launching a core. A failed preflight leaves
+the existing configuration and network in place and asks for an explicit
+`prefer_ipv4` choice or the missing kernel support. There is no automatic
+downgrade. WebUI requests this preflight when loading or refreshing the IPv6
+policy editor, separately from ordinary status reads. A failed or unsupported
+preflight clears the previous observation. MCP exposes the same explicit probe
+through `magicnet_network_preflight`; `magicnet_network_status` remains cheap.
 
 ### Hotspot status
 

@@ -1091,27 +1091,10 @@ fn run_magicnet_shell(
     function_name: &str,
     subscription_candidate: Option<(&'static str, RawFd)>,
 ) -> Result<std::process::ExitStatus, String> {
-    // Keep the module path in the environment and quote it at every shell
-    // use.  MODDIR can be inherited from an untrusted launcher; interpolating
-    // its display form into a single-quoted script would turn a path quote
-    // into root shell syntax before the command even starts.
-    let script = format!(
-        ". \"$MODDIR/lib/kamfw/.kamfwrc\"; export PATH=\"{}\"; import __runtime__; . \"$MODDIR/lib/magicnet.sh\"; {function_name}",
-        trusted_path(),
-    );
     let timeout = Duration::from_secs(command_timeout_secs(
         env::var("MAGICNET_COMMAND_TIMEOUT").ok().as_deref(),
     ));
-    // Do not resolve the privileged shell through a caller-controlled PATH.
-    let mut command = Command::new(trusted_shell());
-    command
-        .arg("-c")
-        .arg(script)
-        .arg(app.moddir.join("cli").to_string_lossy().to_string())
-        .env("MODDIR", &app.moddir)
-        .env("MODPATH", &app.moddir)
-        .stdin(Stdio::null());
-    sanitize_cli_child_environment(&mut command);
+    let mut command = magicnet_function_command(app, function_name);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
@@ -1124,6 +1107,28 @@ fn run_magicnet_shell(
             Err(format!("{function_name}: {err}"))
         }
     }
+}
+
+pub(crate) fn magicnet_function_command(app: &App, function_name: &str) -> Command {
+    // Keep the module path in the environment and quote it at every shell
+    // use.  MODDIR can be inherited from an untrusted launcher; interpolating
+    // its display form into a single-quoted script would turn a path quote
+    // into root shell syntax before the command even starts.
+    let script = format!(
+        ". \"$MODDIR/lib/kamfw/.kamfwrc\"; export PATH=\"{}\"; import __runtime__; . \"$MODDIR/lib/magicnet.sh\"; {function_name}",
+        trusted_path(),
+    );
+    // Do not resolve the privileged shell through a caller-controlled PATH.
+    let mut command = Command::new(trusted_shell());
+    command
+        .arg("-c")
+        .arg(script)
+        .arg(app.moddir.join("cli").to_string_lossy().to_string())
+        .env("MODDIR", &app.moddir)
+        .env("MODPATH", &app.moddir)
+        .stdin(Stdio::null());
+    sanitize_cli_child_environment(&mut command);
+    command
 }
 
 fn run_process_group(

@@ -35,6 +35,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "transparent.status",
     "dns.status",
     "network.status",
+    "network.preflight",
     "network-access.status",
     "network-access.inspect",
     "network-access.check",
@@ -141,6 +142,10 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "network" && *action == "status" => {
             Ok(network_status_value(app))
         }
+        ["network", "preflight"] => Ok(envelope(
+            "network.preflight",
+            crate::network::DnsCaptureCapabilities::observe(app).as_value(),
+        )),
         [command, action] if *command == "sub" && *action == "status" => Ok(sub_status_value(app)),
         [command, action] if *command == "sub" && *action == "inspect" => {
             subscription::inspect(app)
@@ -249,7 +254,9 @@ fn capabilities_value() -> Value {
                 "redacted_status",
                 "configured_effective_split",
                 "privacy_safe_network_identifiers",
-                "readiness_signals"
+                "readiness_signals",
+                "transparent_plane_readiness",
+                "dns_capture_preflight"
             ],
             "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
@@ -440,7 +447,7 @@ fn network_status_value(app: &App) -> Value {
                 "dns_capture_port": effective_dns_capture_port,
                 "tun_inet": effective_tun_inet,
                 "tun_inet6": effective_tun_inet6,
-            }
+            },
         }),
     )
 }
@@ -829,6 +836,30 @@ mod tests {
         fs::create_dir_all(root.join(".config/sing-box")).expect("create sing-box config");
         let app = App::for_test(root.clone());
         (root, app)
+    }
+
+    #[test]
+    fn only_explicit_network_preflight_runs_nat_probe() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join("lib/kamfw")).unwrap();
+        fs::write(root.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(root.join("lib/magicnet.sh"),
+            "magicnet_dns_capture_capabilities() { touch \"$MODDIR/probed\"; printf 'ipv4_nat=supported\\nipv6_nat=unsupported\\nkernel_capture_required=1\\n'; }\n").unwrap();
+        let status = machine_value(&app, &["network", "status"]).unwrap();
+        assert!(status["data"].get("dns_capture").is_none());
+        assert!(!root.join("probed").exists());
+        let preflight = machine_value(&app, &["network", "preflight"]).unwrap();
+        assert!(root.join("probed").exists());
+        assert_eq!(preflight["command"], "network.preflight");
+        assert_eq!(preflight["data"]["ipv6_nat"], "unsupported");
+        assert_eq!(preflight["data"]["strict_ipv6_ready"], false);
+        assert_eq!(preflight["data"]["blocker"], "ipv6_nat_unavailable");
+        assert!(capabilities_value()["data"]["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "network.preflight"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

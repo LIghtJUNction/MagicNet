@@ -948,6 +948,22 @@ mod tests {
     }
 
     #[test]
+    fn dns_reconcile_does_not_spawn_capability_probe() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join("lib/kamfw")).unwrap();
+        fs::write(root.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(
+            root.join("lib/magicnet.sh"),
+            "magicnet_dns_capture_capabilities() { touch \"$MODDIR/probed\"; }\n",
+        )
+        .unwrap();
+        let record = super::dns_record(&app).encode();
+        assert!(record.contains("guard_interface_count=0\n"));
+        assert!(!root.join("probed").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn state_record_is_a_bounded_token_file() {
         let text = StateRecord::new(Domain::Service)
             .field("state", "running\nsecret=value")

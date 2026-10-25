@@ -6,12 +6,13 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import type { NetworkPolicyStatus } from "@/composables/machineStatus";
+import type { DnsCaptureStatus, NetworkPolicyStatus } from "@/composables/machineStatus";
 import { execFailed } from "@/utils";
 
-const { state, runCli, refreshNetwork } = useMagicNet();
+const { state, runCli, refreshNetwork, refreshNetworkPreflight } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const configured = ref<NetworkPolicyStatus["configured"] | null>(null);
+const dnsCapture = ref<DnsCaptureStatus | null>(null);
 const readFailed = ref(false);
 const ipv6Mode = ref("prefer_ipv4");
 const mtu = ref("1400");
@@ -38,14 +39,25 @@ const customMtus = computed(() => [...new Set([configured.value?.mtu, Number(mtu
 
 const modeHint = computed(() => {
   if (ipv6Mode.value === "ipv4_only") return t("兼容模式：屏蔽 IPv6，适合不支持 IPv6 的网络或代理节点。");
-  if (ipv6Mode.value === "prefer_ipv6") return t("双栈模式：DNS 优先返回 IPv6，IPv4 仍可回退。");
+  if (ipv6Mode.value === "prefer_ipv6") return t("双栈模式：DNS 优先返回 IPv6；内核必须支持 IPv4 和 IPv6 DNS 捕获。");
   return t("推荐模式：保留完整双栈，DNS 优先返回 IPv4。");
+});
+
+const captureHint = computed(() => {
+  const capture = dnsCapture.value;
+  if (ipv6Mode.value !== "prefer_ipv6" || capture?.kernel_capture_required === false) return "";
+  if (!capture) return t("无法确认 DNS 捕获能力，请检查 root 权限和 xtables 后再应用 IPv6 优先。");
+  if (capture.blocker === "ipv6_nat_unavailable") return t("内核缺少 IPv6 NAT，无法启用严格 DNS 捕获。请选择 IPv4 优先，或补齐内核能力。");
+  if (capture.blocker === "ipv4_nat_unavailable") return t("内核缺少 IPv4 NAT，无法启用严格 DNS 捕获。请选择 IPv4 优先，或补齐内核能力。");
+  if (capture.blocker !== "none") return t("无法确认 DNS 捕获能力，请检查 root 权限和 xtables 后再应用 IPv6 优先。");
+  return "";
 });
 
 async function readStatus(silent: boolean, acceptSaved: boolean): Promise<void> {
   const keepDraft = dirty.value && !acceptSaved;
   const status = await refreshNetwork(silent);
   readFailed.value = !status;
+  dnsCapture.value = null;
   if (!status) return;
   configured.value = status.configured;
   if (!keepDraft) {
@@ -67,6 +79,7 @@ async function readStatus(silent: boolean, acceptSaved: boolean): Promise<void> 
     : String(status.effective.dns_capture_port);
   effectiveTunInet.value = status.effective.tun_inet ?? "unavailable";
   effectiveTunInet6.value = status.effective.tun_inet6 ?? "unavailable";
+  dnsCapture.value = await refreshNetworkPreflight();
 }
 
 async function refreshStatus(silent = false, acceptSaved = false): Promise<void> {
@@ -111,6 +124,7 @@ onMounted(() => void refreshStatus(true));
     <p class="rounded-md bg-[var(--mn-ivory)] px-3 py-2 text-xs leading-5 text-[var(--mn-ink-muted)]">
       {{ modeHint }}
     </p>
+    <p v-if="captureHint" role="alert" class="rounded-md border border-[var(--mn-danger)] px-3 py-2 text-xs leading-5 text-[var(--mn-danger)]">{{ captureHint }}</p>
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         TUN MTU

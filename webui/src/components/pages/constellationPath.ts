@@ -33,6 +33,8 @@ type RuntimeFacts = Pick<
   | "transparentEffectiveMode"
   | "transparentLocalCgroup"
   | "transparentSharedTc"
+  | "transparentLocalReady"
+  | "transparentSharedReady"
 >;
 
 function dataplaneStar(runtime: RuntimeFacts): ConstellationStar {
@@ -43,6 +45,8 @@ function dataplaneStar(runtime: RuntimeFacts): ConstellationStar {
   else if (mode === "ebpf") {
     detail = runtime.transparentEffectiveMode === "hybrid" ? "local + shared"
       : runtime.transparentLocalCgroup === "attached" ? "local cgroup" : "cgroup / TC";
+    if (runtime.transparentEffectiveMode === "hybrid" && runtime.transparentLocalReady === true && runtime.transparentSharedReady === false)
+      detail = "本机已就绪 · 共享待就绪";
   }
   let state: StarState = "unknown";
   if (runtime.singBoxState === "stopped") state = "off";

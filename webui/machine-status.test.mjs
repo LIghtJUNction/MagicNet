@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
+import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineNetworkPreflight, parseMachineRuntime } from "./src/composables/machineStatus.ts";
 
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
 const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default" };
@@ -9,6 +9,19 @@ const network = {
   effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
 };
 const unsupported = JSON.stringify({ schema: 1, ok: false, command: "machine.error", error: { code: "machine.unsupported_command", message: "unsupported machine command" } });
+
+test("explicit network preflight validates capabilities without accepting status responses", () => {
+  const capture = { ipv4_nat: "supported", ipv6_nat: "unsupported", kernel_capture_required: true,
+    strict_ipv6_ready: false, blocker: "ipv6_nat_unavailable" };
+  assert.deepEqual(parseMachineNetworkPreflight(envelope("network.preflight", capture)), capture);
+  for (const data of [{ ...capture, ipv6_nat: "missing" }, { ...capture, kernel_capture_required: "true" },
+    { ...capture, strict_ipv6_ready: 1 }, { ...capture, blocker: "private error" }, {}]) {
+    assert.equal(parseMachineNetworkPreflight(envelope("network.preflight", data)), null);
+  }
+  assert.equal(parseMachineNetworkPreflight(envelope("network.status", capture)), null);
+  assert.equal(parseMachineNetworkPreflight(unsupported), null);
+  assert.equal(parseMachineNetworkPreflight("not json"), null);
+});
 
 test("machine decoder accepts exactly one response and bridge diagnostics", () => {
   const text = envelope("network.status", network);
@@ -87,6 +100,33 @@ const runtime = {
     transition:"idle",has_recent_error:false,dataplane_ready:true},
 };
 const parseRuntime = (data) => parseMachineRuntime(envelope("service.status", data));
+
+test("network capabilities keep missing NAT distinct from probe failure", () => {
+  const capture = {ipv4_nat:"supported", ipv6_nat:"unsupported", kernel_capture_required:true,
+    strict_ipv6_ready:false, blocker:"ipv6_nat_unavailable"};
+  const parse = (data) => parseMachineNetworkPreflight(envelope("network.preflight", data));
+  assert.deepEqual(parse(capture), capture);
+  assert.equal(parse({...capture,ipv6_nat:"private-fixture"}), null);
+  assert.equal(parse({...capture,blocker:"permission denied with private-fixture"}), null);
+  assert.equal(parse({...capture,kernel_capture_required:"true"}), null);
+  assert.equal(parse({...capture,strict_ipv6_ready:"ready"}), null);
+  assert.equal(parse({...capture,ipv6_nat:"unknown",strict_ipv6_ready:null,blocker:"nat_capability_unknown"}).strict_ipv6_ready, null);
+});
+
+test("hybrid local readiness survives an absent shared downstream", () => {
+  const data = {...runtime, transparent: {...runtime.transparent,
+    configured_mode:"ebpf", effective_type:"ebpf", effective_mode:"hybrid",
+    capability:"ok", local_cgroup:"attached", shared_tc:"pending",
+    local_ready:true, shared_ready:false, shared_interface_count:0}};
+  const value = parseRuntime(data);
+  assert.equal(value.serviceReady, true);
+  assert.equal(value.transparentLocalReady, true);
+  assert.equal(value.transparentSharedReady, false);
+  assert.equal(value.transparentSharedTc, "pending");
+  assert.equal(parseRuntime({...data, transparent:{...data.transparent,local_ready:"ready"}}), null);
+  assert.equal(parseRuntime({...data, transparent:{...data.transparent,shared_ready:1}}), null);
+  assert.equal(parseRuntime(runtime).transparentLocalReady, null);
+});
 
 test("service snapshot preserves measured memory, process and readiness independently", () => {
   const value=parseRuntime(runtime);

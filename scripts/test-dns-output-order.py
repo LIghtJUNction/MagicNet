@@ -46,6 +46,16 @@ case "${ACTION:-enable}" in
     enable) magicnet_enable_dns_capture ;;
     disable) magicnet_disable_dns_capture ;;
     post-start) magicnet_after_kernel_start_deferred_unlocked ;;
+    preflight) magicnet_dns_capture_preflight ;;
+    capabilities) magicnet_dns_capture_capabilities ;;
+    start)
+        . "${NETWORK_SOURCE%/*}/core.sh"
+        magicnet_detach_pid_from_app_cgroup() { :; }
+        magicnet_kernel_start_preamble() { :; }
+        magicnet_kernel_running() { return 1; }
+        magicnet_require_subscription_or_stop() { return 1; }
+        magicnet_start_kernel
+        ;;
 esac
 '''
 
@@ -308,6 +318,30 @@ class DNSOutputOrder(unittest.TestCase):
                 result, state = self.run_installer(initial(False), shell, **overrides)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(any(CHAIN in r for r in state["iptables"]["OUTPUT"]))
+
+    def test_strict_preflight_does_not_teardown_existing_network(self):
+        for shell in SHELLS:
+            for capability in ('no', 'denied'):
+                with self.subTest(shell=shell, capability=capability):
+                    before = initial()
+                    result, state = self.run_installer(before, shell, ACTION='start',
+                                                       IPV6_MODE='prefer_ipv6', IPV6_NAT=capability)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(state, before)
+                    self.assertIn('NAT', result.stderr)
+
+    def test_capability_projection_and_ipv4_or_ebpf_compatibility(self):
+        for shell in SHELLS:
+            for capability, token in [('yes', 'supported'), ('no', 'unsupported'), ('denied', 'error')]:
+                result, state = self.run_installer(initial(), shell, ACTION='capabilities', IPV6_NAT=capability)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f'ipv4_nat=supported\nipv6_nat={token}\nkernel_capture_required=1\n')
+                self.assertEqual(state, initial())
+            for options in ({'IPV6_MODE':'prefer_ipv4'}, {'MODE':'ebpf', 'IPV6_MODE':'prefer_ipv6'},
+                            {'MAGIC_DNS_CAPTURE':'0', 'IPV6_MODE':'prefer_ipv6'}):
+                result, state = self.run_installer(initial(), shell, ACTION='preflight', IPV6_NAT='no', **options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(state, initial())
 
     def test_insertion_or_redirect_failure_cleans_up(self):
         for shell, family in itertools.product(SHELLS, ("iptables", "ip6tables")):

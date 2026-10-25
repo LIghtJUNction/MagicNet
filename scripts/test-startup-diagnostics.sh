@@ -79,6 +79,7 @@ done
     # shellcheck disable=SC1090
     . "$CORE_SOURCE"
     magicnet_warn() { :; }
+    magicnet_dns_capture_preflight() { return 0; }
     magicnet_detach_pid_from_app_cgroup() { :; }
     magicnet_kernel_start_preamble() { :; }
     magicnet_kernel_running() { return 1; }

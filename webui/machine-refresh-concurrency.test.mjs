@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
-import { machineFailureText, parseMachineDns, parseMachineNetwork } from "./src/composables/machineStatus.ts";
+import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineNetworkPreflight } from "./src/composables/machineStatus.ts";
 
 // Run the actual composable refresh functions, not a copied refresh algorithm.
 const source = ts.createSourceFile("useMagicNet.ts", readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const names = ["startForegroundCommand", "canUpdateRefreshUi", "markQuietFailure", "refreshDns", "refreshNetwork"];
+const names = ["startForegroundCommand", "canUpdateRefreshUi", "markQuietFailure", "refreshDns", "refreshNetwork", "refreshNetworkPreflight"];
 const functions = source.statements.filter((node) => ts.isFunctionDeclaration(node) && names.includes(node.name?.text));
 assert.equal(functions.length, names.length);
 const utilities = ts.createSourceFile("utils.ts", readFileSync(new URL("./src/utils.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
@@ -24,7 +24,7 @@ function fixture() {
   const calls = [];
   const state = { dns: { profile: "cloudflare-doh", primary: "old", secondary: "old", transport: "doh" }, phase: "done", notice: "newer action", output: "newer output", busy: false };
   const context = vm.createContext({
-    state, machineFailureText, parseMachineDns, parseMachineNetwork,
+    state, machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineNetworkPreflight,
     t: (text, values = {}) => text.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? key),
     foregroundUiGate: { current: () => token, owns: (value) => value === token },
     runCli: (args, _label, quiet) => { if (!quiet) token++; calls.push(args); return pending; },
@@ -79,4 +79,19 @@ test("network refresh preserves configured/effective separation", async () => {
   const { context, resolve } = fixture(); const refresh = context.refreshNetwork(); resolve(networkResponse);
   const result = await refresh;
   assert.equal(result.configured.mtu, 1400); assert.equal(result.effective.mtu, null);
+});
+
+test("preflight is explicit, rejects stale observations and does not retry old modules", async () => {
+  const response = JSON.stringify({ schema: 1, ok: true, command: "network.preflight", data: {
+    ipv4_nat: "supported", ipv6_nat: "unsupported", kernel_capture_required: true,
+    strict_ipv6_ready: false, blocker: "ipv6_nat_unavailable",
+  } });
+  const current = fixture(); const preflight = current.context.refreshNetworkPreflight(); current.resolve(response);
+  assert.equal((await preflight).blocker, "ipv6_nat_unavailable");
+  assert.deepEqual(current.calls, ["--json network preflight"]);
+  const stale = fixture(); const pending = stale.context.refreshNetworkPreflight(); stale.supersede(); stale.resolve(response);
+  assert.equal(await pending, null);
+  const old = fixture(); const unsupported = old.context.refreshNetworkPreflight(); old.resolve('{"schema":1,"ok":false,"command":"machine.error","error":{"code":"machine.unsupported_command"}}');
+  assert.equal(await unsupported, null);
+  assert.deepEqual(old.calls, ["--json network preflight"]);
 });

@@ -34,7 +34,7 @@ import {
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
-import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type NetworkPolicyStatus } from "@/composables/machineStatus";
+import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineNetworkPreflight, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type DnsCaptureStatus, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
   dnsDefaults,
@@ -963,6 +963,14 @@ async function refreshNetwork(quiet = false): Promise<NetworkPolicyStatus | null
   return canUpdateRefreshUi(command.token) ? network : null;
 }
 
+async function refreshNetworkPreflight(): Promise<DnsCaptureStatus | null> {
+  const command = startForegroundCommand("--json network preflight", t("读取 UDP / IPv6 策略"), true, "", undefined, "read");
+  const text = await command.promise;
+  // This optional diagnostic is unavailable on older modules. Never retry it
+  // through the human dispatcher or keep a previous observation on failure.
+  return canUpdateRefreshUi(command.token) ? parseMachineNetworkPreflight(text) : null;
+}
+
 async function refreshWarp(
   quiet = false,
   foregroundToken?: number,
@@ -1280,6 +1288,7 @@ export function useMagicNet() {
     refreshMcp,
     refreshDns,
     refreshNetwork,
+    refreshNetworkPreflight,
     refreshWarp,
     refreshWifiPolicy,
     createIssue,

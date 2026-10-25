@@ -40,6 +40,8 @@ export type RuntimeState = {
   serviceReady: boolean | null;
   /** Selected dataplane proven present (TUN interface or required eBPF attachments); null when unproven. */
   transparentDataplaneReady: boolean | null;
+  transparentLocalReady: boolean | null;
+  transparentSharedReady: boolean | null;
   fswatch: string;
   transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;
