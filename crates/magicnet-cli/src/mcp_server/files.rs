@@ -140,6 +140,12 @@ fn private_module_path(relative: &Path) -> bool {
     // These trees contain credentials under arbitrary names: subscription
     // journals use old-url/input-source, caches hold node passwords, and
     // recovery checkpoints copy whole configs. Public state is in machines/.
+    // Runtime logs, eCapture output, and wifi-policy watch text live under
+    // .log. magicnet_log_read is the redacting path; generic file reads
+    // must not bypass it.
+    if names.iter().any(|name| name == ".log") {
+        return true;
+    }
     if names.windows(2).any(|pair| {
         (pair[0] == ".config" && private_name_or_copy(&pair[1], "sing-box"))
             || (pair[0] == ".state"
@@ -360,6 +366,11 @@ mod tests {
             ".state/module-update/release.json",
             ".state/wifi-policy/last-state.conf",
             ".state/wifi-policy.new.123/last-state.conf",
+            ".log/mcp-server.log",
+            ".log/service.log",
+            ".log/wifi-policy.log",
+            ".log/sing-box.log",
+            ".log/ecapture.pcapng",
         ];
         for (index, path) in private_paths.iter().enumerate() {
             let target = root.join(path);
@@ -381,6 +392,7 @@ mod tests {
             ".state/transparent-transaction",
             ".state/override-materialization",
             ".state/wifi-policy",
+            ".log",
         ] {
             assert_eq!(
                 file_list(&server, directory),
@@ -409,10 +421,12 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    fn assert_fifo_rejected(name: &str, read: fn(&Server) -> String) {
+    fn assert_fifo_rejected(name: &str, relative: &str, read: fn(&Server) -> String) {
         let (server, root) = test_server(name);
-        fs::create_dir_all(root.join(".log")).unwrap();
-        let fifo = root.join(".log/pipe.log");
+        let fifo = root.join(relative);
+        if let Some(parent) = fifo.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
         let fifo_name = CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
         let (sender, receiver) = mpsc::channel();
@@ -435,23 +449,42 @@ mod tests {
 
     #[test]
     fn file_read_rejects_fifo_without_waiting_for_a_writer() {
-        assert_fifo_rejected("file-fifo", |server| file_read(server, ".log/pipe.log"));
+        assert_fifo_rejected("file-fifo", "pipe.dat", |server| {
+            file_read(server, "pipe.dat")
+        });
     }
 
     #[test]
     fn log_read_rejects_fifo_without_waiting_for_a_writer() {
-        assert_fifo_rejected("log-fifo", |server| {
+        assert_fifo_rejected("log-fifo", ".log/pipe.log", |server| {
             crate::logs::log_read(server, "pipe", 10, false)
         });
     }
 
     #[test]
-    fn file_and_log_reads_preserve_regular_file_contents() {
+    fn file_reads_refuse_runtime_logs_and_keep_log_read() {
         let (server, root) = test_server("regular");
         fs::create_dir_all(root.join(".log")).unwrap();
         fs::write(root.join(".log/example.log"), "first\nsecond\nthird\n").unwrap();
+        fs::write(
+            root.join(".log/mcp-server.log"),
+            "fetch failed source=https://secret.example/private-value\n",
+        )
+        .unwrap();
         symlink(root.join(".log/example.log"), root.join("internal-link")).unwrap();
-        assert_eq!(file_read(&server, "internal-link"), "first\nsecond\nthird");
+        for path in [
+            ".log/example.log",
+            ".log/mcp-server.log",
+            "internal-link",
+            ".log",
+        ] {
+            assert_eq!(
+                file_read(&server, path),
+                "refusing to read a secret file",
+                "{path}"
+            );
+        }
+        assert_eq!(file_list(&server, ".log"), "refusing to read a secret file");
         assert_eq!(
             crate::logs::log_read(&server, "example", 2, false),
             "second\nthird"

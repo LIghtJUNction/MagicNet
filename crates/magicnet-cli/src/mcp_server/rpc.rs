@@ -548,6 +548,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
     // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
     // Named private tools remain the explicit path for those contents.
     // Omitted user-agent/filter/backup actions default to their dump forms.
+    // diagnose prints unredacted sing-box log excerpts.
     matches!(
         command.as_slice(),
         ["mcp", "secret" | "logs", ..]
@@ -564,6 +565,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
             | ["wifi", "inspect", ..]
             | ["network-access", "inspect", ..]
             | ["service", "logs", ..]
+            | ["diagnose"]
     )
 }
 
@@ -866,6 +868,7 @@ mod tests {
             ["override", "inspect"].as_slice(),
             ["service", "logs"].as_slice(),
             ["mcp", "logs"].as_slice(),
+            ["diagnose"].as_slice(),
         ] {
             let owned = args
                 .iter()
