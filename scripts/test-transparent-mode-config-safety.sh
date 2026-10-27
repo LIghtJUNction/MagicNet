@@ -10,6 +10,7 @@ trap 'rm -rf "$WORKDIR"' EXIT HUP INT TERM
 MODDIR="$WORKDIR/module"
 export MODDIR
 mkdir -p "$MODDIR/.config/magicnet"
+ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
 import() { :; }
 
 # common.sh resolves its other imports lazily; this contract only exercises the
@@ -54,6 +55,13 @@ magicnet_transparent_set_mode ebpf
 assert_mode ebpf
 [ "$(stat -c '%a' "$MODE_FILE")" = 600 ]
 
+# Whitespace/comments and a final line without LF retain the existing parser
+# contract; data is never interpreted as shell syntax.
+printf ' \t# fixture\r\n\tMAGICNET_TRANSPARENT_MODE=tun\t\r\n' >"$MODE_FILE"
+assert_mode tun
+printf '%s' 'MAGICNET_TRANSPARENT_MODE=ebpf' >"$MODE_FILE"
+assert_mode ebpf
+
 # Unknown requests, including the historical implicit/automatic spellings,
 # must fail without touching the previous valid selection.
 for invalid in unknown auto hybrid proxy external external-tun ''; do
@@ -65,6 +73,8 @@ assert_mode ebpf
 # values and duplicate assignments are rejected rather than silently falling
 # back or selecting whichever line happened to be last.
 for invalid_file in \
+    '' \
+    '# comment only' \
     'MAGICNET_TRANSPARENT_MODE=unknown' \
     'MAGICNET_TRANSPARENT_MODE=tun
 MAGICNET_UNEXPECTED_ASSIGNMENT=1' \
@@ -117,5 +127,49 @@ fi
     exit 1
 }
 assert_mode tun
+
+# The reported Android mksh has no printf builtin. Model each invocation as an
+# external applet, including calls made in command substitutions. A mode read
+# needs only the validating awk process; a missing file needs neither applet.
+(
+    calls="$WORKDIR/mode-read-calls"
+    printf() { echo printf >>"$calls"; /usr/bin/printf "$@"; }
+    # Called indirectly by magicnet_transparent_mode.
+    # shellcheck disable=SC2329
+    awk() { echo awk >>"$calls"; command awk "$@"; }
+    for mode in tun ebpf; do
+        command printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$mode" >"$MODE_FILE"
+        : >"$calls"
+        assert_mode "$mode"
+        [ "$(cat "$calls")" = awk ] || {
+            echo 'mode read spawned redundant external applets' >&2
+            exit 1
+        }
+    done
+    rm -f "$MODE_FILE"
+    : >"$calls"
+    assert_mode tun
+    [ ! -s "$calls" ] || {
+        echo 'default mode spawned external applets' >&2
+        exit 1
+    }
+)
+
+# Keep the capture boundary: an awk read failure after partial valid-looking
+# output must still fail without publishing that output as a mode.
+(
+    printf '%s\n' 'MAGICNET_TRANSPARENT_MODE=tun' >"$MODE_FILE"
+    # Called indirectly by magicnet_transparent_mode.
+    # shellcheck disable=SC2329
+    awk() { command printf 'tun\n'; return 1; }
+    if actual=$(magicnet_transparent_mode); then
+        echo 'failed mode read was accepted' >&2
+        exit 1
+    fi
+    [ -z "$actual" ] || {
+        echo 'failed mode read exposed partial output' >&2
+        exit 1
+    }
+)
 
 printf '%s\n' 'transparent mode config safety passed'
