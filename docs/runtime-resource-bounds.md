@@ -26,8 +26,9 @@ in blocking mode. Log-tail reads also enforce their limit on the read.
 Config apply and transparent transitions now use the existing bounded
 lifecycle lock acquisition instead of indefinite flock(LOCK_EX).
 
-Explicit `service start|stop|restart` actions allow up to ten seconds to acquire
-that lock so a periodic hotspot reconciliation can finish. Contention emits one
+Explicit `service start|stop|restart` actions and `service toggle sing-box` allow
+up to ten seconds to acquire that lock so a periodic hotspot reconciliation can
+finish. Toggle delegates to the same start/stop paths. Contention emits one
 `lifecycle.waiting` message on stderr; expiry retains the existing `config apply
 is still busy` diagnostic and nonzero CLI exit status. Other configuration
 mutations keep their two-second budget. The lock is still held across all existing startup checks,

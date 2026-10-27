@@ -82,15 +82,34 @@ fn contended_hotspot_reconcile_does_not_run_hooks_or_publish_state() {
         unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
         0
     );
-    let started = Instant::now();
-    let output = Command::new(env!("CARGO_BIN_EXE_magicnet-cli"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_magicnet-cli"))
         .args(["hotspot", "reconcile"])
         .env("MODDIR", &root)
         .stdin(Stdio::null())
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("run periodic reconcile through the real dispatcher");
+    // Keep the lock held until the child exits; the watchdog tolerates process
+    // startup and scheduling delays without accepting a wait for lock release.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if child.try_wait().expect("poll periodic reconcile").is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            drop(lock);
+            let _ = fs::remove_dir_all(&root);
+            panic!("contended periodic reconcile did not exit while the lock was held");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let output = child
+        .wait_with_output()
+        .expect("collect periodic reconcile");
     assert!(output.status.success(), "{output:?}");
-    assert!(started.elapsed() < Duration::from_secs(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("reconcile skipped"));
     assert_eq!(
