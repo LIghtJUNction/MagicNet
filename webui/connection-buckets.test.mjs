@@ -52,9 +52,10 @@ test("connection insights keep prototype-named top traffic and the four-item lim
   ];
   const insights = buildConnectionInsights(connections, connections, "");
   assert.equal(insights.length, 4);
-  assert.match(insights[2].detail, /__proto__/);
-  assert.match(insights[2].detail, /2/);
-  assert.match(insights[3].detail, /constructor/);
+  assert.equal(insights[2].detail, "__proto__ · 2 条");
+  assert.equal(insights[2].value, "1000 B");
+  assert.equal(insights[3].detail, "constructor · 1 条");
+  assert.equal(insights[3].value, "800 B");
   const buckets = connectionBuckets(
     [
       ...connections,
