@@ -26,6 +26,14 @@ in blocking mode. Log-tail reads also enforce their limit on the read.
 Config apply and transparent transitions now use the existing bounded
 lifecycle lock acquisition instead of indefinite flock(LOCK_EX).
 
+Explicit `service start|stop|restart` actions allow up to ten seconds to acquire
+that lock so a periodic hotspot reconciliation can finish. Contention emits one
+`lifecycle.waiting` message on stderr; expiry retains the existing `config apply
+is still busy` diagnostic and nonzero CLI exit status. Other configuration
+mutations keep their two-second budget. The lock is still held across all existing startup checks,
+transaction recovery and lifecycle work; a running PID never bypasses them.
+The ten seconds bound acquisition only, not the duration of the lifecycle action.
+
 Tests cover capacity/reuse, eventual reaping, idle/closed pipes, output
 flooding, escaped pipe writers, scoped Wi-Fi publication, shared config
 observations, oversized/FIFO JSON inputs and a real CLI blocked on a lock.
@@ -96,10 +104,15 @@ After saving the new intent, configuration apply reuses the held guard. On
 failure, compensation restores the previous choice (including an absent key),
 keeps unrelated selectors, and restores the observed runtime selection separately
 from configured intent. API or persistence failures do not skip independent
-resource cleanup; unsuccessful compensation is reported explicitly. Reconcile
-also shares the lifecycle lock. Post-command canonical reconciliation remains
-the publication boundary; this does not claim an atomic snapshot across external
-resources or replace the existing startup recovery path.
+resource cleanup; unsuccessful compensation is reported explicitly. Periodic
+`hotspot reconcile` uses a nonblocking attempt on the same lifecycle lock and
+skips a contended cycle without running route/policy changes. It does not report
+the dataplane ready or turn an I/O failure into a successful skip. The watcher
+will retry on its next cycle. An attempted reconcile publishes canonical
+observations after releasing the lock, on both success and failure, through the
+existing publisher. A skipped cycle does not run that publisher. Other hotspot
+actions retain their generic post-command publication. This does not claim an
+atomic snapshot across external resources or replace the startup recovery path.
 
 Temporary-module regressions cover both directions, repeated enable, each
 forward failure, concurrent lifecycle operations, API/save compensation failure,

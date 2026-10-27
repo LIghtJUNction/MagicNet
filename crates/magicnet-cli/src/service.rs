@@ -42,6 +42,7 @@ const TRANSPARENT_EBPF_STATE_FILES: &[(&str, &str)] = &[
 ];
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
 const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const SERVICE_LOCK_TIMEOUT: Duration = Duration::from_secs(10);
 const CONFIG_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const MAX_SERVICE_LOG_READ_BYTES: u64 = 1024 * 1024;
 
@@ -49,6 +50,7 @@ pub(crate) struct ConfigApplyGuard(fs::File);
 
 impl Drop for ConfigApplyGuard {
     fn drop(&mut self) {
+        // SAFETY: the guard owns this open descriptor until after unlock.
         unsafe {
             libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
         }
@@ -74,16 +76,48 @@ pub(crate) fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
     config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)
 }
 
+// Periodic work may defer contention, but must not hide an I/O or lock error.
+pub(crate) fn try_config_apply_lock(app: &App) -> Result<Option<ConfigApplyGuard>, String> {
+    let file = open_config_apply_lock(app)?;
+    if try_lock_config_apply_file(&file)? {
+        Ok(Some(ConfigApplyGuard(file)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn try_lock_config_apply_file(file: &File) -> Result<bool, String> {
+    // SAFETY: file is borrowed for the call and owns a valid descriptor.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    if error.kind() == std::io::ErrorKind::WouldBlock {
+        Ok(false)
+    } else {
+        Err(format!("lock config apply: {error}"))
+    }
+}
+
+fn service_config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
+    if let Some(guard) = try_config_apply_lock(app)? {
+        return Ok(guard);
+    }
+    // A single hotspot reconcile can exceed the ordinary two-second budget.
+    // Wait for its owner to finish; never skip start/recovery checks on a PID hint.
+    eprintln!(
+        "[info] lifecycle.waiting: waiting for config apply (up to {} ms)",
+        SERVICE_LOCK_TIMEOUT.as_millis()
+    );
+    config_apply_lock_bounded(app, SERVICE_LOCK_TIMEOUT)
+}
+
 fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApplyGuard, String> {
     let file = open_config_apply_lock(app)?;
     let deadline = Instant::now() + timeout;
     loop {
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        if try_lock_config_apply_file(&file)? {
             return Ok(ConfigApplyGuard(file));
-        }
-        let error = std::io::Error::last_os_error();
-        if error.kind() != std::io::ErrorKind::WouldBlock {
-            return Err(format!("lock config apply: {error}"));
         }
         let now = Instant::now();
         if now >= deadline {
@@ -193,7 +227,7 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn start_service(app: &App) -> Result<(), String> {
-    let guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    let guard = service_config_apply_lock(app)?;
     start_service_locked(app, &guard)
 }
 
@@ -206,7 +240,7 @@ fn stop_service(app: &App) -> Result<(), String> {
     // producer and its current worker before waiting for the process lock;
     // otherwise a lifecycle button can sit behind a full config restart.
     quiesce_config_apply(app)?;
-    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    let _config_apply_guard = service_config_apply_lock(app)?;
     stop_all_direct(app, false)
 }
 
@@ -483,7 +517,7 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
     // Rejected targets must not stop the watcher or acquire a lifecycle lock.
     validate_restart_target(target)?;
     quiesce_config_apply(app)?;
-    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    let _config_apply_guard = service_config_apply_lock(app)?;
     restart_with_options_unlocked(app, target, false)
 }
 

@@ -232,6 +232,53 @@ fn hotspot_busy_config_lock_rejects_toggle_before_changing_any_policy() {
 }
 
 #[test]
+fn hotspot_reconcile_skips_contention_without_mutations_and_retries_later() {
+    let app = fixture(Some("direct"));
+    let guard = service::config_apply_lock(&app).expect("hold lifecycle lock");
+    let started = std::time::Instant::now();
+    action(&app, "reconcile").expect("defer this periodic cycle");
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    assert_policy(&app, "direct");
+    assert!(!app.moddir.join("calls").exists());
+    assert!(!app.moddir.join("api-calls").exists());
+    assert!(!app.moddir.join(".state/machines").exists());
+    drop(guard);
+    action(&app, "reconcile").expect("retry once the lock is free");
+    assert_eq!(
+        fs::read_to_string(app.moddir.join("calls")).expect("read reconcile calls"),
+        "reconcile\npolicy-check\n"
+    );
+}
+
+#[test]
+fn hotspot_attempted_reconcile_publishes_observations_after_success_and_failure() {
+    for failed_step in [None, Some("reconcile"), Some("policy-check")] {
+        let app = fixture(Some("direct"));
+        if let Some(step) = failed_step {
+            fs::write(app.moddir.join("fail-always"), step).expect("fail a reconcile step");
+        }
+        let result = action(&app, "reconcile");
+        assert_eq!(result.is_ok(), failed_step.is_none(), "{result:?}");
+        let state = fs::read_to_string(app.moddir.join(".state/machines/hotspot.state"))
+            .expect("actual reconcile attempts publish the observed hotspot state");
+        assert!(
+            state.lines().any(|line| line == "state=disabled"),
+            "{state}"
+        );
+        assert!(!state.contains("state=ready"));
+    }
+}
+
+#[test]
+fn hotspot_reconcile_lock_io_error_is_not_a_successful_skip() {
+    let app = fixture(Some("direct"));
+    fs::create_dir(app.moddir.join(".state/config-apply.lock")).expect("invalid lock path");
+    let error = action(&app, "reconcile").expect_err("I/O error remains visible");
+    assert!(error.starts_with("open config apply lock:"), "{error}");
+    assert!(!app.moddir.join("calls").exists());
+}
+
+#[test]
 fn hotspot_rollback_failure_is_reported_and_saved_intent_is_still_restored() {
     let app = fixture(Some("proxy"));
     fs::write(app.moddir.join("policy-status"), "1").unwrap();
