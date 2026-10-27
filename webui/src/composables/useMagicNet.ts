@@ -606,7 +606,7 @@ function followBackgroundLogs(
       const subscriptionTask = isSubscriptionBackgroundArgs(args)
         ? refreshSubs(true, undefined, false)
         : Promise.resolve(true);
-      const [logs] = await Promise.all([
+      const [logs, subscriptionObserved] = await Promise.all([
         runShell(
           backgroundLogCommand(log, args, operationId),
           t("跟踪 {p0}", { p0: t(label) }),
@@ -617,19 +617,15 @@ function followBackgroundLogs(
         subscriptionTask,
       ]);
       if (state.backgroundTask.id !== operationId) return;
-      const logCompletion = parseBackgroundCompletion(logs, operationId);
-      const subscriptionCompletion = isSubscriptionBackgroundArgs(args)
-        ? reconcileSubscriptionCompletion(
-            state.backgroundTask,
-            state.subscriptions,
-          )
-        : logCompletion;
-      const completion =
-        logCompletion === "error" || subscriptionCompletion === "error"
-          ? "error"
-          : logCompletion === "done" && subscriptionCompletion === "done"
-            ? "done"
-            : "running";
+      // A lifecycle failure can precede cleanup and process exit. Only this
+      // launcher's exit releases the write gate; a failed observation must not
+      // reuse an older subscription result as completion evidence.
+      let completion = parseBackgroundCompletion(logs, operationId);
+      if (completion === "done" && isSubscriptionBackgroundArgs(args)) {
+        completion = subscriptionObserved
+          ? reconcileSubscriptionCompletion(state.backgroundTask, state.subscriptions)
+          : "running";
+      }
       const done = completion === "done";
       const failed = completion === "error";
       if (done || failed) {
