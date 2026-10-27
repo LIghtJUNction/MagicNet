@@ -1,80 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectionBuckets } from "./src/composables/parsers.ts";
+import { connectionBuckets, parseConnectionSnapshot } from "./src/composables/parsers.ts";
 import { buildConnectionInsights } from "./src/components/pages/connectionInsights.ts";
 
-function target(overrides = {}) {
-  return {
-    id: "id",
-    label: "example.com:443",
-    source: "",
-    network: "tcp",
-    inbound: "tun",
-    rule: "",
-    rulePayload: "",
-    chain: "",
-    process: "",
-    detail: "",
-    upload: 0,
-    download: 0,
-    totalBytes: 0,
-    ...overrides,
-  };
+function connectionsFor(name) {
+  return parseConnectionSnapshot(JSON.stringify({ connections: [
+    { id: "one", metadata: { host: "example.test", processName: name }, rule: name, chains: [name], upload: 100, download: 200 },
+    { id: "two", metadata: { host: "example.test", processName: name }, rule: name, chains: [name], upload: 50, download: 50 },
+    { id: "three", metadata: { host: "example.test", processName: "ordinary" }, rule: "ordinary", chains: ["ordinary"], upload: 10, download: 10 },
+  ] })).connections;
 }
 
-test("connection buckets count prototype-named metadata as ordinary keys", () => {
-  const connections = [
-    target({ id: "1", process: "__proto__", totalBytes: 400 }),
-    target({ id: "2", process: "constructor", totalBytes: 300 }),
-    target({ id: "3", process: "toString", totalBytes: 200 }),
-    target({ id: "4", process: "hasOwnProperty", totalBytes: 100 }),
-    target({ id: "5", process: "chrome", totalBytes: 50 }),
-  ];
+for (const name of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+  test(`connection summaries treat ${name} as an ordinary name`, () => {
+    const prototypeBefore = Object.getOwnPropertyDescriptors(Object.prototype);
+    const inheritedBefore = Object.getOwnPropertyDescriptors(({})[name]);
+    const connections = connectionsFor(name);
+    try {
+      for (const kind of ["process", "rule", "chain"]) {
+        const buckets = connectionBuckets(connections, kind);
+        assert.deepEqual(buckets[0], { name, query: name, count: 2, bytes: 400 });
+        assert.equal(buckets.length, 2);
+      }
+      const insights = buildConnectionInsights(connections, connections, "");
+      for (const insight of insights.slice(2)) {
+        assert.equal(insight.value, "400 B");
+        assert.equal(insight.detail, `${name} · 2 条`);
+      }
+      assert.deepEqual(Object.getOwnPropertyDescriptors(Object.prototype), prototypeBefore);
+      assert.deepEqual(Object.getOwnPropertyDescriptors(({})[name]), inheritedBefore);
+    } finally {
+      // Keep the regression isolated even when run against the buggy reducer.
+      for (const target of [Object.prototype, ({})[name]]) {
+        delete target.count;
+        delete target.bytes;
+      }
+    }
+  });
+}
+
+test("connection buckets retain descending totals and the top-four limit", () => {
+  const connections = ["a", "b", "c", "d", "e"].flatMap(connectionsFor);
   const buckets = connectionBuckets(connections, "process");
-  assert.deepEqual(
-    buckets.map((bucket) => [bucket.name, bucket.count, bucket.bytes]),
-    [
-      ["__proto__", 1, 400],
-      ["constructor", 1, 300],
-      ["toString", 1, 200],
-      ["hasOwnProperty", 1, 100],
-    ],
-  );
-  assert.equal(Object.hasOwn(Object.prototype, "count"), false);
-  assert.equal(Object.prototype.toString.count, undefined);
-});
-
-test("connection insights keep prototype-named top traffic and the four-item limit", () => {
-  const connections = [
-    target({ id: "1", process: "__proto__", rule: "constructor", totalBytes: 800 }),
-    target({ id: "2", process: "__proto__", rule: "toString", totalBytes: 200 }),
-    target({ id: "3", process: "chrome", rule: "direct", totalBytes: 10 }),
-  ];
-  const insights = buildConnectionInsights(connections, connections, "");
-  assert.equal(insights.length, 4);
-  assert.equal(insights[2].detail, "__proto__ · 2 条");
-  assert.equal(insights[2].value, "1000 B");
-  assert.equal(insights[3].detail, "constructor · 1 条");
-  assert.equal(insights[3].value, "800 B");
-  const buckets = connectionBuckets(
-    [
-      ...connections,
-      target({ id: "4", process: "hasOwnProperty", totalBytes: 5 }),
-      target({ id: "5", process: "valueOf", totalBytes: 4 }),
-    ],
-    "process",
-  );
   assert.equal(buckets.length, 4);
-  assert.equal(buckets[0].name, "__proto__");
-  assert.equal(buckets[0].bytes, 1000);
-  assert.deepEqual(
-    buckets.map((bucket) => bucket.name),
-    ["__proto__", "chrome", "hasOwnProperty", "valueOf"],
-  );
-});
-
-test("empty connections yield no buckets or inherited object keys", () => {
+  assert.deepEqual(buckets.map(({ name }) => name), ["a", "b", "c", "d"]);
   assert.deepEqual(connectionBuckets([], "process"), []);
-  assert.deepEqual(connectionBuckets([], "rule"), []);
-  assert.deepEqual(connectionBuckets([], "chain"), []);
 });
