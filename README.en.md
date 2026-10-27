@@ -4,25 +4,33 @@
 
 <a href="https://donate.lmm.best/?project=magicnet"><img src="https://donate.lmm.best/badge.svg?project=magicnet&amp;currency=CNY&amp;lang=en&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=MagicNet" alt="Donate" width="360" /></a>
 
-MagicNet manages Android network traffic through a root-controlled [sing-box fork](sing-box), without occupying Android's VPN slot. It supports explicit `tun` and `ebpf` modes, with `tun` enabled by default.
+**A no-fuss sing-box transparent proxy for rooted Android phones.**
 
-## Features
+Tired of a proxy app hogging Android's one and only VPN slot? MagicNet runs our own [sing-box fork](sing-box) at the system level through Magisk, KernelSU or APatch, so the VPN slot stays free. You decide which apps go through the proxy, which go direct, what happens on your home Wi-Fi, and how hotspot clients are handled.
 
-- Import public HTTPS subscription URLs or local Clash/Mihomo YAML, base64, sharing links, sing-box JSON and text files. Up to five URL sources are supported.
-- Route apps through Proxy, Direct or Bypass policies, and configure Wi-Fi and hotspot policies.
-- Inspect subscriptions, proxy groups, node latency, traffic and diagnostics from the WebUI.
-- Switch explicitly between TUN and eBPF, with rollback on failure. TUN uses `magicnet0`; eBPF reports capability, cgroup and TC attachment state.
-- Manage the same operations through the CLI and optional authenticated MCP server.
-- The WebUI overview draws a live traffic constellation (device → dataplane → sing-box → exit) from verified status only; press `Ctrl/⌘ + K` or `/` to jump to any page.
+You get two transparent modes, and you switch between them yourself:
 
-## Install and configure
+- **`tun` (default)** creates a virtual interface called `magicnet0`. It's reliable and widely compatible, and it's what most people need.
+- **`ebpf`** steers traffic with kernel hooks. Pick it if you like to tinker and your kernel supports it.
+
+Switching is atomic and rolls back on failure, so a bad switch won't leave you offline halfway through.
+
+## What you get
+
+- **Bring the subscription you already have.** Paste public HTTPS subscription URLs (up to five sources), or import local Clash/Mihomo YAML, base64, sharing links, sing-box JSON or plain text. You don't need a "sing-box-only" subscription.
+- **Per-app, Wi-Fi and hotspot policies.** Set each app to Proxy, Direct or Bypass. Switch policy automatically by Wi-Fi network, and choose Direct or Proxy for hotspot clients.
+- **A WebUI that shows what's going on.** Check subscriptions, proxy groups, node latency, traffic and diagnostics in one place. The overview draws a live traffic constellation (device → dataplane → sing-box → exit) from verified status only. Press `Ctrl/⌘ + K` or `/` to jump to any page.
+- **Honest status reporting.** TUN is judged by `magicnet0`. eBPF is judged by capability, cgroup and TC attachment state. If MagicNet can't confirm something, it says so instead of pretending all is well.
+- **Scriptable when you want it.** The CLI and an optional, authenticated MCP server run the same operations as the WebUI.
+
+## Up and running in five minutes
 
 1. Download a module ZIP from [Releases](https://github.com/LIghtJUNction/MagicNet/releases), install it through Magisk, KernelSU or APatch, and reboot.
-2. Turn Android **Private DNS** off. Do not leave it set to Automatic.
-3. Open the module WebUI in your root manager. Add an authorized subscription URL or import a local subscription file on the Subscriptions page.
-4. Save and activate the subscription. Check the health page to confirm that sing-box and the selected network mode are working.
+2. Turn Android **Private DNS** off. "Automatic" isn't good enough; it needs to be off.
+3. Open the module WebUI from your root manager. On the Subscriptions page, add a subscription URL you're authorized to use, or import a local subscription file.
+4. Save and activate it, then check the health page. Once sing-box and the selected network mode show as healthy, you're done.
 
-You can also configure and inspect the module from a root shell:
+Prefer a terminal? Three lines in a root shell:
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'
@@ -30,23 +38,23 @@ su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
 ```
 
-A working TUN configuration creates `magicnet0`. For eBPF, inspect the local cgroup and shared TC/interface states; `magicnet0` is not required. The shared hotspot path can remain pending until a downstream interface is available.
+A working TUN setup creates `magicnet0`. eBPF never creates that interface, so check the local cgroup and shared TC/interface states instead. The shared hotspot path can stay pending until a downstream interface shows up. That's expected.
 
-MagicNet does not provide subscriptions, proxy nodes or external network access. Use resources you are authorized to access.
+> MagicNet is just a tool. It doesn't provide subscriptions, proxy nodes or external network access. Please use only resources you're authorized to access.
 
 ## Languages
 
-The WebUI supports Simplified Chinese, English and Russian. Use its language selector to change the interface; your choice is remembered in the browser.
+The WebUI speaks Simplified Chinese, English and Russian. Pick one from the language selector and your browser remembers it.
 
-The setup guide and module action menu support Russian and English alongside existing Chinese, Japanese and Korean translations. They follow Android's language by default. Interactive terminal installation also offers a language picker. To override the action menu language for one invocation:
+The setup guide and module action menu support Russian and English, plus the existing Chinese, Japanese and Korean translations. They follow Android's system language by default, and interactive terminal installs also offer a language picker. To override the action menu language for a single run:
 
 ```bash
 su -c 'KAM_UI_LANGUAGE=en sh /data/adb/modules/MagicNet/action.sh'
 ```
 
-Use `ru` for Russian. This changes MagicNet's interface language without changing Android's system language. CLI commands, machine-readable status, configuration values and raw logs retain their original format. The bundled third-party core panel has its own language settings.
+Use `ru` for Russian. This only changes MagicNet's interface language, not Android's. CLI commands, machine-readable status, configuration values and raw logs keep their original format so scripts don't break. The bundled third-party core panel has its own language settings.
 
-## Common commands
+## Handy commands
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli sub status
@@ -59,7 +67,7 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
 
-App policy examples:
+App policy examples. Use `direct` for "just don't proxy this". Save `bypass` for apps that must coexist with another VPN:
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
@@ -67,7 +75,7 @@ su -c '/data/adb/modules/MagicNet/cli app add com.example.browser direct'
 su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
 ```
 
-## Development and documentation
+## Building it yourself
 
 ```bash
 git clone https://github.com/LIghtJUNction/MagicNet.git
@@ -76,4 +84,6 @@ git submodule update --init
 kam build
 ```
 
-The source build requires [kam](https://github.com/MemDeco-WG/kamfw). More detailed documentation is currently available in Chinese: [user guide](docs/user-guide.md), [MCP](docs/mcp.md), and [Tailscale](docs/tailscale.md).
+Source builds need [kam](https://github.com/MemDeco-WG/kamfw). The more detailed docs are currently in Chinese only, sorry about that: [user guide](docs/user-guide.md), [MCP](docs/mcp.md) and [Tailscale](docs/tailscale.md).
+
+Questions or just want to say hi? Join us on [Discord](https://discord.gg/asRwgK9FpA).
