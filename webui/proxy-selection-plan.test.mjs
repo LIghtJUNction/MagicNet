@@ -11,6 +11,14 @@ const group = {
   proxies: ["private-current-node", "private-target-node"],
 };
 
+test("confirmation names both the translated choice and its original tag", () => {
+  setLocale("zh-CN");
+  const plan = buildProxySelectionPlan({ name: "select", type: "Selector", now: "proxy", proxies: ["proxy", "direct"] }, "direct", []);
+  assert.equal(plan.summary, "将从 代理 (proxy) 切换到 直连 (direct)。");
+  assert.equal(plan.items.find((item) => item.label === "当前").value, "代理 (proxy)");
+  assert.doesNotMatch(formatProxySelectionPlanReport(plan), /\(proxy\)|\(direct\)|代理 \(|直连 \(/);
+});
+
 for (const [expectedClass, delayMillis] of [
   ["untested", undefined],
   ["unknown", null],

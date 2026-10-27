@@ -14,7 +14,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { useVisibilityTask } from "@/composables/useVisibilityTask";
 import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildProxySelectionPlan, formatProxySelectionPlanReport, type ProxySelectionPlan } from "./proxySelectionPlan";
-import { matchingProxyGroups, matchingProxyGroupNodes } from "./proxyGroupView";
+import { matchingProxyGroups, matchingProxyGroupNodes, proxyDisplayName, proxyNameLabel } from "./proxyGroupView";
 
 type PendingProxyAction = {
   group: ProxyGroupSummary;
@@ -27,7 +27,7 @@ const { isRunning, withAction } = useActionLock();
 const rawOutput = ref("");
 const copied = ref(false);
 const groupQuery = ref("");
-const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
+const groupDelays = ref(new Map<string, NodeDelayEntry[]>());
 const pendingAction = ref<PendingProxyAction | null>(null);
 const selectionPlanCopied = ref(false);
 const groupLimit = ref(8);
@@ -37,7 +37,7 @@ const snapshot = computed(() => parseProxyGroupsSnapshot(rawOutput.value));
 const pendingPlan = computed<ProxySelectionPlan | null>(() => {
   const action = pendingAction.value;
   if (!action) return null;
-  return buildProxySelectionPlan(action.group, action.node, groupDelays.value[action.group.name] || []);
+  return buildProxySelectionPlan(action.group, action.node, groupDelays.value.get(action.group.name) || []);
 });
 const filteredGroups = computed(() => matchingProxyGroups(snapshot.value?.groups || [], groupQuery.value));
 const visibleGroups = computed(() => filteredGroups.value.slice(0, groupLimit.value));
@@ -51,7 +51,7 @@ async function refreshGroups(): Promise<void> {
     copied.value = false;
     pendingAction.value = null;
     selectionPlanCopied.value = false;
-    groupDelays.value = {};
+    groupDelays.value.clear();
     groupLimit.value = 8;
     nodeLimits.value = new Map();
     rawOutput.value = await runCli("api proxies", t("读取代理组"));
@@ -82,7 +82,7 @@ async function testGroup(group: ProxyGroupSummary): Promise<void> {
     const output = await runCli(`node test-all ${nodes.map(shellQuote).join(" ")}`, t("测速 {name}", { name: group.name }));
     const requested = new Set(nodes);
     const entries = parseNodeTestAll(output).filter((entry) => requested.has(entry.node));
-    groupDelays.value = { ...groupDelays.value, [group.name]: entries };
+    groupDelays.value.set(group.name, entries);
   });
 }
 
@@ -96,7 +96,7 @@ function requestUseFastest(group: ProxyGroupSummary): void {
 }
 
 function groupDelayStats(group: ProxyGroupSummary) {
-  return buildNodeDelayStats(groupDelays.value[group.name] || []);
+  return buildNodeDelayStats(groupDelays.value.get(group.name) || []);
 }
 
 function visibleGroupNodes(group: ProxyGroupSummary): string[] {
@@ -152,7 +152,7 @@ async function copySelectionPlan(): Promise<void> {
 async function copyReport(): Promise<void> {
   const report = visibleGroups.value.flatMap((group) => {
     const stats = groupDelayStats(group);
-    const delays = groupDelays.value[group.name] || [];
+    const delays = groupDelays.value.get(group.name) || [];
     return [
       `${sanitizeProxyName(group.name)} type=${group.type} now=${sanitizeProxyName(group.now || "none")} count=${group.proxies.length}`,
       `delay_tested=${stats.tested} usable=${stats.usable} failed=${stats.failed} median_ms=${stats.medianMillis ?? "none"} parsed_usable_percent=${stats.usablePercent} fastest=${stats.fastest ? `${sanitizeNodeText(stats.fastest.node)} ${sanitizeNodeText(stats.fastest.summary)}` : "none"}`,
@@ -196,7 +196,7 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
     <ConfirmPanel
       v-if="pendingAction"
       :title="t('切换代理节点')"
-      :detail="`${sanitizeProxyName(pendingAction.group.name)}：${sanitizeProxyName(pendingPlan?.summary || '')}`"
+      :detail="`${proxyDisplayName(pendingAction.group.name)}：${sanitizeProxyName(pendingPlan?.summary || '')}`"
       command="api select <group> <node>"
       :loading="isRunning('proxy-groups-select')"
       :confirm-label="t('确认切换')"
@@ -227,11 +227,12 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
       <section v-for="group in visibleGroups" :key="group.name" class="proxy-group min-w-0 border-t border-[var(--mn-border)] pt-4">
         <div class="mb-3 min-w-0">
           <div class="min-w-0">
-            <h4 class="break-words text-base font-semibold text-[var(--mn-ink)]">{{ sanitizeProxyName(group.name) }}</h4>
+            <h4 class="break-words text-base font-semibold text-[var(--mn-ink)]">{{ proxyNameLabel(group.name) }}</h4>
+            <p v-if="proxyNameLabel(group.name) !== sanitizeProxyName(group.name)" class="break-words text-xs text-[var(--mn-ink-muted)]">{{ sanitizeProxyName(group.name) }}</p>
             <p class="text-xs text-[var(--mn-ink-muted)]">{{ group.type }} · {{ t("{count} 个节点", { count: group.proxies.length }) }}</p>
           </div>
           <p class="mt-2 break-words text-sm text-[var(--mn-ink-soft)]">
-            <span class="text-[var(--mn-ink-muted)]">{{ t("当前选择") }} · </span>{{ sanitizeProxyName(group.now || t("未选择")) }}
+            <span class="text-[var(--mn-ink-muted)]">{{ t("当前选择") }} · </span>{{ proxyDisplayName(group.now || t("未选择")) }}
           </p>
         </div>
         <div class="mb-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
@@ -254,11 +255,11 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
             :disabled="node === group.now || isRunning('proxy-groups-select')"
             @click="requestSelect(group, node)"
           >
-            <span class="break-words">{{ sanitizeProxyName(node) }}</span>
+            <span class="break-words">{{ proxyDisplayName(node) }}</span>
             <span v-if="node === group.now" class="mt-1 text-xs">{{ t("已选择") }}</span>
-            <span v-if="groupDelays[group.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
-              {{ sanitizeNodeText(groupDelays[group.name].find((entry) => entry.node === node)?.summary || "") }}
-              · {{ nodeDelayQualityLabel(groupDelays[group.name].find((entry) => entry.node === node)?.quality || "failed") }}
+            <span v-if="groupDelays.get(group.name)?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
+              {{ sanitizeNodeText(groupDelays.get(group.name)?.find((entry) => entry.node === node)?.summary || "") }}
+              · {{ nodeDelayQualityLabel(groupDelays.get(group.name)?.find((entry) => entry.node === node)?.quality || "failed") }}
             </span>
           </button>
         </div>

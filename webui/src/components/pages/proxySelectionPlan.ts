@@ -1,6 +1,7 @@
 import { t } from "@/i18n";
 import type { NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import type { ProxyGroupSummary } from "@/composables/proxyGroupParsers";
+import { proxyDisplayName } from "./proxyGroupView.ts";
 
 export type ProxySelectionPlan = {
   status: "ready" | "same" | "warning";
@@ -32,11 +33,11 @@ export function buildProxySelectionPlan(group: ProxyGroupSummary, node: string, 
   return {
     status,
     targetDelayClass: delayClass(targetDelay),
-    summary: same ? t("不会改变当前选择。") : t("将从 {current} 切换到 {node}。", { current: current || t("未选择"), node }),
+    summary: same ? t("不会改变当前选择。") : t("将从 {current} 切换到 {node}。", { current: current ? proxyDisplayName(current) : t("未选择"), node: proxyDisplayName(node) }),
     items: [
       item("组类型", group.type || "unknown", "neutral"),
       item("组内节点", t("{length} 个", { length: group.proxies.length }), group.proxies.length ? "success" : "warning"),
-      item("当前", current || t("未选择"), current ? "neutral" : "warning"),
+      item("当前", current ? proxyDisplayName(current) : t("未选择"), current ? "neutral" : "warning"),
       item("目标延迟", targetDelayLabel(targetDelay), targetDelay?.delayMillis !== null && targetDelay?.delayMillis !== undefined ? delayTone(targetDelay.delayMillis) : "warning"),
       item("测速覆盖", tested ? t("{tested}/{length} · 可用 {usable}", { tested: tested, length: group.proxies.length, usable: usable }) : t("未测速"), tested ? "success" : "warning")
     ],
