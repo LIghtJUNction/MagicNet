@@ -548,6 +548,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
     // Generic argv must not bypass magicnet_file_read / magicnet_log_read.
     // Named private tools remain the explicit path for those contents.
     // Omitted user-agent/filter/backup actions default to their dump forms.
+    // diagnose prints unredacted sing-box log excerpts.
     matches!(
         command.as_slice(),
         ["mcp", "secret" | "logs", ..]
@@ -564,6 +565,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
             | ["wifi", "inspect", ..]
             | ["network-access", "inspect", ..]
             | ["service", "logs", ..]
+            | ["diagnose", ..]
     )
 }
 
@@ -828,6 +830,78 @@ mod tests {
     }
 
     #[test]
+    fn magicnet_cli_refuses_diagnose_with_trailing_args_before_spawn() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-mcp-diagnose-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let cli = root.join("fake-cli");
+        let marker = root.join("fake-cli.marker");
+        // This fixture never invokes MagicNet or reads device/module logs.
+        fs::write(
+            &cli,
+            b"#!/bin/sh\nprintf 'spawned\\n' >> \"$0.marker\"\nprintf '%s\\n' \"$@\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700)).unwrap();
+        let server = Server {
+            cli,
+            moddir: root.clone(),
+            secret: String::new(),
+        };
+        let call = |args: &[&str]| {
+            let payload = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call",
+                "params":{"name":"magicnet_cli", "arguments":{"args":args}}});
+            let response: Value =
+                serde_json::from_str(&handle_jsonrpc(&payload.to_string(), &server)).unwrap();
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        // Positive controls prove the harmless executable can run and record spawn.
+        for args in [
+            ["health"].as_slice(),
+            ["service", "status"].as_slice(),
+            ["--json", "service", "status"].as_slice(),
+            ["node", "test", "diagnose"].as_slice(),
+            ["api", "select", "proxy", "diagnose"].as_slice(),
+        ] {
+            assert_eq!(
+                call(args),
+                format!("{}\n\nrc=0", args.join("\n")),
+                "{args:?}"
+            );
+            assert_eq!(fs::read_to_string(&marker).unwrap(), "spawned\n");
+            fs::remove_file(&marker).unwrap();
+        }
+        for args in [
+            ["diagnose"].as_slice(),
+            ["diagnose", "unused"].as_slice(),
+            ["diagnose", ""].as_slice(),
+            ["diagnose", "--help"].as_slice(),
+            ["diagnose", "unused", "extra"].as_slice(),
+            ["--json", "diagnose", "unused"].as_slice(),
+            ["diagnose", "--json", "unused"].as_slice(),
+        ] {
+            assert_eq!(
+                call(args),
+                "refusing to reveal private module data over MCP\nrc=-1",
+                "{args:?}"
+            );
+            assert!(!marker.exists(), "rejected request spawned CLI: {args:?}");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn magicnet_cli_refuses_secret_dumping_commands() {
         for args in [
             ["mcp", "secret"].as_slice(),
@@ -866,6 +940,7 @@ mod tests {
             ["override", "inspect"].as_slice(),
             ["service", "logs"].as_slice(),
             ["mcp", "logs"].as_slice(),
+            ["diagnose"].as_slice(),
         ] {
             let owned = args
                 .iter()

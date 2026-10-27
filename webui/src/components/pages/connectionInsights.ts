@@ -64,7 +64,7 @@ function topBy(connections: ConnectionTarget[], keyOf: (item: ConnectionTarget) 
     acc[name].count += 1;
     acc[name].bytes += item.totalBytes;
     return acc;
-  }, {});
+  }, Object.create(null) as Record<string, { name: string; count: number; bytes: number }>);
   return Object.values(buckets).sort((left, right) => right.bytes - left.bytes || right.count - left.count)[0] || null;
 }
 

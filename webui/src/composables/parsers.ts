@@ -445,7 +445,7 @@ export function connectionBuckets(
       acc[seed.name].count += 1;
       acc[seed.name].bytes += seed.bytes;
       return acc;
-    }, {}),
+    }, Object.create(null) as Record<string, ConnectionBucket>),
   )
     .sort((left, right) => right.bytes - left.bytes || right.count - left.count)
     .slice(0, 4);
