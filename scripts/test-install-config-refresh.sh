@@ -158,13 +158,12 @@ unset REJECT_CONFIG
 cmp "$CONFIG" "$TMP/before-no-nodes"
 cmp "$CONFIG.pre-upgrade" "$TMP/backup-before-no-nodes"
 no_temporary_files
-# The installer snapshots the old file, restores subscriptions, then rebuilds.
+# The packaged installer lifecycle test covers the shared migration allowlist
+# and its backup-only config exception. Keep refresh before backup cleanup.
 python3 - "$ROOT/src/MagicNet/customize.sh" <<'PY'
 import sys
 s = open(sys.argv[1]).read()
-a, b = s.split('if [ "$MAGICNET_BACKUP_READY" = 1 ]; then', 1)
-assert '".config/sing-box/config.json"' in a
-assert '".config/sing-box/config.json"' not in b.split('# The repository selector', 1)[0]
+_, b = s.split('if [ "$MAGICNET_BACKUP_READY" = 1 ]; then', 1)
 assert 'confirm_update_file' not in s
 assert b.index('magicnet_refresh_install_config ||') < b.index('magicnet_cleanup_install_backup ||')
 PY

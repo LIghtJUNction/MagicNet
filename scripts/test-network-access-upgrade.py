@@ -19,13 +19,15 @@ class RecoveryUpgradeTests(unittest.TestCase):
         for directory in (self.previous, self.backup, self.module):
             directory.mkdir(mode=0o700)
         source = (ROOT / "src/MagicNet/customize.sh").read_text()
+        migration_items = source[source.index("MAGICNET_INSTALL_MIGRATION_ITEMS="):
+                                 source.index("\nmagicnet_install_backup_marker_is_exact()")]
         snapshot = source.split("  # Snapshot the old full file for node recovery and a private rollback copy.\n", 1)[1]
         snapshot = snapshot.split("  MAGICNET_BACKUP_READY=1\n", 1)[0]
         restore = source.split('if [ "$MAGICNET_BACKUP_READY" = 1 ]; then\n', 1)[1]
         restore = restore.split("  unset _item\nfi", 1)[0]
         self.command = ('set -eu\nabort() { exit 31; }\n'
                         'MAGICNET_PREV_DIR=$1\nMAGICNET_BACKUP_DIR=$2\nMODPATH=$3\n'
-                        + snapshot + restore)
+                        + migration_items + snapshot + restore)
 
     def migrate(self):
         return subprocess.run(["sh", "-c", self.command, "migration-test", str(self.previous),
