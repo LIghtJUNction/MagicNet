@@ -224,6 +224,60 @@ test("subscription polling failures preserve newer foreground feedback and keep 
   assert.equal(state.output, "new foreground output");
 });
 
+test("a subscription failure cannot release the write gate after tracking timeout until its launcher exits", async () => {
+  const { context, state, timers } = backgroundFixture();
+  Object.assign(state.backgroundTask, {
+    subscriptionBaselineKnown: true, subscriptionBaselineAttemptEpoch: 1,
+    subscriptionBaselineGenerationId: "old",
+  });
+  context.runCli = async () => subscriptionSnapshot({ last: {
+    ...subscriptionData().last, attempt_epoch: 2, generation_id: "new", result: "failed",
+  } });
+  context.runShell = async () => "[launch] id=operation label=update";
+  context.runShellOutcome = () => assert.fail("the unfinished task must block another mutation");
+  context.followBackgroundLogs("/task.log", "update", "sub update-all", "operation", 1, 1, 89);
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "timeout");
+  assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), true);
+  assert.equal(execFailed(await context.startBackgroundCli("service restart")), true);
+  assert.equal(timers.length, 1, "keep reconciling while failure cleanup may still run");
+
+  context.runShell = async () => "[launch] id=operation label=update\n[exit] id=operation status=1";
+  context.runCli = async () => "[error] errno=1 subscription read failed";
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "error");
+  assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), false);
+  assert.equal(timers.length, 0);
+});
+
+for (const staleResult of ["success", "failed"]) {
+  test(`a failed subscription observation does not reuse stale ${staleResult} as completion`, async () => {
+    const { context, state, timers } = backgroundFixture();
+    Object.assign(state.backgroundTask, {
+      subscriptionBaselineKnown: true, subscriptionBaselineAttemptEpoch: 1,
+      subscriptionBaselineGenerationId: "old",
+    });
+    Object.assign(state.subscriptions, {
+      lastAttemptEpoch: 2, lastGenerationId: "new", lastResult: staleResult,
+    });
+    state.busy = true; // A quiet failed read preserves the current foreground state.
+    context.runCli = async () => "[error] errno=1 subscription read failed";
+    context.followBackgroundLogs("/task.log", "update", "sub update-all", "operation", 1, 1);
+    await timers.shift()();
+    assert.equal(state.backgroundTask.status, "running");
+    assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), true);
+    assert.equal(timers.length, 1);
+
+    context.runCli = async () => subscriptionSnapshot({ last: {
+      ...subscriptionData().last, attempt_epoch: 2, generation_id: "new", result: staleResult,
+    } });
+    await timers.shift()();
+    assert.equal(state.backgroundTask.status, staleResult === "success" ? "done" : "error");
+    assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), false);
+    assert.equal(timers.length, 0);
+  });
+}
+
 test("subscription launch waits for its lifecycle baseline before changing the device", async () => {
   const { context, state } = backgroundFixture();
   state.backgroundTask.status = "idle";
