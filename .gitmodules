@@ -1,0 +1,33 @@
+[submodule ".agents/skills/add-dependency"]
+	path = .agents/skills/add-dependency
+	url = https://github.com/recipkg/add-dependency.git
+[submodule ".agents/skills/build-software-package"]
+	path = .agents/skills/build-software-package
+	url = https://github.com/recipkg/build-software-package.git
+[submodule ".agents/skills/discover-dependencies"]
+	path = .agents/skills/discover-dependencies
+	url = https://github.com/recipkg/discover-dependencies.git
+[submodule ".agents/skills/manage-git-repository"]
+	path = .agents/skills/manage-git-repository
+	url = https://github.com/recipkg/manage-git-repository.git
+[submodule ".agents/skills/migrate-to-recipkg"]
+	path = .agents/skills/migrate-to-recipkg
+	url = https://github.com/recipkg/migrate-to-recipkg.git
+[submodule ".agents/skills/prompt-to-software"]
+	path = .agents/skills/prompt-to-software
+	url = https://github.com/recipkg/prompt-to-software.git
+[submodule ".agents/skills/rewrite-software"]
+	path = .agents/skills/rewrite-software
+	url = https://github.com/recipkg/rewrite-software.git
+[submodule ".agents/skills/rewrite-to-recipkg"]
+	path = .agents/skills/rewrite-to-recipkg
+	url = https://github.com/recipkg/rewrite-to-recipkg.git
+[submodule ".agents/skills/software-to-prompt"]
+	path = .agents/skills/software-to-prompt
+	url = https://github.com/recipkg/software-to-prompt.git
+[submodule ".agents/skills/test-feedback"]
+	path = .agents/skills/test-feedback
+	url = https://github.com/recipkg/test-feedback.git
+[submodule ".agents/skills/update-recipkg-in-project"]
+	path = .agents/skills/update-recipkg-in-project
+	url = https://github.com/recipkg/update-recipkg-in-project.git
