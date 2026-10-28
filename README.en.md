@@ -1,5 +1,7 @@
 # MagicNet
 
+![Software and dependencies become a recipe for rebuilding software](https://raw.githubusercontent.com/recipkg/recipkg/main/assets/recipkg-cover.png)
+
 An Android root network workbench maintained as reconstructable software recipes.
 
 [简体中文](README.md) · [Русский](README.ru.md)

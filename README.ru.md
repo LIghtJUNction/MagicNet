@@ -1,5 +1,7 @@
 # MagicNet
 
+![软件与依赖汇聚为可重建的配方](https://raw.githubusercontent.com/recipkg/recipkg/main/assets/recipkg-cover.png)
+
 Рабочая среда прозрачной сети для Android с root, описанная воспроизводимыми программными рецептами.
 
 [简体中文](README.md) · [English](README.en.md)
