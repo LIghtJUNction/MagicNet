@@ -48,7 +48,7 @@ import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 import { createRecoverablePage, prefetchPage } from "@/lib/recoverablePage";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "terminal" | "webui" | "output";
+type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "proxies" | "block" | "chain" | "subs" | "tools" | "health" | "terminal" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
 type OnboardingPreference = "dismissed" | "completed";
 
@@ -78,6 +78,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   tailscale: () => import("@/components/pages/TailscalePage.vue"),
   config: () => import("@/components/pages/ConfigPage.vue"),
   apps: () => import("@/components/pages/AppsPage.vue"),
+  proxies: () => import("@/components/pages/ProxyGroupsPage.vue"),
   block: () => import("@/components/pages/BlocklistPage.vue"),
   chain: () => import("@/components/pages/ProxyChainPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
@@ -100,6 +101,7 @@ const tabs: readonly TabDefinition[] = [
   { key: "control", label: "概览", workspace: "run", icon: Gauge, hint: "服务状态、代理模式与热点", keywords: ["overview", "home", "tun", "ebpf"] },
   { key: "about", label: "流量路径", workspace: "run", icon: Route, hint: "流量如何经过 MagicNet", keywords: ["path", "flow"] },
   { key: "apps", label: "应用", workspace: "route", icon: AppWindow, hint: "Proxy、Direct 与 Bypass 名单", keywords: ["apps", "uid", "bypass"] },
+  { key: "proxies", label: "节点与代理组", workspace: "route", icon: Route, hint: "选择代理、直连或自动测速", keywords: ["proxy", "direct", "nodes", "selector", "自动", "节点", "策略组"] },
   { key: "block", label: "拦截规则", workspace: "route", icon: ShieldBan, hint: "广告与域名拦截", keywords: ["block", "ads"] },
   { key: "chain", label: "链式代理", workspace: "route", icon: Link2, hint: "前置节点与出口组合", keywords: ["chain", "relay"] },
   { key: "subs", label: "订阅", workspace: "configure", icon: DownloadCloud, hint: "来源、用量与自动更新", keywords: ["subscription", "nodes", "clash"] },
