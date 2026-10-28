@@ -13,12 +13,12 @@ Android root 设备的透明网络工作台，以可重建的软件配方维护�
 - recipes/magicnet-network-runtime/：订阅、进程、应用/Wi-Fi/热点、Tailscale、网络恢复事务。
 - recipes/magicnet-packet-engine/：TUN/eBPF 与 sing-box 兼容合同。
 - recipes/magicnet-routing-policy/：默认 selector、DNS、分类数据与次序。
-- recipes/magicnet-web-console/：13 页操作流程、国际化与视觉重设计要求。
+- recipes/magicnet-web-console/：14 页操作流程、国际化与视觉重设计要求。
 - recipes/magicnet-module-delivery/：root 模块安装、组件分发、可信更新与恢复。
 - recipes/software-quality/：完整固定的设计、代码与性能质量合同。
 - generated/<implementation-name>/：本地临时实现，不进入 Git 或配方归档。当前 android-reference 是迁移前源码的参考材料，不是按本配方独立重建的结果。
 
-旧源码仍在 Git 提交 96993ea5c851b8d51cc562c3ca0766a2ca571210；当前源码的历史、已有分支、stash 与其他 worktree 保留。观察 checkout 与生成实现不是 Recipkg 依赖。
+初始观察源码固定在 Git 提交 96993ea5c851b8d51cc562c3ca0766a2ca571210；代码 PR #420–#423 和 README PR #416 合并后的完整源码固定在 ae4de1ce4d77f1a2a4c8d9656da8101c472fa3a0，本地 android-reference 已同步这些改动。历史、stash 与其他 worktree 保留。观察 checkout 与生成实现不是 Recipkg 依赖。
 根目录 update.json 和公开品牌/校验资料保留旧发布兼容性；不把旧安装包或本机运行状态打进配方。现有用户可继续使用 [正式发布](https://github.com/LIghtJUNction/MagicNet/releases)，本次迁移不发布新 Android 版本。
 
 ## 重建指南

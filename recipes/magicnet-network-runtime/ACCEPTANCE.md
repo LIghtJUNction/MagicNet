@@ -19,6 +19,7 @@
 | 活动 config 空/损坏、last-known-good 无效、事务每个阶段中断 | 配置恢复 | 先验证独立备份；无有效基线则拒绝激活；保留 journal 与用户配置供重试 |
 | HTTPS 订阅超时、DNS 错误、解析失败、用户取消后重试 | 下载诊断 | 阶段错误可区分，状态不含 URL/响应正文；无第二个 updater owner，重试不丢已有有效来源 |
 | 相同配置、仅无关文件修改、规则内容修改 | config apply | 前两者不重启，真正有效变化校验后才重启 |
+| 模式文件缺失、CRLF、无末尾换行、空值/未知值/重复字段、解析器部分输出后失败、输出写入失败 | transparent mode 读取 | 缺失默认 tun；只接收 tun|ebpf；非法内容和 I/O 错误非零，不泄露部分有效 token；频繁读取避免不必要的外部进程 |
 | 非 Tailnet CGNAT、暂停/恢复/登出、自定义状态目录、失败停止 | Tailscale 操作 | 非 Tailnet 正常 LAN 处理；不删外部目录/账号；失败不重新启用 |
 | missing provider、过期候选、限制被外部改写、setter 忽略写入、崩溃 | network-access 流程 | unsupported/conflict/readback error/持久恢复准确；零自动清除 |
 

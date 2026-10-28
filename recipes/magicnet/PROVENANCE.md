@@ -62,7 +62,9 @@
 迁移采用该项目工作树中已更新的英文 migrate-to-recipkg 技能；工作树存在其他用户正在进行的结构迁移，未修改、提交或清理它。实际使用 generated/src 中的本地 Recipkg CLI，支持 --lang/search；不是声称这版技能已发布。
 recipkg search "android network" 实际候选为空；不代表不存在相关软件，也不证明自写配方完整。
 
-README PR #416 仍是独立文档分支，没有在本迁移中顺带合并。既有未验收业务 issue 没有关闭。没有创建 MagicNet-recipkg 远程；误建的本地目录已移入回收站，后续配方在 MagicNet 原仓库维护。
+2026-10-28 按用户要求先合并代码 PR #420、#421、#422、#423，再合并 README PR #416，形成完整源码提交 ae4de1ce4d77f1a2a4c8d9656da8101c472fa3a0。上面的文件指纹和 PERFORMANCE.md 仍固定初始观察版本，不挪作新版本基线。本地参考目录的 26 个变更文件已核对无本地修改后同步；新增的节点与代理组入口、名称安全、锁争用和单一迁移清单要求同步进入所属配方。
+组合源码在隔离 detached worktree 本地验证：Rust 808 passed / 1 ignored、fmt 与严格 all-target/all-feature Clippy；前端单元测试/类型检查/生产构建；代理组相关浏览器用例 18 passed；安装器 10 项与网络恢复迁移 3 项及配置刷新合同通过；透明模式安全脚本在 Bash 和本地构建的 mksh R59 上通过。初次因未初始化配置/KAM 子模块失败，补齐固定 revision 后通过；不将其记作产品修复，也没有将主机夹具推广为真机验收。
+按用户随后授权，18 个产品 Issue 已在需求迁入配方后关闭，实际设备与业务验收仍待执行。没有创建 MagicNet-recipkg 远程；误建的本地目录已移入回收站，配方在 MagicNet 原仓库维护。
 
 ## 许可
 

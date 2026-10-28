@@ -6,6 +6,7 @@
 
 启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
 config apply 对有效配置和规则指纹无变化时不重启；transparent apply 显式重建当前数据面。状态读取无写；写生命周期完成 publish/reconcile。
+周期 hotspot reconcile 使用非阻塞争锁，繁忙时无副作用跳过，不发布当前 owner 的状态；I/O/锁错误仍报告失败。实际尝试后，无论成功或失败都发布新的规范化观测。显式 service start|stop|restart 的锁获取有界等待，保留 startup/disabled/owner/事务恢复检查；参考实现只把服务操作锁预算从 2 秒扩为 10 秒，其他配置操作仍为 2 秒，该预算不代表完整操作耗时。
 模式切换只收 tun|ebpf，先校验候选、记录旧配置和资源、停自有核心、启动并验证目标，再提交。任一步失败可回滚字节与 owned 资源；中断 journal 保留并可恢复。不声称多个 OS 资源更新同时原子。
 
 ## 订阅
@@ -21,7 +22,7 @@ VMess WebSocket 独立保留 server、Host、SNI、path；SOCKS 用户名/密码
 包身份在当前 Android 所有用户中解析，支持共享 UID、卸载重装；proxy/direct/bypass 语义按根行为保留。bypass 同时从两种数据面和 DNS 捕获排除；netd UID 0 代发 DNS 的设备保守保留 bypass 边界，不能谎称所有 DNS 必被代理。
 Wi-Fi 读取失败不是空名单，64 KiB 有界并验证普通文件；非法/过大编辑保留旧文件且不切模式。后台轮询状态改变主动发布。
 热点 TUN 按已确认下游配置 owned IPv4 路由，代理时保存并关闭 tether offload；eBPF hybrid 仅挂真实下游 TC，无下游 pending。disable、核心停止、卸载恢复原设置，仅删除 journal 里能证明是自己创建的资源。
-物理出口 DNS/DoT 的 53/853 保护与旁路语义一致；浏览器 DoH、外部 VPN 和 OEM 通路另有边界。捕获接口按实际 route 观察，不写死 wlan0。
+物理出口 DNS/DoT 的 53/853 保护默认关闭，只有显式 MAGIC_DNS_LEAK_GUARD=1 且规则成功安装才生效，且须与旁路语义一致；浏览器 DoH、外部 VPN 和 OEM 通路另有边界。捕获接口按实际 route 观察，不写死 wlan0。
 网络 prefer_ipv4/prefer_ipv6/ipv4_only、MTU 1280–1500、UDP 1m/3m/5m/10m/15m/30m；配置/实际值分层。TUN CIDR 要为派生 DNS 地址留空间，172.20.0.1/30 合法、.2/.3 不合法；fd12::2/126 合法、::3 不合法。默认值不证明与另一 VPN 无冲突。
 
 ## Tailscale 与 WARP

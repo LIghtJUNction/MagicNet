@@ -17,8 +17,8 @@
 | 需求 | 来源与证据状态 | 配方要求及验收 |
 | --- | --- | --- |
 | 用户能直接理解路由名称，按应用和域名设置出口；常用动作不要求编辑 sing-box 原始 JSON | [#413](https://github.com/LIghtJUNction/MagicNet/issues/413) 用户反馈；其后 PR #421 只覆盖可读代理组入口，任意应用/域名编辑及新建组尚未实现 | M18、UI 11：提供中文名称与原始 tag 搜索，应用/域名规则及自定义组/出口的结构化编辑、预览、校验和安全回滚；来源订阅配置不得被静默覆盖 |
-| 热点 reconcile 持锁时，用户的 no-op 启动不能因固定短超时误报失败；长操作要有可见进度和可恢复结果 | [#417](https://github.com/LIghtJUNction/MagicNet/issues/417)、[#398](https://github.com/LIghtJUNction/MagicNet/issues/398)；维护者记录 PR #423 有主机回归，设备验收仍未完成 | M19、M20、UI 12：周期 reconcile 争锁失败时无副作用地跳过；前台启停有界等待、阶段/耗时/busy 信息与明确重试；超时不释放仍运行任务的所有权，不展示旧状态为新结果 |
-| 安装状态迁移不能靠两份独立手写清单，遗漏时静默成功 | [#418](https://github.com/LIghtJUNction/MagicNet/issues/418)；维护者记录 PR #422 有安装 fixture 回归，尚未完成合并验收 | M21、交付 11：单一迁移清单和显式排除项；备份/恢复不一致、复制失败或遗漏必须可见失败并保留可恢复状态；配置模板重建例外要单独声明 |
+| 热点 reconcile 持锁时，用户的 no-op 启动不能因固定短超时误报失败；长操作要有可见进度和可恢复结果 | [#417](https://github.com/LIghtJUNction/MagicNet/issues/417)、[#398](https://github.com/LIghtJUNction/MagicNet/issues/398)；PR #423 已合并，本轮组合源码主机回归通过，设备验收仍未完成 | M19、M20、UI 12：周期 reconcile 争锁失败时无副作用地跳过；前台启停有界等待、阶段/耗时/busy 信息与明确重试；超时不释放仍运行任务的所有权，不展示旧状态为新结果 |
+| 安装状态迁移不能靠两份独立手写清单，遗漏时静默成功 | [#418](https://github.com/LIghtJUNction/MagicNet/issues/418)；PR #422 已合并，本轮组合源码安装 fixture 回归通过，真机验收仍未完成 | M21、交付 11：单一迁移清单和显式排除项；备份/恢复不一致、复制失败或遗漏必须可见失败并保留可恢复状态；配置模板重建例外要单独声明 |
 | 停核必须等自有核心完成清理，且只能移除本模块拥有的规则与资源 | [#336](https://github.com/LIghtJUNction/MagicNet/issues/336)、[#337](https://github.com/LIghtJUNction/MagicNet/issues/337)。#336 留有 v1.7.2 三轮恢复记录；#337 仍要求额外的设备验收 | M22、运行时 11：至少五轮启动/停止；停后核对原生网络恢复、TUN 或 eBPF 自有资源已清理；未知归属不得强杀或删除；不能把旧 TPROXY 方案带回新模式 |
 | `route_status=ready` 不足以证明热点客户端回程可用；IPv6 条件要真实成立 | [#389](https://github.com/LIghtJUNction/MagicNet/issues/389) 后续客户端测试未复现原故障；[#335](https://github.com/LIghtJUNction/MagicNet/issues/335) 的后续客户端没有全局 IPv6，原 IPv6 路径未被触发 | M23、运行时 12、引擎 9：真实热点客户端完成 TCP/UDP 与返回路径检查；IPv4/IPv6 分开记录；没有全局 IPv6 时标为未覆盖，不可报通过；模式仍只允许 tun|ebpf |
 | Google Play/GMS 的应用 DNS/网络结果必须用真实应用与 OEM 策略验证，不能用 root curl 或健康状态代替 | [#253](https://github.com/LIghtJUNction/MagicNet/issues/253)、[#329](https://github.com/LIghtJUNction/MagicNet/issues/329)、[#305](https://github.com/LIghtJUNction/MagicNet/issues/305)。#253 已有特定包 direct 对照；#329 跨 OEM 长期行为仍未知；#305 本身缺独立复现细节 | M24、运行时 13：覆盖 Play、GMS、GSF 的真实解析和应用流量；区分代理出口失败、UID/DNS 限制及系统策略；直连例外只能来自有证据的窄范围选择，不能全局绕过 |
@@ -30,7 +30,7 @@
 
 ## 仓库治理反馈
 
-[Issue #281](https://github.com/LIghtJUNction/MagicNet/issues/281) 讨论的是 GitHub `main` 保护规则，不是 MagicNet 运行时功能。本仓库另有 PR/审批/必需检查流程；本次直接推送被拒、PR 因必需检查及审批未满足而阻塞。它不进入产品配方验收，也不能把一次拒绝当作规则所有负向条件均已验收。
+[Issue #281](https://github.com/LIghtJUNction/MagicNet/issues/281) 讨论的是 GitHub `main` 保护规则，不是 MagicNet 运行时功能。较早推送因 PR/审批/必需检查流程被拒；用户随后解除合并限制，本轮回读 main 的活动规则为空，并授权直接合并。它不进入产品配方验收，也不能把一次拒绝当作规则所有负向条件均已验收。
 
 ## 结论边界
 
