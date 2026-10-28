@@ -32,7 +32,7 @@
 - **`tun`（默认）**：创建一个叫 `magicnet0` 的虚拟网卡，稳妥、兼容性好，大多数人用它就够了。
 - **`ebpf`**：直接在内核里挂钩子分流，适合想折腾、内核也支持的玩家。
 
-两种模式需要你**手动、明确地**切换，切换是原子的，失败会自动回滚，不会把你的网弄断在半路。我们刻意没有做 `auto` 模式，也不再支持 TProxy、Redirect 或 netd `ALLOW_MULTI` 这些老路子——少即是多，出问题时也更好排查。
+两种模式需要你**手动、明确地**切换；切换使用带回滚的事务，失败时会尝试恢复旧状态，但恢复本身也可能失败，不能保证连接不中断。遇到失败，请检查 `cli transparent status`、`cli health` 和恢复诊断信息，不要反复切换模式。我们刻意没有做 `auto` 模式，也不再支持 TProxy、Redirect 或 netd `ALLOW_MULTI` 这些老路子——少即是多，出问题时也更好排查。
 
 ## 为什么你可能会喜欢它
 
@@ -50,9 +50,9 @@
 
 **规则可以放在你自己的仓库里。** 默认使用固定 commit 和 SHA-256 校验的 `MagicSingBox` 配置模板；你也可以 fork 一份到 GitHub/GitLab，在自己的仓库里慢慢调规则，再原子同步到手机上。
 
-**出了问题看得见。** 物理出口上的明文 DNS/DoT 会被拦截；`cli health` 和 `cli transparent status` 会按真实情况报告——TUN 看 `magicnet0`，eBPF 看 capability、cgroup 和 TC。不知道的就说不知道，不会把“没查到”说成“一切正常”。
+**出了问题看得见。** 可选的物理出口 DNS/DoT 防护默认关闭；只有运行环境显式设置 `MAGIC_DNS_LEAK_GUARD=1` 且规则成功安装后，才会拦截相应直连流量。`cli health` 和 `cli transparent status` 会按真实情况报告——TUN 看 `magicnet0`，eBPF 看 capability、cgroup 和 TC。不知道的就说不知道，不会把“没查到”说成“一切正常”。
 
-**WebUI、CLI、MCP 三种用法。** 日常配置、节点测速、诊断、备份、自动化，用的都是同一套受控命令。私密数据通过临时文件传递，支持包默认脱敏。WebUI 首页有一张“流量星座”，实时画出 设备 → 数据面 → sing-box → 出口 这条链路上已经确认的状态；按 `Ctrl/⌘ + K` 或 `/` 可以快速跳到任意页面。
+**WebUI、CLI、MCP 三种用法。** WebUI 和 MCP 复用 CLI 的受控操作；MCP 提供部分功能，包括服务控制、配置与订阅、应用策略、节点选择与测速、状态诊断和备份，并不保证覆盖所有 WebUI 操作。可用工具以 MCP 的 `tools/list` 返回结果为准。私密数据通过临时文件传递，支持包默认脱敏。WebUI 首页有一张“流量星座”，实时画出 设备 → 数据面 → sing-box → 出口 这条链路上已经确认的状态；按 `Ctrl/⌘ + K` 或 `/` 可以快速跳到任意页面。
 
 ## 五分钟上手
 
@@ -114,7 +114,7 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 
 先把边界说清楚，免得踩坑：
 
-- MagicNet 会拦截物理出口上的直连 DNS/DoT（53/853 端口）。但浏览器自带的 DoH、以及其他 VPN App 有它们自己的流量路径，不在它的管辖范围内。做 DNS 泄露测试前，记得先关掉 Private DNS；抓包时以 `ip route get 1.1.1.1` 显示的真实物理出口为准。
+- 物理出口上的直连 DNS/DoT（53/853 端口）拦截是可选防护，默认关闭。它要求运行环境显式设置 `MAGIC_DNS_LEAK_GUARD=1`，且设备支持并成功安装相应规则；不要将默认安装视为已经启用此防护。但浏览器自带的 DoH、以及其他 VPN App 有它们自己的流量路径，不在它的管辖范围内。做 DNS 泄露测试前，记得先关掉 Private DNS；抓包时以 `ip route get 1.1.1.1` 显示的真实物理出口为准。
 - 它**不会**帮你开热点，也不替代厂商自带的 tethering/NAT，更不会自动接管其他 VPN 的 overlay 网络。
 - 局域网流量默认走 `lan`/Direct。如果你用 userspace 版 Tailscale，需要手动配置一下，具体看 [Tailscale 说明](docs/tailscale.md)。
 

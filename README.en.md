@@ -13,7 +13,7 @@ You get two transparent modes, and you switch between them yourself:
 - **`tun` (default)** creates a virtual interface called `magicnet0`. It's reliable and widely compatible, and it's what most people need.
 - **`ebpf`** steers traffic with kernel hooks. Pick it if you like to tinker and your kernel supports it.
 
-Switching is atomic and rolls back on failure, so a bad switch won't leave you offline halfway through.
+Switching uses a transaction with rollback and attempts to restore the previous state on failure. Recovery can also fail, so uninterrupted connectivity is not guaranteed. If switching fails, inspect `cli transparent status`, `cli health` and recovery diagnostics rather than repeatedly switching modes.
 
 ## What you get
 
@@ -21,7 +21,7 @@ Switching is atomic and rolls back on failure, so a bad switch won't leave you o
 - **Per-app, Wi-Fi and hotspot policies.** Set each app to Proxy, Direct or Bypass. Switch policy automatically by Wi-Fi network, and choose Direct or Proxy for hotspot clients.
 - **A WebUI that shows what's going on.** Check subscriptions, proxy groups, node latency, traffic and diagnostics in one place. The overview draws a live traffic constellation (device → dataplane → sing-box → exit) from verified status only. Press `Ctrl/⌘ + K` or `/` to jump to any page.
 - **Honest status reporting.** TUN is judged by `magicnet0`. eBPF is judged by capability, cgroup and TC attachment state. If MagicNet can't confirm something, it says so instead of pretending all is well.
-- **Scriptable when you want it.** The CLI and an optional, authenticated MCP server run the same operations as the WebUI.
+- **Scriptable when you want it.** The WebUI and optional, authenticated MCP server reuse controlled CLI operations. MCP exposes a subset, including service control, configuration and subscriptions, app policies, node selection and testing, status diagnostics and backups—not every WebUI action. Use the MCP `tools/list` response as the available-tool reference.
 
 ## Up and running in five minutes
 
