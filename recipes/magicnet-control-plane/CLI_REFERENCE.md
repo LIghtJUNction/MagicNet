@@ -32,7 +32,7 @@
 | route | {list / add-domain <proxy / direct / block / warp> <domain-suffix> / remove-domain <proxy / direct / block / warp> <domain-suffix> / apply} |
 | dns | {status / set <default / cloudflare-doh / cloudflare-dot / cloudflare-udp> / test [domain] / apply} |
 | warp | {status / import-file <wireguard-conf-path> / enable / disable / global / rule / apply / test} |
-| sub | {update <sing-box / all> / update-all / clear / status / schedule {status / set <off / 12 / 24 / 48 / 72>} / user-agent {get / set <base64-value> / clear} / filter {list / set <base64-lines> / clear} / list / get sing-box / set sing-box <url> / set-file sing-box <base64-lines> / apply-file sing-box <base64-lines> / file [sing-box]} |
+| sub | {update <sing-box / all> / update-all / clear / status / schedule {status / set <off / 12 / 24 / 48 / 72>} / user-agent {get / set <base64-value> / clear} / filter {list / set <base64-lines> / clear} / list / get sing-box / set sing-box <url> / set-file sing-box <base64-lines> / apply-file sing-box <base64-lines> / resolve-host <hostname> <port> / file [sing-box]} |
 | block | {list / enable / disable / community <on / off> / url <http-url> / update / add-domain <suffix> / remove-domain <suffix> / allow-rule <rule> / unallow-rule <rule> / diff / apply} |
 | mcp | {status / enable [bind] [port] / disable / set [bind] [port] / secret / rotate-secret / start / stop / restart / logs [lines]} |
 | webui | {status / verify / install-local <https-download-url> <sha256> [name] / payload {create <tmp / subscription> <safe-basename> / append <tmp / subscription> <safe-basename> <base64-chunk> / remove <tmp / subscription> <safe-basename> / apply-subscription <safe-basename> / apply-subscription-source <safe-basename>}} |
@@ -44,3 +44,5 @@
 参数中的 / 代表可选分支的分隔。准确 argv 必须作为独立参数传递；用户输入不得作为 shell 代码求值。机器写接口在 MACHINE_CONTRACT.md 单独设计，不因存在同名人类命令就自动支持 --json。
 
 `app inspect` 仅在显式 `--json` 机器模式提供私密应用名清单；人类 `app packages [query]` 保留包名兼容路径。
+
+订阅单源替换与多源列表、私密payload、sub.status/sub.inspect字段和批次能力的精确语义见 SUBSCRIPTION_INTERFACE.md。命令名称包含file不表示允许读取任意用户路径；set-file/apply-file接收base64 URL列表，本地订阅正文使用受控apply-subscription-source。

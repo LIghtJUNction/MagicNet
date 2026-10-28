@@ -17,3 +17,5 @@ journal 留下旧配置、原资源值和准确 ownership，不代表可以当�
 Tailscale enabled/resumable/logout_pending 与是否在线分开。
 module-update accepted/installer exited/staged/reboot_required 与 effective installed version 分开。
 网络策略 configured_verified 只表示 setter 后 API readback 一致，不表示 Play Store/DNS/下载可用。
+
+订阅当前已提交来源数、失败候选来源数、source缓存文件数、节点数和套餐记录行数分别是不同事实。subscription_batch_v1 使用机器接口表达同 generation 的多字段视图，不新增第二份 public marker 来让客户端自行拼凑。来源列表读取错误不能发布成零来源成功；恢复中和未知 owner 的规则见 SUBSCRIPTION_INTERFACE.md。

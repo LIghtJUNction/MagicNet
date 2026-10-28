@@ -24,3 +24,30 @@
 | missing provider、过期候选、限制被外部改写、setter 忽略写入、崩溃 | network-access 流程 | unsupported/conflict/readback error/持久恢复准确；零自动清除 |
 
 设备验收还需真实 App UID 的 DNS、前后台连接、IPv4/IPv6、网络切换、热点客户端和厂商网络栈；Google Play/GMS、Tailscale TSMP/业务连接与 no-op 生命周期锁争用都需要真机覆盖。本机 mock 不覆盖这些。
+
+## 0.1.1 订阅重建验收
+
+下列用例对应 [SUBSCRIPTION_CONTRACT.md](SUBSCRIPTION_CONTRACT.md)，全部是未来重建门禁；不能把已有源码检查或合成实验标成重建通过。用不同的受控 HTTPS 来源 A–E，返回已知语义的节点和配额；先建立含非默认 selector、应用策略、用户覆盖、计划值及有效配置的旧代 O。每项分别记录本次 batch 与已提交状态，核对完整配置/来源/选择，而非只检查返回码。
+
+| 编号 / 要求 | 输入与操作 | 必须观察到的结果 |
+| --- | --- | --- |
+| SUB-A01 / SUB-001、002、006、015 | 从一源扩成 A+B，再扩成五源；每源独立成功后通过 UI、CLI 列表入口分别整批提交，刷新 UI 并重启读取 | 五源均保留；候选数、唯一数、已配置数、逐源结果与节点归属相符；第六个不同来源整批拒绝，重复 URL 不占新名额，不截前五个；失败后 O 不变 |
+| SUB-A02 / SUB-002 | 等价 scheme/host 大小写、默认 443、空路径、不同 fragment、LF/CRLF/CR、重复空行；同主机不同 path、不同顺序/重复 key query、`%23`/`%2F` | 所有入口规范结果一致；首次顺序稳定，fragment 不成为网络源；query 不重排/解码，大小写敏感 path 不合并；写入、请求、缓存和 inspect 使用同一身份 |
+| SUB-A03 / SUB-004、006 | A fresh，B 下载失败无缓存；再分别加入 B 的同身份缓存和 C 的错误身份缓存；重复测试要求 fresh 的调用 | 无缓存/错误缓存/要求 fresh 均整批失败并保留 O；B 同身份缓存允许两源完整提交且 B=cached、原时间不变；不得只提交 A，不得显示两源 fresh |
+| SUB-A04 / SUB-006、007 | A/B 各一 Trojan gRPC 节点，均名 `shared-name`，server 分别 `a.example.invalid`、`b.example.invalid`，port 443、合成 password、service_name 相同；另测两源完全相同连接语义 | 不同端点必须保留两个稳定身份；完全重复可合并但归属含 A/B。每源单独通过后组合不能因按 tag 去重产生虚假“转换不完整”；真实转换器与合成输出两层分别运行 |
+| SUB-A05 / SUB-007 | 至少 12 个节点、YAML/链接混合，含系统保留名、控制字符名、同名异端点；先选择 B 的节点，再 B/A 重排、加入 C、刷新并删除 A | 原始顺序不被 `node-10` 字典序改变；内部 tag 唯一且不能覆盖 selector；仍在的所选节点不因来源重排/加入 C 而漂移；删除只属于 A 的已选节点给明确回退，不能换到同名异端点 |
+| SUB-A06 / SUB-005、006 | JSON、YAML、分享链接、base64 各自及混合；YAML anchors/flow/nested TLS、VMess WS 的 server/Host/SNI/path 分别不同；转换器缺失/超时/漏一节点/只返回 direct/丢 transport | 各完整支持路径保持字段；不完整源不能被其他源补足总数；只有全部语义可原生表达才回退。复杂源不能部分成功，拒绝后 O 完整；真实转换器和实际核心 check 证据分别记录 |
+| SUB-A07 / SUB-001、012 | URL→本地→URL；8 MiB、本地无末尾换行、NUL、无效 UTF-8、空白、超限；各切换阶段失败 | 合法本地内容不联网/不上传；成功后只一种来源模式，失败保留原模式、内容和选择；超限/坏编码在激活前拒绝 |
+| SUB-A08 / SUB-003 | HTTPS 2xx/301–308、6 次跳转、TLS 失败、HTTP 降级、解析混合公网/私网、DNS 重绑定、metadata/loopback/特殊地址；注入 curlrc/代理环境 | 每跳重新验证和固定地址；危险目标零请求，禁止 TLS 降级；重试只覆盖已定义暂时错误。受控测试记录模拟边界，不能拿 stub 结果证明真实 DNS/TLS |
+| SUB-A09 / SUB-003、013 | 慢 DNS/连接/无限流/压缩超限/大头/无 Content-Length；多源最后一源超时，UI 提前退出 | 每来源预算覆盖 DNS+重试+跳转+正文；响应/头上限有效，后台仍持有正确 owner；超时或取消能读回最终 generation，不能产生第二 updater 或半个新代 |
+| SUB-A10 / SUB-008 | UA 256/257 字节和控制字符；32/33 个过滤词、64/65 字节、多字节词、重复词/大小写、字面 `.*`；全过滤、某一源全过滤 | 边界正确；文字匹配不当正则；坏设置不覆盖旧值；合法过滤不变成转换丢节点；整批无节点拒绝，单源全过滤但别源有效时显示该来源和过滤数量 |
+| SUB-A11 / SUB-002、009 | A 配额有值、B 无用量头、同域名异 query，重排；中间 103/302、重复/负数/指数/超大数字、expire=0、损坏用量、pending 事务 | A/B 都保留来源行；未知字段为 null，不互换配额；pending 不读出未提交 fresh；cached 保留旧时间；公开状态/日志无 URL、hostname、hash、Cookie、原始响应 |
+| SUB-A12 / SUB-010、012 | O 含非默认路由/应用策略/自定义组/链/选择；依次在候选配置替换、核心验证、工作代切换、来源提交、journal 清除失败处中断；恢复再中断 | 成功为完整新代；失败恢复 O 的完整公开状态，或明确 recovery_pending 并保留证据；损坏活动配置先验证独立备份，备份无效拒绝激活；不丢用户覆盖或更新 success_epoch 为假成功 |
+| SUB-A13 / SUB-013 | 手动 A 更新、定时刷新、clear、service stop 并发；活 owner、PID 重用、owner 损坏、proc 不可读、调用者超时后重试 | 一个有效订阅 writer；冲突有界返回；未知不强杀；新任务不清旧恢复证据，旧完成者不删新 owner；不使用 UI 等待结束作为设备任务结束证明 |
+| SUB-A14 / SUB-010、011 | 原核心 stopped/running，分别导入；核心 check 拒绝、启动失败、API 不就绪、加载代不匹配、仅公网探测失败、提交后 selector replay 失败 | stopped 保持 stopped；check/激活失败不报提交成功；配置提交与网络结果分开；公网探测不代替真实 App；回放失败给“已提交+选择恢复警告”，不谎称整体回滚 |
+| SUB-A15 / SUB-001、014、015 | 有可用运行配置时 clear；再在 updater 活跃或恢复 pending 时 clear；随后刷新界面/重启读取 | 成功清两种来源，保留可用配置和网络；冲突不改来源；当前来源数变 0，last 成功数据仍以历史显示，不把 clear 当重置核心 |
+| SUB-A16 / SUB-014 | off/12/24/48/72，非法值；重复启用/禁用、模块禁用/卸载、owner orphan/unknown；受控推进计划时钟 | 合法计划持久且最多一个 owner；等待和写操作有界；unknown 不起第二个任务；定时更新与手动同合同，不顺带更新分类数据 |
+| SUB-A17 / SUB-015 | O 一源，本次提交三源，第二源失败；旧后端无批次能力、新后端有 subscription_batch_v1；旧结果晚到 | 新结果能看到 candidate=3 而 current committed=1，失败源/阶段与同一generation相符；旧能力明确unknown，不伪造零；晚到结果不覆盖新代；canonical/公共 JSON 均无私密来源身份 |
+| SUB-A18 / SUB-005、010 | VLESS encryption=none 与合法非none长密钥，分别由链接、YAML、JSON、本地文件和多源导入；无效串、核心不支持、转换器丢字段 | 合法字段跨预览/payload/转换/配置/核心读取保持；长密钥不按tag/UA上限截断；不支持或坏参数在替换前明确拒绝。真实互通另测，JSON字段存在不证明协议成功 |
+
+SUB-A04 的旧实现聚合层反例已做受控复现，见合同第 17 节；该结果是“发现旧缺陷”，不是 SUB-A04 已通过。#426 真实现场根因仍未知，直到能绑定同一版本、输入语义和失败阶段完成复现。

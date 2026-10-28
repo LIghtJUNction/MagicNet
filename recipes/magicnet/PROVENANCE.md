@@ -1,5 +1,50 @@
 # 来源、证据与未验证项
 
+## 2026-10-29 / 配方 0.3.0：源码再提取
+
+本轮从配方0.2.1固定提交0a773436c3b21a56931bbfc77b323c42218cf52b继续，实际读取独立源码0dca28dd984d82333707cbf4b222596934b4d847及固定内核871b7a3440cd9c850f1b09ef3b4ada9babb4384b。源码与gitlink未修改；没有借本轮配方修订发布Android新版本。完整调用链、问题和覆盖状态见SOURCE_AUDIT.md，运行结果见VERIFICATION.md。
+
+MagicNet文件路径相对于固定源码根；以下是本轮读取的关键证据指纹，不是要求重建者复制其内部结构：
+
+| 源码路径 | SHA-256 |
+| --- | --- |
+| crates/magicnet-cli/src/subscriptions.rs | dc1e81e793225063f55389211755fc5e27bc71ce5b157d97adb0c9dea7ec5900 |
+| crates/magicnet-cli/src/webui_payload.rs | dea85238faac5a980770961ca73fbcc3f455afe2f2b488a6331aebea35eb1c4d |
+| crates/magicnet-cli/src/machine.rs | ac7caaa540c1fae08e6ff600f1e5b90cbcdc177da3432b6ffaf80a52c0a22600 |
+| crates/magicnet-cli/src/machine/subscription.rs | 4848f46dbfc5585fff081dff3e66ef9e9974e7abf2b95dabcda8366b6d3e2c77 |
+| crates/magicnet-cli/src/state.rs | 62f55ebece3f29b1d6810c38401ed114d5fa30708f00ba8522e458d5ecaeb99d |
+| crates/magicnet-cli/src/mcp_server/rpc.rs | 0b4c574e5a257785a9b77ecf53b9bbcfb3487f0988333be9af8ed2c0d857b4a0 |
+| crates/magicnet-cli/src/routing_overlay.rs | 8b9a3287a392c18f24cccb9e1417e05a280944e246c72da51cfdbd6e7bc810da |
+| crates/magicnet-cli/src/overrides.rs | d1215e9b839f897a663a443721eddea06f2fe8a9f81159b5e03fd2f914770eb1 |
+| src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh | c1af8da7c889ecc067a90e43dad7cff6fb2efec324c490e33d75ae429d6ac1b9 |
+| src/MagicNet/lib/magicnet/singbox_subscribe/common.sh | 3aee9c41a714afee80b498ffb040fc2a29dca56b8106ee4c76e88872a8b97f4e |
+| src/MagicNet/lib/magicnet/singbox_subscribe/parse.sh | 4f3186770acbeb0f2fa5e42e6b38ffdc3d58f4a3b9f8f47ab4b2eba33baecaf4 |
+| src/MagicNet/lib/magicnet/singbox_subscribe/proxylink.sh | 97c6735201e9567c72e24f610f5f15a73625e30fba36a0801190547d934b91a5 |
+| src/MagicNet/lib/magicnet/singbox_subscribe/config.sh | fe5602e3246997f0d961f2eda721324c14818c30c30976b01318bb90624d386b |
+| src/MagicNet/lib/magicnet/singbox_subscribe/update.sh | a7d614802acc19498b4223e40b49f375b01ec8a2de5f9d19a4b9b4821fd7c5d3 |
+| webui/src/components/pages/SubscriptionsPage.vue | 13a45f91663ea480212f36451d6c91b840d7645ad26cd6aaf2c00c30e8079e1a |
+| webui/src/components/pages/subscriptionPreview.ts | 612e4df74b76518fc7668c7341db2cf6221d3061b5b0934c199d7eea782c9bb0 |
+| webui/src/composables/subscriptionUsage.ts | 94be3bbee8b16a9049ed5cabd313f1799ce622e43d510fbfc0c7d970533bf020 |
+| webui/src/composables/backgroundTasks.ts | 3bd4486ced42aece003e59bc131abc5c0d37a648f4b89912f3265956d10d5f22 |
+| webui/src/composables/machineStatus.ts | 4a0879d696e0827cee06382e6006bd2a45d9edb0cecb59d6623e11ea0af1d100 |
+| webui/src/components/pages/RoutingEditor.vue | dc7ad4bf8b37c4a4008363819da0c7dc4ea9be10a27444fdf677da8c4e5a5cfd |
+| scripts/package-components.py | 5bcdceaeaa8ec5ece4e5412c532272ad7575afee56bab9989d99077d8437533e |
+
+固定sing-box客户端Encryption证据经GitHub读取并校对Git blob身份，本地保存字节的SHA-256如下：
+
+| fork路径 | SHA-256 |
+| --- | --- |
+| option/vless.go | d3af3ef892d0b178d2d577b8378d7c78d6c0ff2ac353d5f722eba31ed50fc517 |
+| protocol/vless/lx_encryption.go | 65830c1dfb57e34d6dd76e26b2052c2df99225f31f210021fd3f0da41fdb6765 |
+| protocol/vless/outbound.go | e2d345e830c237f5059673e2588e0392ce5c9e567336b1eb46d9fc919b2d79f6 |
+| protocol/vless/encryption/client.go | 0329a8c3bbe8220b6b615ee28a6326ac37f8012c35ba9d476336e4c05e8c1538 |
+| protocol/vless/encryption/common.go | 2734a8e34ba265a95a28a4bbfcf26ba224b1c6f7b5dd137afe8db07280ad063d |
+
+本轮新要求的地位：统一URL身份、同名不同节点保留、subscription_batch_v1、UI计数修正与Encryption管理链路保真是明确重建目标；不是声称旧代码已改好。#426现场因果仍未知。旧产品性能、构建、浏览器、MCP等历史结果继续绑定各自原提交，不移动到0.3.0新实现名下。
+
+提取方法使用software2prompt@4920378377332c0ca9779ede6062029fb15dacdb与本项目固定software-to-prompt技能；Recipkg CLI来源与标准库检索决策均记录在SOURCE_AUDIT.md。没有更新共享技能gitlink或引入新的源码型配方依赖。
+
+
 主来源：LIghtJUNction/MagicNet，https://github.com/LIghtJUNction/MagicNet ，完整提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，module.prop v1.7.2。迁移前 main 与 origin/main 一致，工作区干净；保留全部 stash、其他分支与其他 worktree。
 迁移阶段只抽取需求/接口/可观察语义，没有独立重建实现。原临时参考目录 generated/android-reference/ 已按用户要求移入系统回收站；Git 历史保留固定来源，不成为 Recipkg 依赖。
 

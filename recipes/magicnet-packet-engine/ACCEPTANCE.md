@@ -10,5 +10,6 @@
 8. TLS/UDP/QUIC、支持的分享协议、DNS、Clash selector/urltest、userspace Tailscale 实际端到端通信验证；仅 check 成功不算通信通过。
 9. hotspot 有真实客户端时验证双栈 TCP/UDP 返回路径；没有客户端全局 IPv6 时将 IPv6 结论标记为未覆盖。`route_status=ready` 不能由规则存在单独推导。
 10. 对同一锁定核心比较 mixed 与 Go/default TUN stack，覆盖 hotspot 回程、DNS、IPv4/IPv6、应用策略、长连接、CPU/RSS/延迟；旧栈与新栈结果可追溯，所有目标平台通过前不更改生产默认。该 stack 维度独立于 tun|ebpf 模式。
+11. 执行 VLESS_ENCRYPTION.md 的 VE-005 矩阵：普通/none 回归、三种 appearance、两种 RTT、32/1184 字节有效测试公钥、多 key/padding、非法值与长字段、各导入/编辑/刷新/恢复入口，均不得丢字段后假成功。真实核心 check、受控服务器互通和取消/超时资源分别记录；仅原生解析探针通过不算协议通过。
 
 本次迁移未重新编译或运行 Android 数据面；这些场景均未验证。固定 fork 可用作合法实现前提，不代表已由配方独立重建。

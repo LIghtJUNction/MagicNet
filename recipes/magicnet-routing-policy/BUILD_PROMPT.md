@@ -39,3 +39,9 @@ DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DN
 新出口、DNS server、路由与 DNS 规则的精确归属只保存在私密 checkpoint 的 `routing_owned`。重新生成时先去除自身上次生成项，再叠加当前意图，保留订阅与其他写者的新内容；已归属项被外部改成不同内容时返回 `override.routing_conflict`。撤销删除自己的项，不删除新增的订阅项。该 checkpoint 是恢复输入，不是公共状态接口。
 
 错误码包括 `override.routing_invalid|routing_limit|routing_tag_collision|routing_target_missing|routing_cycle|routing_duplicate|routing_dns_missing|routing_conflict`。preview 失败不落盘。继续使用既有 revision、锁、set/apply/reset、原子发布与回滚协议，不新增机器写命令；停止的服务保持停止。`override.inspect.routing_targets` 只供显式私密编辑，返回 tag/type，不返回凭据。
+
+### 本轮字段与界面一致性补充
+
+VLESS 的受限结构化字段必须增加独立字符串 encryption，并按 engine 的 VLESS_ENCRYPTION.md 完整校验与保留；不为这一项随意开放其他未知字段。该要求修正旧白名单缺口，不代表 v1.8.0 编辑器已有支持。runtime 负责来源内/跨来源节点身份：同名不同连接语义不得互相覆盖，重排/刷新不能让用户选择漂移，系统 selector 继续受保护。
+
+新 UI 与后端对 tag 统一按 256 UTF-8 字节上限检查，不能一端按 128 个 UTF-16 单元、另一端按 UTF-8 字节给出冲突结论。域名规则统一 trim 后转为 ASCII/Punycode 小写再按 (kind,value) 判重；不改变应用包名大小写，不把域名规范化套到 URL query。旧输入迁移导致语义重复时明确指出冲突，不能静默删除用户意图。这两项是重建修正；旧源码的 UI 与服务端规则不完全一致。

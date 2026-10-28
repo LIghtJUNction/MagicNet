@@ -1,4 +1,4 @@
-# 重建 MagicNet
+# 重建 MagicNet（配方 0.3.0）
 
 为 Android root 用户重建 MagicNet：从首次安装与订阅导入，到按应用、Wi-Fi、热点分流，再到节点、故障诊断和自动化控制。保留来源版本的完整用户行为，不能交付只有静态页面或包装命令的演示。
 
@@ -10,13 +10,21 @@
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
 - 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前实现为 LIghtJUNction/magicnet-android，固定 0dca28dd984d82333707cbf4b222596934b4d847；完整 tree 与原仓库 v1.8.0 的 f13ca61b 相同。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
-- 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 是新增重建验收，不能把进入配方说成旧实现已修复。
+- 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 保留原需求，M30–M39 新增多订阅、Encryption、可观测状态和重建交付验收。SOURCE_AUDIT.md 记录实际读源码的范围、已复现的旧缺陷与未知，不能把进入配方说成旧实现已修复。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
 
 ## 阅读范围
 
-完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、FEEDBACK.md、PERFORMANCE.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
+完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、FEEDBACK.md、SOURCE_AUDIT.md、PERFORMANCE.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖和所有递归依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
+
+本轮增加的具体合同为 control/SUBSCRIPTION_INTERFACE.md、runtime/SUBSCRIPTION_CONTRACT.md、webui/SUBSCRIPTION_FLOW.md、engine/VLESS_ENCRYPTION.md；这里的前缀是依赖职责简称，包名及实际位置由 RECIPE/LOCK 决定。依赖完整闭包仍是八包，不因补充合同新增常驻服务。
+
+## 独立重建边界
+
+新构建上下文只接收完整递归 Markdown 配方和明确允许的通用工具/外部资源。先在空实现目录构建，不读取、复制、调用旧 MagicNet 实现、历史源码或原测试实现作为产品基线；源码路径与提交只是证据索引，不能要求构建者再去原仓库补需求。已明确允许的固定 sing-box 内核/密码学实现、规则数据和第三方工具可按许可证复用，并在交付中分别说明，不能把复用部分宣称成独立重写成果。
+
+原已发布实现的编译路径与从配方独立生成新实现分别记录。仅 check/pack/build 配方不需要初始化 generated/magicnet-android 或任何旧产品源码子模块。验证新实现后再按既有仓库布局集成并固定提交，不覆盖未保存的用户工作。
 
 ## 依赖使用合同
 
@@ -48,6 +56,7 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 - [LICENSE.md](LICENSE.md)
 - [PERFORMANCE.md](PERFORMANCE.md)
 - [PROVENANCE.md](PROVENANCE.md)
+- [SOURCE_AUDIT.md](SOURCE_AUDIT.md)：本轮固定源码调用链、全产品保留覆盖、具体修正、证据层次和重建顺序。
 
 - [VERIFICATION.md](VERIFICATION.md)：配方、实现与发行的实际检查结果。
 - [FEEDBACK.md](FEEDBACK.md)：走查限制、Issue 来源与吸收的验收要求。

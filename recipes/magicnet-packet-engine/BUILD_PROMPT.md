@@ -9,6 +9,8 @@
 提供 sing-box run、check、version 及本地 Clash API 所需配置/API；支持混合入站 127.0.0.1:7892、controller 默认 127.0.0.1:9090、TUN、selector/urltest/direct/block、DNS 与规则集、Tailscale/WireGuard endpoint 和订阅原生协议。
 配置失败、未知字段/缺失出站/空不合格代理组不能假成功；管理器激活前执行真实 check。配置能力与编译 tags 写入可检验元数据。
 
+完整阅读 [VLESS_ENCRYPTION.md](VLESS_ENCRYPTION.md) 的 VE-001–006。固定 fork 已有客户端 Encryption 能力；重建必须把来源导入、自定义出站与私密编辑链路接通，不能将 encryption 静默删掉或改成 none。该能力独立于 TLS/Reality，长公钥不能按 tag 长度截断；语法、核心 check 和真实通信分层验收，不扩成服务端 decryption 承诺。
+
 ## TUN
 
 root 管理 magicnet0，不调用 Android VpnService.establish，不占 VPN slot。只捕获应由本模块管理的流量；应用 bypass 同时退出 DNS 捕获。管理自己创建的路由和规则，不清除其他 VPN/OEM 的规则。
