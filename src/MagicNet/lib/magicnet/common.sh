@@ -55,11 +55,11 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
-    _mode_file="$(magicnet_transparent_conf)" || return 1
+    _mode_file="${MODDIR}/.config/magicnet/transparent-mode.conf"
     if [ ! -e "$_mode_file" ]; then
-        printf '%s\n' "tun"
         unset _mode_file
-        return 0
+        echo tun
+        return
     fi
     _mode="$(
         awk '
@@ -88,8 +88,14 @@ magicnet_transparent_mode() {
         unset _mode_file _mode
         return 1
     }
-    printf '%s\n' "$_mode"
-    unset _mode_file _mode
+    # mksh runs printf externally. Only emit these fixed tokens with echo;
+    # keep awk output captured so a failed read cannot publish a partial mode.
+    # Clean scratch variables first so stdout write failures remain failures.
+    case "$_mode" in
+    tun) unset _mode_file _mode; echo tun ;;
+    ebpf) unset _mode_file _mode; echo ebpf ;;
+    *) unset _mode_file _mode; return 1 ;;
+    esac
 }
 
 magicnet_transparent_set_mode() {

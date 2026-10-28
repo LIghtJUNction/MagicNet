@@ -10,6 +10,7 @@ trap 'rm -rf "$WORKDIR"' EXIT HUP INT TERM
 MODDIR="$WORKDIR/module"
 export MODDIR
 mkdir -p "$MODDIR/.config/magicnet"
+ln -s "$ROOT/src/MagicNet/lib" "$MODDIR/lib"
 import() { :; }
 
 # common.sh resolves its other imports lazily; this contract only exercises the
@@ -54,6 +55,13 @@ magicnet_transparent_set_mode ebpf
 assert_mode ebpf
 [ "$(stat -c '%a' "$MODE_FILE")" = 600 ]
 
+# Whitespace/comments and a final line without LF retain the existing parser
+# contract; data is never interpreted as shell syntax.
+printf ' \t# fixture\r\n\tMAGICNET_TRANSPARENT_MODE=tun\t\r\n' >"$MODE_FILE"
+assert_mode tun
+printf '%s' 'MAGICNET_TRANSPARENT_MODE=ebpf' >"$MODE_FILE"
+assert_mode ebpf
+
 # Unknown requests, including the historical implicit/automatic spellings,
 # must fail without touching the previous valid selection.
 for invalid in unknown auto hybrid proxy external external-tun ''; do
@@ -65,6 +73,8 @@ assert_mode ebpf
 # values and duplicate assignments are rejected rather than silently falling
 # back or selecting whichever line happened to be last.
 for invalid_file in \
+    '' \
+    '# comment only' \
     'MAGICNET_TRANSPARENT_MODE=unknown' \
     'MAGICNET_TRANSPARENT_MODE=tun
 MAGICNET_UNEXPECTED_ASSIGNMENT=1' \
@@ -117,5 +127,105 @@ fi
     exit 1
 }
 assert_mode tun
+
+# A rejected stdout write must not become success merely because cleanup ran
+# afterward. Cover both the implicit default and each validated persisted mode.
+[ -c /dev/full ] || { echo 'mode output regression requires /dev/full' >&2; exit 1; }
+for mode in default tun ebpf; do
+    if [ "$mode" = default ]; then
+        rm -f "$MODE_FILE"
+    else
+        printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$mode" >"$MODE_FILE"
+    fi
+    if magicnet_transparent_mode >/dev/full 2>/dev/null; then
+        echo "transparent mode output failure was accepted: $mode" >&2
+        exit 1
+    fi
+done
+
+# Run the external-applet budget in mksh even when CI invokes this script with
+# sh/bash (whose printf builtins would bypass PATH). Executable PATH shims also
+# see `command printf` / `command awk`, unlike shell-function interception.
+(
+    mode_test_mksh=$(command -v mksh) || {
+        echo 'mode applet regression requires mksh' >&2
+        exit 1
+    }
+    mode_test_bin="$WORKDIR/applet-bin"
+    mkdir "$mode_test_bin"
+    MAGICNET_MODE_TEST_CALLS="$WORKDIR/mode-read-calls"
+    MAGICNET_MODE_TEST_AWK=$(command -v awk)
+    MAGICNET_MODE_TEST_PRINTF=$("$mode_test_mksh" -c 'command -v printf')
+    MAGICNET_MODE_TEST_AWK_FAIL=0
+    export MAGICNET_MODE_TEST_CALLS MAGICNET_MODE_TEST_AWK MAGICNET_MODE_TEST_PRINTF MAGICNET_MODE_TEST_AWK_FAIL
+    cat >"$mode_test_bin/printf" <<'SH'
+#!/bin/sh
+echo printf >>"$MAGICNET_MODE_TEST_CALLS"
+exec "$MAGICNET_MODE_TEST_PRINTF" "$@"
+SH
+    cat >"$mode_test_bin/awk" <<'SH'
+#!/bin/sh
+echo awk >>"$MAGICNET_MODE_TEST_CALLS"
+if [ "$MAGICNET_MODE_TEST_AWK_FAIL" = 1 ]; then echo tun; exit 1; fi
+exec "$MAGICNET_MODE_TEST_AWK" "$@"
+SH
+    chmod +x "$mode_test_bin/printf" "$mode_test_bin/awk"
+    "$mode_test_mksh" -s -- "$COMMON" "$MODE_FILE" "$mode_test_bin" <<'MKSH'
+    set -eu
+    import() { :; }
+    . "$1"
+    mode_test_file=$2
+    mode_test_bin=$3
+    PATH="$mode_test_bin:$PATH"
+    export PATH
+    [ "$(command -v printf)" = "$mode_test_bin/printf" ] || {
+        echo 'mksh must use the external printf shim' >&2
+        exit 1
+    }
+
+    # Positive controls prove that command-prefixed calls are counted too.
+    : >"$MAGICNET_MODE_TEST_CALLS"
+    printf '%s\n' control >/dev/null
+    command printf '%s\n' control >/dev/null
+    awk 'BEGIN {}'
+    command awk 'BEGIN {}'
+    [ "$(cat "$MAGICNET_MODE_TEST_CALLS")" = 'printf
+printf
+awk
+awk' ] || { echo 'applet counter missed a command invocation' >&2; exit 1; }
+
+    for mode in tun ebpf; do
+        echo "MAGICNET_TRANSPARENT_MODE=$mode" >"$mode_test_file"
+        : >"$MAGICNET_MODE_TEST_CALLS"
+        actual=$(magicnet_transparent_mode)
+        [ "$actual" = "$mode" ]
+        [ "$(cat "$MAGICNET_MODE_TEST_CALLS")" = awk ] || {
+            echo 'mode read spawned redundant external applets' >&2
+            exit 1
+        }
+    done
+    rm -f "$mode_test_file"
+    : >"$MAGICNET_MODE_TEST_CALLS"
+    actual=$(magicnet_transparent_mode)
+    [ "$actual" = tun ]
+    [ ! -s "$MAGICNET_MODE_TEST_CALLS" ] || {
+        echo 'default mode spawned external applets' >&2
+        exit 1
+    }
+
+    # A partial valid-looking awk result followed by read failure stays private.
+    echo 'MAGICNET_TRANSPARENT_MODE=tun' >"$mode_test_file"
+    MAGICNET_MODE_TEST_AWK_FAIL=1
+    export MAGICNET_MODE_TEST_AWK_FAIL
+    if actual=$(magicnet_transparent_mode); then
+        echo 'failed mode read was accepted' >&2
+        exit 1
+    fi
+    [ -z "$actual" ] || {
+        echo 'failed mode read exposed partial output' >&2
+        exit 1
+    }
+MKSH
+)
 
 printf '%s\n' 'transparent mode config safety passed'
