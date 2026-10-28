@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Android root 设备上的 sing-box 透明网络工作台
+  给 root 过的 Android 手机，一个省心的 sing-box 透明代理
 </p>
 
 <p align="center">
@@ -21,30 +21,49 @@
   <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square" /></a>
 </p>
 
-MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 Android 设备流量，不占用系统 VPN slot。默认使用 `tun`；需要时可显式切换到 `ebpf`。主线只支持这两种模式，不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径。
+## 这是什么？
 
-## 核心特色
+如果你的手机已经 root，又不想让代理 App 一直占着系统那个唯一的 VPN 位置，MagicNet 就是为你准备的。
 
-- **订阅内容不限定为 sing-box 格式**：支持一行一个公网 HTTPS 订阅链接，最多五个来源。下载内容可识别 Clash/Mihomo YAML、base64、常见分享链接集合、sing-box JSON 和纯文本。
-- **直接兼容 Clash/Mihomo 订阅**：无需先找“sing-box 专用订阅”。把同一个合法 Clash/Mihomo 订阅 URL 交给 MagicNet，模块会解析节点并生成受控的 sing-box 配置。
-- **覆盖常见节点协议**：原生导入 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可处理额外格式。 原生备用解析支持常见字面量字段和普通引号值；不支持的协议、复杂 TLS/传输选项、别名、块标量及需要转义解析的字段值需要完整转换器。转换器不可用或失败时，这些输入会被明确拒绝并保留当前配置。
-- **自带 sing-box fork 内核**：仓库固定内核子模块和 Android arm64 构建，包含 MagicNet 使用的 eBPF inbound、Android 兼容修复与回归测试，不调用系统中来源不明的 sing-box。
-- **TUN 与 eBPF 两套透明数据面**：TUN 创建 `magicnet0`；eBPF 默认使用 hybrid，同时启用 local cgroup，并在确认下游接口后通过 shared TC 接管热点流量；没有下游接口时 shared 保持 pending。两种模式显式、互斥、原子切换，失败会回滚。
-- **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。
-- **配置模板仓库**：默认使用固定 commit 和 SHA-256 的 `MagicSingBox` 配置，也可改为自己的 GitHub/GitLab fork，在仓库中维护规则后原子同步。
-- **DNS 与故障边界可见**：拦截物理出口上的明文 DNS/DoT，`cli health` 和 `cli transparent status` 分别按 TUN 接口或 eBPF capability/cgroup/TC 报告真实状态。
-- **WebUI、CLI 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。WebUI 概览以“流量星座”实时展示 设备 → 数据面 → sing-box → 出口 的已证实状态，按 `Ctrl/⌘ + K` 或 `/` 可快速跳转到任意页面。
+它是一个 Magisk / KernelSU / APatch 模块，用我们自己维护的 [sing-box fork](sing-box) 在系统层面接管流量：哪些 App 走代理、哪些直连、连上家里 Wi-Fi 时怎么办、开热点给别人用时又怎么办——都可以按你的习惯来。
 
-## 安装与首次成功运行
+透明代理有两种方式可选：
 
-> **旧版本升级到 v1.6.2：需要手动安装一次。** 本版为符合 KernelSU Modules 限制，将版本码迁移为 `10602`。先备份配置，再在 root 管理器中直接安装 `MagicNet-full.zip`，不要先卸载。详见 [版本码迁移说明](docs/releases/v1.6.2.md)。
+- **`tun`（默认）**：创建一个叫 `magicnet0` 的虚拟网卡，稳妥、兼容性好，大多数人用它就够了。
+- **`ebpf`**：直接在内核里挂钩子分流，适合想折腾、内核也支持的玩家。
 
-1. 从 [Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载模块 ZIP，在 Magisk、KernelSU 或 APatch 的模块页面安装并重启。
-2. 在系统设置中关闭“私人 DNS / 私密 DNS / Private DNS”，不要保留为“自动”。
-3. 打开 root 管理器提供的模块 WebUI，在“订阅”中保存合法的 URL，或导入本地 Clash YAML、base64、分享链接、JSON 或文本订阅。
-4. 等待“保存并启用”完成，在 WebUI 健康页确认 sing-box 与当前数据面正常。默认 TUN 应建立 `magicnet0`；eBPF 应显示 local cgroup 状态及 shared attached/pending 状态。
+两种模式需要你**手动、明确地**切换；切换使用带回滚的事务，失败时会尝试恢复旧状态，但恢复本身也可能失败，不能保证连接不中断。遇到失败，请检查 `cli transparent status`、`cli health` 和恢复诊断信息，不要反复切换模式。我们刻意没有做 `auto` 模式，也不再支持 TProxy、Redirect 或 netd `ALLOW_MULTI` 这些老路子——少即是多，出问题时也更好排查。
 
-也可以在 root shell 中完成 URL 配置和验收：
+## 为什么你可能会喜欢它
+
+**订阅随便丢进来就行。** 不用再到处找“sing-box 专用订阅”了。一行一个 HTTPS 链接，最多五个来源；Clash/Mihomo YAML、base64、一堆分享链接、sing-box JSON、纯文本，它都认得。手上那个 Clash 订阅直接贴进来，MagicNet 会自己解析节点，生成一份受控的 sing-box 配置。
+
+**常见协议基本都覆盖了。** VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS、TUIC 都能原生导入；更冷门的格式可以交给可选的转换器处理。
+
+> 老实说一句：内置的备用解析器只认常见的字面量字段和普通引号值。遇到不支持的协议、复杂的 TLS/传输选项、别名、块标量或需要转义的字段，就得靠完整转换器。如果转换器不可用或者失败了，MagicNet 会明确拒绝这份输入，**保留你当前能用的配置**，而不是硬着头皮塞一份坏的进去。
+
+**内核是自己带的。** 仓库里固定了 sing-box 子模块和 Android arm64 构建，包含 MagicNet 需要的 eBPF inbound、Android 兼容修复和回归测试。不会去调用你系统里某个来路不明的 sing-box。
+
+**eBPF 模式也能管热点。** eBPF 默认是 hybrid：本机流量走 local cgroup；确认有下游接口后，再通过 shared TC 接管热点流量。还没人连热点时，shared 会老老实实显示 pending，而不是假装已经就绪。
+
+**分流策略贴近日常。** 每个 App 都可以设为 Proxy、Direct 或 Bypass；Wi-Fi 可以按 SSID/BSSID 自动切换策略（比如回家就直连）；热点可以选 Direct 或 Proxy。
+
+**规则可以放在你自己的仓库里。** 默认使用固定 commit 和 SHA-256 校验的 `MagicSingBox` 配置模板；你也可以 fork 一份到 GitHub/GitLab，在自己的仓库里慢慢调规则，再原子同步到手机上。
+
+**出了问题看得见。** 可选的物理出口 DNS/DoT 防护默认关闭；只有运行环境显式设置 `MAGIC_DNS_LEAK_GUARD=1` 且规则成功安装后，才会拦截相应直连流量。`cli health` 和 `cli transparent status` 会按真实情况报告——TUN 看 `magicnet0`，eBPF 看 capability、cgroup 和 TC。不知道的就说不知道，不会把“没查到”说成“一切正常”。
+
+**WebUI、CLI、MCP 三种用法。** WebUI 和 MCP 复用 CLI 的受控操作；MCP 提供部分功能，包括服务控制、配置与订阅、应用策略、节点选择与测速、状态诊断和备份，并不保证覆盖所有 WebUI 操作。可用工具以 MCP 的 `tools/list` 返回结果为准。私密数据通过临时文件传递，支持包默认脱敏。WebUI 首页有一张“流量星座”，实时画出 设备 → 数据面 → sing-box → 出口 这条链路上已经确认的状态；按 `Ctrl/⌘ + K` 或 `/` 可以快速跳到任意页面。
+
+## 五分钟上手
+
+> **从旧版本升级到 v1.6.2 的朋友请注意：这次需要手动安装一次。** 为了符合 KernelSU Modules 的限制，版本码迁移成了 `10602`。先备份配置，然后在 root 管理器里直接安装 `MagicNet-full.zip`——**不要先卸载**。详情见 [版本码迁移说明](docs/releases/v1.6.2.md)。
+
+1. 到 [Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载模块 ZIP，在 Magisk、KernelSU 或 APatch 里安装，然后重启。
+2. 去系统设置里把“私人 DNS / 私密 DNS / Private DNS”**关掉**。注意是关闭，“自动”也不行。
+3. 在 root 管理器里打开模块的 WebUI，进入“订阅”，贴上你的订阅 URL；或者导入本地的 Clash YAML、base64、分享链接、JSON 或文本。
+4. 点“保存并启用”，等它跑完，然后去健康页看一眼：sing-box 和数据面都正常就大功告成。默认的 TUN 模式下应该能看到 `magicnet0`；如果你用的是 eBPF，会看到 local cgroup 状态，以及 shared 是 attached 还是 pending。
+
+更喜欢命令行？在 root shell 里三行搞定：
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'
@@ -52,14 +71,16 @@ su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
 ```
 
-成功状态应同时满足：`cli health` 没有核心/Dataplane 阻塞项，`cli transparent status` 的 configured/effective 状态准确。TUN 以 `magicnet0` 为准；eBPF 不能要求 `magicnet0`，而应报告 capability、local cgroup 与 shared TC/interface。MagicNet 不提供节点、订阅或外部出口，请只使用你有权使用且符合当地法律与服务条款的资源。
+怎么算成功？`cli health` 里没有核心/数据面的阻塞项，`cli transparent status` 里 configured（你想要的）和 effective（实际生效的）状态都对得上。TUN 模式以 `magicnet0` 为准；eBPF 模式本来就不会有 `magicnet0`，看 capability、local cgroup 和 shared TC/interface 就好。
 
-详细格式、协议和操作说明见 [用户指南](docs/user-guide.md)。
+> MagicNet 只是工具，不提供任何节点、订阅或出口服务。请只使用你有权使用、并且符合当地法律和服务条款的资源。
 
-## 常用命令
+想了解更多格式、协议和操作细节，请看 [用户指南](docs/user-guide.md)。
+
+## 常用命令速查
 
 ```bash
-# 状态与恢复
+# 看状态 / 修问题
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
 su -c /data/adb/modules/MagicNet/cli transparent set tun
@@ -72,7 +93,7 @@ su -c /data/adb/modules/MagicNet/cli sub status
 su -c /data/adb/modules/MagicNet/cli sub update sing-box
 su -c /data/adb/modules/MagicNet/cli node test-all
 
-# 应用策略；bypass 适合与外部 VPN 共存，普通直连优先用 direct
+# 应用策略：普通直连用 direct；要和别的 VPN App 共存时才用 bypass
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
 su -c '/data/adb/modules/MagicNet/cli app add com.example.browser direct'
 su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
@@ -83,19 +104,21 @@ su -c /data/adb/modules/MagicNet/cli wifi enable
 su -c /data/adb/modules/MagicNet/cli hotspot enable
 su -c /data/adb/modules/MagicNet/cli hotspot status
 
-# 网络兼容与支持包
+# 网络兼容 / 打包支持信息
 su -c /data/adb/modules/MagicNet/cli network status
 su -c '/data/adb/modules/MagicNet/cli network set ipv4_only 1400 5m'
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
 
-## 网络边界
+## 它管什么，不管什么
 
-MagicNet 会拦截物理出口上的直连 DNS/DoT（53/853），但浏览器内置 DoH 和外部 VPN 有自己的流量边界。关闭 Private DNS 后再做泄露测试；抓包接口应以 `ip route get 1.1.1.1` 的实际物理出口为准。
+先把边界说清楚，免得踩坑：
 
-MagicNet 不创建热点，不替代厂商 tethering/NAT，也不自动接管外部 VPN overlay。局域网默认走 `lan`/Direct；userspace Tailscale endpoint 需要显式配置，边界与验收见 [Tailscale 说明](docs/tailscale.md)。
+- 物理出口上的直连 DNS/DoT（53/853 端口）拦截是可选防护，默认关闭。它要求运行环境显式设置 `MAGIC_DNS_LEAK_GUARD=1`，且设备支持并成功安装相应规则；不要将默认安装视为已经启用此防护。但浏览器自带的 DoH、以及其他 VPN App 有它们自己的流量路径，不在它的管辖范围内。做 DNS 泄露测试前，记得先关掉 Private DNS；抓包时以 `ip route get 1.1.1.1` 显示的真实物理出口为准。
+- 它**不会**帮你开热点，也不替代厂商自带的 tethering/NAT，更不会自动接管其他 VPN 的 overlay 网络。
+- 局域网流量默认走 `lan`/Direct。如果你用 userspace 版 Tailscale，需要手动配置一下，具体看 [Tailscale 说明](docs/tailscale.md)。
 
-断网时不要反复切换模式。保留当前现场，依次查看 configured/effective、rollback/pending 与健康状态：
+**断网了先别慌，也别来回切模式。** 保留现场，按顺序看看 configured/effective、有没有 rollback/pending、健康检查怎么说：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli health
@@ -104,23 +127,25 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
 
-## 控制界面
+把这些结果（脱敏后）带上来找我们，排查会快很多。
 
-- 模块 WebUI：安装模块后由 Magisk、KernelSU 或 APatch 的模块页面打开，覆盖首次配置、应用/Wi-Fi/热点策略、节点与诊断。
-- 界面语言：WebUI 支持简体中文、English 和 Русский，可手动切换并记住选择。安装向导及模块操作菜单支持英文、俄语，保留已有中文、日语和韩语。安装器默认跟随 Android 系统语言，也可在交互安装时选择。
-- [MCP](docs/mcp.md)：适合从工作站自动化控制真机，默认关闭且要求 secret 认证。
+## 怎么操作它
 
-终端操作菜单可用 `KAM_UI_LANGUAGE=ru` 或 `KAM_UI_LANGUAGE=en` 临时指定语言，例如：
+- **模块 WebUI**：装好模块后，在 Magisk、KernelSU 或 APatch 的模块页面就能打开。首次配置、应用/Wi-Fi/热点策略、节点、诊断，基本都在这里完成。
+- **多语言**：WebUI 支持简体中文、English 和 Русский，切换后会记住你的选择。安装向导和模块操作菜单支持英文、俄语，以及原有的中文、日语和韩语；安装器默认跟随系统语言，交互安装时也可以手动选。
+- **[MCP](docs/mcp.md)**：想从电脑上自动化控制真机的话可以用它。默认关闭，开启后需要 secret 认证。
+
+终端菜单可以临时指定语言，比如用俄语打开：
 
 ```bash
 su -c 'KAM_UI_LANGUAGE=ru sh /data/adb/modules/MagicNet/action.sh'
 ```
 
-CLI 命令、状态字段、配置值和原始日志保持原样，方便脚本及诊断工具读取；内置第三方内核面板使用其自身的语言设置。
+CLI 命令、状态字段、配置值和原始日志都保持英文原样，方便脚本和诊断工具读取；内置的第三方内核面板则跟随它自己的语言设置。
 
-## 开发安装
+## 想自己构建？
 
-已配置 [kam](https://github.com/MemDeco-WG/kamfw) 时可以直接安装：
+如果你已经配置好了 [kam](https://github.com/MemDeco-WG/kamfw)，一行就能装：
 
 ```bash
 kam install LIghtJUNction/MagicNet
@@ -135,29 +160,31 @@ git submodule update --init
 kam build
 ```
 
-产物位于 `dist/MagicNet.zip`。构建、包结构和发布验收见 [构建与发布包说明](docs/build.md)。
+构建产物在 `dist/MagicNet.zip`。打包结构和发布验收的细节见 [构建与发布包说明](docs/build.md)。
 
-## 文档
+## 延伸阅读
 
-- [用户指南](docs/user-guide.md)：安装、导入、节点、应用/Wi-Fi/热点与排障。
+- [用户指南](docs/user-guide.md)：安装、导入、节点、应用/Wi-Fi/热点和排障。
 - [构建与发布包说明](docs/build.md)：发布 ZIP、依赖锁和包验收。
-- [本机仿真、AVD 和真机验收](docs/local-simulation.md)：分层测试与安全传输目录。
-- [MCP 自动化说明](docs/mcp.md)：认证、端口转发、日志和启动故障检查。
-- [架构说明](ARCHITECTURE.md)：仓库模块、运行架构、状态归属和故障边界。
+- [本机仿真、AVD 和真机验收](docs/local-simulation.md)：分层测试和安全的文件中转目录。
+- [MCP 自动化说明](docs/mcp.md)：认证、端口转发、日志和启动故障排查。
+- [架构说明](ARCHITECTURE.md)：仓库结构、运行架构、状态归属和故障边界。
 - [贡献指南](CONTRIBUTING.md)：开发环境、质量检查和改动边界。
-- [安全策略](SECURITY.md)：私密漏洞报告方式和需要保持的安全属性。
-- [kamfw 本地文档](src/MagicNet/lib/kamfw/README.md)：模块内嵌运行时；上游项目见 [MemDeco-WG/kamfw](https://github.com/MemDeco-WG/kamfw)。
+- [安全策略](SECURITY.md)：如何私下报告漏洞，以及我们坚持的安全原则。
+- [kamfw 本地文档](src/MagicNet/lib/kamfw/README.md)：模块内嵌的运行时；上游项目在 [MemDeco-WG/kamfw](https://github.com/MemDeco-WG/kamfw)。
 
-## 社区与支持
+## 找到我们
 
 <a href="https://donate.lmm.best/?project=magicnet"><img src="https://donate.lmm.best/badge.svg?project=magicnet&amp;currency=CNY&amp;lang=zh-CN&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=MagicNet" alt="捐赠支持" width="360" /></a>
 
-- Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
-- GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
-- 开发支持：MagicNet 的网络功能不依赖 LLM API；如需 OpenAI 兼容的多模型接口，可以使用 [LMM API Gateway](https://api.lmm.best)。[项目源码](https://github.com/TokenNotIncluded/api.lmm.best)现由 [TokenNotIncluded](https://github.com/TokenNotIncluded) 组织托管。
+如果 MagicNet 帮到了你，欢迎请作者喝杯咖啡 ☕，也欢迎来聊聊：
 
-WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再按类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
+- **Discord**：[加入官方群聊](https://discord.gg/asRwgK9FpA)
+- **GitHub Issue**：提问时附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果，能帮我们更快定位问题。
+- **开发小广告**：MagicNet 的网络功能完全不依赖任何 LLM API。如果你恰好需要一个 OpenAI 兼容的多模型接口，可以试试 [LMM API Gateway](https://api.lmm.best)，[项目源码](https://github.com/TokenNotIncluded/api.lmm.best)现由 [TokenNotIncluded](https://github.com/TokenNotIncluded) 组织托管。
+
+WebUI 里的“反馈问题 / 创建 Issue”会先选择问题类型，再自动生成对应的脱敏上下文。不过提交前还是请自己再过一眼——**千万别把订阅 URL、token、secret、password、完整节点地址或设备标识公开出去。**
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。
+MIT，详见 [LICENSE](LICENSE)。
