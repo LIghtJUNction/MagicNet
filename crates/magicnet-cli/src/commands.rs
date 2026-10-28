@@ -121,6 +121,8 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
     let action = args.get(2).map_or("", String::as_str);
     match (name, sub) {
         ("state", _) => false,
+        // This handler publishes only after acquiring the lock and attempting work.
+        ("hotspot", "reconcile") => false,
         ("health" | "topology" | "pingtest" | "speedtest", _) => false,
         ("service", "" | "status" | "logs") => false,
         ("service", "restart") => {
@@ -349,6 +351,7 @@ mod tests {
             "config-editor repo get-json",
             "state",
             "state reconcile",
+            "hotspot reconcile",
             "--json capabilities",
             "service start --json",
         ] {
@@ -382,7 +385,8 @@ mod tests {
             "network set",
             "dns apply",
             "wifi check",
-            "hotspot reconcile",
+            "hotspot enable",
+            "hotspot disable",
             "node use",
             "sub update-all",
             "sub schedule set 24",

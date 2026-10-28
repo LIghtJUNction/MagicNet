@@ -76,7 +76,12 @@ magicnet_hotspot_offload_restore() {
     magicnet_hotspot_route_cleanup || return $?
     rm -f "$MODDIR/.state/hotspot/tether-offload.previous"
 }
-magicnet_hotspot_reconcile() { step reconcile; }
+magicnet_hotspot_reconcile() {
+    if [ -f "$MODDIR/reconcile-pending" ]; then
+        printf '8999|usb0\n' >"$MODDIR/.state/hotspot/tun-rules.list.pending"
+    fi
+    step reconcile
+}
 magicnet_hotspot_route_cleanup() { step cleanup; }
 magicnet_hotspot_watchdog_start() {
     step watcher-start || return $?
@@ -229,6 +234,66 @@ fn hotspot_busy_config_lock_rejects_toggle_before_changing_any_policy() {
     assert_policy(&app, "direct");
     assert!(!app.moddir.join("calls").exists());
     assert!(!app.moddir.join("api-calls").exists());
+}
+
+#[test]
+fn hotspot_reconcile_skips_contention_without_mutations_and_retries_later() {
+    let app = fixture(Some("direct"));
+    let guard = service::config_apply_lock(&app).expect("hold lifecycle lock");
+    action(&app, "reconcile").expect("defer this periodic cycle");
+    assert_policy(&app, "direct");
+    assert!(!app.moddir.join("calls").exists());
+    assert!(!app.moddir.join("api-calls").exists());
+    assert!(!app.moddir.join(".state/machines").exists());
+    drop(guard);
+    action(&app, "reconcile").expect("retry once the lock is free");
+    assert_eq!(
+        fs::read_to_string(app.moddir.join("calls")).expect("read reconcile calls"),
+        "reconcile\npolicy-check\n"
+    );
+}
+
+#[test]
+fn hotspot_attempted_reconcile_publishes_observations_after_success_and_failure() {
+    for expected_state in ["disabled", "waiting", "pending"] {
+        for failed_step in [None, Some("reconcile"), Some("policy-check")] {
+            let member = if expected_state == "disabled" {
+                "direct"
+            } else {
+                "proxy"
+            };
+            let app = fixture(Some(member));
+            if expected_state == "pending" {
+                // The hook changes the observation before its possible failure,
+                // so publication must observe the result of this attempt.
+                fs::write(app.moddir.join("reconcile-pending"), "")
+                    .expect("leave a pending route transaction during reconcile");
+                assert_eq!(crate::state::hotspot_observation(&app).state, "waiting");
+            }
+            if let Some(step) = failed_step {
+                fs::write(app.moddir.join("fail-always"), step).expect("fail a reconcile step");
+            }
+            let result = action(&app, "reconcile");
+            assert_eq!(result.is_ok(), failed_step.is_none(), "{result:?}");
+            let state = fs::read_to_string(app.moddir.join(".state/machines/hotspot.state"))
+                .expect("actual reconcile attempts publish the observed hotspot state");
+            assert_eq!(
+                state.lines().find_map(|line| line.strip_prefix("state=")),
+                Some(expected_state),
+                "expected {expected_state} after {failed_step:?}: {state}"
+            );
+            assert!(!state.contains("state=ready"));
+        }
+    }
+}
+
+#[test]
+fn hotspot_reconcile_lock_io_error_is_not_a_successful_skip() {
+    let app = fixture(Some("direct"));
+    fs::create_dir(app.moddir.join(".state/config-apply.lock")).expect("invalid lock path");
+    let error = action(&app, "reconcile").expect_err("I/O error remains visible");
+    assert!(error.starts_with("open config apply lock:"), "{error}");
+    assert!(!app.moddir.join("calls").exists());
 }
 
 #[test]

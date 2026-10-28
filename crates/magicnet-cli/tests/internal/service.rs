@@ -229,6 +229,87 @@ fn config_apply_lock_is_exclusive_and_releases_on_drop() {
     let _ = fs::remove_dir_all(root);
 }
 
+fn start_fixture() -> crate::test_support::TempApp {
+    let app = crate::test_support::temp_app();
+    fs::create_dir_all(app.moddir.join("lib/kamfw")).expect("create shell fixture");
+    fs::write(app.moddir.join("lib/kamfw/.kamfwrc"), "import() { :; }\n")
+        .expect("write framework fixture");
+    fs::write(
+        app.moddir.join("lib/magicnet.sh"),
+        r#"
+magicnet_start_kernel() {
+    printf 'start\n' >>"$MODDIR/calls"
+    [ ! -f "$MODDIR/start-refused" ]
+}
+magicnet_supervisors_start_detached() { printf 'supervisors\n' >>"$MODDIR/calls"; }
+"#,
+    )
+    .expect("write lifecycle fixture");
+    app
+}
+
+#[test]
+fn service_start_waits_for_an_inflight_reconcile_past_the_ordinary_budget() {
+    let app = start_fixture();
+    let guard = config_apply_lock(&app).expect("hold lock as an in-flight reconcile");
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(2200));
+        drop(guard);
+    });
+    let started = Instant::now();
+    let result = super::start_service(&app);
+    holder.join().expect("release holder");
+    result.expect("start after the reconcile finishes");
+    assert!(started.elapsed() >= Duration::from_secs(2));
+    assert_eq!(
+        fs::read_to_string(app.moddir.join("calls")).expect("read lifecycle calls"),
+        "start\nsupervisors\n"
+    );
+}
+
+#[test]
+fn service_start_busy_is_bounded_and_does_not_run_hooks() {
+    let app = start_fixture();
+    let _guard = config_apply_lock(&app).expect("hold lock for the entire deadline");
+    let started = Instant::now();
+    let error = super::start_service(&app).expect_err("service must remain bounded");
+    assert!(error.starts_with("config apply is still busy"), "{error}");
+    assert!(error.contains("10000 ms"), "{error}");
+    assert!(started.elapsed() >= super::SERVICE_LOCK_TIMEOUT);
+    assert!(started.elapsed() < super::SERVICE_LOCK_TIMEOUT + Duration::from_secs(5));
+    assert!(!app.moddir.join("calls").exists());
+}
+
+#[test]
+fn service_start_preserves_startup_refusal_after_lock_acquisition() {
+    let app = start_fixture();
+    fs::write(app.moddir.join("start-refused"), "").expect("refuse the startup hook");
+    assert!(super::start_service(&app).is_err());
+    assert_eq!(
+        fs::read_to_string(app.moddir.join("calls")).expect("read lifecycle calls"),
+        "start\n"
+    );
+}
+
+#[test]
+fn try_config_apply_lock_distinguishes_contention_from_io_failure() {
+    let app = crate::test_support::temp_app();
+    let guard = config_apply_lock(&app).expect("hold lock");
+    assert!(super::try_config_apply_lock(&app)
+        .expect("contention is not an I/O error")
+        .is_none());
+    drop(guard);
+    assert!(super::try_config_apply_lock(&app)
+        .expect("released lock is available")
+        .is_some());
+    fs::remove_file(app.moddir.join(super::CONFIG_APPLY_LOCK)).expect("remove fixture lock");
+    fs::create_dir(app.moddir.join(super::CONFIG_APPLY_LOCK)).expect("make lock path invalid");
+    let error = super::try_config_apply_lock(&app)
+        .err()
+        .expect("invalid lock path must not become a successful skip");
+    assert!(error.starts_with("open config apply lock:"), "{error}");
+}
+
 #[test]
 fn service_log_targets_reject_path_traversal() {
     assert!(!safe_log_name("../../etc/passwd"));

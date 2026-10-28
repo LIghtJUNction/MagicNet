@@ -341,9 +341,19 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "reconcile" => {
-            let guard = crate::service::config_apply_lock(app)?;
-            run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
-            refresh_hotspot_policy_locked(app, &guard)
+            let Some(guard) = crate::service::try_config_apply_lock(app)? else {
+                eprintln!(
+                    "[info] hotspot reconcile skipped: config apply is busy; retry next cycle"
+                );
+                return Ok(());
+            };
+            let result = run_magicnet_function(app, "magicnet_hotspot_reconcile")
+                .and_then(|()| refresh_hotspot_policy_locked(app, &guard));
+            drop(guard);
+            // Only an attempted reconciliation publishes observations. A busy
+            // skip leaves the current owner's state untouched and returns quickly.
+            crate::reconcile_state(app, "hotspot-reconcile");
+            result
         }
         "enable" => set_hotspot_policy(app, "proxy"),
         "disable" => set_hotspot_policy(app, "direct"),
