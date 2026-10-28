@@ -16,7 +16,7 @@ Android root 设备的透明网络工作台，以可重建的软件配方维护�
 - recipes/magicnet-web-console/：14 页操作流程、国际化与视觉重设计要求。
 - recipes/magicnet-module-delivery/：root 模块安装、组件分发、可信更新与恢复。
 - recipes/software-quality/：完整固定的设计、代码与性能质量合同。
-- generated/<implementation-name>/：本地临时实现，不进入 main 或配方归档。当前实现放在 generated/magicnet-android/，发行源码固定在原仓库的软件版本标签。
+- [generated/magicnet-android/](generated/magicnet-android/)：独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的固定提交子模块。main 跟踪这个入口，源码与六个嵌套子模块不进入配方归档。
 
 初始观察源码固定在 Git 提交 96993ea5c851b8d51cc562c3ca0766a2ca571210；代码 PR #420–#423 和 README PR #416 合并后的完整源码固定在 ae4de1ce4d77f1a2a4c8d9656da8101c472fa3a0。android-reference 已按要求删除，源码历史仍保留。历史、stash 与其他 worktree 保留。观察 checkout 与生成实现不是 Recipkg 依赖。
 根目录 update.json 和公开品牌/校验资料保留旧发布兼容性；不把旧安装包或本机运行状态打进配方。Android 安装包、完整离线包及组件见 [正式发布](https://github.com/LIghtJUNction/MagicNet/releases)；软件版本与配方版本分别管理。
@@ -28,13 +28,17 @@ Android root 设备的透明网络工作台，以可重建的软件配方维护�
 ~~~sh
 git submodule update --init --recursive
 recipkg check recipes/magicnet
-mkdir -p artifacts
-recipkg pack recipes/magicnet -o artifacts/magicnet-0.2.0.recipe.tar.gz
-recipkg check artifacts/magicnet-0.2.0.recipe.tar.gz
-recipkg build artifacts/magicnet-0.2.0.recipe.tar.gz --lang zh-CN --output artifacts/magicnet-build.md
+(
+  set -eu
+  recipe_tmp="$(mktemp -d)"
+  trap 'rm -rf "$recipe_tmp"' EXIT
+  recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet-0.2.1.recipe.tar.gz"
+  recipkg check "$recipe_tmp/magicnet-0.2.1.recipe.tar.gz"
+  recipkg build "$recipe_tmp/magicnet-0.2.1.recipe.tar.gz" --lang zh-CN
+)
 ~~~
 
-把 `magicnet-build.md` 和配方归档一起交给代码 Agent，要求它完整阅读提示词，按其中的组件依赖与接口实现软件，并逐项执行 `ACCEPTANCE.md`。完整需求在 `recipes/`；提示词包含递归依赖，不要只交根配方文件。实现源码放在 `generated/<implementation-name>/`，作为可重新生成的本地临时产物。
+把 `recipkg build` 输出的完整提示词交给代码 Agent，要求它完整阅读提示词，按其中的组件依赖与接口实现软件，并逐项执行 `ACCEPTANCE.md`。完整需求在 `recipes/`；提示词包含递归依赖，不要只交根配方文件。默认检查后清理临时归档；需要跨环境交接时，再明确保留归档和提示词文件。实现源码在独立仓库维护，并以固定提交的子模块接入 `generated/<source-repository-name>/`，仓库名与子目录名相同，使用小写字母和连字符。
 
 完成后把真实构建、功能、失败恢复、Android 设备及网络验收结果写入 `recipes/magicnet/VERIFICATION.md`。归档和提示词检查通过只说明重建材料完整，不代表实现已生成、Android 包可安装或真实流量可用。不要把 `.env`、订阅、凭据、设备状态或原始私密日志交给 Agent，也不要打进归档。
 
@@ -47,7 +51,7 @@ Recipkg 只生成完整的构建提示词，不会调用模型或自行实现软
 
 ## 维护
 
-业务变更先更新配方、接口与验收，再在 generated/ 中实现。本地验证后同步原仓库的授权分支，不为普通迭代启动重型远程 CI。正式发布的构建、签名、设备和业务验收单独执行。
+业务变更先更新配方、接口与验收，再在 generated/ 的源码子模块中实现。本地验证后先推送已授权源码分支，再显式更新 MagicNet 的 gitlink；不要只提交未发布的源码指针。不为普通迭代启动重型远程 CI。正式发布的构建、签名、设备和业务验收单独执行。
 发布配方的 GitHub 仓库需保留原 topic 并包含 recipkg；标签只用于发现。私密 .env、订阅、凭据与设备身份始终留在本机，不进入补丁或归档。
 
 MIT，见 [LICENSE](LICENSE)；第三方实现/规则/工具遵循各自许可，参见配方内的许可与外部前提。
@@ -56,16 +60,16 @@ MIT，见 [LICENSE](LICENSE)；第三方实现/规则/工具遵循各自许可�
 
 ## 构建已发布的软件
 
-main 保存配方和公开发行入口。要复现某个已发布实现，使用同一仓库的固定版本标签，放入可丢弃的 generated/ 工作目录：
+main 保存配方、固定源码子模块和公开发行入口。首次获取可用 `git clone --recurse-submodules https://github.com/LIghtJUNction/MagicNet.git`。已有检出直接初始化固定实现并构建：
 
 ~~~sh
-mkdir -p generated
-git clone --branch v1.8.0 --single-branch https://github.com/LIghtJUNction/MagicNet.git generated/magicnet-android
-git -C generated/magicnet-android submodule update --init --recursive
+git submodule update --init --recursive generated/magicnet-android
 cd generated/magicnet-android
 kam build -j 2
 ~~~
 
-已有同名目录时先核对其本地修改，不覆盖或清空。Android 源码标签包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`dist/MagicNet.zip` 是本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按该标签的发行文档打包和验证。
+当前源码固定为 `0dca28dd984d82333707cbf4b222596934b4d847`，完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同。新源码仓库仅导入这个干净快照；原历史及发布标签仍保留在 MagicNet。配方版本为 0.2.1，Android 软件版本仍为 v1.8.0。
+
+已有同名目录时先核对其本地修改，不覆盖或清空。源码包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具，详情见 [源码构建指南](generated/magicnet-android/docs/build.md)。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`generated/magicnet-android/dist/MagicNet.zip` 是从主仓库看见的本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按源码内的发行文档打包和验证。
 
 v1.8.0 在既有实现上按新配方开发，并非声明从零独立重建。新增应用/域名分流、自定义组/出口、应用名查询和重新设计的配色；保留订阅及系统管理规则，变更先预览，再保存应用。安装说明见 [v1.8.0 发布说明](docs/releases/v1.8.0.md)。

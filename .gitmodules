@@ -31,3 +31,6 @@
 [submodule ".agents/skills/update-recipkg-in-project"]
 	path = .agents/skills/update-recipkg-in-project
 	url = https://github.com/recipkg/update-recipkg-in-project.git
+[submodule "generated/magicnet-android"]
+	path = generated/magicnet-android
+	url = https://github.com/LIghtJUNction/magicnet-android.git

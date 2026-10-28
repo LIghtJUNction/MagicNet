@@ -48,7 +48,6 @@ Thumbs.db
 # Generated Android framework policy bridge.
 /src/MagicNet/libexec/network-policy-bridge.jar
 
-# Recipes are primary; generated implementations and local acceptance output are disposable.
-/generated/
+# Local acceptance output is not versioned.
 /artifacts/
 /.playwright-cli/

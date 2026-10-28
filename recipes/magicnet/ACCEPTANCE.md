@@ -35,3 +35,11 @@
 | M29 | 在锁定 sing-box 核心上对比 mixed 与 Go/default TUN stack | 热点回程、DNS、策略、IPv4/IPv6、长连接和资源指标全过后才可提议换默认；stack 选择不改变 tun|ebpf 模式语义 |
 
 M18–M29 来自 [FEEDBACK.md](FEEDBACK.md) 的 Issue 反馈。迁移阶段仅运行材料检查和原实现基线，后续 v1.8.0 在既有实现上按新配方开发；各场景的本地、设备和网络结果分别记录，不宣称已经独立从零重建或全部验收通过。
+
+## 配方与源码布局验收
+
+- MagicNet 主仓库保留原名称和 `recipes/`。`generated/` 仅包含具名源码子模块；`git ls-tree HEAD generated/magicnet-android` 必须显示 mode `160000`，`.gitmodules` 的 URL 为独立的 `LIghtJUNction/magicnet-android`，仓库与子目录同名。不能整体忽略这个入口。
+- 源码 gitlink 指向已公开可获取的完整提交。干净检出主仓库并初始化该子模块，须取得同一 tree 与六个固定嵌套子模块；保留已有本地修改、历史及其他 worktree。独立源码快照与原 v1.8.0 完整 tree 相同才可沿用原版本的历史验证记录。
+- 全部 11 个共享技能仍来自 PROJECT_SKILLS.md 列出的各自上游仓库，以 mode `160000` 固定，入口和引用的 Markdown 资源可读；原项目自定义技能保留。
+- `recipkg check` 通过，临时 pack 归档再次 check 通过；归档只含普通 UTF-8 `.md`，无链接、源码、Git 元数据、私密文件或执行钩子。完整 build 提示词包含所有递归 Markdown 材料。未明确要求交付归档时，验证后清理临时文件。
+- 发布后回读主仓库 gitlink、独立源码提交和原仓库 topics；保留已有 topics 并包含 `recipkg`。这项结构验收与 Android 构建、设备、网络和独立重建验收分别报告。

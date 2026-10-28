@@ -76,8 +76,16 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 
 ## v1.8.0 实现迭代
 
-用户随后授权按新配方开发、提交推送并发布。实现从 ae4de1ce 的完整源码继续，位于 ignored generated/magicnet-android/，使用 Rust、Shell、Vue 以保留既有边界；这不是独立从零重建。main 仍为 Markdown 配方，源码通过同一仓库的 v1.8.0 标签固定，不新建平行仓库或长期源码分支。
+用户随后授权按新配方开发、提交推送并发布。实现从 ae4de1ce 的完整源码继续，开发时位于本地忽略的 generated/magicnet-android/，使用 Rust、Shell、Vue 以保留既有边界；这不是独立从零重建。当时 main 保留配方，源码通过同一仓库的 v1.8.0 标签固定。该临时布局已由下述源码子模块布局取代。
 
 结构化增量分流、私密应用名 inspector、WebUI 视觉与表单改动有对应接口/验收更新；配方版本 0.2.0 与 Android 软件版本 v1.8.0 分开。初次本地构建因 Go 的持久化 GOPROXY=direct 无法取得五个上游旧提交而失败；核对公共代理中的固定版本与 go.sum 后，构建脚本默认使用 https://proxy.golang.org,direct，未更换依赖版本、未关闭摘要校验。构建继续执行真实内核和包检查，结果见 VERIFICATION。
 
 本轮实现源码固定为 f13ca61b9c3477aee3b1380d71815c84b3a2a6bf（原仓库 v1.8.0 标签）；host release CLI 的 capabilities 已实测，认证 MCP 工具目录为 85 项，未认证与 generic app inspector 请求均被拒绝。
+
+## 2026-10-29 源码子模块布局修正
+
+用户要求按 migrate-to-recipkg 技能执行，保留现有同仓库 recipes/ 布局与主项目 MagicNet。实现复用原干净目录，不复制源码、不改变语言、功能、语种、平台或性能预算；独立源码仓库为 https://github.com/LIghtJUNction/magicnet-android ，通过 generated/magicnet-android/ 的固定 gitlink 公开。
+
+源码提交为 0dca28dd984d82333707cbf4b222596934b4d847，完整 tree 为 bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a，与原 v1.8.0 提交 f13ca61b9c3477aee3b1380d71815c84b3a2a6bf 完全相同，包括六个嵌套子模块。新仓库从当前干净快照开始，不重发原历史中已删除的本地工具数据库。原历史与发布标签保留在 MagicNet；本地 legacy/magicnet-v1.8.0 分支与 upstream 远程保留原来源。
+
+配方根包提升为 0.2.1，修改范围为仓库布局、获取/构建入口、依赖边界和相应验收。已发布的 v1.8.0 与 0.2.0 发布归档保持原样。共享技能复用既有 11 个 canonical 子模块，原自定义技能不替换。材料检查与公开检出结果见 VERIFICATION.md；结构修正不构成重新构建、重新发布 Android 包或真机验收。

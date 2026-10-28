@@ -1,9 +1,9 @@
 # MagicNet 配方项目
 
 本仓库的主要输入是 recipes/，项目名保持 MagicNet，禁止创建带 recipkg 后缀的平行项目或仓库。
-生成实现放 generated/<implementation-name>/，默认不追踪；参考代码是临时观察材料，不是配方依赖。用户没有要求独立重建时，不要把写出配方说成软件已重建。
+generated/ 只作容器；实现放在独立的小写连字符源码仓库，以固定提交的子模块接入 generated/<source-repository-name>/。当前源码仓库是 LIghtJUNction/magicnet-android，路径为 generated/magicnet-android/；必须跟踪 gitlink 和 .gitmodules，不把该入口整体忽略，也不直接提交普通源码文件。参考代码是单独的临时观察材料，不是配方依赖。用户没有要求独立重建时，不要把写出配方说成软件已重建。
 业务变更必须同步 BUILD_PROMPT、接口、依赖与 ACCEPTANCE；先本地 recipkg check/pack/归档检查/build 提示词，再报告真实验证范围。
-只向原仓库当前授权分支同步；不擅自创建新远程或发布版本。GitHub 配方仓库发布时保留原 topics 并添加 recipkg，回读核对。
+本轮已授权按迁移技能发布独立源码仓库 magicnet-android，并在原 MagicNet 仓库 main 接入固定提交；日后只向各仓库已授权分支同步，不擅自创建其他远程或发布版本。GitHub 配方仓库发布时保留原 topics 并添加 recipkg，回读核对。
 root 的 .env 继续保持私密；不要复制进 generated 或配方。以下状态、安全和机器接口约束仍适用于重建后的 Android 产品。
 
 # Agent Instructions
@@ -26,7 +26,7 @@ root 的 .env 继续保持私密；不要复制进 generated 或配方。以下�
 
 ## File-backed state contract
 
-设备运行状态遵守“文件即状态”的统一状态面，详细设计见 `docs/state-plane.md`。
+设备运行状态遵守“文件即状态”的统一状态面，详细设计见 `generated/magicnet-android/docs/state-plane.md`。
 
 - `.config` 保存持久化用户意图；`.state/machines/*.state` 保存规范化的运行观测/恢复状态。不要把用户选择继续藏进 `.state`。
 - canonical 状态固定放在 `.state/machines/*.state`，一个状态域只有一个 public canonical 文件；不要新增需要消费者组合多个 marker/PID/error 文件才能判断的 public 状态。
@@ -45,9 +45,9 @@ root 的 .env 继续保持私密；不要复制进 generated 或配方。以下�
 
 - 机器接口固定使用 `schema=1` JSON envelope；成功响应至少包含 `schema`、`ok=true`、`command`、`data`，失败响应至少包含 `schema`、`ok=false`、`command`、`error.code`、`error.message`。
 - 机器模式必须显式使用 `--json`。`--json` 一旦出现，请求必须由机器 dispatcher 完整接管；未支持的机器命令返回结构化错误，严禁落回普通 dispatcher 执行写操作。
-- `--json` 默认只允许只读状态接口；`override` 写接口是经 `docs/config-overrides.md` 单独设计的例外。继续新增机器写接口前必须单独设计幂等、错误码、并发和回滚语义，不能简单给现有写命令套 JSON。
+- `--json` 默认只允许只读状态接口；`override` 写接口是经 `generated/magicnet-android/docs/config-overrides.md` 单独设计的例外。继续新增机器写接口前必须单独设计幂等、错误码、并发和回滚语义，不能简单给现有写命令套 JSON。
 - stdout 在机器模式下只能包含一个结果 JSON；日志、调试信息和可操作诊断写 stderr。不得在 JSON 前后添加 banner、进度文本或 shell 提示。
-- `cli --json capabilities` 是客户端能力协商事实源。增加、删除、重命名机器命令或改变字段语义时，必须同步 capabilities、测试、MCP/WebUI 消费者和 `docs/machine-interface.md`。
+- `cli --json capabilities` 是客户端能力协商事实源。增加、删除、重命名机器命令或改变字段语义时，必须同步 capabilities、测试、MCP/WebUI 消费者和 `generated/magicnet-android/docs/machine-interface.md`。
 - 机器状态默认最小披露：不得返回订阅 URL、token、secret、password、失败 reason 原文、SSID/BSSID 原文或其他不必要的设备标识。只返回业务需要的类型、布尔值、计数或规范化状态。
 - 配置值与实际运行值不能混为一谈；存在差异的状态必须使用 `configured` / `effective` 或同等明确的字段分层。
 - 不能把未知状态伪装为成功状态。例如 PID 枚举失败必须报告 `unknown`，不能当作 `running`；无证据时使用 `null`/`unknown`，不要猜测。

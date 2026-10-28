@@ -13,6 +13,10 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
+## 实现与观察材料
+
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `0dca28dd984d82333707cbf4b222596934b4d847`。它保留现有实现与六个嵌套源码子模块的固定点，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与生成实现分开；无需读取源码才能获取本包完整需求。
+
 ## 外部前提，未打包为依赖
 
 - Android arm64、root 管理器、OEM 网络栈、可用 proc/sysfs/netlink，以及对应模式的内核能力。
@@ -26,4 +30,4 @@ graph TD
 
 ## 发布与发现
 
-项目名称保持 MagicNet。GitHub 发布配方时必须在原仓库保留已有 topics 并加入 recipkg，再回读确认；这只帮助发现，不证明配方正确。创建新远程、发布新版本、修改设备和推送到其他项目不包含在本地配方交付中。
+项目名称保持 MagicNet。GitHub 发布配方时必须在原仓库保留已有 topics 并加入 recipkg，再回读确认；这只帮助发现，不证明配方正确。本轮用户已授权按迁移技能发布独立源码仓库 magicnet-android 并接入主仓库；不包含发布新 Android 版本、修改设备或推送到无关项目。

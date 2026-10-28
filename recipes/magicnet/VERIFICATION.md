@@ -1,8 +1,21 @@
 # 实现与发行验证
 
+## 2026-10-29 源码子模块迁移
+
+根配方版本为 0.2.1，Android 软件仍为 v1.8.0。独立源码提交 `0dca28dd984d82333707cbf4b222596934b4d847` 与原已发布提交 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 的完整 tree 均为 `bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a`，含六个固定嵌套子模块。当前目录无源码修改，原分支与历史保留；根私密 `.env` 未追踪，未复制到实现或配方。
+
+11 个共享技能逐个核对 origin、完整提交、干净状态、SKILL.md 和 Markdown 资源；原项目自定义技能保留。源码仓库仅发布当前 tree，不带入原历史已删除的本地工具数据库。
+
+- `recipkg check recipes/magicnet`、临时 pack、归档 check 与完整 build 提示词生成通过。遍历归档确认 8 个包、48 个普通 UTF-8 Markdown 文件，无链接、NUL、源码、Git 元数据或私密路径；每份非 LOCK Markdown 的完整正文均出现在提示词中。临时归档和提示词已删除。
+- 主仓库 index 的源码条目为 mode `160000`，固定上述源码提交；`.gitmodules` 指向独立源码 URL，入口未被忽略。源码 `.git` 由标准 `git submodule absorbgitdirs` 接管，递归检查既有嵌套子模块状态均干净；原自定义技能无差异。
+- 独立源码仓库已公开，远端 main 与本地提交一致。禁用凭据 helper 后从公开 URL 做全新浅检出，核对完整 commit/tree、单提交历史及私密路径排除，再从各公开上游初始化全部六个直接子模块，固定点全部匹配。临时检出已清理。
+- 原 MagicNet 仓库已有 topics 为 `recipkg`；幂等添加后回读仍为 `recipkg`，没有删改其他 topic。`git diff --check` 与 staged diff 检查通过。
+
+这些检查只验证迁移结构、配方材料和公开源码可获取性。没有重新构建 Android、发布新版本或执行真机/网络验收；下述 v1.8.0 记录是同一源码 tree 的历史验证证据。主仓库推送后的最终 gitlink 与完整检出另做发布回读，不把 index 预先当成远端状态。
+
 ## v1.8.0 本轮开发
 
-2026-10-28，按照当前递归配方继续开发既有 Rust、Shell、Vue 实现。源码固定 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf`，软件版本 v1.8.0 / versionCode 10608，配方版本 0.2.0。源码位于本地忽略的 `generated/magicnet-android/`，通过原仓库软件标签提供；没有新建平行仓库或源码远程分支。`android-reference` 已按要求移入回收站。
+2026-10-28，按照当前递归配方继续开发既有 Rust、Shell、Vue 实现。源码固定 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf`，软件版本 v1.8.0 / versionCode 10608，配方版本 0.2.0。当时源码位于本地忽略的 `generated/magicnet-android/`，通过原仓库软件标签提供；现已改为上节的独立源码子模块。`android-reference` 已按要求移入回收站。
 
 - Rust：完整本地测试 808 passed、1 ignored；fmt 和严格 workspace/all-target/all-feature Clippy 通过。
 - WebUI：338 项本地测试、类型检查、生产构建通过；新增分流、凭据编辑、冲突与撤销等 36 项浏览器任务通过。完整 750 项浏览器任务完成：747 passed、3 skipped、0 failed（6 种视口，中英俄与浅深主题、配置、订阅、导航、后台进度与恢复等）。
