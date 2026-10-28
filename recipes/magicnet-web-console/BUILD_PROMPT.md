@@ -1,0 +1,31 @@
+# MagicNet WebUI
+
+交付普通 Android root 用户每天使用的控制界面。语言/框架自由，保留现有流程，重新设计视觉，不能降格成展示页。独立包不声明第二份控制面依赖；根包提供 control 的唯一 CLI/机器合同，集成时协商 capabilities。
+
+阅读 DESIGN.md、ACCEPTANCE.md；原产品 13 个页面为：概览、流量路径、应用、拦截规则、链式代理、订阅、Tailscale、配置文件、管理面板、健康检查、终端、工具、最近输出。按运行、路由、配置、诊断组织，保持页面可直达、导航状态和快速搜索。
+Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字；Esc 关闭并恢复原焦点。首次引导可取消、稍后恢复；开局无订阅不能展示为成功联网。
+
+## 控制与并发
+
+通过管理器原生 bridge 执行受控 argv/私密 payload 文件，不把订阅/密码写 shell 字符串预览；无 native bridge 时明确只读预览，不模拟已连接设备。
+先协商 JSON 能力，校验 schema/ok/command/data 后更新；不解析人类文本来替代已有 JSON。未知、坏 JSON、多 JSON、非零退出显示失败；失败刷新清除过期 live 指示为 unknown；保存错误保留编辑。
+私密 sub/wifi/override inspector 安静读取，错误显示规范化代码，不捕获原始 payload。诊断使用脱敏 status。用户配置与实际 effective 分开展示。
+串行执行直到 native exit/error，调用者超时不等于取消，不能提前释放执行槽。晚回调、切页、双提交和新操作的 ownership 检查防止旧结果覆盖。
+原生输出收集上限 8,388,608 UTF-16 单元及 65,536 事件，两流合计，空事件计入；溢出清空丢弃且等待真实退出，明确 output-limit 错误，不把部分 JSON 当成功；终结路径移除 callback。
+长后台任务通过设备 canonical/机器 status 恢复，关闭 WebUI 不丢失 module-update 工作。任务“接受”“完成”“需重启”和“已生效”分开。
+
+## 编辑、配置与敏感内容
+
+配置草稿内存跨页保留；reload/import/sync-template 明确提示可取消的丢失风险；刷新/离开提示，草稿不存 localStorage。读取失败禁用保存；保存期间继续编辑不被旧成功结果覆盖；格式化保留可理解的光标/横向滚动。
+覆写 preview/save/apply/reset 显示 pending/revision/conflict；管理字段不准从编辑器绕过。备份/恢复、节点/连接关闭、抓包、修复、停止、重启都有对应风险与确认。
+network-access 先检查完整共享包名单，明确确认后写；只读检查不自动修复。Tailscale disable/resume/logout 区分，失败不报成功。
+
+## 国际化与主题
+
+WebUI zh-CN/en/ru，首次选浏览器首个受支持语言，否则 zh-CN；手动选择存在 magicnet.webui.locale，存储失败不能阻塞 UI；HTML lang 同步。
+语言切换不 remount、不丢草稿；仅 UI 解释翻译，命令/配置/用户数据/日志不翻译。翻译完整句子与命名占位符相同；历史操作保留发生时语言，内嵌第三方面板自管语言。
+提供 light/dark/system 及减少动效。无 RTL 需求；locale 日期/数字/时区的更深规范尚未确认，不能凭空新增格式承诺。
+
+## 本包补充材料
+
+- [DESIGN.md](DESIGN.md)

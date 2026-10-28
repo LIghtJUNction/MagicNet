@@ -1,163 +1,47 @@
-<p align="center">
-  <img src="./icon.png" alt="MagicNet Logo" width="180" />
-</p>
+# MagicNet
 
-<h1 align="center">MagicNet</h1>
+Android root 设备的透明网络工作台，以可重建的软件配方维护。
 
-<p align="center">
-  <a href="./README.md">简体中文</a> · <a href="./README.en.md">English</a> · <a href="./README.ru.md">Русский</a>
-</p>
+[English](README.en.md) · [Русский](README.ru.md) · [主配方](recipes/magicnet/BUILD_PROMPT.md) · [验收合同](recipes/magicnet/ACCEPTANCE.md)
 
-<p align="center">
-  Android root 设备上的 sing-box 透明网络工作台
-</p>
+配方是项目本体，编程语言由重建 Agent 选择；实现是可重新生成的产物。项目名称保持 MagicNet。
 
-<p align="center">
-  <a href="https://github.com/LIghtJUNction/MagicNet/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/LIghtJUNction/MagicNet?display_name=tag&sort=semver&style=flat-square" /></a>
-  <a href="https://github.com/LIghtJUNction/MagicNet/actions/workflows/quality.yml"><img alt="Code Quality" src="https://github.com/LIghtJUNction/MagicNet/actions/workflows/quality.yml/badge.svg?branch=main" /></a>
-  <a href="https://github.com/LIghtJUNction/MagicNet/actions/workflows/init.yml"><img alt="Build" src="https://github.com/LIghtJUNction/MagicNet/actions/workflows/init.yml/badge.svg?branch=main" /></a>
-  <a href="./sing-box"><img alt="sing-box fork" src="https://img.shields.io/badge/core-sing--box%20fork-17181C?style=flat-square" /></a>
-  <img alt="TUN and eBPF" src="https://img.shields.io/badge/dataplane-TUN%20%7C%20eBPF-6E56CF?style=flat-square" />
-  <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square" /></a>
-</p>
+## 仓库内容
 
-MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 Android 设备流量，不占用系统 VPN slot。默认使用 `tun`；需要时可显式切换到 `ebpf`。主线只支持这两种模式，不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径。
+- recipes/magicnet/：产品要求、来源证据、性能基线和集成验收。
+- recipes/magicnet-control-plane/：CLI、schema-1 JSON、认证 MCP、完整工具 Schema 与文件状态合同。
+- recipes/magicnet-network-runtime/：订阅、进程、应用/Wi-Fi/热点、Tailscale、网络恢复事务。
+- recipes/magicnet-packet-engine/：TUN/eBPF 与 sing-box 兼容合同。
+- recipes/magicnet-routing-policy/：默认 selector、DNS、分类数据与次序。
+- recipes/magicnet-web-console/：13 页操作流程、国际化与视觉重设计要求。
+- recipes/magicnet-module-delivery/：root 模块安装、组件分发、可信更新与恢复。
+- recipes/software-quality/：完整固定的设计、代码与性能质量合同。
+- generated/<implementation-name>/：本地临时实现，不进入 Git 或配方归档。当前 android-reference 是迁移前源码的参考材料，不是按本配方独立重建的结果。
 
-## 核心特色
+旧源码仍在 Git 提交 96993ea5c851b8d51cc562c3ca0766a2ca571210；当前源码的历史、已有分支、stash 与其他 worktree 保留。观察 checkout 与生成实现不是 Recipkg 依赖。
+根目录 update.json 和公开品牌/校验资料保留旧发布兼容性；不把旧安装包或本机运行状态打进配方。现有用户可继续使用 [正式发布](https://github.com/LIghtJUNction/MagicNet/releases)，本次迁移不发布新 Android 版本。
 
-- **订阅内容不限定为 sing-box 格式**：支持一行一个公网 HTTPS 订阅链接，最多五个来源。下载内容可识别 Clash/Mihomo YAML、base64、常见分享链接集合、sing-box JSON 和纯文本。
-- **直接兼容 Clash/Mihomo 订阅**：无需先找“sing-box 专用订阅”。把同一个合法 Clash/Mihomo 订阅 URL 交给 MagicNet，模块会解析节点并生成受控的 sing-box 配置。
-- **覆盖常见节点协议**：原生导入 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可处理额外格式。 原生备用解析支持常见字面量字段和普通引号值；不支持的协议、复杂 TLS/传输选项、别名、块标量及需要转义解析的字段值需要完整转换器。转换器不可用或失败时，这些输入会被明确拒绝并保留当前配置。
-- **自带 sing-box fork 内核**：仓库固定内核子模块和 Android arm64 构建，包含 MagicNet 使用的 eBPF inbound、Android 兼容修复与回归测试，不调用系统中来源不明的 sing-box。
-- **TUN 与 eBPF 两套透明数据面**：TUN 创建 `magicnet0`；eBPF 默认使用 hybrid，同时启用 local cgroup，并在确认下游接口后通过 shared TC 接管热点流量；没有下游接口时 shared 保持 pending。两种模式显式、互斥、原子切换，失败会回滚。
-- **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。
-- **配置模板仓库**：默认使用固定 commit 和 SHA-256 的 `MagicSingBox` 配置，也可改为自己的 GitHub/GitLab fork，在仓库中维护规则后原子同步。
-- **DNS 与故障边界可见**：拦截物理出口上的明文 DNS/DoT，`cli health` 和 `cli transparent status` 分别按 TUN 接口或 eBPF capability/cgroup/TC 报告真实状态。
-- **WebUI、CLI 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。WebUI 概览以“流量星座”实时展示 设备 → 数据面 → sing-box → 出口 的已证实状态，按 `Ctrl/⌘ + K` 或 `/` 可快速跳转到任意页面。
+## 使用
 
-## 安装与首次成功运行
+安装 Recipkg 后：
+~~~sh
+recipkg check recipes/magicnet
+recipkg pack recipes/magicnet -o artifacts/magicnet-0.1.0.recipe.tar.gz
+recipkg build artifacts/magicnet-0.1.0.recipe.tar.gz --lang zh-CN --output artifacts/magicnet-build.md
+~~~
+先创建空 artifacts/ 目录；工具拒绝覆盖已有输出。最后一个命令只生成包含完整递归材料的提示词，把它交给 Agent 才开始实现与验收。
+生成实现默认放 generated/<implementation-name>/；本项目按用户约定将它视为临时产物，不为生成源码另建带 recipkg 后缀的项目，也不在本次迁移创建新的远程仓库。
 
-> **旧版本升级到 v1.6.2：需要手动安装一次。** 本版为符合 KernelSU Modules 限制，将版本码迁移为 `10602`。先备份配置，再在 root 管理器中直接安装 `MagicNet-full.zip`，不要先卸载。详见 [版本码迁移说明](docs/releases/v1.6.2.md)。
+## 已确认的重建方向
 
-1. 从 [Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载模块 ZIP，在 Magisk、KernelSU 或 APatch 的模块页面安装并重启。
-2. 在系统设置中关闭“私人 DNS / 私密 DNS / Private DNS”，不要保留为“自动”。
-3. 打开 root 管理器提供的模块 WebUI，在“订阅”中保存合法的 URL，或导入本地 Clash YAML、base64、分享链接、JSON 或文本订阅。
-4. 等待“保存并启用”完成，在 WebUI 健康页确认 sing-box 与当前数据面正常。默认 TUN 应建立 `magicnet0`；eBPF 应显示 local cgroup 状态及 shared attached/pending 状态。
+完整保留 Android root / arm64 的现有行为和 tun|ebpf 边界；语言/框架自由；保留流程并重新设计视觉，避免通用 AI 模板；沿用现有语种和切换行为。性能预算未知，真实原实现基线及限制见 [PERFORMANCE.md](recipes/magicnet/PERFORMANCE.md)。
+[PROVENANCE.md](recipes/magicnet/PROVENANCE.md) 区分文档、源码、实际测量、推断和未知；[VERIFICATION.md](recipes/magicnet/VERIFICATION.md) 记录本次材料交付检查。写出并打包配方不证明已重建软件。
 
-也可以在 root shell 中完成 URL 配置和验收：
+## 维护
 
-```bash
-su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'
-su -c /data/adb/modules/MagicNet/cli health
-su -c /data/adb/modules/MagicNet/cli transparent status
-```
+业务变更先更新配方、接口与验收，再在 generated/ 中实现。本地验证后同步原仓库的授权分支，不为普通迭代启动重型远程 CI。正式发布的构建、签名、设备和业务验收单独执行。
+发布配方的 GitHub 仓库需保留原 topic 并包含 recipkg；标签只用于发现。私密 .env、订阅、凭据与设备身份始终留在本机，不进入补丁或归档。
 
-成功状态应同时满足：`cli health` 没有核心/Dataplane 阻塞项，`cli transparent status` 的 configured/effective 状态准确。TUN 以 `magicnet0` 为准；eBPF 不能要求 `magicnet0`，而应报告 capability、local cgroup 与 shared TC/interface。MagicNet 不提供节点、订阅或外部出口，请只使用你有权使用且符合当地法律与服务条款的资源。
+MIT，见 [LICENSE](LICENSE)；第三方实现/规则/工具遵循各自许可，参见配方内的许可与外部前提。
 
-详细格式、协议和操作说明见 [用户指南](docs/user-guide.md)。
-
-## 常用命令
-
-```bash
-# 状态与恢复
-su -c /data/adb/modules/MagicNet/cli health
-su -c /data/adb/modules/MagicNet/cli transparent status
-su -c /data/adb/modules/MagicNet/cli transparent set tun
-su -c /data/adb/modules/MagicNet/cli transparent set ebpf
-su -c /data/adb/modules/MagicNet/cli repair
-su -c /data/adb/modules/MagicNet/cli service restart sing-box
-
-# 订阅与节点
-su -c /data/adb/modules/MagicNet/cli sub status
-su -c /data/adb/modules/MagicNet/cli sub update sing-box
-su -c /data/adb/modules/MagicNet/cli node test-all
-
-# 应用策略；bypass 适合与外部 VPN 共存，普通直连优先用 direct
-su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
-su -c '/data/adb/modules/MagicNet/cli app add com.example.browser direct'
-su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
-
-# Wi-Fi 与热点
-su -c '/data/adb/modules/MagicNet/cli wifi add-ssid "Home WiFi"'
-su -c /data/adb/modules/MagicNet/cli wifi enable
-su -c /data/adb/modules/MagicNet/cli hotspot enable
-su -c /data/adb/modules/MagicNet/cli hotspot status
-
-# 网络兼容与支持包
-su -c /data/adb/modules/MagicNet/cli network status
-su -c '/data/adb/modules/MagicNet/cli network set ipv4_only 1400 5m'
-su -c /data/adb/modules/MagicNet/cli support bundle
-```
-
-## 网络边界
-
-MagicNet 会拦截物理出口上的直连 DNS/DoT（53/853），但浏览器内置 DoH 和外部 VPN 有自己的流量边界。关闭 Private DNS 后再做泄露测试；抓包接口应以 `ip route get 1.1.1.1` 的实际物理出口为准。
-
-MagicNet 不创建热点，不替代厂商 tethering/NAT，也不自动接管外部 VPN overlay。局域网默认走 `lan`/Direct；userspace Tailscale endpoint 需要显式配置，边界与验收见 [Tailscale 说明](docs/tailscale.md)。
-
-断网时不要反复切换模式。保留当前现场，依次查看 configured/effective、rollback/pending 与健康状态：
-
-```bash
-su -c /data/adb/modules/MagicNet/cli health
-su -c /data/adb/modules/MagicNet/cli transparent status
-su -c /data/adb/modules/MagicNet/cli diagnose
-su -c /data/adb/modules/MagicNet/cli support bundle
-```
-
-## 控制界面
-
-- 模块 WebUI：安装模块后由 Magisk、KernelSU 或 APatch 的模块页面打开，覆盖首次配置、应用/Wi-Fi/热点策略、节点与诊断。
-- 界面语言：WebUI 支持简体中文、English 和 Русский，可手动切换并记住选择。安装向导及模块操作菜单支持英文、俄语，保留已有中文、日语和韩语。安装器默认跟随 Android 系统语言，也可在交互安装时选择。
-- [MCP](docs/mcp.md)：适合从工作站自动化控制真机，默认关闭且要求 secret 认证。
-
-终端操作菜单可用 `KAM_UI_LANGUAGE=ru` 或 `KAM_UI_LANGUAGE=en` 临时指定语言，例如：
-
-```bash
-su -c 'KAM_UI_LANGUAGE=ru sh /data/adb/modules/MagicNet/action.sh'
-```
-
-CLI 命令、状态字段、配置值和原始日志保持原样，方便脚本及诊断工具读取；内置第三方内核面板使用其自身的语言设置。
-
-## 开发安装
-
-已配置 [kam](https://github.com/MemDeco-WG/kamfw) 时可以直接安装：
-
-```bash
-kam install LIghtJUNction/MagicNet
-```
-
-从源码构建：
-
-```bash
-git clone https://github.com/LIghtJUNction/MagicNet.git
-cd MagicNet
-git submodule update --init
-kam build
-```
-
-产物位于 `dist/MagicNet.zip`。构建、包结构和发布验收见 [构建与发布包说明](docs/build.md)。
-
-## 文档
-
-- [用户指南](docs/user-guide.md)：安装、导入、节点、应用/Wi-Fi/热点与排障。
-- [构建与发布包说明](docs/build.md)：发布 ZIP、依赖锁和包验收。
-- [本机仿真、AVD 和真机验收](docs/local-simulation.md)：分层测试与安全传输目录。
-- [MCP 自动化说明](docs/mcp.md)：认证、端口转发、日志和启动故障检查。
-- [架构说明](ARCHITECTURE.md)：仓库模块、运行架构、状态归属和故障边界。
-- [贡献指南](CONTRIBUTING.md)：开发环境、质量检查和改动边界。
-- [安全策略](SECURITY.md)：私密漏洞报告方式和需要保持的安全属性。
-- [kamfw 本地文档](src/MagicNet/lib/kamfw/README.md)：模块内嵌运行时；上游项目见 [MemDeco-WG/kamfw](https://github.com/MemDeco-WG/kamfw)。
-
-## 社区与支持
-
-<a href="https://donate.lmm.best/?project=magicnet"><img src="https://donate.lmm.best/badge.svg?project=magicnet&amp;currency=CNY&amp;lang=zh-CN&amp;period=all&amp;layout=compact&amp;theme=dark&amp;width=360&amp;title=MagicNet" alt="捐赠支持" width="360" /></a>
-
-- Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
-- GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
-- 开发支持：MagicNet 的网络功能不依赖 LLM API；如需 OpenAI 兼容的多模型接口，可以使用 [LMM API Gateway](https://api.lmm.best)。[项目源码](https://github.com/TokenNotIncluded/api.lmm.best)现由 [TokenNotIncluded](https://github.com/TokenNotIncluded) 组织托管。
-
-WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再按类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
-
-## 许可证
-
-MIT，见 [LICENSE](LICENSE)。
+本仓库提交钩子运行 recipkg check recipes/magicnet；提交前应确保安装的 Recipkg CLI 在 PATH。共享 Git hook 保持标准 pre-commit 入口，其他 worktree 使用各自配置。
