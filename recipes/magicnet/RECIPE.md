@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.1.0"
+version = "0.2.0"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"

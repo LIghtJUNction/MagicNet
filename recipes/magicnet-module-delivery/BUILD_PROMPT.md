@@ -37,3 +37,5 @@ manager 开始后 partial/interrupted failure 由 manager 拥有，不以删除�
 ## 本包补充材料
 
 - [EXTERNAL_ASSETS.md](EXTERNAL_ASSETS.md)
+
+构建器必须尊重绝对或相对 CARGO_TARGET_DIR，Android Rust 构建使用 --locked。配置检查使用命名的模块路径变量，不覆盖调用者 HOME。正式发布同时固定源码标签、组件摘要、模块版本/单调递增 versionCode 与兼容更新入口。

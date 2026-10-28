@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.1.0"
+version = "0.2.0"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"

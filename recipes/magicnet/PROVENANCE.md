@@ -1,7 +1,7 @@
 # 来源、证据与未验证项
 
 主来源：LIghtJUNction/MagicNet，https://github.com/LIghtJUNction/MagicNet ，完整提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，module.prop v1.7.2。迁移前 main 与 origin/main 一致，工作区干净；保留全部 stash、其他分支与其他 worktree。
-本轮只抽取需求/接口/可观察语义，没有独立重建实现。旧源码作为 generated/android-reference/ 的临时参考，Git 历史保留固定来源；不成为 Recipkg 依赖。
+迁移阶段只抽取需求/接口/可观察语义，没有独立重建实现。原临时参考目录 generated/android-reference/ 已按用户要求移入系统回收站；Git 历史保留固定来源，不成为 Recipkg 依赖。
 
 ## 证据等级
 
@@ -73,3 +73,11 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 ## MCP 公共目录实际观察
 
 隔离宿主夹具的 initialize/tools/list 成功，完整工具参数 Schema 已提炼；未认证请求被拒绝。未执行业务工具，临时服务/secret/夹具已清理。结果：{"tool_count": 84, "initialize_ok": true, "catalog_ok": true, "unauthenticated_rejected": true}。
+
+## v1.8.0 实现迭代
+
+用户随后授权按新配方开发、提交推送并发布。实现从 ae4de1ce 的完整源码继续，位于 ignored generated/magicnet-android/，使用 Rust、Shell、Vue 以保留既有边界；这不是独立从零重建。main 仍为 Markdown 配方，源码通过同一仓库的 v1.8.0 标签固定，不新建平行仓库或长期源码分支。
+
+结构化增量分流、私密应用名 inspector、WebUI 视觉与表单改动有对应接口/验收更新；配方版本 0.2.0 与 Android 软件版本 v1.8.0 分开。初次本地构建因 Go 的持久化 GOPROXY=direct 无法取得五个上游旧提交而失败；核对公共代理中的固定版本与 go.sum 后，构建脚本默认使用 https://proxy.golang.org,direct，未更换依赖版本、未关闭摘要校验。构建继续执行真实内核和包检查，结果见 VERIFICATION。
+
+本轮实现源码固定为 f13ca61b9c3477aee3b1380d71815c84b3a2a6bf（原仓库 v1.8.0 标签）；host release CLI 的 capabilities 已实测，认证 MCP 工具目录为 85 项，未认证与 generic app inspector 请求均被拒绝。

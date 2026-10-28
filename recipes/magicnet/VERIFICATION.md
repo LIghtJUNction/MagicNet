@@ -1,3 +1,31 @@
+# 实现与发行验证
+
+## v1.8.0 本轮开发
+
+2026-10-28，按照当前递归配方继续开发既有 Rust、Shell、Vue 实现。源码固定 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf`，软件版本 v1.8.0 / versionCode 10608，配方版本 0.2.0。源码位于本地忽略的 `generated/magicnet-android/`，通过原仓库软件标签提供；没有新建平行仓库或源码远程分支。`android-reference` 已按要求移入回收站。
+
+- Rust：完整本地测试 808 passed、1 ignored；fmt 和严格 workspace/all-target/all-feature Clippy 通过。
+- WebUI：338 项本地测试、类型检查、生产构建通过；新增分流、凭据编辑、冲突与撤销等 36 项浏览器任务通过。完整 750 项浏览器任务完成：747 passed、3 skipped、0 failed（6 种视口，中英俄与浅深主题、配置、订阅、导航、后台进度与恢复等）。
+- 真实锁定内核：Linux amd64 和 Android arm64 均从固定 fork 源码构建，保留全部 release tags（含 eBPF、Tailscale、WireGuard 等）。用 Linux release CLI + 真正内核在隔离目录运行结构化分流 preview、save、materialize、重复生成、订阅新增项重叠、reset 检查通过；没有启动代理或修改宿主网络。一次最初夹具缺少 default_domain_resolver 被真实内核拒绝，补齐合法夹具后通过，没有关闭验证。
+- 回归修正：先从当前配置和 checkpoint.effective 同时剥离自己的增量项，再执行旧 Merge Patch 的逆向合并，避免“同域名原规则还在”被误报外部冲突；应用/DNS/域名的真实归属与订阅新增项均有覆盖。
+- MCP：隔离宿主 initialize 与认证 tools/list 成功，85 项 Schema 完整保存；未认证请求被拒绝；generic app inspect 被拒绝；临时凭据与监听进程已清理。
+- 性能：对新 release CLI 的三个空模块读接口分别预热 1 次、测 7 次，均校验有效 envelope；全部样本与并行负载限制见 PERFORMANCE。本轮不宣称改善，未测 Android 吞吐、全模块 RSS、冷启动或公网 soak。
+- Android 完整模块构建与 post-build 包检查通过，包含真实内核配置、订阅协议、TUN/eBPF 编排夹具及 78 项默认路由/DNS 检查。当前代码的安装升级夹具（含 21 项模板与配置迁移检查）、模拟 Magisk 完整生命周期、拆分后的完整包、最终轻量安装器检查通过；组件质量 gate、source/shell/host 全套回归通过。9 个组件的大小/摘要已与清单核对，最终 zip 的 CLI、桥接 jar 与生产 index 内容均与构建输入匹配。
+
+## 保留的失败、未知与边界
+
+本地 Go 原配置为 GOPROXY=direct，初次无法获取五个上游旧提交；公共模块缓存仍保留固定版本，使用默认 https://proxy.golang.org,direct 与 go.sum 重建通过，未改依赖版本。主机 shell 测试初次经 mise 的 Python shim 以 decoy argv0 启动失败；后续用真实系统解释器所在 PATH 复跑，不修改进程所有权逻辑。
+
+最后统一字体后，布局/导航/分流相关浏览器复查 244 passed、2 skipped、0 failed。重新打包后只有 webui 组件摘要变化，其余 8 个组件及全部非 WebUI payload 与此前功能验收的内容一致；最终安装器身份/CRC/ELF/别名检查通过。远程发布/下载状态另行记录。
+
+本轮 ADB 检查没有已连接设备，未把 Android 构建当成实际安装。应用名称 Java bridge 仅完成编译与打包，真实设备标签读取、WebView 触屏、多厂商 Play/GMS、热点 IPv4/IPv6、Tailnet 数据连通性和长期网络 soak 都没有当前版本的设备证据。所有 M01–M29 的完整设备业务验收不能写成已通过。
+
+仍保留 mixed TUN stack；真实内核检查发出 stack 将在将来版本移除的 deprecation 告警。依 M29，没有受控设备 A/B 结果前不擅自切换默认。
+
+## 迁移阶段历史记录
+
+以下记录描述配方迁移当时的状态；其中“未重建/未发布”不代表随后 v1.8.0 开发的当前状态。
+
 # 迁移交付检查
 
 本轮交付为软件配方与仓库布局迁移，没有独立重建或发布新的 Android 实现。

@@ -9,7 +9,7 @@
 - 保留操作流程，重新设计视觉，避免通用 AI dashboard。不能因改版删除诊断、文件草稿、失败恢复或无障碍状态。
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
-- 项目和仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 中的源码是可重新生成的本地产物，不是配方依赖。本轮迁移不独立重建实现。
+- 项目和仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 中的源码是可重新生成的本地产物，不是配方依赖。正式版本的实现可固定在原仓库的版本标签，main 保持配方；生成目录仍可丢弃，不建立独立源码仓库或长期源码分支。
 - 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 是新增重建验收，不能把进入配方说成旧实现已修复。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
@@ -49,5 +49,5 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 - [PERFORMANCE.md](PERFORMANCE.md)
 - [PROVENANCE.md](PROVENANCE.md)
 
-- [VERIFICATION.md](VERIFICATION.md)：本次材料交付的实际检查结果。
+- [VERIFICATION.md](VERIFICATION.md)：配方、实现与发行的实际检查结果。
 - [FEEDBACK.md](FEEDBACK.md)：走查限制、Issue 来源与吸收的验收要求。

@@ -21,6 +21,7 @@ log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs 
 - magicnet_app_add_many
 - magicnet_app_apply
 - magicnet_app_list
+- magicnet_app_inspect
 - magicnet_app_mode
 - magicnet_app_packages
 - magicnet_app_remove
@@ -98,3 +99,5 @@ log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs 
 - magicnet_webui_status
 - magicnet_webui_verify
 - magicnet_wifi_status
+
+`magicnet_app_inspect` 是主用户应用名/包名的显式私密只读 named tool，不进入自动资源、汇总或诊断；generic `magicnet_cli` 的 `app inspect`（无论 --json 位置）拒绝执行，不能绕过私密边界。完整目录现在为 85 个工具；风险 hints 不是操作授权。

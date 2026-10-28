@@ -42,3 +42,5 @@
 | diagnose |  |
 
 参数中的 / 代表可选分支的分隔。准确 argv 必须作为独立参数传递；用户输入不得作为 shell 代码求值。机器写接口在 MACHINE_CONTRACT.md 单独设计，不因存在同名人类命令就自动支持 --json。
+
+`app inspect` 仅在显式 `--json` 机器模式提供私密应用名清单；人类 `app packages [query]` 保留包名兼容路径。

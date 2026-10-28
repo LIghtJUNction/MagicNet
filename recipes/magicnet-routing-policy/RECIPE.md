@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-routing-policy"
-version = "0.1.0"
+version = "0.2.0"
 kind = "software"
 description = "MagicNet 默认路由、DNS 与规则数据合同"
 entry = "BUILD_PROMPT.md"

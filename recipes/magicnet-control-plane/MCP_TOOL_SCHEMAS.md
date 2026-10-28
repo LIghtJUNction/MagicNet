@@ -1,6 +1,6 @@
 # MCP 工具的完整公开 Schema
 
-固定源码 release CLI 在隔离宿主目录的认证 tools/list 实际返回。只含公开接口，不含用户配置；保留名称、类型、界限、required/enum/additionalProperties 与 hints。
+v1.8.0 的 release CLI 在隔离宿主目录经认证 tools/list 实际返回，共 85 项；未认证请求被拒绝。只包含公开接口，不包含实际用户配置。
 
 ~~~json
 [
@@ -1212,6 +1212,21 @@
       "type": "object"
     },
     "name": "magicnet_capabilities"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Explicitly read owner-user application package names and labels. Private installed-app inventory; do not include in diagnostics.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "magicnet_app_inspect"
   },
   {
     "annotations": {
