@@ -1,4 +1,5 @@
 import { t } from "@/i18n";
+import { decodeMachineData, machineErrorCode } from "@/composables/machineStatus";
 import { nextTick, reactive } from "vue";
 import {
   AUTHOR_WHISPER_URL,
@@ -44,6 +45,7 @@ import {
   parseHealth,
   parseMcp,
   parsePackages,
+  parsePackageCatalog,
   parseConfigValidation,
   parseWarp,
   runtimeDefaults,
@@ -837,21 +839,20 @@ async function refreshPackages(
   foregroundToken?: number,
 ): Promise<boolean> {
   const query = state.packageQuery.trim();
-  const command = startForegroundCommand(
-    `app packages ${shellQuote(query)}`,
-    query ? t("搜索应用 {p0}", { p0: query }) : "读取已安装应用",
-    quiet,
-    "",
-    foregroundToken,
-    "read",
-  );
-  const uiToken = command.token;
+  const uiToken = foregroundToken ?? foregroundUiGate.current();
   const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取已安装应用"), text, uiToken, allowBusy))
+  const outcome = await runShellOutcome(`${CLI} --json app inspect`,t("读取已安装应用"),true,"--json app inspect",false,"read");
+  let catalog = outcome.ok ? parsePackageCatalog(decodeMachineData(outcome.stdout,"app.inspect")) : null;
+  if (!catalog && ["machine.unsupported_command", "app.catalog_unsupported", "app.catalog_unavailable"].includes(machineErrorCode(outcome.stdout) || "")) {
+    const fallback = await runShellOutcome(`${CLI} app packages ${shellQuote(query)}`,t("读取已安装应用"),true,"app packages [private-query]",false,"read");
+    if (fallback.ok) catalog = parsePackages(fallback.stdout);
+  }
+  if (!catalog) {
+    if (!quiet) markQuietFailure(t("读取已安装应用"),"[error] app.catalog_unavailable",uiToken,allowBusy);
     return false;
+  }
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.packages = parsePackages(text);
+    state.packages = catalog.filter((item) => !query || `${item.appLabel} ${item.packageName}`.toLowerCase().includes(query.toLowerCase()));
   }
   return true;
 }

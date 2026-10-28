@@ -370,3 +370,9 @@ success; controller reapplication and cross-OEM acceptance remain in
 `core`. It is read-only and does not imply online authorization. See
 [tailscale.md](tailscale.md#disable-resume-and-sign-out) for the separate human CLI
 mutations and their concurrency, rollback, and local-logout contract.
+
+## 应用名称与增量分流能力
+
+`--json app inspect`（规范命令 `app.inspect`）是显式私密只读接口，返回 `data.schema=1`、`scope="owner_user"` 和有界 `packages`，每项只有 `packageName`、`appLabel`；最大 4096 项、总输出 512 KiB、等待 15 秒。标签可回退包名；主用户范围不能冒充全部 Android 用户/工作资料。桥接缺失、不安全、不可用或输出无效分别用 `app.catalog_unsupported|catalog_unsafe|catalog_unavailable|catalog_invalid`，不得把未知当空清单成功。WebUI 只有在明确旧版/桥接不可用错误时回退包名读取，不把坏 JSON 当成功；清单不进入通用输出/诊断。
+
+capabilities 的 commands/private_commands 包含 `app.inspect`；features 增加 `additive_routing_overlay`；`routing_overlay_key="$magicnet_routing"`、`routing_overlay_schema=1`，普通 `override_patch_format` 仍为 `json-merge-patch`。新增的结构化扩展与归属/回滚语义见路由配方；原始数组仍具有 Merge Patch 的整段替换语义，不把它冒充增量编辑。

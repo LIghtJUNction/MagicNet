@@ -275,7 +275,7 @@ fn vpn_service_packages(output: &str) -> Vec<String> {
     packages
 }
 
-fn valid_package_name(package: &str) -> bool {
+pub(crate) fn valid_package_name(package: &str) -> bool {
     let mut count = 0usize;
     for segment in package.split('.') {
         count += 1;

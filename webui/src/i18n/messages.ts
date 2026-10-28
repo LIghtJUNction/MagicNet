@@ -1,3 +1,4 @@
+import routingEditor from "./catalogs/routing-editor.ts";
 import frontend from "./catalogs/frontend.ts";
 import overrides from "./catalogs/overrides.ts";
 import moduleUpdate from "./catalogs/module-update.ts";
@@ -16,6 +17,7 @@ import constellation from "./catalogs/constellation.ts";
 
 export const messages: Record<string, readonly string[]> = {
   ...frontend,
+  ...routingEditor,
   ...shell,
   ...routing,
   ...configuration,

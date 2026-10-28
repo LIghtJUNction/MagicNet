@@ -90,3 +90,19 @@ precedence over newly imported nodes until it is changed or reset.
 The backup export includes override intent. Private materialization checkpoints
 are local recovery evidence and are not exported. Application preserves the
 existing stopped/running intent; it does not start a deliberately stopped core.
+
+## 结构化增量分流（schema 1）
+
+原有 JSON Merge Patch 对普通字段继续生效。保留扩展键 `$magicnet_routing` 只接受 `schema: 1`、`rules` 和 `outbounds`，在交给内核前编译并移除该键，不向内核透传。
+
+~~~json
+{"$magicnet_routing":{"schema":1,"rules":[{"kind":"domain","value":"example.com","outbound":"My route"},{"kind":"app","value":"com.example.reader","outbound":"My route"}],"outbounds":[{"type":"selector","tag":"My route","outbounds":["proxy","direct"],"default":"proxy"}]}}
+~~~
+
+最多 256 条规则、64 个自定义出口、每组 128 个成员；名称不为空、不含控制字符，最多 256 UTF-8 字节；域名使用 ASCII/Punycode 域后缀，应用使用带点包名。规则以 `(kind,value)` 唯一，目标必须存在。自定义 tag 不得覆盖订阅、内置出口或 endpoint；组/绕行引用不得缺失或成环。支持 selector/urltest 与 SOCKS、HTTP、Shadowsocks、Trojan、VLESS、VMess、Hysteria2、TUIC、AnyTLS 的受限结构化字段，最终以锁定内核的真实校验为准；不允许任意顶层内核字段混入这个扩展。WebUI 提供常用类型，复杂协议仍可经完整覆写编辑器处理。
+
+编译保留原数组及其相对次序。应用与域名规则位于显式模式、DNS 劫持、LAN 和 Tailnet 保护之后、普通业务分类之前。DNS 使用相同应用/域名条件与次序；拦截目标拒绝解析，其余目标复制固定的加密 DNS 模板并显式 detour 到该目标，使自定义组切换时解析仍走该组。直接链默认选择本地加密 DNS 模板，其余选择远端模板；模板选择基于配置，运行时组选择不改写模板地址。缺模板或 DNS tag 碰撞必须拒绝，不能悄悄改用其他出口。
+
+新出口、DNS server、路由与 DNS 规则的精确归属只保存在私密 checkpoint 的 `routing_owned`。重新生成时先去除自身上次生成项，再叠加当前意图，保留订阅与其他写者的新内容；已归属项被外部改成不同内容时返回 `override.routing_conflict`。撤销删除自己的项，不删除新增的订阅项。该 checkpoint 是恢复输入，不是公共状态接口。
+
+错误码包括 `override.routing_invalid|routing_limit|routing_tag_collision|routing_target_missing|routing_cycle|routing_duplicate|routing_dns_missing|routing_conflict`。preview 失败不落盘。继续使用既有 revision、锁、set/apply/reset、原子发布与回滚协议，不新增机器写命令；停止的服务保持停止。`override.inspect.routing_targets` 只供显式私密编辑，返回 tag/type，不返回凭据。

@@ -125,6 +125,16 @@ pub(crate) fn inspect(app: &App) -> Result<Value> {
         return Err("override.busy");
     }
     data["patch"] = before["patch"].clone();
+    let config = read(app, CONFIG)?.unwrap_or_else(|| json!({}));
+    data["routing_targets"] = Value::Array(
+        config["outbounds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .chain(config["endpoints"].as_array().into_iter().flatten())
+            .filter_map(|v| Some(json!({"tag":v["tag"].as_str()?,"type":v["type"].as_str()?})))
+            .collect(),
+    );
     Ok(data)
 }
 
@@ -192,25 +202,34 @@ fn candidate(app: &App, patch: &Value) -> Result<(Value, Value)> {
     if !patch.is_object() {
         return Err("override.invalid_patch");
     }
-    let current = read(app, CONFIG)?.ok_or("override.config_missing")?;
+    let mut current = read(app, CONFIG)?.ok_or("override.config_missing")?;
     if !current.is_object() {
         return Err("override.invalid_state");
     }
     let checkpoint = read(app, CHECKPOINT)?;
-    let base = match checkpoint {
+    let base = match checkpoint.as_ref() {
         Some(saved)
             if saved["schema"] == 1
                 && saved["base"].is_object()
                 && saved["effective"].is_object() =>
         {
-            remove_previous(Some(&current), saved.get("base"), saved.get("effective"))
+            let mut applied = saved["effective"].clone();
+            crate::routing_overlay::undo(&mut current, &saved["routing_owned"])?;
+            crate::routing_overlay::undo(&mut applied, &saved["routing_owned"])?;
+            remove_previous(Some(&current), saved.get("base"), Some(&applied))
                 .ok_or("override.invalid_state")?
         }
         Some(_) => return Err("override.invalid_state"),
         None => current,
     };
     let mut effective = base.clone();
-    merge(&mut effective, patch);
+    let mut plain_patch = patch.clone();
+    let routing = plain_patch
+        .as_object_mut()
+        .and_then(|p| p.remove(crate::routing_overlay::KEY))
+        .unwrap_or(Value::Null);
+    merge(&mut effective, &plain_patch);
+    crate::routing_overlay::apply(&mut effective, &routing)?;
     // The managed response pipeline follows the user's final resolver too.
     if let Some(final_server) = effective
         .pointer("/dns/final")
@@ -364,7 +383,15 @@ pub(crate) fn materialize(app: &App) -> Result<()> {
     }
     let (base, effective) = candidate(app, &desired["patch"])?;
     validate(app, &effective)?;
-    let checkpoint = json!({"schema":1,"revision":desired["revision"],"patch_hash":patch_hash(&desired["patch"]),"base":base,"effective":effective});
+    let mut routing_base = base.clone();
+    let mut plain_patch = desired["patch"].clone();
+    let routing = plain_patch
+        .as_object_mut()
+        .and_then(|p| p.remove(crate::routing_overlay::KEY))
+        .unwrap_or(Value::Null);
+    merge(&mut routing_base, &plain_patch);
+    let routing_owned = crate::routing_overlay::apply(&mut routing_base, &routing)?;
+    let checkpoint = json!({"schema":1,"revision":desired["revision"],"patch_hash":patch_hash(&desired["patch"]),"base":base,"effective":effective,"routing_owned":routing_owned});
     replace_module_text_files_transactionally(
         app,
         &[
@@ -524,6 +551,55 @@ pub(crate) fn message(code: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn routing_rebases_on_subscription_edits_and_reset_preserves_them() {
+        let app = fixture();
+        let config = json!({"outbounds":[{"type":"direct","tag":"direct"}],"route":{"rules":[{"ip_is_private":true,"outbound":"direct"},{"domain_suffix":["user.test"],"outbound":"direct"}]},"dns":{"servers":[{"tag":"bootstrap-local-dns","type":"https","server":"223.5.5.5"},{"tag":"doh-google","type":"https","server":"8.8.8.8"}],"rules":[{"domain_suffix":["user.test"],"server":"doh-google"}]}});
+        fs::write(app.moddir.join(CONFIG), config.to_string()).unwrap();
+        let patch = json!({crate::routing_overlay::KEY:{"schema":1,"outbounds":[{"type":"selector","tag":"personal","outbounds":["direct"]}],"rules":[{"kind":"domain","value":"user.test","outbound":"personal"}]}});
+        save(&app, &json!({"expected_revision":0,"patch":patch}), false).unwrap();
+        activate_intent(&app, Some(1)).unwrap();
+        materialize(&app).unwrap();
+        let first = read(&app, CONFIG).unwrap().unwrap();
+        materialize(&app).unwrap();
+        assert_eq!(read(&app, CONFIG).unwrap().unwrap(), first);
+        let mut changed = first;
+        changed["outbounds"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"direct","tag":"new-subscription"}));
+        fs::write(app.moddir.join(CONFIG), changed.to_string()).unwrap();
+        materialize(&app).unwrap();
+        assert_eq!(
+            read(&app, CONFIG).unwrap().unwrap()["outbounds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        save(&app, &json!({"expected_revision":1}), true).unwrap();
+        activate_intent(&app, Some(2)).unwrap();
+        materialize(&app).unwrap();
+        let actual = read(&app, CONFIG).unwrap().unwrap();
+        assert_eq!(actual["route"], config["route"]);
+        assert_eq!(actual["dns"], config["dns"]);
+        assert_eq!(actual["outbounds"].as_array().unwrap().len(), 2);
+        assert_eq!(actual["outbounds"][1]["tag"], "new-subscription");
+        fs::remove_dir_all(app.moddir).unwrap();
+    }
+
+    #[test]
+    fn invalid_routing_preview_and_save_leave_files_unchanged() {
+        let app = fixture();
+        let before = fs::read(app.moddir.join(CONFIG)).unwrap();
+        let request = json!({"expected_revision":0,"patch":{crate::routing_overlay::KEY:{"schema":1,"outbounds":[],"rules":[{"kind":"domain","value":"user.test","outbound":"missing"}]}}});
+        assert!(preview(&app, &request).is_err());
+        assert!(save(&app, &request, false).is_err());
+        assert_eq!(fs::read(app.moddir.join(CONFIG)).unwrap(), before);
+        assert!(!app.moddir.join(INTENT).exists());
+        fs::remove_dir_all(app.moddir).unwrap();
+    }
 
     #[test]
     fn a_saved_draft_does_not_activate_when_the_file_watcher_runs() {

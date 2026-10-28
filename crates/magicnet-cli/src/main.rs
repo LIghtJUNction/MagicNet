@@ -28,6 +28,7 @@ macro_rules! eprintln {
 }
 
 mod app;
+mod app_catalog;
 mod base64;
 #[cfg(test)]
 mod base64_tests;
@@ -56,6 +57,7 @@ mod nodes;
 mod overrides;
 mod ping;
 mod process;
+mod routing_overlay;
 mod rules;
 mod selector_store;
 mod service;

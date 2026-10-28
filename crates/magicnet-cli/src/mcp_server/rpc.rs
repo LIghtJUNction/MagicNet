@@ -91,6 +91,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_network_access_inspect" => {
             run_cli(server, &["--json", "network-access", "inspect"])
         }
+        "magicnet_app_inspect" => run_cli(server, &["--json", "app", "inspect"]),
         "magicnet_network_status" => run_cli(server, &["--json", "network", "status"]),
         "magicnet_network_preflight" => run_cli(server, &["--json", "network", "preflight"]),
         "magicnet_subscription_status" => run_cli(server, &["--json", "sub", "status"]),
@@ -564,6 +565,7 @@ fn cli_args_reveal_secret(args: &[String]) -> bool {
             | ["override", "inspect", ..]
             | ["wifi", "inspect", ..]
             | ["network-access", "inspect", ..]
+            | ["app", "inspect", ..]
             | ["service", "logs", ..]
             | ["diagnose", ..]
     )
@@ -883,6 +885,8 @@ mod tests {
             fs::remove_file(&marker).unwrap();
         }
         for args in [
+            ["--json", "app", "inspect"].as_slice(),
+            ["app", "inspect", "--json"].as_slice(),
             ["diagnose"].as_slice(),
             ["diagnose", "unused"].as_slice(),
             ["diagnose", ""].as_slice(),

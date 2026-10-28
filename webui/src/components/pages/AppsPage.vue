@@ -46,7 +46,7 @@ const filteredPackages = computed(() => {
   const query = state.packageQuery.trim().toLowerCase();
   const listed = state.packages.filter((item) => {
     if (!query) return true;
-    return item.packageName.toLowerCase().includes(query);
+    return item.packageName.toLowerCase().includes(query) || item.appLabel.toLowerCase().includes(query);
   });
   return listed.slice(0, 120);
 });
@@ -566,7 +566,7 @@ onMounted(() => {
                 :aria-label="t('选择 {value}', { value: app.packageName })"
                 @change="togglePackageSelection(app.packageName)"
               >
-              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
+              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.appLabel }}<small v-if="app.appLabel !== app.packageName" class="block text-[var(--mn-ink-muted)]">{{ app.packageName }}</small></span>
             </label>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">{{ t('代理') }}</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">{{ t('直连') }}</Button>

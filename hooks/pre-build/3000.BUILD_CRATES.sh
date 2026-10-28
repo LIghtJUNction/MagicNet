@@ -12,16 +12,20 @@ build_crate() {
 
     if command -v cargo-ndk >/dev/null 2>&1; then
         log_info "Building ${_package} for Android arm64 with cargo-ndk"
-        (cd "$PROJECT_ROOT" && cargo ndk -t arm64-v8a build --release -p "$_package")
+        (cd "$PROJECT_ROOT" && cargo ndk -t arm64-v8a build --locked --release -p "$_package")
     elif command -v cross >/dev/null 2>&1; then
         log_info "Building ${_package} for Android arm64 with cross"
-        (cd "$PROJECT_ROOT" && cross build --release --target "$TARGET_TRIPLE" -p "$_package")
+        (cd "$PROJECT_ROOT" && cross build --locked --release --target "$TARGET_TRIPLE" -p "$_package")
     else
         log_error "cargo-ndk or cross is required to build ${_package}"
         exit 1
     fi
 
-    _source="${PROJECT_ROOT}/target/${TARGET_TRIPLE}/release/${_binary}"
+    case "${CARGO_TARGET_DIR:-target}" in
+        /*) _build_target="${CARGO_TARGET_DIR}" ;;
+        *) _build_target="${PROJECT_ROOT}/${CARGO_TARGET_DIR:-target}" ;;
+    esac
+    _source="${_build_target}/${TARGET_TRIPLE}/release/${_binary}"
     if [ ! -x "$_source" ]; then
         log_error "Built binary not found: $_source"
         exit 1
@@ -31,7 +35,7 @@ build_crate() {
     cp -f "$_source" "${TARGET_DIR}/${_binary}"
     chmod 0755 "${TARGET_DIR}/${_binary}"
     log_success "Installed ${_binary} to ${TARGET_DIR}/${_binary}"
-    unset _package _binary _source
+    unset _package _binary _source _build_target
 }
 
 build_crate magicnet-cli magicnet-cli

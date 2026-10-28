@@ -105,3 +105,5 @@ installed package names and shared identities; keep this output private.
 Neither tool changes policy or implies that application DNS is working. Missing
 providers and unreadable observations remain unsupported/unknown. Repair is not
 exposed by these tools; see issue #329 for the remaining recovery work.
+
+`magicnet_app_inspect` 是主用户应用名/包名的显式私密只读 named tool，不进入自动资源、汇总或诊断；generic `magicnet_cli` 的 `app inspect`（无论 --json 位置）拒绝执行，不能绕过私密边界。完整目录现在为 85 个工具；风险 hints 不是操作授权。

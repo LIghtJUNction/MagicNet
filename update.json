@@ -1,6 +1,6 @@
 {
-  "changelog": "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.6.2.md",
-  "version": "v1.7.2",
-  "versionCode": 10607,
-  "zipUrl": "https://github.com/LIghtJUNction/MagicNet/releases/latest/download/magicnet_installer.zip"
+  "changelog": "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.8.0.md",
+  "version": "v1.8.0",
+  "versionCode": 10608,
+  "zipUrl": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.8.0/magicnet_installer.zip"
 }

@@ -4,7 +4,7 @@
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 KAM_MODULE_ROOT=$(cd "$KAM_MODULE_ROOT" && pwd)
-export HOME=$KAM_MODULE_ROOT
+magicnet_config_root=$KAM_MODULE_ROOT
 
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 MAGIC_CONFIG_CHECK_STRICT=${MAGIC_CONFIG_CHECK_STRICT:-0}
@@ -63,13 +63,13 @@ can_run_kernel_check() {
     return 1
 }
 
-if [ "$MAGIC_SINGBOX" -ne 0 ] && [ -f "$HOME/.config/sing-box/config.json" ]; then
+if [ "$MAGIC_SINGBOX" -ne 0 ] && [ -f "$magicnet_config_root/.config/sing-box/config.json" ]; then
     log_info "Checking sing-box JSON and 2026 policy..."
-    check_singbox_json_policy "$HOME/.config/sing-box/config.json" || exit 1
+    check_singbox_json_policy "$magicnet_config_root/.config/sing-box/config.json" || exit 1
 
     if can_run_kernel_check sing-box; then
         log_info "Checking sing-box config..."
         sing-box version || true
-        sing-box check -c "$HOME/.config/sing-box/config.json" -D "$HOME/.config/sing-box" || exit 1
+        sing-box check -c "$magicnet_config_root/.config/sing-box/config.json" -D "$magicnet_config_root/.config/sing-box" || exit 1
     fi
 fi

@@ -272,6 +272,16 @@ export function parseApps(text: string): AppPolicy {
   return policy;
 }
 
+export function parsePackageCatalog(value: unknown): PackageInfo[] | null {
+  if (!value || typeof value !== "object" || !("packages" in value) || !Array.isArray(value.packages) || value.packages.length > 4096) return null;
+  const result: PackageInfo[] = [];
+  for (const item of value.packages) {
+    if (!item || typeof item !== "object" || !("packageName" in item) || !("appLabel" in item) || typeof item.packageName !== "string" || typeof item.appLabel !== "string" || !/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$/.test(item.packageName)) return null;
+    result.push({ packageName: item.packageName, appLabel: item.appLabel, versionName: "", versionCode: 0, isSystem: false, uid: 0 });
+  }
+  return result.sort((a,b) => a.appLabel.localeCompare(b.appLabel));
+}
+
 export function parsePackages(text: string): PackageInfo[] {
   return text
     .split(/\r?\n/)

@@ -126,22 +126,8 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   }
 }
 
-// --- Constellation tokens on the real styles entry ---
+// The shared theme exposes semantic tokens; readability is checked by the style contract.
 const styles = read(stylesPath);
-for (const token of [
-  "#F7F2E8",
-  "#1F1B16",
-  "#B9502B",
-  "#14120F",
-  "#F4EDE1",
-  "#F08A5D",
-]) {
-  assert.match(
-    styles,
-    new RegExp(token, "i"),
-    `styles.css must declare palette token ${token}`,
-  );
-}
 assert.match(
   styles,
   /--mn-ivory|--mn-cactus|--mn-carrier/,

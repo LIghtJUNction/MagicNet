@@ -29,6 +29,7 @@ const WIFI_SSID_LIST: &str = ".config/magicnet/wifi-ssid.list";
 const WIFI_BSSID_LIST: &str = ".config/magicnet/wifi-bssid.list";
 const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
 const MACHINE_COMMANDS: &[&str] = &[
+    "app.inspect",
     "service.status",
     "core.status",
     "supervisor.status",
@@ -91,6 +92,12 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 
 fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
     match command {
+        ["app", "inspect"] => crate::app_catalog::inspect(app)
+            .map(|data| envelope("app.inspect", data))
+            .map_err(|code| MachineError {
+                code,
+                message: "application labels are unavailable; use package-name lookup",
+            }),
         ["module-update", "status"] => Ok(envelope(
             "module-update.status",
             crate::module_update::status(app),
@@ -256,9 +263,10 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals",
                 "transparent_plane_readiness",
-                "dns_capture_preflight"
+                "dns_capture_preflight",
+                "additive_routing_overlay"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect", "app.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": false,
             "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply",
@@ -268,6 +276,8 @@ fn capabilities_value() -> Value {
             "module_update_install": "detached-worker-staged-reboot-required",
             "network_access_confirmation": "candidate-and-confirm-flag",
             "override_patch_format": "json-merge-patch",
+            "routing_overlay_key": crate::routing_overlay::KEY,
+            "routing_overlay_schema": 1,
             "override_input": "private-payload-file",
         }),
     )
@@ -950,7 +960,8 @@ mod tests {
                 "sub.inspect",
                 "wifi.inspect",
                 "override.inspect",
-                "network-access.inspect"
+                "network-access.inspect",
+                "app.inspect"
             ])
         );
         let commands = value["data"]["commands"]

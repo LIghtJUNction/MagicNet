@@ -188,3 +188,7 @@ WebUI 里的“反馈问题 / 创建 Issue”会先选择问题类型，再自�
 ## 许可证
 
 MIT，详见 [LICENSE](LICENSE)。
+
+## v1.8.0 源码快照
+
+项目 main 已迁为 Recipkg 配方。要构建此实现，检出原仓库的固定 v1.8.0 标签并初始化子模块，再按 docs/build.md 配置 Rust/cargo-ndk、Android NDK、Go、Node/npm、Java/d8 和 KAM，运行 kam build -j 2。源码是可重新生成的实现快照，不是配方依赖。

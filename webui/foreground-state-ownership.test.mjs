@@ -22,7 +22,6 @@ function functionSource(name) {
 for (const name of [
   "refreshStatus",
   "refreshCliState",
-  "refreshPackages",
   "refreshSubs",
   "refreshDns",
   "refreshWifiPolicy",
@@ -44,6 +43,11 @@ for (const name of [
     `${name} must guard stale completion`,
   );
 }
+
+const catalog = functionSource("refreshPackages");
+assert.match(catalog, /foregroundToken \?\? foregroundUiGate\.current\(\)/);
+assert.match(catalog, /canUpdateRefreshUi\(uiToken, allowBusy\)/);
+assert.doesNotMatch(catalog, /state\.output\s*=/, "private app inventory never enters shared output");
 
 // Shared readers must delegate both the read and its foreground ownership.
 // refresh-cli-state.test.mjs also exercises stale/failed completion behavior.

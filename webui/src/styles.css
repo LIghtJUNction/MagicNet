@@ -1,10 +1,9 @@
 @import "tailwindcss";
 
 /*
- * MagicNet Constellation
- * The logo's cream paper, ink line work and terracotta field become the
- * product palette. Dashed constellation lines are the one signature motif;
- * everything else stays quiet so real runtime state carries the page.
+ * MagicNet Fieldnotes
+ * A quiet network instrument: mineral paper, graphite type and jade signals.
+ * Fine rules and compact labels prioritize observed state and working controls.
  */
 @theme {
   --color-mn-ink: var(--mn-ink);
@@ -27,7 +26,7 @@
   --color-mn-danger: var(--mn-danger);
   --color-mn-info: var(--mn-info);
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+  --font-serif: var(--font-sans);
   --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -43,41 +42,41 @@
 html[data-theme="light"] {
   color-scheme: light;
   /* Paper */
-  --mn-ivory: #f7f2e8;
-  --mn-carrier: #efe7d8;
-  --mn-carrier-deep: #e6dcca;
-  --mn-surface: #f7f2e8;
-  --mn-surface-raised: #fffcf6;
-  --mn-surface-sunken: #f1eadc;
-  --mn-surface-input: #fffdf8;
-  --mn-material: #fffcf6;
-  --mn-material-heavy: #f1eadc;
-  --mn-material-edge: #fffcf6;
+  --mn-ivory: #f4f6f2;
+  --mn-carrier: #e9eee8;
+  --mn-carrier-deep: #dce5df;
+  --mn-surface: #f4f6f2;
+  --mn-surface-raised: #fcfdfb;
+  --mn-surface-sunken: #eaf0eb;
+  --mn-surface-input: #ffffff;
+  --mn-material: #fcfdfb;
+  --mn-material-heavy: #eaf0eb;
+  --mn-material-edge: #fcfdfb;
   /* Ink */
-  --mn-ink: #1f1b16;
-  --mn-ink-soft: #3d362d;
-  --mn-ink-muted: #675e52;
-  --mn-ink-faint: #81776a;
+  --mn-ink: #172729;
+  --mn-ink-soft: #344547;
+  --mn-ink-muted: #566968;
+  --mn-ink-faint: #6a7e7c;
   /* Terracotta accent (white text ≥ 4.9:1) */
-  --mn-primary: #b9502b;
-  --mn-primary-strong: #9c3f1d;
-  --mn-accent: #e0794f;
-  --mn-accent-soft: #f6dccd;
-  --mn-star: #1f1b16;
+  --mn-primary: #12675d;
+  --mn-primary-strong: #0c5149;
+  --mn-accent: #419183;
+  --mn-accent-soft: #d8eee5;
+  --mn-star: #172729;
   --mn-cactus: var(--mn-primary);
   --mn-cactus-deep: var(--mn-primary-strong);
   --mn-heather: #ddd3c2;
   --mn-oat: #d9be8f;
   --mn-clay: #c3613b;
-  --mn-clay-ink: #9c3f1d;
+  --mn-clay-ink: #0c5149;
   --mn-olive: #5b7552;
   --mn-sky: #6b8291;
   --mn-sky-ink: #48606f;
   --mn-coral: #f6e2d6;
   /* Lines */
-  --mn-border: #e5dccb;
-  --mn-border-strong: #c9bca6;
-  --mn-focus: #b9502b;
+  --mn-border: #d8e2dc;
+  --mn-border-strong: #adc2b8;
+  --mn-focus: #12675d;
   /* Semantics */
   --mn-danger: #ad2e2a;
   --mn-warning: #8a5d12;
@@ -93,20 +92,20 @@ html[data-theme="light"] {
   --mn-tone-danger-border: #e8bbb1;
   --mn-tone-info-bg: #e7eef1;
   --mn-tone-info-border: #c3d2da;
-  --mn-code-bg: #f1eadc;
+  --mn-code-bg: #eaf0eb;
   --mn-overlay: rgb(31 27 22 / 44%);
   --mn-shadow-card: 0 1px 0 rgb(31 27 22 / 4%), 0 10px 30px -18px rgb(84 52 26 / 28%);
   --mn-shadow-float: 0 24px 64px -20px rgb(52 32 16 / 38%), 0 2px 6px rgb(52 32 16 / 8%);
   --mn-glow: 0 0 0 4px color-mix(in srgb, var(--mn-accent) 22%, transparent);
-  --mn-radius-sm: 10px;
-  --mn-radius-md: 14px;
-  --mn-radius-lg: 20px;
-  --mn-radius-xl: 28px;
+  --mn-radius-sm: 6px;
+  --mn-radius-md: 8px;
+  --mn-radius-lg: 12px;
+  --mn-radius-xl: 16px;
   --mn-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --mn-motion-press: 90ms;
   --mn-syntax-key: #8a4b26;
   --mn-syntax-string: #456b44;
-  --mn-syntax-value: #9c3f1d;
+  --mn-syntax-value: #0c5149;
   --mn-sky-field: none;
 
   background: var(--mn-ivory);
@@ -116,25 +115,25 @@ html[data-theme="light"] {
 html[data-theme="dark"] {
   color-scheme: dark;
   /* Night sky */
-  --mn-ivory: #14120f;
-  --mn-carrier: #1c1915;
-  --mn-carrier-deep: #26221c;
-  --mn-surface: #14120f;
-  --mn-surface-raised: #1d1a16;
-  --mn-surface-sunken: #181612;
-  --mn-surface-input: #211d18;
-  --mn-material: #1d1a16;
-  --mn-material-heavy: #26221c;
-  --mn-material-edge: #2f2a23;
-  --mn-ink: #f4ede1;
-  --mn-ink-soft: #ddd3c3;
-  --mn-ink-muted: #aea392;
-  --mn-ink-faint: #8a8070;
-  --mn-primary: #f08a5d;
-  --mn-primary-strong: #ffa57d;
-  --mn-accent: #f08a5d;
-  --mn-accent-soft: #3a2419;
-  --mn-star: #f4ede1;
+  --mn-ivory: #101a1b;
+  --mn-carrier: #162223;
+  --mn-carrier-deep: #203132;
+  --mn-surface: #101a1b;
+  --mn-surface-raised: #182628;
+  --mn-surface-sunken: #142022;
+  --mn-surface-input: #1b2c2d;
+  --mn-material: #182628;
+  --mn-material-heavy: #203132;
+  --mn-material-edge: #2b4141;
+  --mn-ink: #e3efea;
+  --mn-ink-soft: #c4d7d0;
+  --mn-ink-muted: #9fb8b0;
+  --mn-ink-faint: #7f9a92;
+  --mn-primary: #73cdb5;
+  --mn-primary-strong: #9de2ce;
+  --mn-accent: #73cdb5;
+  --mn-accent-soft: #1c3b33;
+  --mn-star: #e3efea;
   --mn-cactus: var(--mn-primary);
   --mn-cactus-deep: var(--mn-primary-strong);
   --mn-heather: #3a342b;
@@ -144,10 +143,10 @@ html[data-theme="dark"] {
   --mn-olive: #a5c299;
   --mn-sky: #9fb6c4;
   --mn-sky-ink: #b9cdd8;
-  --mn-coral: #3a2419;
-  --mn-border: #2f2a23;
-  --mn-border-strong: #4b4337;
-  --mn-focus: #f6a07b;
+  --mn-coral: #1c3b33;
+  --mn-border: #2b4141;
+  --mn-border-strong: #3b5753;
+  --mn-focus: #94ddc6;
   --mn-danger: #f2988a;
   --mn-warning: #e6c27a;
   --mn-success: #9fcf98;
@@ -169,7 +168,7 @@ html[data-theme="dark"] {
   --mn-glow: 0 0 0 4px color-mix(in srgb, var(--mn-accent) 26%, transparent), 0 0 24px color-mix(in srgb, var(--mn-accent) 30%, transparent);
   --mn-syntax-key: #f0b48f;
   --mn-syntax-string: #b4d3a8;
-  --mn-syntax-value: #f6a07b;
+  --mn-syntax-value: #94ddc6;
   /* A sparse, static star field. Painted once; never animated. */
   --mn-sky-field:
     radial-gradient(1px 1px at 12% 18%, rgb(244 237 225 / 32%) 50%, transparent 51%),
@@ -300,7 +299,7 @@ a {
 }
 
 .mn-serif {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-weight: 500;
   letter-spacing: -0.02em;
 }
@@ -389,7 +388,7 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--mn-ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 22px;
   font-weight: 500;
   letter-spacing: -0.03em;
@@ -665,7 +664,7 @@ a {
 .mn-page-title {
   margin: 0;
   color: var(--mn-ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: clamp(1.75rem, 6.5vw, 2.4rem);
   font-weight: 500;
   letter-spacing: -0.035em;
@@ -860,7 +859,7 @@ a {
 
 .mn-sheet-header h2 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 1.375rem;
   font-weight: 500;
 }
@@ -961,7 +960,7 @@ a {
 }
 
 .mn-easter-copy strong {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 500;
 }

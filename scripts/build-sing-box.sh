@@ -124,6 +124,7 @@ printf 'sing-box build: %s @ %s for %s/%s (CGO=%s)\n' \
         "GOARCH=$GOARCH_TARGET"
         "GOTOOLCHAIN=local"
         "GOWORK=off"
+        "GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}"
     )
     if [[ -n "$CC_TARGET" ]]; then
         GO_ENV+=("CC=$CC_TARGET")

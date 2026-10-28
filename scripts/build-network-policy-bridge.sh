@@ -25,7 +25,8 @@ build_dir=$(mktemp -d)
 trap 'rm -rf "$build_dir"' EXIT
 mkdir -p "$build_dir/classes" "$build_dir/dex" "$(dirname "$output")"
 javac --release 8 -Xlint:-options -d "$build_dir/classes" \
-    "$project_root/crates/magicnet-cli/android/NetworkPolicyBridge.java"
+    "$project_root/crates/magicnet-cli/android/NetworkPolicyBridge.java" \
+    "$project_root/crates/magicnet-cli/android/AppCatalogBridge.java"
 mapfile -d '' classes < <(find "$build_dir/classes" -name '*.class' -type f -print0)
 "$d8" --min-api 26 --output "$build_dir/dex" "${classes[@]}"
 python3 - "$build_dir/dex/classes.dex" "$output" <<'PY'
