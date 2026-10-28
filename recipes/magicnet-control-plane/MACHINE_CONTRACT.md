@@ -21,6 +21,10 @@ status 脱敏；inspect 读私密 patch/revision；preview-file 仅校验并给�
 .config/magicnet/config-override.json 保存草稿，config-override-active.json 保存选中意图。checkpoint 先去掉上次 patch，再应用当前 patch，保留新订阅与其他写者的新 base。
 保存与运行分开；验证失败零写入。激活失败仅在 revision/内容证明归属时恢复 config/checkpoint，遇外部冲突报 override.rollback_conflict；保存意图仍 pending，失败版本不自动死循环重试。显式停止的核心保持停止。
 
+## 多来源精确合同与增量能力
+
+订阅字段、旧入口、公共/私密边界及本轮新增 subscription_batch_v1 的完整定义见 [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)。下列快照是旧实现的观察证据，不含该新增 feature；重建必须添加并实际协商它。保持 schema=1，旧字段语义不变，不增加未经设计的机器写入口。
+
 ## 稳定能力快照
 
 下列 JSON 是本次运行固定源码的 release CLI 得到的完整公共 capabilities，不是手写假定。重建者必须实现这些能力或给出显式版本迁移，不能静默删除例外写接口。

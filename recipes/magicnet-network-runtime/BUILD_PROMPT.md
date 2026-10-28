@@ -2,6 +2,8 @@
 
 依赖 engine 提供 sing-box/check/Clash API/TUN/eBPF，依赖 policy 提供默认配置、selector 和本地规则数据。先结构化生成候选配置，再 sing-box check，最后在串行、有截止时间的生命周期事务里生效。集成验收：两种数据面、业务策略、订阅来源、API 与公共状态一致，失败恢复旧有效状态。
 
+必须完整阅读 [SUBSCRIPTION_CONTRACT.md](SUBSCRIPTION_CONTRACT.md) 与 [ACCEPTANCE.md](ACCEPTANCE.md)。runtime 0.1.1 从固定 v1.8.0 源码补齐订阅端到端合同，包含 #426 多源反馈、URL 身份统一、同名不同节点、逐源转换完整性和批次诊断；标注“重建修正”的条目是本轮目标，不表示旧实现已修复。
+
 ## 生命周期与所有权
 
 启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
@@ -11,9 +13,10 @@ config apply 对有效配置和规则指纹无变化时不重启；transparent a
 
 ## 订阅
 
-URL 来源每行一个公网 HTTPS，最多五个；与本地文件来源互斥。支持 sing-box JSON、Clash/Mihomo YAML、base64 与分享链接/文本；原生 VLESS/VMess/Trojan/SS/SOCKS/Hysteria2/AnyTLS/TUIC；复杂 TLS/transport、别名、块标量与转义需要完整转换器，缺转换器明确拒绝，不猜内容。
+URL 来源每行一个公网 HTTPS，最多五个；与本地文件来源互斥。完整定义和来源证据以 SUBSCRIPTION_CONTRACT.md 的 SUB-001–SUB-015 为准；所有入口统一规范化、去重与缓存身份，同一主机的不同 path/query 不能误并。支持 sing-box JSON、Clash/Mihomo YAML、base64 与分享链接/文本；原生 VLESS/VMess/Trojan/SS/SOCKS/Hysteria2/AnyTLS/TUIC；复杂 TLS/transport、别名、块标量与转义需要完整转换器，缺转换器明确拒绝，不猜内容。VLESS encryption 必须遵循 engine 的完整字段合同，不能静默剥离，也不能用短字段限制截断长密钥。
 下载每跳验证 URL/TLS、公网解析地址和重定向，拒绝本机/私网/metadata 等目标及降级，防 DNS rebinding。用受控路径，不读用户 curl 配置或危险 loader/proxy 环境。
 候选来源、完整 JSON 节点数组、合并配置、selector 选择、用量和 journal 同属一事务。jq 结构化合并，禁止用 AWK/正则改 JSON。空/不合格组 fail-closed；节点命名碰撞不覆盖受控服务 selector。
+逐源转换完整性先于跨源合并：同名不同端点保留，真正重复可合并并保留来源；不能用去重后的总数与去重前原始条数比较而误拒多源，也不能为避免拒绝而放过丢字段。任一来源获取失败且无同身份缓存，或无法完整转换，整批保留旧代。新增批次状态采用 control 的 SUBSCRIPTION_INTERFACE.md / subscription_batch_v1，区分本次候选与旧已保存配置，不能只报旧 configured_count。
 VMess WebSocket 独立保留 server、Host、SNI、path；SOCKS 用户名/密码同时有效。失败/中断保留旧源、配置、选择及恢复证据。URL→本地→URL 同样原子；本地内容不上传公共服务。
 周期 off/12/24/48/72 小时，单 refresh owner；超时、信号、并发 updater 和旧 PID 不生成重复驻留任务。订阅刷新不刷新上游业务分类数据。
 

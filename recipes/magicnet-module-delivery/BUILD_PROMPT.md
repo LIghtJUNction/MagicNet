@@ -8,7 +8,8 @@ bin/ 保存运行程序，cli -> bin/magicnet-cli 是兼容入口；默认完整
 首次/升级先校验组件，再迁移配置/权限/订阅引导；用户配置和有效订阅保留，不能先卸载再“升级”。历史缓存清理是有界一次迁移，不做开机全盘扫描。
 备份与恢复由同一迁移清单派生，新增状态路径不需要维护两份列表。旧完整 config 只作节点恢复及私密回滚材料，活动配置由新模板重建并独立验证；此类备份专用项必须显式声明。复制/权限/恢复错误非零退出并保留恢复证据，不得静默成功。
 核心/完整包、组件、manifest、摘要在最终字节确定后生成。保留：
-MagicNet-core.zip、兼容 MagicNet.zip、MagicNet-full.zip、MagicNet-component-<id>-<sha256>.zip、components.json、package-sizes.json、SHA256SUMS。组件 ZIP 不是独立 root 模块。
+MagicNet-core.zip、兼容 MagicNet.zip 与 magicnet_installer.zip、MagicNet-full.zip、MagicNet-component-<id>-<sha256>.zip、components.json、package-sizes.json、SHA256SUMS。组件 ZIP 不是独立 root 模块。
+MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip 是完全相同核心包字节的三个发布名，SHA-256 相同，模块 ID 均为 MagicNet。管理器先于安装脚本选择 ID，不能创建另一个 magicnet_installer 模块再嵌套安装，也不能借别名重复下载核心包。
 components.json 固定架构、实际路径、模式、大小和 SHA-256。组件 identity 由规范化内容决定，版本号/时间戳/顺序不迫使不变 sing-box 重新下载。不可用随机“最新”资产替代锁定输入。
 
 ## 组件事务

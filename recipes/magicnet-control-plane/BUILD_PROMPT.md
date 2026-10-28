@@ -1,6 +1,6 @@
 # 特权控制面
 
-交付单一受控入口 /data/adb/modules/MagicNet/cli，供用户、模块脚本、WebUI 和 MCP 使用。内部语言可变，argv、JSON、数据隐私和退出状态稳定。阅读 CLI_REFERENCE.md、MACHINE_CONTRACT.md、MCP_CONTRACT.md、STATE_CONTRACT.md 和 ACCEPTANCE.md。
+交付单一受控入口 /data/adb/modules/MagicNet/cli，供用户、模块脚本、WebUI 和 MCP 使用。内部语言可变，argv、JSON、数据隐私和退出状态稳定。阅读 CLI_REFERENCE.md、MACHINE_CONTRACT.md、SUBSCRIPTION_INTERFACE.md、MCP_CONTRACT.md、STATE_CONTRACT.md 和 ACCEPTANCE.md。
 
 依赖 runtime 负责实际进程生命周期、订阅与网络策略；必须委托它的事务，不在 MCP 或 WebUI 再建一套特权逻辑。集成验收：人类 CLI、schema-1 和认证工具操作同一设备状态，同一失败不被包装成成功。
 
@@ -30,3 +30,4 @@ capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspe
 - [STATE_CONTRACT.md](STATE_CONTRACT.md)
 
 - [MCP_TOOL_SCHEMAS.md](MCP_TOOL_SCHEMAS.md)：完整已观察的工具目录。
+- [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–007，完整多源入口、公共/私密读取、逐源批次能力、计数和恢复；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。

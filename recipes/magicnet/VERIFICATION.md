@@ -1,5 +1,39 @@
 # 实现与发行验证
 
+## 2026-10-29 / 配方0.3.0：#426源码提取与重建准备
+
+本节只记录本轮事实；下方源码迁移、v1.8.0开发和初次迁移记录保持其原提交归属。当前产品源码固定0dca28dd984d82333707cbf4b222596934b4d847、tree bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a，没有修改产品文件或gitlink。配方从0.2.1升至0.3.0；没有构建、发布或声称新Android版本。
+
+### 材料和结构
+
+- 使用实际Recipkg CLI 0.1.1（源码d0879adba69989cfe3edc7cf0d069a7b139f6410），运行extract生成提取任务，并实际按固定源码阅读；extract本身只渲染文字，不冒充自动读源。
+- `recipkg check recipes/magicnet`通过；临时pack生成magicnet-0.3.0.recipe.tar.gz，归档再次check通过；`recipkg build <archive> --lang zh-CN --output <temporary-prompt.md>`通过。
+- 归档包含8个包、53个普通UTF-8 Markdown文件（含LOCK），无链接、NUL、源码/二进制、Git元数据或私密文件。逐份比对所有非LOCK Markdown正文均完整进入build提示词，5份新增详细合同/源码审查材料均存在，没有只给根文件或摘要。
+- 根集成验收M01–M39连续且唯一，原M01–M29未删除；新SUB/C-SUB/UI-SUB/VE/POLICY合同接入入口和验收。版本与DEPENDENCIES表一致。临时归档/提示词按仓库约定在检查后清理，不将生成物提交Git。
+- `git diff --check`通过。旧源码工作区干净，.gitmodules、源码gitlink和共享技能gitlink保持不变；GitHub回读topics为recipkg，无需修改。独立重建不再要求先初始化旧产品源码。
+
+### 真实执行的旧源码检查与探针
+
+环境为隔离Linux宿主：GNU Bash 5.2.21、jq 1.7、Python 3.12.14、Node v24.22.1。全部使用合成数据；没有真实订阅、设备或流量。
+
+| 命令/场景 | 实际结果 | 证据层次及限制 |
+| --- | --- | --- |
+| 在固定源码根运行 `python3 -I scripts/test-clash-subscriptions.py` | 28项：24通过、4跳过，退出0 | 原源码解析/合成测试；4项因未提供真实转换器跳过，不算通过 |
+| `bash scripts/test-subscription-usage.sh` | 通过，退出0 | 合成响应头/用量行为，不是服务商现场 |
+| `bash scripts/test-subscription-transaction-atomicity.sh` | 5项恢复场景通过，退出0 | 原测试使用模拟核心validator，只证明对应文件恢复机制 |
+| 同名节点聚合探针 | 单独A/B成功；同名不同端点组合返回1；仅改B名称组合返回0，探针整体退出0 | 真实旧提取/计数/聚合函数，转换器输出为合成stub；退出0表示旧缺陷成功复现，不是已修复 |
+| VLESS原生解析探针 | YAML完整性/输出返回0却缺encryption；带encryption=none分享链接完整性返回1；探针退出0 | 原函数+框架bootstrap替身；不是完整导入、核心check或协议互通 |
+| 在固定源码webui目录运行 `node --experimental-strip-types --test subscription-user-agent.test.mjs` | 1通过、0失败，退出0 | 无需安装依赖的原前端helper测试；不是Vue页面/原生桥/E2E |
+
+探针的合成输入、关键原始输出和具体源码位置已固化在SOURCE_AUDIT.md及runtime合同。复现脚本SHA-256：同名聚合e9eb6a902385b9b4b65e2aaee7ee9d84ec67c367cda5617297be62d376184f1d；VLESS探针源与输出在本轮临时观察材料，原产品文件指纹见PROVENANCE.md。临时脚本不作为配方执行依赖或新实现测试成果。
+
+### 未执行及结论
+
+本轮未运行真实转换器完整兼容、Rust整套/新Android编译、浏览器E2E、Android原生桥、真实多来源订阅、加密服务器互通、设备安装升级、多OEM/热点IPv6/实际应用及长期网络测试，也未进行从空上下文独立重建。缺少Vue/TypeScript依赖，因此没有把单个Node helper测试扩大为前端全套通过；没有为此下载大依赖。
+
+#426的附件只证明单源成功记录，本轮发现的聚合缺陷可解释同类症状，但尚不能确定其现场根因。Issue保持待实现/待验证；配方更新不等于旧实现修复。新增subscription_batch_v1、URL统一身份、同名节点保留、VLESS管理链路保真均是未来实现验收目标。
+
+
 ## 2026-10-29 源码子模块迁移
 
 根配方版本为 0.2.1，Android 软件仍为 v1.8.0。独立源码提交 `0dca28dd984d82333707cbf4b222596934b4d847` 与原已发布提交 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 的完整 tree 均为 `bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a`，含六个固定嵌套子模块。当前目录无源码修改，原分支与历史保留；根私密 `.env` 未追踪，未复制到实现或配方。

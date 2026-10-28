@@ -13,6 +13,21 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
+## 0.3.0 闭包与具体接口
+
+| 包 | 版本 | 本轮合同责任 |
+| --- | --- | --- |
+| magicnet | 0.3.0 | 全产品保留范围、M01–M39、来源和真实验证 |
+| magicnet-control-plane | 0.2.1 | C-SUB完整入口、公共/私密状态、subscription_batch_v1 |
+| magicnet-network-runtime | 0.1.1 | SUB-001–015，多源完整性、统一身份、合并与事务 |
+| magicnet-web-console | 0.2.1 | UI-SUB-001–012，完整输入与同代反馈、草稿/隐私 |
+| magicnet-packet-engine | 0.2.0 | VE-001–006，固定核心Encryption客户端能力与实测边界 |
+| magicnet-routing-policy | 0.2.1 | 增量分流与订阅归属、POLICY-A01–07 |
+| magicnet-module-delivery | 0.2.1 | 安装更新与三个核心包发布名的同身份合同 |
+| software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
+
+本地相对配方依赖在pack时递归进入归档并由LOCK记录摘要，不能仅交付上表链接。新订阅状态字段以control为唯一authority，URL/节点身份以runtime为唯一authority，UI只投递意图和显示已协商结果；不创建新常驻服务或复制第二套订阅状态机。
+
 ## 实现与观察材料
 
 `generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `0dca28dd984d82333707cbf4b222596934b4d847`。它保留现有实现与六个嵌套源码子模块的固定点，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与生成实现分开；无需读取源码才能获取本包完整需求。

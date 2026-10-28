@@ -3,6 +3,7 @@
 | 场景 | 操作 | 结果 |
 | --- | --- | --- |
 | full、core+组件、旧版无 manifest、全复用 | 安装/升级 | 同一最终 runtime 文件与权限；full/复用不联网；保留订阅和用户配置 |
+| MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip | 比较摘要/模块身份，再分别安装升级 | 三者逐字节相同、ID 都为 MagicNet；更新同一模块，不出现外层 installer 模块、嵌套安装或重复核心下载 |
 | 未变组件只改 WebUI、改变 ZIP 顺序/时间戳 | 构建 | 未变组件 identity 不变，更新流量不强制重下核心 |
 | 字节篡改/私网重定向/TLS 错误/磁盘不足 | 下载 | 校验前不激活，规范错误，旧文件保留 |
 | 每个替换点强杀、恢复时 I/O 失败 | 再次安装 | 先恢复 journal，不能普通成功；恢复证据留下但空间有界 |
