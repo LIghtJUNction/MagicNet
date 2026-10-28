@@ -70,6 +70,24 @@ MAGICNET_BACKUP_MARKER_VALUE="magicnet-install-backup-v1"
 MAGICNET_BACKUP_ACTIVE=0
 MAGICNET_BACKUP_READY=0
 
+# One allowlist drives both snapshot and restore. Add new migration state here
+# so a successful upgrade cannot silently omit it from the restore phase.
+MAGICNET_INSTALL_MIGRATION_ITEMS='.config/sing-box/config.json
+.config/sing-box/subscription.url
+.config/sing-box/subscription.local
+.config/sing-box/subscription.user-agent
+.config/sing-box/standalone-config
+.config/sing-box/subscription-filter.list
+.config/sing-box/subscription-1.yaml
+.state/sing-box/subscription-work
+.state/sing-box/selector-selections.json
+.state/transparent-mode
+.state/network-access-recovery
+.config/magicnet'
+# The old full config supplies user nodes and a private rollback copy only.
+# install_config.sh rebuilds and validates the active file from the new template.
+MAGICNET_INSTALL_BACKUP_ONLY_ITEM='.config/sing-box/config.json'
+
 magicnet_install_backup_marker_is_exact() (
   _magicnet_marker_dir="$1"
   _magicnet_marker_file="$_magicnet_marker_dir/$MAGICNET_BACKUP_MARKER"
@@ -143,19 +161,8 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
   ) || abort "! failed to create the MagicNet migration backup"
   MAGICNET_BACKUP_ACTIVE=1
   # Snapshot the old full file for node recovery and a private rollback copy.
-  for _item in \
-    ".config/sing-box/config.json" \
-    ".config/sing-box/subscription.url" \
-    ".config/sing-box/subscription.local" \
-    ".config/sing-box/subscription.user-agent" \
-    ".config/sing-box/standalone-config" \
-    ".config/sing-box/subscription-filter.list" \
-    ".config/sing-box/subscription-1.yaml" \
-    ".state/sing-box/subscription-work" \
-    ".state/sing-box/selector-selections.json" \
-    ".state/transparent-mode" \
-    ".state/network-access-recovery" \
-    ".config/magicnet"; do
+  while IFS= read -r _item; do
+    case "$_item" in *[![:space:]]*) ;; *) continue ;; esac
     if [ -L "${MAGICNET_PREV_DIR}/${_item}" ]; then
       abort "! refusing unsafe symlink in MagicNet migration data: $_item"
     fi
@@ -163,7 +170,9 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       mkdir -p "${MAGICNET_BACKUP_DIR}/${_item%/*}" || abort "! failed to prepare MagicNet migration data: $_item"
       cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" || abort "! failed to back up MagicNet migration data: $_item"
     fi
-  done
+  done <<EOF_MAGICNET_MIGRATION_ITEMS
+$MAGICNET_INSTALL_MIGRATION_ITEMS
+EOF_MAGICNET_MIGRATION_ITEMS
   MAGICNET_BACKUP_READY=1
   unset _item
 fi
@@ -348,24 +357,17 @@ else
 fi
 
 if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
-  for _item in \
-    ".config/sing-box/subscription.url" \
-    ".config/sing-box/subscription.local" \
-    ".config/sing-box/subscription.user-agent" \
-    ".config/sing-box/standalone-config" \
-    ".config/sing-box/subscription-filter.list" \
-    ".config/sing-box/subscription-1.yaml" \
-    ".state/sing-box/subscription-work" \
-    ".state/sing-box/selector-selections.json" \
-    ".state/transparent-mode" \
-    ".state/network-access-recovery" \
-    ".config/magicnet"; do
+  while IFS= read -r _item; do
+    case "$_item" in *[![:space:]]*) ;; *) continue ;; esac
+    [ "$_item" != "$MAGICNET_INSTALL_BACKUP_ONLY_ITEM" ] || continue
     if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
       mkdir -p "${MODPATH}/${_item%/*}" || abort "! failed to prepare restored MagicNet migration data: $_item"
       rm -rf "${MODPATH:?}/${_item}" || abort "! failed to replace MagicNet migration data: $_item"
       cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
-  done
+  done <<EOF_MAGICNET_MIGRATION_ITEMS
+$MAGICNET_INSTALL_MIGRATION_ITEMS
+EOF_MAGICNET_MIGRATION_ITEMS
   unset _item
 fi
 
