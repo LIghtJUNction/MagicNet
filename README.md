@@ -2,7 +2,7 @@
 
 Android root 设备的透明网络工作台，以可重建的软件配方维护。
 
-[English](README.en.md) · [Русский](README.ru.md) · [主配方](recipes/magicnet/BUILD_PROMPT.md) · [验收合同](recipes/magicnet/ACCEPTANCE.md)
+[English](README.en.md) · [Русский](README.ru.md) · [重建指南](#重建指南) · [主配方](recipes/magicnet/BUILD_PROMPT.md) · [验收合同](recipes/magicnet/ACCEPTANCE.md) · [Issue 反馈](recipes/magicnet/FEEDBACK.md)
 
 配方是项目本体，编程语言由重建 Agent 选择；实现是可重新生成的产物。项目名称保持 MagicNet。
 
@@ -21,16 +21,24 @@ Android root 设备的透明网络工作台，以可重建的软件配方维护�
 旧源码仍在 Git 提交 96993ea5c851b8d51cc562c3ca0766a2ca571210；当前源码的历史、已有分支、stash 与其他 worktree 保留。观察 checkout 与生成实现不是 Recipkg 依赖。
 根目录 update.json 和公开品牌/校验资料保留旧发布兼容性；不把旧安装包或本机运行状态打进配方。现有用户可继续使用 [正式发布](https://github.com/LIghtJUNction/MagicNet/releases)，本次迁移不发布新 Android 版本。
 
-## 使用
+## 重建指南
 
-安装 Recipkg 后：
+重建时需要 Git、Recipkg CLI，以及能够生成并验证 Android root 软件的代码 Agent。首次检出后初始化共享技能：
+
 ~~~sh
+git submodule update --init --recursive
 recipkg check recipes/magicnet
+mkdir -p artifacts
 recipkg pack recipes/magicnet -o artifacts/magicnet-0.1.0.recipe.tar.gz
+recipkg check artifacts/magicnet-0.1.0.recipe.tar.gz
 recipkg build artifacts/magicnet-0.1.0.recipe.tar.gz --lang zh-CN --output artifacts/magicnet-build.md
 ~~~
-先创建空 artifacts/ 目录；工具拒绝覆盖已有输出。最后一个命令只生成包含完整递归材料的提示词，把它交给 Agent 才开始实现与验收。
-生成实现默认放 generated/<implementation-name>/；本项目按用户约定将它视为临时产物，不为生成源码另建带 recipkg 后缀的项目，也不在本次迁移创建新的远程仓库。
+
+把 `magicnet-build.md` 和配方归档一起交给代码 Agent，要求它完整阅读提示词，按其中的组件依赖与接口实现软件，并逐项执行 `ACCEPTANCE.md`。完整需求在 `recipes/`；提示词包含递归依赖，不要只交根配方文件。实现源码放在 `generated/<implementation-name>/`，作为可重新生成的本地临时产物。
+
+完成后把真实构建、功能、失败恢复、Android 设备及网络验收结果写入 `recipes/magicnet/VERIFICATION.md`。归档和提示词检查通过只说明重建材料完整，不代表实现已生成、Android 包可安装或真实流量可用。不要把 `.env`、订阅、凭据、设备状态或原始私密日志交给 Agent，也不要打进归档。
+
+Recipkg 只生成完整的构建提示词，不会调用模型或自行实现软件；软件重建和验收由代码 Agent 执行。
 
 ## 已确认的重建方向
 

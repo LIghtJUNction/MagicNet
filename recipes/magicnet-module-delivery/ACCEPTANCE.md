@@ -11,6 +11,7 @@
 | manager exit0 但 staged 不符、有效 pending/disable/remove | install | 拒绝或 staging_unverified，不能误报新版本已生效 |
 | reboot 前后、CLI hash不符、manifest缺失 | status | reboot_required/unknown/effective version 准确 |
 | 真 manager 部分失败/被杀 | 恢复 | recovery_required，不擅删他人 staging，不自动重启 |
+| 迁移清单中增加状态路径，只修改“备份”或“恢复”其中一边；再测试显式模板排除项、权限、复制失败 | 首次安装/升级 | 备份与恢复由同一清单派生，配置重建例外单独可审阅；遗漏不能 exit 0 静默丢数据；失败退出非零并留下可恢复证据 |
 | 真实发布 ZIP 与 support canary | 包检查 | 无 .env/本地状态/密钥/日志/旧 TProxy资产；with_ebpf 元数据和所有摘要一致 |
 
 当前未新构建完整模块、未安装设备、未验证 manager 更新或发布；本次仅对配方归档做结构检查。

@@ -54,6 +54,10 @@ preview 没有 native bridge，也不执行真实设备命令；无真实节点/
 
 ## 复测方法与未知预算
 
+## 用户报告中的待复测性能问题
+
+以下是 Issue 中的来源报告，不是本轮测量，也不应与上面的宿主基线合并：[#396](https://github.com/LIghtJUNction/MagicNet/issues/396) 报告 v1.6.2 冷启动约 35–37 秒、约 2473 个 `sched_process_exec` 事件（其中约 400 个观察器 PID 命令）；同 Issue 的 v1.7.2 样本约 42.481、46.565、47.229 秒，但带本地修改且约 30 秒未归因，不能作版本对比。 [#398](https://github.com/LIghtJUNction/MagicNet/issues/398) 报告修改过的 v1.6.2 在 25 秒空闲窗口有 251 次 cksum 和 204 次 sed；环境不同，需按固定 workload 重测。 [#377](https://github.com/LIghtJUNction/MagicNet/issues/377) 明确公网稳定性 soak 尚未完成。重建验收见主配方 M26；目前没有确认的性能预算。
+
 先记录版本、artifact hash、uname、CPU、uptime、RAM/swap、编译 flags。准备相同空模块夹具；按上面命令每条预热1次、成功运行7次，用单调时钟计完整 subprocess 调用，解析每次 stdout。RSS 单独运行并确认 exe 后采样，不混入时间样本。
 WebUI 在相同生产构建/浏览器/尺寸下新建context并重复，按上文 visible 条件和计时口径记录每个样本、错误、告警和 native bridge 状态，不能以首页 DOM 或 await 前的时刻代替真正可见。
 未来需对合法合成订阅规模、真实 App 请求、UI 带设备数据、冷启动与恢复、热点流量另建 workload；启动/操作/吞吐/全模块RSS/包体预算仍未知。只可提出待确认候选预算，不许把本表直接改成保证或放宽安全以取悦测速。

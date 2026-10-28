@@ -11,6 +11,7 @@
 2. 订阅支持 URL/本地来源原子切换、刷新、用量与到期信息、更新周期 off/12/24/48/72 小时、User-Agent、过滤规则。失败保留当前有效来源、配置和选择。
 3. 节点列表、当前选择、延迟测试、自动 urltest、业务独立 selector、链式代理的前置节点/出口与 manual/auto；选择持久化，更新后消失的节点重建成合法候选。没有合格出口时 fail-closed。
 4. 应用支持 proxy/direct/bypass、名单模式、搜索/批量设置；覆盖 Android 多用户、重装、共享 UID。proxy 强制代理；direct 经数据面走 direct；bypass 同时离开数据面与 MagicNet DNS 捕获。
+   用户可按应用名称或域名配置出口，并通过结构化界面维护自定义具名策略组/出口；保存前预览范围，增量合并时保留订阅和系统托管规则。
 5. Wi-Fi 名单支持 SSID/BSSID、blacklist/whitelist、启停和 3–300 秒间隔。blacklist 命中用 direct，其余 rule；whitelist 命中用 rule，其余 direct；disable 恢复 rule。
 6. 热点 direct/proxy 不创建热点，不替代 OEM DHCP/NAT；下游消失是 pending。代理时持有的 offload 设置、路由和 TC 必须在停用/卸载时准确释放或恢复。
 7. JSON 编辑器支持读取、格式化、校验并保存、模板仓库选择和同步；未保存草稿跨页面保留，刷新可丢失，离开前提示，不存浏览器持久存储。

@@ -8,5 +8,7 @@
 6. FakeIP 与 bypass 重叠、危险范围、分片/token 来源、防回环和热更新的现有流行为有真实数据包用例。
 7. 缺 cgroup/TC/helper、已知未修复内核组合安全失败；capability probe 成功但实际挂载失败时，公共状态不能 ready。
 8. TLS/UDP/QUIC、支持的分享协议、DNS、Clash selector/urltest、userspace Tailscale 实际端到端通信验证；仅 check 成功不算通信通过。
+9. hotspot 有真实客户端时验证双栈 TCP/UDP 返回路径；没有客户端全局 IPv6 时将 IPv6 结论标记为未覆盖。`route_status=ready` 不能由规则存在单独推导。
+10. 对同一锁定核心比较 mixed 与 Go/default TUN stack，覆盖 hotspot 回程、DNS、IPv4/IPv6、应用策略、长连接、CPU/RSS/延迟；旧栈与新栈结果可追溯，所有目标平台通过前不更改生产默认。该 stack 维度独立于 tun|ebpf 模式。
 
 本次迁移未重新编译或运行 Android 数据面；这些场景均未验证。固定 fork 可用作合法实现前提，不代表已由配方独立重建。

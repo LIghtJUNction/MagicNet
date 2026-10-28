@@ -10,12 +10,13 @@
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
 - 项目和仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 中的源码是可重新生成的本地产物，不是配方依赖。本轮迁移不独立重建实现。
+- 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 是新增重建验收，不能把进入配方说成旧实现已修复。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
 
 ## 阅读范围
 
-完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、PERFORMANCE.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
+完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、FEEDBACK.md、PERFORMANCE.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
 
 ## 依赖使用合同
 
@@ -49,3 +50,4 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 - [PROVENANCE.md](PROVENANCE.md)
 
 - [VERIFICATION.md](VERIFICATION.md)：本次材料交付的实际检查结果。
+- [FEEDBACK.md](FEEDBACK.md)：走查限制、Issue 来源与吸收的验收要求。
