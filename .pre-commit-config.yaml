@@ -1,9 +1,9 @@
 repos:
   - repo: local
     hooks:
-      - id: magicnet-validate
-        name: MagicNet validate
-        entry: scripts/pre-commit.sh
+      - id: magicnet-recipe-check
+        name: Validate MagicNet reconstruction recipes
+        entry: recipkg check recipes/magicnet
         language: system
         pass_filenames: false
         always_run: true

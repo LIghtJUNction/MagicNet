@@ -1,3 +1,11 @@
+# MagicNet 配方项目
+
+本仓库的主要输入是 recipes/，项目名保持 MagicNet，禁止创建带 recipkg 后缀的平行项目或仓库。
+生成实现放 generated/<implementation-name>/，默认不追踪；参考代码是临时观察材料，不是配方依赖。用户没有要求独立重建时，不要把写出配方说成软件已重建。
+业务变更必须同步 BUILD_PROMPT、接口、依赖与 ACCEPTANCE；先本地 recipkg check/pack/归档检查/build 提示词，再报告真实验证范围。
+只向原仓库当前授权分支同步；不擅自创建新远程或发布版本。GitHub 配方仓库发布时保留原 topics 并添加 recipkg，回读核对。
+root 的 .env 继续保持私密；不要复制进 generated 或配方。以下状态、安全和机器接口约束仍适用于重建后的 Android 产品。
+
 # Agent Instructions
 
 本仓库根目录下的 `.env` 是本机私密环境文件。后续 agent 需要订阅信息、设备侧配置默认值或构建时私有变量时，先读取 `.env`。
