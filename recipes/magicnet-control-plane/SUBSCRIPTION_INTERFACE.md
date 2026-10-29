@@ -37,7 +37,7 @@ cli --json sub status 只输出一个 schema=1、ok=true、command=sub.status、
 | last.native_parser / native_node_count | 原生识别类型与节点计数；unknown/0 不构成某种协议受支持的证据。 |
 | last.converter_enabled / available / attempted / format / result | 保留旧 token 类型，不把字符串 0/1 自动改成布尔或把未尝试显示成失败；新客户端按能力与完整 schema 读取。实际字段名分别为 converter_enabled、converter_available、converter_attempted、converter_format、converter_result。 |
 | cache.entries / source_entries / provenance_entries | 三个独立计数。entries 包含多种普通缓存文件；source_entries 是来源缓存数量，不能把一个来源的正文、identity、usage 三个文件当作三个订阅。 |
-| cache.identity | url_sha256_identity；摘要只在私密归属检查中使用，不能取列表位置替代来源身份。 |
+| cache.identity | 固定 token `url_sha256_identity`，含义为规范请求 URL 的 SHA-256；摘要只在私密归属检查中使用，不能取列表位置替代来源身份。 |
 | refresh.event_count / error_count | 有界近期日志窗口的统计，来源实现至多读取最后 200 行；不是进程或设备的终身累计量。 |
 | schedule.interval_hours / enabled / owner / running / owner_valid | 周期 off / 12 / 24 / 48 / 72 及独立 scheduler 所有权；与一次订阅 updater 的 owner 分开。未知 owner 对应 null，而非运行正常。 |
 
@@ -47,7 +47,7 @@ cli --json sub status 只输出一个 schema=1、ok=true、command=sub.status、
 
 cli --json sub inspect 必须在 capabilities.private_commands 中单列。其 data 复用相同生命周期投影，额外提供 configuration.sing_box_urls（有序字符串数组）、configuration.user_agent（字符串）、configuration.filters（字符串数组）与 source_usage（数组）。用户主动进入订阅编辑流程时安静读取；不经过通用命令捕获、日志、Issue 生成或自动诊断。
 
-每个 source_usage 行包含 id（规范 URL 的 SHA-256 小写十六进制）、index（1 起始）、hostname、state（fresh/cached/unknown），及 upload_bytes、download_bytes、total_bytes、expire_epoch、updated_epoch。缺失/无效数值是 null；字节数须为不超过 9007199254740991 的非负整数；时间须为正整数且不超过 253402300799。expire=0 或越界不能显示成已到期。fresh 只表示该条可信元数据的新鲜度，不证明全部订阅或代理通信成功。
+每个 source_usage 行包含 id（规范请求 URL 的 SHA-256 小写十六进制）、index（1 起始）、hostname、state（fresh/cached/unknown），及 upload_bytes、download_bytes、total_bytes、expire_epoch、updated_epoch。规范请求 URL 移除 fragment、转小写 scheme/ASCII 主机、省略默认 443、空路径补 `/`，并将原始非 ASCII path/query 按 UTF-8 字节百分号编码；其余 ASCII path/query 字节、顺序、重复键和已有百分号转义原样保留。缺失/无效数值是 null；字节数须为不超过 9007199254740991 的非负整数；时间须为正整数且不超过 253402300799。expire=0 或越界不能显示成已到期。fresh 只表示该条可信元数据的新鲜度，不证明全部订阅或代理通信成功。
 
 用量以完整来源身份绑定，不能按 index、域名或节点名匹配；来源重排、同主机不同查询令牌都必须独立。最近更新失败/中断时，旧 fresh 最多显示 cached；待提交事务不展示新用量；本地模式 source_usage 为空。URL 或 generation 在观察期间改变，返回 machine.snapshot_changed 并拒绝混合快照。它是变更检测，不是全 OS 原子快照；临时多次读取同值也不证明没有 ABA 变化，重建应使用受控代次/锁保证同次投影。
 

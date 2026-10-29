@@ -47,7 +47,7 @@ https://example.invalid/feed?token=alpha%26beta&format=clash
 
 `/Feed` 不能改为 `/feed`；三个 `x`、其顺序、`%2f` 与 `%2F` 的字节差别以及 `+` 均保留。
 
-旧 UI 使用浏览器 URL 序列化后去重且保留 fragment；旧 Rust 文本入口按 trim 后的原串去重；旧下载路径又移除 fragment。这个不一致是提取发现，不能照抄成重建合同。
+基线源码 `0dca28d` 的 UI 使用浏览器 URL 序列化后去重且保留 fragment；同一基线的 Rust 文本入口按 trim 后的原串去重，旧下载路径又移除 fragment。这个不一致是提取发现，不能照抄成重建合同。
 
 ## UI-SUB-003：检查来源与私密摘要
 
@@ -97,7 +97,7 @@ https://example.invalid/feed?token=alpha%26beta&format=clash
 
 **重建修正要求。** 来源总数以已确认的配置集合为准，不能取有用量记录的行数。两个已配置来源中只有一条 metadata 合法时仍显示两个来源；缺 metadata 的来源保留未知行，不复制另一来源的数字。重排来源不串账，已删除来源不从缓存复活，本地来源模式显示一个本地来源且没有远程套餐信息。
 
-固定源码中页面总数来自 `usageRows.length`，而非空但不完整的 metadata 可导致 overview 只生成部分行。这是需要补验收的展示风险；不能据此推断 #426 的设备配置被截断。
+基线源码 `0dca28d` 中页面总数来自 `usageRows.length`，而非空但不完整的 metadata 可导致 overview 只生成部分行。这是需要补验收的展示风险；不能据此推断 #426 的设备配置被截断。
 
 ## UI-SUB-008：本地文件与远程来源切换
 
@@ -166,3 +166,11 @@ https://example.invalid/feed?token=alpha%26beta&format=clash
 | `webui/e2e/subscription-sources.spec.mjs`、`subscription-settings.spec.mjs` | 既有模拟bridge浏览器用例；不等于真实Android或服务商复现 |
 
 用户反馈的完整失败事务未提供；当前规范新增多源证据链和明确未知状态，为后续独立重建及对比提供判定标准。
+
+## 2026-10-29 源码修复补记（未发行）
+
+后续未发行源码已让订阅预览和保存计划按 URL 原始 path/query 字节生成与设备侧一致的 canonical 身份：fragment 不进入候选，默认端口/host/scheme 被规范化，ASCII query 顺序、重复键和已有转义保留，原始非 ASCII path/query 按 UTF-8 字节编码。预览明确提示 fragment 不会发送。
+
+来源概览行与总数现在来自同一份私密 inspector 中的已配置 URL 集合。metadata 缺失或 index 有歧义时，该来源仍有一行并显示 unknown。结构化 VLESS 出站编辑器增加私密 `encryption` 输入，保存/回读时保留该值。
+
+这些只是源码静态改动说明；本轮没有运行浏览器 E2E、真实订阅、Android WebView 或设备验收。#426 的现场原因仍未确定。

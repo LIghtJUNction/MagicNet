@@ -2,6 +2,8 @@
 
 日期：2026-10-29（Asia/Taipei）。任务来源：[MagicNet #426](https://github.com/LIghtJUNction/MagicNet/issues/426)，用户要求读取源代码、更新配方并准备重建。本轮交付是完整递归配方的增量更新；没有修改 Android 实现、变更源码 gitlink、发布新 Android 版本或对用户设备执行操作。
 
+本文件第 1–5 节先记录基线源码 `0dca28dd984d82333707cbf4b222596934b4d847` 的发现与未知；后续“源码修复补记”单独记录当前未发行源码的改动和验证，不回写成基线原有能力。
+
 ## 1. 固定输入
 
 | 对象 | 固定版本 / 用途 |
@@ -86,6 +88,19 @@ link_encryption_none_complete_rc=1
 补齐 $magicnet_routing 的边界、冲突、归属、订阅刷新后 reset 等专项；统一 tag 的 UTF-8 字节计量与域名规则规范化。补齐 magicnet_installer.zip 与另外两个核心包名称的字节/模块身份相同合同。
 
 重建入口不再要求先递归初始化旧 MagicNet 实现。check/pack/build 只需 Markdown 依赖闭包；编译已发布 v1.8.0 的源码路径继续单独保留。
+
+## 源码修复补记：当前未发行改动
+
+以下改动针对固定基线中已确认的四类缺陷，仍是未发行源码。它们不证明 #426 的现场根因，也不替代 Recipkg 配方验收矩阵要求的完整场景。
+
+| 缺陷 | 当前源码处理 | 限制 |
+| --- | --- | --- |
+| 同 tag 不同端点的节点被首项吞掉，并让总数比较误判转换不完整 | 计数和合并按规范 tag 与完整节点语义比较；同 tag、同配置可折叠；同 tag、不同配置在没有引用时按完整连接语义生成稳定 SHA-256 后缀；冲突 tag 被 `detour`、selector 成员或 `default` 引用时拒绝候选。安装恢复路径也改用新组装器接口。 | 不同原始 tag 即使连接配置相同仍保留，因为现有数据没有可靠来源归属，不能安全合并后把选择归给某一来源。逐来源 `parsed/imported/duplicate` 计数和真实转换器完整性仍未实现。 |
+| WebUI、Rust、下载器对 fragment、host、默认端口及路径编码的身份不同 | WebUI、Rust 持久化和 shell 下载统一到 HTTPS 规范请求身份：移除 fragment、规范 scheme/host、默认端口和空路径，保留 ASCII path/query 字节顺序并按 UTF-8 字节编码原始非 ASCII 后缀。下载前先规范化、去重、检查最多五个唯一 URL；列表不合法或超限时不发起部分抓取。machine source usage 与缓存使用同一规范 URL 摘要。 | 未运行真实订阅网络请求、旧缓存迁移或 Android UI/设备回读；原始非 ASCII 主机的接受范围仍需按 runtime 合同单独核对。 |
+| 已配置来源缺 metadata 时，UI 少显示来源行并按 metadata 数量计数 | 行与计数改由同一私密 inspector 的已配置 URL 列表决定；缺失或含糊 metadata 时保留该来源行并显示 unknown。 | 未运行浏览器或设备验收。 |
+| VLESS `encryption` 在原生解析、分享链接、自定义出站和编辑器链路丢失 | 分享参数白名单及完整性检查接纳字段；YAML/链接转 JSON 保留它；结构化 override 只允许 VLESS 的受界字符串；编辑器提供私密输入并回读。 | 这不证明所有转换器格式/组合都支持，也不证明核心握手或真实服务器互通。 |
+
+完整的逐来源批次观测 `subscription_batch_v1`、真实转换器跨来源归属、真实服务商多源输入、核心检查与设备验收仍是未完成合同。不得据当前静态改动关闭 #426 或把未发行源码写成 Android 修复已部署。
 
 ## 5. 全产品保留覆盖表
 

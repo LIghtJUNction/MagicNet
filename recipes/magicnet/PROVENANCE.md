@@ -2,7 +2,7 @@
 
 ## 2026-10-29 / 配方 0.3.0：源码再提取
 
-本轮从配方0.2.1固定提交0a773436c3b21a56931bbfc77b323c42218cf52b继续，实际读取独立源码0dca28dd984d82333707cbf4b222596934b4d847及固定内核871b7a3440cd9c850f1b09ef3b4ada9babb4384b。源码与gitlink未修改；没有借本轮配方修订发布Android新版本。完整调用链、问题和覆盖状态见SOURCE_AUDIT.md，运行结果见VERIFICATION.md。
+本节记录首次提取阶段：从配方0.2.1固定提交0a773436c3b21a56931bbfc77b323c42218cf52b继续，实际读取独立源码0dca28dd984d82333707cbf4b222596934b4d847及固定内核871b7a3440cd9c850f1b09ef3b4ada9babb4384b。当时源码与gitlink未修改，也没有发布Android新版本。后续源码修复另见本文件末尾。
 
 MagicNet文件路径相对于固定源码根；以下是本轮读取的关键证据指纹，不是要求重建者复制其内部结构：
 
@@ -40,7 +40,7 @@ MagicNet文件路径相对于固定源码根；以下是本轮读取的关键证
 | protocol/vless/encryption/client.go | 0329a8c3bbe8220b6b615ee28a6326ac37f8012c35ba9d476336e4c05e8c1538 |
 | protocol/vless/encryption/common.go | 2734a8e34ba265a95a28a4bbfcf26ba224b1c6f7b5dd137afe8db07280ad063d |
 
-本轮新要求的地位：统一URL身份、同名不同节点保留、subscription_batch_v1、UI计数修正与Encryption管理链路保真是明确重建目标；不是声称旧代码已改好。#426现场因果仍未知。旧产品性能、构建、浏览器、MCP等历史结果继续绑定各自原提交，不移动到0.3.0新实现名下。
+首次提取时新要求的地位：统一URL身份、同名不同节点保留、subscription_batch_v1、UI计数修正与Encryption管理链路保真是重建目标；当时的基线源码尚未修复。后续有限源码改动单独列在本文件末尾。#426现场因果仍未知。旧产品性能、构建、浏览器、MCP等历史结果继续绑定各自原提交，不移动到0.3.0新实现名下。
 
 提取方法使用software2prompt@4920378377332c0ca9779ede6062029fb15dacdb与本项目固定software-to-prompt技能；Recipkg CLI来源与标准库检索决策均记录在SOURCE_AUDIT.md。没有更新共享技能gitlink或引入新的源码型配方依赖。
 
@@ -134,3 +134,9 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 源码提交为 0dca28dd984d82333707cbf4b222596934b4d847，完整 tree 为 bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a，与原 v1.8.0 提交 f13ca61b9c3477aee3b1380d71815c84b3a2a6bf 完全相同，包括六个嵌套子模块。新仓库从当前干净快照开始，不重发原历史中已删除的本地工具数据库。原历史与发布标签保留在 MagicNet；本地 legacy/magicnet-v1.8.0 分支与 upstream 远程保留原来源。
 
 配方根包提升为 0.2.1，修改范围为仓库布局、获取/构建入口、依赖边界和相应验收。已发布的 v1.8.0 与 0.2.0 发布归档保持原样。共享技能复用既有 11 个 canonical 子模块，原自定义技能不替换。材料检查与公开检出结果见 VERIFICATION.md；结构修正不构成重新构建、重新发布 Android 包或真机验收。
+
+## 2026-10-29 订阅源码修复
+
+用户要求继续完善项目后，在独立源码仓库 `main` 提交并推送 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745`（tree `072233c5df4610d3b31f008b70a0b0a01c966bc1`），并将 MagicNet 的 `generated/magicnet-android/` gitlink 更新到该固定提交。改动覆盖订阅节点身份/计数、跨入口 URL 规范化及预检、缺少 metadata 的来源行、VLESS `encryption` 保真和安装恢复调用点。细节与未解决的来源归属、批次观测见 SOURCE_AUDIT.md。
+
+这是源码 `main` 的未发行修复；未创建 Android 包、签名或部署。没有读取/复制根 `.env`，没有设备操作。实际本地检查和未执行项列在 VERIFICATION.md；#426 的现场原因仍未知。

@@ -108,3 +108,11 @@
 11 个共享 Recipkg 技能以各自上游仓库的固定提交接入为子模块；MagicNet 原有 Android、kamfw、设备调试和 Perfetto 项目技能仍保留在 `.agents/skills/`。技能代码不属于运行时依赖或配方归档。
 根 update.json 与公开品牌/校验文件保留；配方迁移没有发布可安装的新实现。旧构建/发行代码留在本地忽略的观察参考目录和 Git 历史中；正式生成新实现前，仍须确定对应的构建、签名与发行入口。
 GitHub 配方仓库继续使用原 MagicNet 仓库并带有 `recipkg` topic；该 topic 只用于发现，不代表配方有效或软件已重建。
+
+## 2026-10-29 订阅源码修复（未发行）
+
+源码提交 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745` 已推送至 `LIghtJUNction/magicnet-android` 的 `main`，远端回读一致。源码 `cargo check --offline -p magicnet-cli` 通过（34 个 crate）；六个修改过的 shell 文件 `sh -n` 与 ShellCheck 通过；修改的 Rust 文件 `rustfmt --check` 通过；订阅预览 TypeScript 语法检查与本次 jq filter 语法检查通过；源码 `git diff --check` 通过。未运行测试套件、完整 Android/WebUI 构建或真实转换器。
+
+配方与源码 pin 同步后，`recipkg check recipes/magicnet`、临时归档 `recipkg pack`、归档 `recipkg check` 和 `recipkg build --lang zh-CN` 均通过。归档有 8 个包、53 个 Markdown 文件，没有 `.env`、Git 元数据、源码或生成目录；build prompt 包含新固定提交及批次合同。临时归档和提示词在检查后清理。
+
+未进行 Android 打包、签名、发布、安装、设备写入或真实多源网络验收。#426 仍只有单源成功附件，现场根因未确定；`subscription_batch_v1`、逐来源真实转换完整性、跨 tag 的来源归属、浏览器/真机验收仍未完成。源码 push 与本地/远端配方 gitlink push 分别记录，不把源码 `main` 更新称为产品发布。

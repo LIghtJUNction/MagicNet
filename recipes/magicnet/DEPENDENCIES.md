@@ -30,7 +30,7 @@ graph TD
 
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `0dca28dd984d82333707cbf4b222596934b4d847`。它保留现有实现与六个嵌套源码子模块的固定点，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与生成实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，修复本轮确认的订阅行为；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

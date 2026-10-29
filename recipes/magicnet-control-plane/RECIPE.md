@@ -16,4 +16,4 @@ source = "../magicnet-network-runtime"
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
 
-2026-10-29 本轮读取固定 v1.8.0 源码 0dca28dd984d82333707cbf4b222596934b4d847 并补齐重建合同；来源与实际验证见根 SOURCE_AUDIT.md、PROVENANCE.md、VERIFICATION.md。本次配方升级不表示 Android 实现已修复或已发布。
+2026-10-29 本合同由固定 v1.8.0 基线 `0dca28dd984d82333707cbf4b222596934b4d847` 提取。未发行源码后续修复位于 `magicnet-android@ed01282e8ee4bcfc27ce5f95f37723c34aebf745`；机器命令与 envelope 未增加，私密订阅来源身份已统一到规范请求 URL。此源码提交尚未成为 Android 发行版或设备部署。来源与实际验证见根 SOURCE_AUDIT.md、PROVENANCE.md、VERIFICATION.md。
