@@ -26,7 +26,11 @@
 
 第四轮 [40858578985](https://github.com/LIghtJUNction/MagicNet/actions/runs/40858578985) 的模块、安装/迁移、组件及 Android 15/KernelSU/x86_64 门槛通过；Rust 全套及 ShellCheck 也通过。主机 AI 分流用例在 Ubuntu 的 jq 1.7.1 下报语义聚合程序解析错误，publish 被跳过。本地原 jq 为 1.8.2；从 jqlang 官方发行获取并核对 SHA-256 的 jq 1.7.1 稳定复现同一错误。给两个 reduce 结果绑定加上完整表达式括号后，原失败用例在两个版本均通过；无新增依赖或机器接口变化。
 
-当前源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e` 的完整 shell 检查以 jq 1.7.1、Ubuntu dash、mksh 及固定项目核心一次通过，105 个主机检查条目全部成功。额外执行真实 Linux 网络命名空间路由用例，内核删除歧义、资源归属、UID 0 排除、TUN 地址更换和热点回程清理通过，测试命名空间已回收；这仍不是 Android netd、OEM 内核、TUN TCP 握手或物理热点客户端验收。第五轮完整发行仍为 pending，尚未公开发行。
+当前源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e` 的完整 shell 检查以 jq 1.7.1、Ubuntu dash、mksh 及固定项目核心一次通过，105 个主机检查条目全部成功。额外执行真实 Linux 网络命名空间路由用例，内核删除歧义、资源归属、UID 0 排除、TUN 地址更换和热点回程清理通过，测试命名空间已回收；这仍不是 Android netd、OEM 内核、TUN TCP 握手或物理热点客户端验收。
+
+第五轮 [40866529603](https://github.com/LIghtJUNction/MagicNet/actions/runs/40866529603) 的 plan、完整 build/质量门槛及三个 Android job 全部通过，配方提交为 `b762b8c54b99c7561914d3a02c3a635636ae6837`。发布 job 已成功验证构建字节并创建稳定版草稿、上传 19 个附件；随后按尚未公开的 tag 查询草稿返回 HTTP 404，尚未调用公开操作。原 artifact 为 12895739203，归档 SHA-256 为 `f41661742019a3a7be0ccea62ea152a75302ea6364a41083b8e3c32b2279621c`。
+
+正常发布步骤改为通过唯一草稿数字 ID 读回与公开，已有 16 项发布测试通过，覆盖无公开 tag 的成功路径、缺失/歧义/非法 ID 及错误服务端摘要的拒绝。现有草稿 ID 427831362 的版本、目标配方提交、稳定标记和 19 个附件身份已定位；本地大文件下载遇到反复 TLS/超时，独立恢复改由一次性工作流在 GitHub 内重新验证原 run 的全部门槛和同一不可变 artifact，然后核对原草稿字节。恢复仍为 pending，不把原失败的 publish job 记成成功。
 
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 

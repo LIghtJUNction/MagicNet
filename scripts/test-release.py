@@ -7,7 +7,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -175,6 +177,73 @@ class ReleaseTest(unittest.TestCase):
         for field, value in (("draft", False), ("tag_name", "v9.9.9"), ("target_commitish", "0" * 40)):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, "draft identity"):
                 RELEASE.verify_uploaded(self.root, self.directory, response | {field: value})
+
+    def run_publisher_after_plan(self, ids="321\n", corrupt=False):
+        # Exercise the real publication shell; plan authorization is tested above.
+        workflow = Path(__file__).resolve().parent.parent / ".github/workflows/release.yml"
+        block = workflow.read_text().split("      - name: Verify final assets and publish\n", 1)[1]
+        script = textwrap.dedent(block.split("        run: |\n", 1)[1])
+        script = script.replace("python3 scripts/release.py plan --mode publish\n", "")
+        script = script.replace("${{ needs.plan.outputs.source_sha }}", self.source_sha)
+        self.write(self.root / "scripts/release.py", Path(RELEASE.__file__).read_text())
+        response = {"id": 321, "draft": True, "tag_name": "v1.2.3",
+                    "target_commitish": self.environment["GITHUB_SHA"],
+                    "assets": [{"name": p.name, "size": p.stat().st_size, "state": "uploaded",
+                                "digest": f"sha256:{RELEASE.digest(p)}"} for p in self.directory.iterdir()]}
+        if corrupt:
+            response["assets"][0]["digest"] = "sha256:" + "0" * 64
+        self.write(self.root / "draft-response.json", json.dumps(response))
+        runner = self.root / "runner"
+        runner.mkdir(exist_ok=True)
+        published = self.root / "published"
+        published.unlink(missing_ok=True)
+        executable = self.root / "host-bin/gh"
+        self.write(executable, f"#!{sys.executable}\n" + textwrap.dedent('''\
+            import json, os, pathlib, sys
+            args = sys.argv[1:]
+            if args[:2] == ["release", "create"]:
+                print("https://example.invalid/releases/tag/untagged-fixture")
+            elif args[:1] == ["api"] and "--paginate" in args:
+                sys.stdout.write(os.environ["TEST_DRAFT_IDS"])
+            elif args[:1] == ["api"] and any(a.endswith("/releases/321") for a in args):
+                if "PATCH" in args:
+                    assert "draft=false" in args
+                    pathlib.Path(os.environ["TEST_PUBLISHED"]).write_text("published")
+                else:
+                    print(pathlib.Path(os.environ["TEST_RESPONSE"]).read_text())
+            else:
+                print("gh: Not Found (HTTP 404)", file=sys.stderr)
+                sys.exit(1)
+            '''))
+        executable.chmod(0o755)
+        env = dict(os.environ, **self.environment, VERSION="v1.2.3", VERSION_CODE="123",
+                   PRERELEASE="false", RUNNER_TEMP=str(runner),
+                   PATH=str(executable.parent) + os.pathsep + os.environ["PATH"],
+                   TEST_DRAFT_IDS=ids, TEST_PUBLISHED=str(published),
+                   TEST_RESPONSE=str(self.root / "draft-response.json"))
+        result = subprocess.run(["bash", "-c", script], cwd=self.root, env=env,
+                                text=True, capture_output=True, timeout=20, check=False)
+        return result, published.exists()
+
+    def test_uploaded_draft_without_public_tag_can_be_published_by_id(self):
+        self.assets()
+        result, published = self.run_publisher_after_plan()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(published)
+
+    def test_missing_ambiguous_or_invalid_draft_ids_never_publish(self):
+        self.assets()
+        for ids in ("", "321\n654\n", "not-an-id\n"):
+            with self.subTest(ids=ids):
+                result, published = self.run_publisher_after_plan(ids=ids)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(published)
+
+    def test_server_digest_failure_never_reaches_publication(self):
+        self.assets()
+        result, published = self.run_publisher_after_plan(corrupt=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(published)
 
     def test_corruption_missing_and_unexpected_assets_are_rejected(self):
         self.assets()

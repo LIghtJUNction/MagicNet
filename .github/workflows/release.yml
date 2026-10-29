@@ -391,6 +391,16 @@ jobs:
                 --title "MagicNet-${VERSION_CODE}-${VERSION}" --notes-file "$notes")
           if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
           gh release create "$VERSION" dist/* "${args[@]}"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" > "$RUNNER_TEMP/uploaded-release.json"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$VERSION\" and .draft == true) | .id" \
+            > "$RUNNER_TEMP/release-draft-ids.txt"
+          mapfile -t draft_ids < "$RUNNER_TEMP/release-draft-ids.txt"
+          if [ "${#draft_ids[@]}" -ne 1 ]; then
+            echo '::error::Expected exactly one uploaded release draft' >&2
+            exit 1
+          fi
+          draft_id="${draft_ids[0]}"
+          [[ "$draft_id" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/$draft_id" > "$RUNNER_TEMP/uploaded-release.json"
           python3 scripts/release.py verify-uploaded --directory dist --response "$RUNNER_TEMP/uploaded-release.json"
-          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" -F draft=false --silent
