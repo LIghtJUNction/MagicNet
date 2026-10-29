@@ -18,6 +18,7 @@ URL 来源每行一个公网 HTTPS，最多五个；与本地文件来源互斥�
 候选来源、完整 JSON 节点数组、合并配置、selector 选择、用量和 journal 同属一事务。jq 结构化合并，禁止用 AWK/正则改 JSON。空/不合格组 fail-closed；节点命名碰撞不覆盖受控服务 selector。
 逐源转换完整性先于跨源合并：同名不同端点保留，真正重复可合并并保留来源；不能用去重后的总数与去重前原始条数比较而误拒多源，也不能为避免拒绝而放过丢字段。任一来源获取失败且无同身份缓存，或无法完整转换，整批保留旧代。新增批次状态采用 control 的 SUBSCRIPTION_INTERFACE.md / subscription_batch_v1，区分本次候选与旧已保存配置，不能只报旧 configured_count。
 VMess WebSocket 独立保留 server、Host、SNI、path；SOCKS 用户名/密码同时有效。失败/中断保留旧源、配置、选择及恢复证据。URL→本地→URL 同样原子；本地内容不上传公共服务。
+原生节点计数与构建须显式处理单节点解析失败，在 POSIX sh/dash、Bash 和 Android BusyBox 下保持相同失败语义；不能因 set -e 提前退出而把已知的语义不完整误报成计数设施错误，也不能让其他有效节点掩盖不完整来源。
 周期 off/12/24/48/72 小时，单 refresh owner；超时、信号、并发 updater 和旧 PID 不生成重复驻留任务。订阅刷新不刷新上游业务分类数据。
 
 ## 应用、Wi-Fi、热点和 DNS

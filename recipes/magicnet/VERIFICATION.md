@@ -4,9 +4,14 @@
 
 用户已授权发布新版本。软件版本为 v1.8.1，versionCode=10609；实现固定 `68ad77453d752845eedb5dd8ca56110c18de4b26`，保留已有六个嵌套依赖 gitlink。源码和主仓库的 update.json、模块 metadata 与发行说明同步，配方版本仍为 0.3.0。
 
-本地 WebUI 338 项测试、TypeScript 类型检查和生产构建通过；发行准备 42 项、发行门槛 5 项、主仓库发布边界 13 项回归通过。Clash/协议订阅 28 项中 24 通过、4 项因缺少真实转换器明确跳过；订阅用量与 5 个安装事务/恢复场景通过。源码文本 sanity 和 git diff --check 通过。配方 check/pack/归档 check/完整 build 提示词检查通过，8 个包、54 个普通 UTF-8 Markdown 文件。
+本地 WebUI 338 项测试、TypeScript 类型检查和生产构建通过；发行准备 42 项、发行门槛 5 项、主仓库发布边界 13 项回归通过。Clash/协议订阅 28 项中 24 通过、4 项因缺少真实转换器明确跳过；订阅用量与 5 个订阅事务/恢复场景通过。源码文本 sanity 和 git diff --check 通过。配方 check/pack/归档 check/完整 build 提示词检查通过，8 个包、54 个普通 UTF-8 Markdown 文件。
 
 正式发行通过主仓库 release.yml 的 mode=publish 发起；在实际任务结束前，完整 Android 模块、完整质量门槛、Android/KernelSU 模拟器及上传发布均为 pending。没有执行 arm64 真机安装或真实网络验收，旧 dist/MagicNet.zip 不作为本版本证据。
+
+
+首次正式运行 [40845027142](https://github.com/LIghtJUNction/MagicNet/actions/runs/40845027142) 的配方预检通过，Android 前置 UTF-8 测试在 Ubuntu dash 下失败，发布被拦截。失败原因为原生计数/构建中的单节点解析返回非零，在 dash 的 set -e 继承下提前退出，误报 native_count_failed；不是固定 BusyBox 二进制下载或摘要错误。修正为显式捕获节点解析失败，再由整体完整性门槛拒绝部分转换。
+
+修复提交 `8a2e14609ffaa802ca6ac7dc844017637749430d` 已推送源码 main。本地以从 Ubuntu 官方包提取的 dash 0.5.12、Bash 和 SHA-256 固定的 KernelSU BusyBox 运行同一 UTF-8/不完整转换测试通过；生产 shell 语法、ShellCheck warning 级检查和 761 个文本 sanity 通过。运行时 BUILD_PROMPT、订阅接口合同与验收同步；修复后的正式完整运行仍为 pending。
 
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 

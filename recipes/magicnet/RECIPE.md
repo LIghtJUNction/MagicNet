@@ -30,3 +30,5 @@ source = "../software-quality"
 2026-10-29 构建发布工作流修复后，当前实现 gitlink 固定为 `magicnet-android@b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`。保留前述订阅修复，增加同提交跨仓库 Android 验收和源码仓库发行拦截；正式发布入口恢复在 MagicNet 主仓库，默认只构建。Android 软件版本仍为 v1.8.0，没有创建新发行版。
 
 2026-10-29 v1.8.1 发行准备：软件版本 v1.8.1 / versionCode 10609，当前源码 gitlink 为 `68ad77453d752845eedb5dd8ca56110c18de4b26`。发行说明与官方更新地址同步；最终构建、Android 验收和公开发布结果另记 VERIFICATION.md。
+
+同日正式验收发现并修正 POSIX shell 的单节点失败传播差异，当前发行候选源码固定 `8a2e14609ffaa802ca6ac7dc844017637749430d`；完整验收与公开发行状态以 VERIFICATION.md 为准。
