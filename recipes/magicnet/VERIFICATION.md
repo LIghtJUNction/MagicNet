@@ -1,5 +1,13 @@
 # 实现与发行验证
 
+## 2026-10-29 / v1.8.1 发行准备
+
+用户已授权发布新版本。软件版本为 v1.8.1，versionCode=10609；实现固定 `68ad77453d752845eedb5dd8ca56110c18de4b26`，保留已有六个嵌套依赖 gitlink。源码和主仓库的 update.json、模块 metadata 与发行说明同步，配方版本仍为 0.3.0。
+
+本地 WebUI 338 项测试、TypeScript 类型检查和生产构建通过；发行准备 42 项、发行门槛 5 项、主仓库发布边界 13 项回归通过。Clash/协议订阅 28 项中 24 通过、4 项因缺少真实转换器明确跳过；订阅用量与 5 个安装事务/恢复场景通过。源码文本 sanity 和 git diff --check 通过。配方 check/pack/归档 check/完整 build 提示词检查通过，8 个包、54 个普通 UTF-8 Markdown 文件。
+
+正式发行通过主仓库 release.yml 的 mode=publish 发起；在实际任务结束前，完整 Android 模块、完整质量门槛、Android/KernelSU 模拟器及上传发布均为 pending。没有执行 arm64 真机安装或真实网络验收，旧 dist/MagicNet.zip 不作为本版本证据。
+
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 
 修复前，MagicNet main 没有根 `.github/workflows/`；旧工作流位于实现子模块，不能替主仓库运行。正式发行仍使用 LIghtJUNction/MagicNet，源码仓库固定为 magicnet-android。当前源码提交为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`，已先推送源码 main 并回读核对。软件版本仍为 v1.8.0，未创建新标签、草稿或发行版。
