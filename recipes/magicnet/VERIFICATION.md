@@ -1,12 +1,22 @@
 # 实现与发行验证
 
+## 2026-10-29 / v1.8.1 已公开
+
+[稳定版 v1.8.1](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)，versionCode=10609，于 2026-10-29 14:21:41 UTC 公开，包含 19 个附件。标签与构建来源固定配方提交 `b762b8c54b99c7561914d3a02c3a635636ae6837`，源码提交 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。
+
+[构建运行 40866529603](https://github.com/LIghtJUNction/MagicNet/actions/runs/40866529603) 的构建、完整质量门槛和全部 Android job 成功；原 publish job 因草稿标签查询 HTTP 404 失败。[独立恢复运行 40890649318](https://github.com/LIghtJUNction/MagicNet/actions/runs/40890649318) 全部成功：重新核对原 run、各门槛及不可变 artifact 的身份和归档摘要，检出原配方与源码，再执行原完整资产验证器，核对 19 个最终文件的摘要、ZIP CRC/metadata、来源记录和服务端附件后，按原 release ID 427831362 公开。公开前后的附件 ID、名称、大小、状态及摘要完全一致，没有重建、换附件或重写标签。正常发布流程的草稿查询已改为唯一数字 ID，16 项边界回归通过。
+
+公开 API 已确认稳定标记、19 个附件及相同目标提交；匿名下载的安装器和 6 个元数据附件均与服务端 SHA-256、SHA256SUMS 一致，公开 update.json 与本仓库相同。所有附件的完整字节检查由上述 GitHub 恢复运行执行；本机没有重新下载完整离线包。下方保留各轮失败与当时 pending 的准备记录，不将原发布工作流写成全绿。
+
+尚未执行 arm64 真机安装、真实订阅/网络互通或长期运行验收，也没有执行从空目录独立重建。Android 15 / KernelSU / x86_64 模拟器结果不能代替这些验证。
+
 ## 2026-10-29 / v1.8.1 发行准备
 
 用户已授权发布新版本。软件版本为 v1.8.1，versionCode=10609；初始发行准备固定 `68ad77453d752845eedb5dd8ca56110c18de4b26`，保留已有六个嵌套依赖 gitlink。源码和主仓库的 update.json、模块 metadata 与发行说明同步，配方版本仍为 0.3.0。
 
 本地 WebUI 338 项测试、TypeScript 类型检查和生产构建通过；发行准备 42 项、发行门槛 5 项、主仓库发布边界 13 项回归通过。Clash/协议订阅 28 项中 24 通过、4 项因缺少真实转换器明确跳过；订阅用量与 5 个订阅事务/恢复场景通过。源码文本 sanity 和 git diff --check 通过。配方 check/pack/归档 check/完整 build 提示词检查通过，8 个包、54 个普通 UTF-8 Markdown 文件。
 
-正式发行通过主仓库 release.yml 的 mode=publish 发起；在实际任务结束前，完整 Android 模块、完整质量门槛、Android/KernelSU 模拟器及上传发布均为 pending。没有执行 arm64 真机安装或真实网络验收，旧 dist/MagicNet.zip 不作为本版本证据。
+正式发行通过主仓库 release.yml 的 mode=publish 发起；发行准备时，完整 Android 模块、完整质量门槛、Android/KernelSU 模拟器及上传发布均为 pending，最终结果见上方公开发行记录。没有执行 arm64 真机安装或真实网络验收，旧 dist/MagicNet.zip 不作为本版本证据。
 
 
 首次正式运行 [40845027142](https://github.com/LIghtJUNction/MagicNet/actions/runs/40845027142) 的配方预检通过，Android 前置 UTF-8 测试在 Ubuntu dash 下失败，发布被拦截。失败原因为原生计数/构建中的单节点解析返回非零，在 dash 的 set -e 继承下提前退出，误报 native_count_failed；不是固定 BusyBox 二进制下载或摘要错误。修正为显式捕获节点解析失败，再由整体完整性门槛拒绝部分转换。
@@ -30,7 +40,7 @@
 
 第五轮 [40866529603](https://github.com/LIghtJUNction/MagicNet/actions/runs/40866529603) 的 plan、完整 build/质量门槛及三个 Android job 全部通过，配方提交为 `b762b8c54b99c7561914d3a02c3a635636ae6837`。发布 job 已成功验证构建字节并创建稳定版草稿、上传 19 个附件；随后按尚未公开的 tag 查询草稿返回 HTTP 404，尚未调用公开操作。原 artifact 为 12895739203，归档 SHA-256 为 `f41661742019a3a7be0ccea62ea152a75302ea6364a41083b8e3c32b2279621c`。
 
-正常发布步骤改为通过唯一草稿数字 ID 读回与公开，已有 16 项发布测试通过，覆盖无公开 tag 的成功路径、缺失/歧义/非法 ID 及错误服务端摘要的拒绝。现有草稿 ID 427831362 的版本、目标配方提交、稳定标记和 19 个附件身份已定位；本地大文件下载遇到反复 TLS/超时，独立恢复改由一次性工作流在 GitHub 内重新验证原 run 的全部门槛和同一不可变 artifact，然后核对原草稿字节。恢复仍为 pending，不把原失败的 publish job 记成成功。
+正常发布步骤改为通过唯一草稿数字 ID 读回与公开，已有 16 项发布测试通过，覆盖无公开 tag 的成功路径、缺失/歧义/非法 ID 及错误服务端摘要的拒绝。现有草稿 ID 427831362 的版本、目标配方提交、稳定标记和 19 个附件身份已定位；本地大文件下载遇到反复 TLS/超时，独立恢复改由一次性工作流在 GitHub 内重新验证原 run 的全部门槛和同一不可变 artifact，然后核对原草稿字节。随后恢复成功，见上方公开发行记录；完成后移除本次专用恢复工作流，保留永久发布修复和回归测试，不把原失败的 publish job 记成成功。
 
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 

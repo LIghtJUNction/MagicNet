@@ -67,7 +67,7 @@ MIT，见 [LICENSE](LICENSE)；第三方实现/规则/工具遵循各自许可�
 
 GitHub Actions 入口是 [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml)：选择 main，运行工作流时默认 mode=build，只构建并提供安装器、离线包、组件和摘要下载；mode=publish 才请求发布到本仓库 Releases。发布前先在源码仓库更新软件版本及 versionCode、同步两个仓库的 update.json 和发行说明，再更新本仓库的固定源码提交。工作流不会覆盖已经存在的版本。
 
-构建、质量门槛和 Android/KernelSU 模拟器验收固定同一实现 SHA；全部通过后先上传草稿、核对服务端附件，再公开。失败不公开，模拟器通过也不代表 arm64 真机或真实网络验收通过。源码子模块内的旧工作流不会替主仓库发布；日常 push 不触发主仓库重型构建，PR 只做轻量[配方检查](.github/workflows/recipes.yml)。本地同等检查可运行 `python3 scripts/check-recipes.py` 和 `python3 scripts/test-release.py`。
+构建、质量门槛和 Android/KernelSU 模拟器验收固定同一实现 SHA；全部通过后先上传草稿，按数字 release ID 核对服务端附件，再公开。构建或验收失败不公开，模拟器通过也不代表 arm64 真机或真实网络验收通过。源码子模块内的旧工作流不会替主仓库发布；日常 push 不触发主仓库重型构建，PR 只做轻量[配方检查](.github/workflows/recipes.yml)。本地同等检查可运行 `python3 scripts/check-recipes.py` 和 `python3 scripts/test-release.py`。
 
 ~~~sh
 # 只构建，不发布
@@ -82,7 +82,7 @@ cd generated/magicnet-android
 kam build -j 2
 ~~~
 
-当前源码固定为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`，包含尚未发行的订阅修复及跨仓库构建发布兼容。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.0，当前 Android 发行候选为 v1.8.1，正式发行结果见 VERIFICATION。
+当前源码固定为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`，包含 v1.8.1 的订阅修复及跨仓库构建发布兼容。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.0，当前 Android 正式版为 [v1.8.1 / 10609](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)；[安装说明](docs/releases/v1.8.1.md)及实际构建、恢复发布与设备验证范围见 VERIFICATION。
 
 已有同名目录时先核对其本地修改，不覆盖或清空。源码包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具，详情见 [源码构建指南](generated/magicnet-android/docs/build.md)。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`generated/magicnet-android/dist/MagicNet.zip` 是从主仓库看见的本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按源码内的发行文档打包和验证。
 
