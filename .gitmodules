@@ -34,3 +34,6 @@
 [submodule "generated/magicnet-android"]
 	path = generated/magicnet-android
 	url = https://github.com/LIghtJUNction/magicnet-android.git
+[submodule ".agents/skills/maintain-recipkg-standard-library"]
+	path = .agents/skills/maintain-recipkg-standard-library
+	url = https://github.com/recipkg/maintain-recipkg-standard-library.git
