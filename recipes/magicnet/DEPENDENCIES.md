@@ -28,9 +28,11 @@ graph TD
 
 本地相对配方依赖在pack时递归进入归档并由LOCK记录摘要，不能仅交付上表链接。新订阅状态字段以control为唯一authority，URL/节点身份以runtime为唯一authority，UI只投递意图和显示已协商结果；不创建新常驻服务或复制第二套订阅状态机。
 
+delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和官方发行仓库，定义 schema-1 构建来源记录、固定源码构建、同提交 Android 验收与草稿发布门槛；不新增运行时配方依赖。
+
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，修复本轮确认的订阅行为；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复和跨仓库构建发布兼容；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

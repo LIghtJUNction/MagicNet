@@ -47,7 +47,7 @@ Recipkg 只生成完整的构建提示词，不会调用模型或自行实现软
 
 ## 0.3.0 重建准备
 
-本轮针对 [#426](https://github.com/LIghtJUNction/MagicNet/issues/426) 实际读取固定 v1.8.0 源码，补齐多来源订阅、同名节点、统一 URL 身份、缓存与逐源状态、WebUI 草稿/反馈、VLESS Encryption 字段保真及安装包别名合同。查看 [源码提取与覆盖记录](recipes/magicnet/SOURCE_AUDIT.md) 和 [本轮验证](recipes/magicnet/VERIFICATION.md)。Android 源码固定点不变；新增合同尚未执行独立重建或设备验收。
+本轮针对 [#426](https://github.com/LIghtJUNction/MagicNet/issues/426) 实际读取固定 v1.8.0 源码，补齐多来源订阅、同名节点、统一 URL 身份、缓存与逐源状态、WebUI 草稿/反馈、VLESS Encryption 字段保真及安装包别名合同。查看 [源码提取与覆盖记录](recipes/magicnet/SOURCE_AUDIT.md) 和 [本轮验证](recipes/magicnet/VERIFICATION.md)。当前源码修复与构建发布入口见下方维护说明及 VERIFICATION；新增合同尚未执行独立重建或设备验收。
 
 ## 已确认的重建方向
 
@@ -65,6 +65,15 @@ MIT，见 [LICENSE](LICENSE)；第三方实现/规则/工具遵循各自许可�
 
 ## 构建已发布的软件
 
+GitHub Actions 入口是 [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml)：选择 main，运行工作流时默认 mode=build，只构建并提供安装器、离线包、组件和摘要下载；mode=publish 才请求发布到本仓库 Releases。发布前先在源码仓库更新软件版本及 versionCode、同步两个仓库的 update.json 和发行说明，再更新本仓库的固定源码提交。当前 v1.8.0 已存在，工作流不会覆盖旧版本。
+
+构建、质量门槛和 Android/KernelSU 模拟器验收固定同一实现 SHA；全部通过后先上传草稿、核对服务端附件，再公开。失败不公开，模拟器通过也不代表 arm64 真机或真实网络验收通过。源码子模块内的旧工作流不会替主仓库发布；日常 push 不触发主仓库重型构建，PR 只做轻量[配方检查](.github/workflows/recipes.yml)。本地同等检查可运行 `python3 scripts/check-recipes.py` 和 `python3 scripts/test-release.py`。
+
+~~~sh
+# 只构建，不发布
+gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main -f mode=build
+~~~
+
 main 保存配方、固定源码子模块和公开发行入口。首次获取可用 `git clone --recurse-submodules https://github.com/LIghtJUNction/MagicNet.git`。已有检出直接初始化固定实现并构建：
 
 ~~~sh
@@ -73,7 +82,7 @@ cd generated/magicnet-android
 kam build -j 2
 ~~~
 
-当前源码固定为 `0dca28dd984d82333707cbf4b222596934b4d847`，完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同。新源码仓库仅导入这个干净快照；原历史及发布标签仍保留在 MagicNet。配方版本为 0.3.0，Android 软件版本仍为 v1.8.0。
+当前源码固定为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`，包含尚未发行的订阅修复及跨仓库构建发布兼容。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.0，Android 软件版本仍为 v1.8.0。
 
 已有同名目录时先核对其本地修改，不覆盖或清空。源码包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具，详情见 [源码构建指南](generated/magicnet-android/docs/build.md)。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`generated/magicnet-android/dist/MagicNet.zip` 是从主仓库看见的本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按源码内的发行文档打包和验证。
 

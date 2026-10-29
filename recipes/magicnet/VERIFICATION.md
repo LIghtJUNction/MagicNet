@@ -1,5 +1,18 @@
 # 实现与发行验证
 
+## 2026-10-29 / 跨仓库 CI 与发行入口修复
+
+修复前，MagicNet main 没有根 `.github/workflows/`；旧工作流位于实现子模块，不能替主仓库运行。正式发行仍使用 LIghtJUNction/MagicNet，源码仓库固定为 magicnet-android。当前源码提交为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`，已先推送源码 main 并回读核对。软件版本仍为 v1.8.0，未创建新标签、草稿或发行版。
+
+- 新增主仓库手动 release.yml、PR/手动轻量 recipes.yml；默认 build 只产出 artifact，publish 必须通过同一 gitlink 的构建、完整质量门槛和 Android/KernelSU 验收。只发布 job 申请 contents:write。
+- 恢复版本固定的官方 installer URL；记录配方/源码两个提交。最终资产检查包括完整文件清单、组件/内嵌 manifest、大小和 SHA-256、三个核心别名、模块身份与版本。上传草稿后再次检查 GitHub 的资产清单、大小及摘要，失败不公开。
+- 源码接受显式 source_sha，并在两个 Android job 检出后核对完整 SHA；模拟器 fixture 正确记录实现提交。旧源码发行脚本拒绝从源码仓库创建发行请求。源码仓库的七个修改文件已提交并推送，未触发远程 Actions。
+- 本地 155 项相关回归通过：主仓库发布边界 13、源码发行准备 42、发行门槛 5、Android 模拟器主机回归 69、模拟器工作流/夹具回归 26。它们是主机与合成测试，不是已经运行 Android 模拟器。
+- actionlint v1.7.12 检查两个主仓库工作流及修改的 Android 工作流通过；26 个主仓库 Actions/composite shell 步骤语法通过，非 Python heredoc 步骤同时通过 ShellCheck。源码 760 个受跟踪文本文件的 sanity 检查通过。
+- 本地 recipkg check、pack、归档 check、完整 build 提示词检查通过：8 个包、54 个普通 UTF-8 Markdown 文件，依赖包身份完整，无链接、unsafe path、NUL 或非 Markdown；所有非 LOCK 正文完整进入提示词。临时归档与提示词随检查自动删除。
+
+本轮未执行完整 Android/WebUI 构建、远程 Actions、真实上传发布、签名或设备/真实网络验收。已有 dist/MagicNet.zip 保留，未作为本次源码构建通过的证据。工作流静态与回归检查通过不等于 CI 端到端已经跑通。工具下载曾遇到 TLS 错误，改用同版本 actionlint 固定源码本地编译；临时工具及编译目录在任务结束清理。
+
 ## 2026-10-29 / 配方0.3.0：#426源码提取与重建准备
 
 本节只记录本轮事实；下方源码迁移、v1.8.0开发和初次迁移记录保持其原提交归属。当前产品源码固定0dca28dd984d82333707cbf4b222596934b4d847、tree bcb709f66bc2eb6a19021bd2f969f7cf2fa2198a，没有修改产品文件或gitlink。配方从0.2.1升至0.3.0；没有构建、发布或声称新Android版本。

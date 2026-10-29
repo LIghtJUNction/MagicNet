@@ -35,8 +35,11 @@ manager 开始后 partial/interrupted failure 由 manager 拥有，不以删除�
 构建/包检查覆盖运行布局、权限、组件、with_ebpf 元数据、配置 check、敏感资产排除。正式发布在全部本地/官方质量门槛成功、子模块快照一致、最终摘要验证后才公开 Release；上传先草稿，缺资产不得公开。
 日常迁移不触发重型 CI，不发布新版本。本配方包自身只含 Markdown；不能把安装脚本/ZIP/二进制塞进文字配方。
 
+实现跨仓库构建与发布时，完整遵守 [RELEASE_CONTRACT.md](RELEASE_CONTRACT.md)：源码 gitlink、发布仓库和标签提交分别明确，默认只构建，正式发布由显式请求及同提交质量/Android 验收共同放行。
+
 ## 本包补充材料
 
 - [EXTERNAL_ASSETS.md](EXTERNAL_ASSETS.md)
+- [RELEASE_CONTRACT.md](RELEASE_CONTRACT.md)
 
 构建器必须尊重绝对或相对 CARGO_TARGET_DIR，Android Rust 构建使用 --locked。配置检查使用命名的模块路径变量，不覆盖调用者 HOME。正式发布同时固定源码标签、组件摘要、模块版本/单调递增 versionCode 与兼容更新入口。

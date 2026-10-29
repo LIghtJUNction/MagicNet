@@ -1,0 +1,18 @@
+name: Check MagicNet recipes
+description: Check the complete recipe archive, prompt and release boundary regressions
+runs:
+  using: composite
+  steps:
+    - name: Install pinned Recipkg CLI
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/recipkg"
+        "$RUNNER_TEMP/recipkg/bin/pip" install --disable-pip-version-check \
+          'recipkg @ git+https://github.com/recipkg/cli-source.git@f6f5983d558937677c712fea291c65b376487568'
+        echo "$RUNNER_TEMP/recipkg/bin" >> "$GITHUB_PATH"
+    - name: Validate recipe archive and full prompt
+      shell: bash
+      run: python3 scripts/check-recipes.py
+    - name: Test release validation
+      shell: bash
+      run: python3 scripts/test-release.py

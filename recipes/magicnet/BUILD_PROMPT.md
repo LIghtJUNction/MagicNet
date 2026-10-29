@@ -9,7 +9,7 @@
 - 保留操作流程，重新设计视觉，避免通用 AI dashboard。不能因改版删除诊断、文件草稿、失败恢复或无障碍状态。
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
-- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@ed01282e8ee4bcfc27ce5f95f37723c34aebf745；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。新提交只包含本轮订阅修复，尚未构建发布 Android 版本或部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
+- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复和跨仓库构建发布兼容，尚未构建发布 Android 版本或部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
 - 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 保留原需求，M30–M39 新增多订阅、Encryption、可观测状态和重建交付验收。SOURCE_AUDIT.md 分开记录基线缺陷、当前源码修复和仍未知事项；配方合同或源码 main 更新都不等于 Android 版本已发布/部署或 #426 根因已确认。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
@@ -47,6 +47,7 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 
 先建立公开接口和验收夹具，再重建各依赖，最后集成为完整模块。实现写入 generated/ 的独立源码子模块；保留旧存储的兼容导入边界，不并行维护两个公共状态源。先推送已授权源码提交，再更新主仓库的固定 gitlink，不能把普通源码直接写入 generated/ 容器或只留下本地未发布的指针。
 执行合适的本地检查，不为日常迭代触发远程 CI。正式构建、签名、制品发布及设备验收另行报告。未获授权不重启用户设备、不更改其运行订阅、不启用 MCP 或发起抓包。
+正式构建从主仓库的固定源码 gitlink 取实现，发行物仍交付到 MagicNet；完整接口、权限、资产和失败语义见 delivery 的 RELEASE_CONTRACT.md。工作流配置完成不等于 Android 构建或公开发行完成。
 最终交付实际实现、安装物与检查证据；只生成本配方或 build 提示词不算完成独立重建。
 
 ## 本包补充材料

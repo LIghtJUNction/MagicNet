@@ -1,5 +1,7 @@
 # MagicNet
 
+Build artifacts through [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml) on main. The default mode=build uploads the installer, offline module, components and checksums; mode=publish requires an explicitly prepared new software version, synchronized update.json files and release notes. Existing versions are never overwritten. Builds and Android acceptance use the same pinned implementation commit; all gates and uploaded asset digests must pass before a draft becomes public. These workflow checks do not establish arm64 device or real-network acceptance. Routine main pushes do not start this heavy build; PRs run lightweight recipe checks.
+
 ![Software and dependencies become a recipe for rebuilding software](https://raw.githubusercontent.com/recipkg/recipkg/main/assets/recipkg-cover.png)
 
 An Android root network workbench maintained as reconstructable software recipes.

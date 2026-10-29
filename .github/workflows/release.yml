@@ -1,0 +1,396 @@
+name: Build and release MagicNet
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Build downloadable artifacts, or publish the committed software version
+        type: choice
+        options: [build, publish]
+        default: build
+        required: true
+      prerelease:
+        description: Mark a published release as a prerelease
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magicnet-release-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI_TEST_FORCE: '1'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      version: ${{ steps.plan.outputs.version }}
+      version_code: ${{ steps.plan.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Initialize only the pinned implementation
+        run: git submodule update --init --depth 1 -- generated/magicnet-android
+      - uses: ./.github/actions/recipe-check
+      - name: Validate release plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = true ] && [ "$RELEASE_MODE" != publish ]; then
+            echo '::error::prerelease requires mode=publish'
+            exit 1
+          fi
+          python3 scripts/release.py plan --mode "$RELEASE_MODE"
+
+  android:
+    needs: plan
+    if: inputs.mode == 'publish'
+    permissions:
+      contents: read
+    uses: LIghtJUNction/magicnet-android/.github/workflows/android-kernelsu-acceptance.yml@b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7
+    with:
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+
+  build:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+    env:
+      KAM_CHANGELOG_ENABLED: "0"
+      RELEASE_COMMIT_SHA: ${{ needs.plan.outputs.source_sha }}
+      CARGO_NDK_VERSION: "4.1.2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: LIghtJUNction/magicnet-android
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify implementation commit
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Verify pinned build submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify-submodule-revisions.sh
+          git submodule status --recursive > "$RUNNER_TEMP/build-submodules.txt"
+
+      - name: Setup Go for forked sing-box
+        id: go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: false
+
+      - name: Setup kam
+        uses: MemDeco-WG/setup-kam@2a0e9193a7e84dc7da78e99af586f8a4bb823bcb
+        with:
+          github-token: ${{ github.token }}
+          enable-cache: "true"
+          # Do not restore ~/.rustup over the freshly installed Rust toolchain.
+          cache-targets: kam
+          install-commitizen: "false"
+
+      - name: Fingerprint build toolchains
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+          if [ -z "$ndk" ] && [ -d "${ANDROID_HOME:-}/ndk" ]; then
+            ndk="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          fi
+          ndk="${ndk:-/opt/android-ndk}"
+          rust_hash="$(rustc -vV | sha256sum | cut -d' ' -f1)"
+          ndk_hash="$(sha256sum "$ndk/source.properties" | cut -d' ' -f1)"
+          printf 'rust=%s\nndk=%s\n' "$rust_hash" "$ndk_hash" >> "$GITHUB_OUTPUT"
+          printf 'singbox=%s\n' "$(git -C sing-box rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Go dependencies and build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('sing-box/go.mod', 'sing-box/go.sum') }}-${{ steps.toolchain.outputs.singbox }}-${{ hashFiles('scripts/build-sing-box.sh', 'sing-box.version') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('sing-box/go.mod', 'sing-box/go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-
+
+      - name: Cache Rust dependencies and Android build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-${{ hashFiles('Cargo.toml', 'crates/**', 'hooks/pre-build/3000.BUILD_CRATES.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
+            ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
+
+      - name: Setup Node.js and npm cache
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Cache Bun package downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-v1-${{ hashFiles('webui/bun.lock', 'webui/bun.lockb', 'webui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-bun-v1-
+
+      - name: Cache cargo-ndk executable
+        id: cargo-ndk
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/magicnet/cargo-ndk
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-ndk-${{ env.CARGO_NDK_VERSION }}-${{ steps.toolchain.outputs.rust }}
+
+      - name: Install Android Rust target
+        run: rustup target add aarch64-linux-android
+
+      - name: Install Android cargo build tool
+        if: ${{ steps.cargo-ndk.outputs.cache-hit != 'true' }}
+        run: cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked --root "$HOME/.cache/magicnet/cargo-ndk"
+
+      - name: Add Android cargo build tool to PATH
+        run: echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
+
+      - name: Install artifact tools
+        run: sudo apt-get update && sudo apt-get install -y binutils busybox-static file jq ripgrep unzip zip python3-yaml shellcheck
+
+      - name: Test forked sing-box eBPF support
+        shell: bash
+        run: python3 scripts/ci-test-cache.py singbox singbox-ebpf -- bash scripts/test-singbox-ebpf.sh
+
+      - name: Build host sing-box from fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="${RUNNER_TEMP}/sing-box-host"
+          mkdir -p "$install_dir"
+          scripts/build-sing-box.sh linux amd64 "$install_dir/sing-box" >/dev/null
+          sudo install -m 0755 "$install_dir/sing-box" /usr/local/bin/sing-box
+          expected_revision="$(git -C sing-box rev-parse HEAD)"
+          version_output="$(sing-box version)"
+          grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
+          printf '%s\n' "$version_output"
+          python3 scripts/test-android-tun-proof.py --check-core "$(command -v sing-box)"
+          python3 scripts/test-dns-loopback-listeners.py --core "$(command -v sing-box)"
+
+      - name: Verify tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          kam --version
+          gh --version
+          cargo ndk --version
+
+      - name: Build module
+        shell: bash
+        run: |
+          set -euo pipefail
+          find hooks src -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+          rm -rf dist
+          kam build
+          # Preserve the reviewed, versioned installer URL after KAM exports metadata.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("update.json")
+          data = json.loads(path.read_text())
+          import subprocess
+
+          committed = json.loads(subprocess.check_output(["git", "show", "HEAD:update.json"]))
+          data["zipUrl"] = committed["zipUrl"]
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+          PY
+          git submodule status --recursive > "$RUNNER_TEMP/built-submodules.txt"
+          diff -u "$RUNNER_TEMP/build-submodules.txt" "$RUNNER_TEMP/built-submodules.txt"
+          cp "$RUNNER_TEMP/build-submodules.txt" dist/build-submodules.txt
+
+      - name: Verify artifact contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml | head -n1)"
+          test -n "$module_id"
+          test -f "dist/${module_id}.zip"
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'
+          if unzip -Z1 "dist/${module_id}.zip" | grep -Eq '(^|/)\.git($|/)'; then
+            echo "::error::Module archive contains Git metadata"
+            exit 1
+          fi
+          scripts/package-smoke.sh "dist/${module_id}.zip"
+          scripts/package-install-smoke.sh "dist/${module_id}.zip"
+          scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
+
+      - name: Package core, components and offline full module
+        shell: bash
+        run: |
+          set -euo pipefail
+          GO111MODULE=off CGO_ENABLED=0 GOOS=android GOARCH=arm64 \
+            go build -trimpath -ldflags='-s -w -buildid=' \
+              -o "$RUNNER_TEMP/magicnet-components" ./installer/components
+          bash scripts/quality-gate.sh components
+          python3 scripts/package-components.py dist/MagicNet.zip \
+            --helper "$RUNNER_TEMP/magicnet-components" --output dist \
+            --repository "$GITHUB_REPOSITORY"
+          scripts/package-smoke.sh dist/MagicNet-full.zip
+          cat dist/package-sizes.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify incremental MagicNet installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test-downloader-installer.py dist/magicnet_installer.zip \
+            --core dist/MagicNet-core.zip
+
+      - name: Record source provenance and updater
+        env:
+          RECIPE_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          data = {"schema": 1, "repository": "LIghtJUNction/MagicNet",
+                  "source_repository": "LIghtJUNction/magicnet-android",
+                  "recipe_sha": os.environ["RECIPE_SHA"], "source_sha": os.environ["SOURCE_SHA"],
+                  "version": os.environ["RELEASE_VERSION"], "version_code": os.environ["RELEASE_VERSION_CODE"]}
+          Path("dist/build-source.json").write_text(json.dumps(data, indent=2) + "\n")
+          Path("dist/update.json").write_bytes(subprocess.check_output(["git", "show", "HEAD:update.json"]))
+          PYTHON
+
+      - name: Generate release checksums
+        run: bash scripts/checksum-release-assets.sh dist
+
+      # Run uncached release checks against this exact implementation checkout.
+      - name: Cache release browser binaries
+        if: ${{ inputs.mode == 'publish' }}
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('webui/package-lock.json') }}
+
+      - name: Prepare release quality dependencies
+        if: ${{ inputs.mode == 'publish' }}
+        run: |
+          set -euo pipefail
+          rustup component add clippy rustfmt
+          cd webui
+          npm ci
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Compile release acceptance test APK
+        if: ${{ inputs.mode == 'publish' }}
+        run: |
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
+
+      - name: Release quality gate
+        id: release_quality
+        env:
+          CI_TEST_FORCE: "1"
+        if: ${{ inputs.mode == 'publish' }}
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          bash scripts/quality-gate.sh all
+          git submodule status --recursive > "$RUNNER_TEMP/quality-submodules.txt"
+          diff -u "$RUNNER_TEMP/build-submodules.txt" "$RUNNER_TEMP/quality-submodules.txt"
+          python3 scripts/prepare-release.py --verify-build
+
+      - name: Upload build artifact
+        id: artifact
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: magicnet-${{ needs.plan.outputs.version }}-${{ github.run_id }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [plan, build, android]
+    if: inputs.mode == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - run: git submodule update --init --depth 1 -- generated/magicnet-android
+      - name: Download only this build's artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: dist
+          merge-multiple: true
+      - name: Verify final assets and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release.py plan --mode publish
+          python3 scripts/release.py verify --directory dist
+          notes="$RUNNER_TEMP/magicnet-release-notes.md"
+          cat "docs/releases/$VERSION.md" > "$notes"
+          printf '\nRecipe commit: %s\nImplementation commit: %s\n' \
+            "$GITHUB_SHA" '${{ needs.plan.outputs.source_sha }}' >> "$notes"
+          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft
+                --title "MagicNet-${VERSION_CODE}-${VERSION}" --notes-file "$notes")
+          if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
+          gh release create "$VERSION" dist/* "${args[@]}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" > "$RUNNER_TEMP/uploaded-release.json"
+          python3 scripts/release.py verify-uploaded --directory dist --response "$RUNNER_TEMP/uploaded-release.json"
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
