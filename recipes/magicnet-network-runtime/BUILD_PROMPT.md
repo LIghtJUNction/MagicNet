@@ -38,4 +38,5 @@ disable 保留身份与可恢复设置；enable 检查 revision；logout 先确�
 
 只经已存在 provider 的能力证据识别 AOSP/Oplus 等支持情况，不按品牌猜成功。status/inspect/check 只读；repair/reapply/rollback 必须使用完整身份/原策略摘要候选并显式 --confirm。
 写前重新读取全部共享包/用户/策略；私密 0700 目录和 0600 journal 先原子持久化并 sync，再调用 setter/readback；最多 128 身份、每 record 64 KiB。prepared/applied/rollback_prepared/rolled_back 区分；超时和响应丢失保留证据。相同重复无副作用，第三方变更拒绝覆盖；限制回来必须新的显式 reapply，不后台反复清除。
+部分写入后重试不能以当前仍受限制的 UID 子集覆盖原 journal。保留最初全部身份与原策略，并逐项记录写前、已应用、回滚中的进度；setter 忽略写入、写后回应丢失、回滚中断均可根据读回恢复。外部策略位或共享包身份变化时明确冲突，不能误覆盖或只恢复一部分后宣布 rolled_back。
 不关闭厂商控制器，不放松 SELinux，不加 ALLOW_MULTI；API 配置回读成功不是 DNS/Play 成功。

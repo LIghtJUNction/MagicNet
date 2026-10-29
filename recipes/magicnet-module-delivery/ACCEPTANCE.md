@@ -10,10 +10,12 @@
 | zip-slip、重复条目、头部歧义、unsafe link、错架构/身份 | 安装/更新 | manager 运行前拒绝，用户目录不被写 |
 | 同 ID、冲突 ID、4096 budget、receipt 过期、并发 | module-update | 幂等/conflict/busy/耗尽明确，不遗忘重放历史 |
 | manager exit0 但 staged 不符、有效 pending/disable/remove | install | 拒绝或 staging_unverified，不能误报新版本已生效 |
+| 安装至 modules_update 后实际重命名至 modules；包含旧自有绝对路径和自定义外部路径 | promotion、初始化、配置 apply 与真实核心 check | 自有 rules/cache/Tailscale 及 checkpoint/LKG 可恢复迁移；外部路径与身份字节保留；55 规则有效；停止意图不变，不仅检查暂存安装 exit0 |
+| 历史成功回执与 disable/update marker、损坏恢复 journal、另一任务 recovery_required 同时存在 | 重放旧 ID / 接收新 ID | 先恢复并检查当前门槛；不能以旧成功绕过阻断；不启动新 worker 或覆盖原 ledger/恢复证据；健康重放仍幂等 |
 | reboot 前后、CLI hash不符、manifest缺失 | status | reboot_required/unknown/effective version 准确 |
 | 真 manager 部分失败/被杀 | 恢复 | recovery_required，不擅删他人 staging，不自动重启 |
 | 迁移清单中增加状态路径，只修改“备份”或“恢复”其中一边；再测试显式模板排除项、权限、复制失败 | 首次安装/升级 | 备份与恢复由同一清单派生，配置重建例外单独可审阅；遗漏不能 exit 0 静默丢数据；失败退出非零并留下可恢复证据 |
 | 真实发布 ZIP 与 support canary | 包检查 | 无 .env/本地状态/密钥/日志/旧 TProxy资产；with_ebpf 元数据和所有摘要一致 |
 | 主仓库只更新配方/固定源码，手动 build/publish、错误源码 SHA、错更新地址、既有标签、版本未递增、缺失/篡改资产、Android 失败或跳过 | 按 RELEASE_CONTRACT 执行构建发布 | build 不发布；全部构建/验收使用同一 gitlink；只向 MagicNet 正式发行；不覆盖旧标签；任一必需门槛或服务端摘要失败都不公开草稿 |
 
-当前未新构建完整模块、未安装设备、未验证 manager 更新或发布；本次仅对配方归档做结构检查。
+本表是验收合同，不能整体标为通过。各轮实际构建、包检查、宿主 promotion、真实 manager/设备及发布证据分别见根 VERIFICATION.md。

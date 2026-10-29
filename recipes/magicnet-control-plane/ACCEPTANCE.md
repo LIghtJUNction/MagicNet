@@ -1,6 +1,6 @@
 # 控制面验收
 
-所有场景为未来重建验收，除根 PERFORMANCE 明示原实现测量外均未执行。
+本表描述验收目标。各轮实际执行的子集与环境限制见根 VERIFICATION.md；原实现测量见 PERFORMANCE，不能据局部通过推断整表或设备业务通过。
 
 1. --json 放头/尾各调用 capabilities，解析 stdout 恰好一个 schema-1；重复 flag/未知命令/service stop --json 返回非零结构化错误，不执行写命令。
 2. 构造 PID 可见但 API 拒绝、API 正常但 TUN 缺失、PID 枚举失败、eBPF local attached 且 shared pending 的独立夹具；检查每层和 overall，不允许用一个 bool 覆盖未知。

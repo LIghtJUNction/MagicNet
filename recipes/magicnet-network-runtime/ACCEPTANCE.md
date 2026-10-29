@@ -21,7 +21,7 @@
 | 相同配置、仅无关文件修改、规则内容修改 | config apply | 前两者不重启，真正有效变化校验后才重启 |
 | 模式文件缺失、CRLF、无末尾换行、空值/未知值/重复字段、解析器部分输出后失败、输出写入失败 | transparent mode 读取 | 缺失默认 tun；只接收 tun|ebpf；非法内容和 I/O 错误非零，不泄露部分有效 token；频繁读取避免不必要的外部进程 |
 | 非 Tailnet CGNAT、暂停/恢复/登出、自定义状态目录、失败停止 | Tailscale 操作 | 非 Tailnet 正常 LAN 处理；不删外部目录/账号；失败不重新启用 |
-| missing provider、过期候选、限制被外部改写、setter 忽略写入、崩溃 | network-access 流程 | unsupported/conflict/readback error/持久恢复准确；零自动清除 |
+| missing provider、过期候选、限制/共享包身份被外部改写、setter 忽略写入或写后回应丢失、部分 repair 后重试、rollback 第二项失败后重试 | network-access 流程 | unsupported/conflict/readback error 准确；原完整 UID/策略基线不被缩减；逐项恢复后才报告完成；外部冲突零写入，零自动清除 |
 
 设备验收还需真实 App UID 的 DNS、前后台连接、IPv4/IPv6、网络切换、热点客户端和厂商网络栈；Google Play/GMS、Tailscale TSMP/业务连接与 no-op 生命周期锁争用都需要真机覆盖。本机 mock 不覆盖这些。
 

@@ -14,9 +14,9 @@
 | M08 | WebUI 操作超时后立刻第二次写，关闭再重开 | 原生命令退出前串行槽仍被持有；长任务由设备文件恢复；旧响应不能覆盖新状态 |
 | M09 | 未认证 MCP、错误类型/未知字段、私密文件及 symlink 别名、diagnose 尾随参数 | 独立拒绝；无命令执行与敏感值泄漏；资源只返回脱敏 schema-1 |
 | M10 | 手动停止核心后保存配置、暂停/恢复 Tailscale；共享 CGNAT 非 Tailnet 目的地 | 不意外启动核心；不强迫整个 CGNAT 走 Tailnet；登出只删模块自有身份 |
-| M11 | network-access 检查、缺少确认、stale 候选、成功 repair、第三方改策略、rollback | 检查零写入；只改审阅的身份；有界私密 journal；冲突拒绝；配置 readback 不能宣称 Play 可用 |
-| M12 | 替换组件 ZIP 字节、路径穿越、缺组件、网络中断、移动文件时强杀 | 校验前不激活；拒绝不安全包；旧配置保留；重试先恢复；不删除无法证明归属的 staging |
-| M13 | 更新同 ID 同意图、同 ID 不同意图、并发请求、成功 staging 后未重启 | 幂等/冲突/busy 分明；旧生效版本保持；仅显示 reboot_required；不自动重启 |
+| M11 | network-access 检查、缺少确认、stale 候选、部分 repair 后重试；setter 忽略写入/回应丢失、rollback 中断重试；第三方改策略或共享包身份 | 检查零写入；只改审阅身份；有界私密 journal 始终保留最初全部身份/策略和逐项进度；恢复全部自有变更；外部冲突零写入；配置 readback 不能宣称 Play 可用 |
+| M12 | 替换组件 ZIP 字节、路径穿越、缺组件、网络中断、移动文件时强杀；modules_update 到 modules 的实际目录迁移 | 校验前不激活；拒绝不安全包；旧配置保留；重试先恢复；仅清理自有 staging；迁移后 55 规则、cache、自有 Tailscale、checkpoint/LKG 继续有效，保留自定义外部路径与停止意图 |
+| M13 | 更新同 ID 同意图、同 ID 不同意图、并发请求、成功 staging 后未重启；历史成功回执遇到 disable/update marker、坏 journal 或另一任务 recovery_required | 幂等/冲突/busy 分明；历史重放和新请求都先经过当前恢复与所有权门槛，阻断时不创建 worker 或覆盖 ledger；健康重放保持幂等；仅显示 reboot_required，不自动重启 |
 | M14 | 320/360/390/430、横屏、桌面；zh-CN/en/ru；键盘/屏幕阅读器/reduced motion | 14 页可达，含节点与代理组独立入口；关键状态和错误可读；草稿、焦点、确认、键盘避让、布局无阻挡；无虚构实时数据 |
 | M15 | TLS/DNS/真实 App UID 流量、前后台与网络切换、TUN/eBPF、热点客户端 | 正确出口、规则与 DNS 边界有真实包/应用证据，不能仅凭配置、curl root 或进程证明 |
 | M16 | 故意植入凭据的合成配置，导出 support/backup、状态与发布包 | 公共结果脱敏；备份按私密导出合同处理；发布包无 .env、运行状态、密钥和私密日志 |
@@ -35,7 +35,7 @@
 | M29 | 在锁定 sing-box 核心上对比 mixed 与 Go/default TUN stack | 热点回程、DNS、策略、IPv4/IPv6、长连接和资源指标全过后才可提议换默认；stack 选择不改变 tun|ebpf 模式语义 |
 | M30 | 1/2/5 个来源逐个成功后一起导入，经 UI 私有payload、CLI列表和命名MCP工具，再重排与回读 | 完整输入顺序/来源集合一致，六个唯一来源或一条非法源整体拒绝；不得重复调用单源set而只保留最后一源；fresh/缓存与各源贡献有证据 |
 | M31 | scheme/host大小写、默认443、空path、fragment、LF/CRLF/CR、Unicode path/query、同主机不同query、重复key与percent字节，来源重排和旧缓存迁移 | SUB-002统一身份，各入口结果一致；签名query与既有percent字节不改写，原始UTF-8后缀按字节编码，fragment不发送；缓存/用量不按hostname/index串用，无法证明同源则重新拉取 |
-| M32 | A/B各一个同名不同端点的复杂节点，分别/一起导入；相同tag同配置、相同tag不同配置且有/无引用、不同tag相同连接语义、转换漏字段 | 同名不同语义不静默丢失；未引用冲突稳定改名，被detour/selector/default引用的歧义明确拒绝；相同tag同配置才折叠，不推断跨tag来源归属；逐源完整性不与跨源去重数量混比，也不删安全校验换成功 |
+| M32 | A/B各一个同名不同端点的复杂节点，分别/一起导入；相同tag同配置、相同tag不同配置且有/无引用、不同tag相同连接语义、转换漏字段 | 同名不同语义全保留且稳定选择；可确认的同源detour/selector/default引用随改名重映射，真实歧义明确拒绝；完全等价节点可以保留，选择合并时忽略显示名并保留全部已确认来源；逐源完整性不与跨源去重数量混比，也不删安全校验换成功 |
 | M33 | A fresh+B cached、B无可信缓存、B缓存属于C、混合JSON/YAML/分享文本、每个激活/回滚阶段中断 | 合格同源缓存准确标记；无法取得任何一源则整批保留旧代；不只提交成功子集；恢复未完保持recovery_pending |
 | M34 | 已保存1源但候选2源失败；cache.entries=3而source_entries=1；owner未知/陈旧；batch=null/旧能力；失败后重开 | 当前数、候选数、缓存数、节点数分开；subscription_batch_v1协商后按同代读取；候选丢失时匿名index；公共结果无私密值；读取错误不伪装零来源成功 |
 | M35 | 两源只一条metadata、保存B后继续编辑C、旧成功晚回调、UA保存后来源失败、本地8MiB边界、清空来源 | 配置数量准确，缺metadata为未知；草稿C不丢；同次结果才完成；UA/来源事务分开；清空不改有效配置/不重启；超时不偷owner |
@@ -52,7 +52,7 @@ M30–M39 来自本轮 #426 与固定 v1.8.0 源码提取；证据和修正边�
 ## 配方与源码布局验收
 
 - MagicNet 主仓库保留原名称和 `recipes/`。`generated/` 仅包含具名源码子模块；`git ls-tree HEAD generated/magicnet-android` 必须显示 mode `160000`，`.gitmodules` 的 URL 为独立的 `LIghtJUNction/magicnet-android`，仓库与子目录同名。不能整体忽略这个入口。
-- 源码 gitlink 指向已公开可获取的完整提交。干净检出主仓库并初始化该子模块，须取得同一 tree 与六个固定嵌套子模块；保留已有本地修改、历史及其他 worktree。独立源码快照与原 v1.8.0 完整 tree 相同才可沿用原版本的历史验证记录。
-- 全部 11 个共享技能仍来自 PROJECT_SKILLS.md 列出的各自上游仓库，以 mode `160000` 固定，入口和引用的 Markdown 资源可读；原项目自定义技能保留。
+- 源码 gitlink 指向已公开可获取的完整提交。干净检出主仓库并初始化该子模块，须取得本轮已验证的同一 tree 与本轮实际采用的全部固定依赖；保留已有本地修改、历史及其他 worktree。历史 v1.8.0 快照的六个嵌套子模块不是新实现必须继承的技术结构。独立源码快照与原 v1.8.0 完整 tree 相同才可沿用原版本的历史验证记录，否则必须报告新实现自己的验证。
+- 主 agent 在集成阶段检查原仓库的 11 个共享技能仍来自其既有上游仓库并以 mode `160000` 固定，入口和引用 Markdown 可读；保留原项目自定义技能。这不是新构建者的输入依赖，不要求其访问原仓库或配方闭包外的 PROJECT_SKILLS.md。
 - `recipkg check` 通过，临时 pack 归档再次 check 通过；归档只含普通 UTF-8 `.md`，无链接、源码、Git 元数据、私密文件或执行钩子。完整 build 提示词包含所有递归 Markdown 材料。未明确要求交付归档时，验证后清理临时文件。
 - 发布后回读主仓库 gitlink、独立源码提交和原仓库 topics；保留已有 topics 并包含 `recipkg`。这项结构验收与 Android 构建、设备、网络和独立重建验收分别报告。

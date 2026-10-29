@@ -1,5 +1,70 @@
 # 实现与发行验证
 
+## 2026-10-29 / 配方 0.3.1 独立重建候选 v1.8.1
+
+本节对应两个仓库的 `rebuild/recipe-0.3.1` 候选分支。新实现从空目录、新上下文和完整冻结配方生成，采用 Go 控制器、原生 ES modules WebUI、Android Java bridge 与组件安装器；配方允许的固定 sing-box、规则和第三方工具单独列入复用与许可证清单。产品版本为 **v1.8.1 / versionCode 10609 / channel candidate**，配方为 **0.3.1**。构建者没有读取旧 MagicNet 实现、旧二进制或旧测试；共享文件系统与读取约束不被声称为 OS 级隔离。
+
+### 实际输入与提交身份
+
+- 实际冻结 BUILD_PROMPT：335,805 bytes、8 个包、53 个 Markdown，SHA-256 `502e160a363ffdc6e60477261ac15b74884b07f37de78af69558b0806f8e717a`。构建输入逐字节保留在源码归档的 `recipe/BUILD_PROMPT.md`，没有事后替换。
+- 功能源码/二进制嵌入提交：`280f044a0dc63f49965a910efd9509abd13a316b`；本地最终交付提交：`532d51e71bf1d91017409bfe16b6601a2bfbee75`。
+- 已公开源码候选：[`b22f9f280ddaf729da47078c13838a73e6d89294`](https://github.com/LIghtJUNction/magicnet-android/tree/b22f9f280ddaf729da47078c13838a73e6d89294)。公开提交与本地交付的完整 tree 均为 `f45d5e0b5bee6245d8968ed35d6e4aa23a57c54b`；公开提交保留原源码历史作为父提交，标识不同但 tree 精确相同。
+- 新实现包含 783 个受跟踪文件。82 个功能文件 fingerprint 为 `df7c5c3e0369c3bb4a2a6470fb5fa12cba147054669158b7a6e2f20b76b415e0`；最终文档提交未改变已验收功能或 host CLI。
+- 固定 core 为 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`，固定规则为 `f3335f9420d07b8c50b26488df2a9492da6bbb44`，实际复用与 55 规则来源分别记入源码清单。没有克隆旧 MagicSingBox 模板作为新实现。
+
+构建期间 main 从输入基线继续新增 M40/RELEASE_CONTRACT 和发布流程，未进入上述 53 文件输入。候选配方保留新增 M40，并补记本轮独立反例的 M11–M13/UI-SUB-CASE-07 验收细节；当前重新生成的提示词因此不等于实际冻结输入，不能追认 M40 已被本轮独立重建实现。main 的并发发布改动及原有技能 pins 保留，候选正式合入前需适配并通过新 Go 实现的发布门槛。
+
+当前候选另行通过本地 Recipkg check、pack、归档 check 和完整 build 提示词检查：8 个包、54 个普通 UTF-8 Markdown 文件，所有非 LOCK 正文完整进入提示词，无重复/危险路径、链接或 NUL；临时检查归档与提示词自动清理。这验证当前配方闭包，不改写上述实际 53 文件构建输入。Git staged diff 检查确认 `.gitmodules`、既有技能 gitlinks、`.github`、发布脚本与官方 update.json 均保持并发 main 基线原值。
+
+### 最终独立验收
+
+独立验收始终绑定最终 host CLI `cb5ed46ad892e2478751a2f2c215091289dd37dc5e0c77d94caed1c0faec7255` 与固定 host core `4a3b5a35871a723cf9111727c5f5bd3c5523d5779b4d03ad6af9727a53fae451`，使用全新模块根和合成数据。没有读取真实订阅或操作设备。
+
+| 检查 | 结果 | 实际范围 |
+| --- | --- | --- |
+| 真实 CLI / 固定 core check 订阅回归 | 204 断言 PASS / 0 FAIL | 121 + 83；格式、身份、同名不同端点、payload、VLESS 长字段、批次与隐私 |
+| 远程订阅 hostfixture | 10 叶场景 PASS | 受控 HTTPS 依赖夹具，五源、缓存身份、回滚、选择、fetch 边界；不是公网服务商成功 |
+| 公共 batch-v1 独立 schema | 18 份结果 PASS | 实际公共输出的计数、类型、代次与状态 |
+| 机器接口 | 10 PASS | capabilities、严格 envelope、未知/重复参数和不允许的写操作拒绝 |
+| MCP 实际 daemon | 29 PASS | loopback 认证、85 工具 schema、私密路径与通用命令拒绝、7 资源、notification 零写入 |
+| 独立恢复回归 | 13 PASS | promotion、自定义路径、健康/阻断回放、部分失败/回应丢失/忽略 setter/回滚中断/外部冲突 |
+| 关键 UI 流程 | 10 PASS | 真实本地 2 节点导入、B/C 草稿可见与取消、UA 独立保存、旧 1 源/候选 2 源、隐私与基本可访问性 |
+| 包与实际目录晋升 | 16 PASS | v1.8.1/10609、7 组件、别名、权限、ARM64/DEX、离线安装、篡改拒绝、真正 rename 后初始化/验证/apply |
+
+数量包括断言、场景和结果校验，不相加冒充完整业务用例。宿主 promotion 在验证 Android 原 ZIP 后明确换入已冻结的 host CLI/installer/core，执行 staging 初始化、实际 rename、final 初始化、`config-editor validate sing-box`、`config apply`、真实 `sing-box check`，五个执行步骤均 exit 0；55/55 规则存在于新根，config/checkpoint/LKG 不含旧 staging 路径，服务始终 stopped。它不等于真 manager 或 Android 重启验收。
+
+### 独立发现后的修复
+
+首版 `eb4c8ba89a04f9aaa4ee4a2fe6dc62e47949ed97` 及其原包和失败证据保持冻结。修复在独立 worktree 完成：
+
+- P1-A：暂存绝对路径在管理器晋升后失效。默认自有 rules/cache/Tailscale 改用模块相对路径；旧自有绝对路径通过 journal 同步 config/settings/checkpoint/LKG，外部自定义路径与身份字节保持。
+- P1-B：旧成功回执在锁与当前恢复检查前重放。现在锁内先检查当前 marker、owner、恢复意图，恢复合法 journal 后再检查并重放/接收；阻断不启动 worker、不覆盖 ledger。
+- P1-C：部分 repair 后 fresh inspect 缩减原回滚基线。现在保留最初完整 UID/用户/共享包/策略及逐项 pending/applied/restored；恢复与外部冲突分明。
+- P2：0 来源曾取消编辑后，导入 B 成功将 count 变为 1，导致新草稿 C 被折叠。dirty 草稿现在持续可见；显式取消仍恢复基线并折叠、零写入。
+- 产品 v1.8.1/10609 与 recipe 0.3.1 分开；外部 converter 明确为未实现/本轮不提供，而不是仅因环境 NOT_RUN。
+
+公开反例随后作为开发回归，不再冒充未见测试；独立复测另外执行。验证脚本的 onboarding 等待时序、误用 `config validate`、直接改配置造成 checkpoint 冲突分别保留原记录，修正正式命令/夹具后使用新根重跑；这些不是产品缺陷。最终自有 HTTP/MCP/浏览器进程和临时模块根已清理。
+
+### 构建、归档与文件身份
+
+最终 Go race 全套 56 顶层 / 72 含子用例 PASS、0 FAIL/SKIP，Go vet PASS。开发侧更新/网络恢复 28、promotion 12、WebUI 合同 14、宿主集成 11、installer/包 12 项通过；两次封装 14 个输出逐字节相同。原固定核心 9 协议 loopback 互通与首版 540 浏览器组合作为明确的首版/未变核心记录，未冒充修复版全量重跑。
+
+| 产物 | bytes | SHA-256 |
+| --- | ---: | --- |
+| MagicNet-full.zip | 53,135,512 | `f8db57170e5e1274ca84737142b27be1e5b451eb8e20b2f6b56957e18d0741aa` |
+| MagicNet-core.zip 与两个别名 | 各 7,856,617 | `6abc06adda67aa41670bc116c3293ac3b2040aeaea5fd25f9f8e5f86bffd3f6e` |
+| MagicNet-source.tar.gz | 10,134,593 | `ff803f5969697d616ef719480e71ac59b9d63a38316071dfbbf9afb6a9e27245` |
+
+dist 20 文件的 SHA256SUMS 覆盖其他 19 项，重新计算全部匹配。源码 tar 的 3,281 内容项逐个核验 path/mode/size/SHA，包括 783 新实现文件和原始冻结提示词；没有本轮浏览器截图。最终 tar 已实际解压到无 `.git` 目录，注入外层 Git 环境后成功重编 Linux CLI；取得正确功能 commit、验证 82 文件、没有继承外层 VCS 字段。这是源码归档构建验证，不宣称跨环境二进制 bit-for-bit 相同。
+
+Android CLI SHA 为 `0f1145ada22d85c98094370a1977d91e5fe27a776ad43c88e086edcb8c0a62e1`；Android installer 为 `d51cd7e521c6aa3e198ac35a92ead69ba84215b150b097f4965d90a71b2e2d0a`；固定 Android core 为 `9e0689f4e5bb0a7a670bee9aeadd3256a3544b99947af776477d488576692a1d`。两架构控制器/安装器来自同一 clean 功能提交。完整构建报告见 [固定源码 VERIFICATION](https://github.com/LIghtJUNction/magicnet-android/blob/b22f9f280ddaf729da47078c13838a73e6d89294/VERIFICATION.md)。
+
+### 未执行与发布边界
+
+未执行 Android 真机 ELF、实际 Magisk/KernelSU/APatch 安装与重启、SELinux/binder/OEM provider、TUN/eBPF/TC 真实数据面、热点/IPv6 回程、实际应用 DNS、真实公网多服务商成功导入、VLESS 加密服务器互通、完整激活中断/并发调度和长期 soak。M40 的新实现发布适配及同提交 Android/KernelSU 门槛未完成。
+
+两个候选分支只提供源码与配方审阅入口；没有官方 Release、设备部署或重启。轻量在线组件尚未作为发行资产公开，交付使用完整离线包。#426 仍缺现场多源失败输入，本轮不认定设备根因或关闭 Issue。
+
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 
 修复前，MagicNet main 没有根 `.github/workflows/`；旧工作流位于实现子模块，不能替主仓库运行。正式发行仍使用 LIghtJUNction/MagicNet，源码仓库固定为 magicnet-android。当前源码提交为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`，已先推送源码 main 并回读核对。软件版本仍为 v1.8.0，未创建新标签、草稿或发行版。
