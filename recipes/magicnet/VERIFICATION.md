@@ -2,7 +2,7 @@
 
 ## 2026-10-29 / v1.8.1 发行准备
 
-用户已授权发布新版本。软件版本为 v1.8.1，versionCode=10609；实现固定 `68ad77453d752845eedb5dd8ca56110c18de4b26`，保留已有六个嵌套依赖 gitlink。源码和主仓库的 update.json、模块 metadata 与发行说明同步，配方版本仍为 0.3.0。
+用户已授权发布新版本。软件版本为 v1.8.1，versionCode=10609；初始发行准备固定 `68ad77453d752845eedb5dd8ca56110c18de4b26`，保留已有六个嵌套依赖 gitlink。源码和主仓库的 update.json、模块 metadata 与发行说明同步，配方版本仍为 0.3.0。
 
 本地 WebUI 338 项测试、TypeScript 类型检查和生产构建通过；发行准备 42 项、发行门槛 5 项、主仓库发布边界 13 项回归通过。Clash/协议订阅 28 项中 24 通过、4 项因缺少真实转换器明确跳过；订阅用量与 5 个订阅事务/恢复场景通过。源码文本 sanity 和 git diff --check 通过。配方 check/pack/归档 check/完整 build 提示词检查通过，8 个包、54 个普通 UTF-8 Markdown 文件。
 
@@ -16,7 +16,13 @@
 
 第一轮后续完整 Rust 门槛另有 1 项夹具竞态失败：764 通过、1 失败、1 忽略；模拟退出线程逐文件删除 proc 目录，检查者可能看到 stat 消失而父目录尚在，生产检查因此保守拒绝所有权，行为符合安全边界。源码 `9770f8f29db8e240eff24f774fb32807f2f3e005` 将这个测试场景改为原子 rename 模拟 /proc 消失，未修改生产进程保护逻辑。第二轮 [40847078954](https://github.com/LIghtJUNction/MagicNet/actions/runs/40847078954) 的 Android 前置检查已成功，为绑定最终源码主动取消后续构建/模拟器任务。
 
-最终候选本地 cargo fmt、严格 workspace/all-targets/all-features Clippy 通过；9 个顶层 Rust suite 共 808 通过、0 失败、1 显式忽略。资源受限的本机使用 CARGO_BUILD_JOBS=1 和 test-threads=2；正式工作流仍执行自身的完整门槛。最终源码 `9770f8f29db8e240eff24f774fb32807f2f3e005` 已推送 main；第三轮完整正式发布仍为 pending。
+候选 `9770f8f29db8e240eff24f774fb32807f2f3e005` 的本地 cargo fmt、严格 workspace/all-targets/all-features Clippy 通过；9 个顶层 Rust suite 共 808 通过、0 失败、1 显式忽略。资源受限的本机使用 CARGO_BUILD_JOBS=1 和 test-threads=2。
+
+第三轮 [40849211338](https://github.com/LIghtJUNction/MagicNet/actions/runs/40849211338) 完成模块构建、包内容/安装迁移、核心/组件/完整离线包、增量安装器检查及 Android 15/KernelSU/x86_64 模拟器门槛；Rust fmt/Clippy/完整测试在 CI 通过。完整质量门槛随后因 ShellCheck SC2094 提示失败，publish 被跳过，没有创建发行版。修正为退出 URL 读取循环后统一清理本次临时清单，写入错误仍中止整批；同时补齐根发布工作流的 mksh 主机依赖。
+
+本地收集全部 105 个主机检查条目，首次 100 通过、5 失败。旧三参数生成器夹具/调用、按 tag 丢节点的旧断言、非法 URL 成功夹具及发行缓存测试缺少显式仓库身份已同步；保留原安全断言，按不同端点核对同名节点完整保留。五个失败条目逐项复验通过，服务选择器使用从固定 sing-box `871b7a3440cd9c850f1b09ef3b4ada9babb4384b` 构建的主机核心，模式用例使用实际 mksh；没有将系统原版 sing-box 的字段不兼容当成项目失败。完整 ShellCheck、761 文件 sanity 与 git diff --check 通过。
+
+当前源码固定 `8f6ddbc362bb7059be91b7734061b2c1e5381e56`。本地浏览器单进程运行因 18 分钟全局上限结束，482 项通过、268 未执行，没有用例失败；随后独立补跑 phone-430、landscape、desktop，372 通过、3 跳过。结合首次完整通过的 narrow-320、phone-360、phone-390，分批覆盖六个项目的 750 个用例，747 通过、3 跳过；不把分批覆盖写成一次完整执行成功。第四轮完整工作流与公开发布仍为 pending；前一轮模拟器成功不能冒充当前源码的发行结果。
 
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 

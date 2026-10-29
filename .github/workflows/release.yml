@@ -190,7 +190,7 @@ jobs:
         run: echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
 
       - name: Install artifact tools
-        run: sudo apt-get update && sudo apt-get install -y binutils busybox-static file jq ripgrep unzip zip python3-yaml shellcheck
+        run: sudo apt-get update && sudo apt-get install -y binutils busybox-static file jq ripgrep unzip zip python3-yaml shellcheck mksh
 
       - name: Test forked sing-box eBPF support
         shell: bash
