@@ -13,6 +13,11 @@
 
 修复提交 `8a2e14609ffaa802ca6ac7dc844017637749430d` 已推送源码 main。本地以从 Ubuntu 官方包提取的 dash 0.5.12、Bash 和 SHA-256 固定的 KernelSU BusyBox 运行同一 UTF-8/不完整转换测试通过；生产 shell 语法、ShellCheck warning 级检查和 761 个文本 sanity 通过。运行时 BUILD_PROMPT、订阅接口合同与验收同步；修复后的正式完整运行仍为 pending。
 
+
+第一轮后续完整 Rust 门槛另有 1 项夹具竞态失败：764 通过、1 失败、1 忽略；模拟退出线程逐文件删除 proc 目录，检查者可能看到 stat 消失而父目录尚在，生产检查因此保守拒绝所有权，行为符合安全边界。源码 `9770f8f29db8e240eff24f774fb32807f2f3e005` 将这个测试场景改为原子 rename 模拟 /proc 消失，未修改生产进程保护逻辑。第二轮 [40847078954](https://github.com/LIghtJUNction/MagicNet/actions/runs/40847078954) 的 Android 前置检查已成功，为绑定最终源码主动取消后续构建/模拟器任务。
+
+最终候选本地 cargo fmt、严格 workspace/all-targets/all-features Clippy 通过；9 个顶层 Rust suite 共 808 通过、0 失败、1 显式忽略。资源受限的本机使用 CARGO_BUILD_JOBS=1 和 test-threads=2；正式工作流仍执行自身的完整门槛。最终源码 `9770f8f29db8e240eff24f774fb32807f2f3e005` 已推送 main；第三轮完整正式发布仍为 pending。
+
 ## 2026-10-29 / 跨仓库 CI 与发行入口修复
 
 修复前，MagicNet main 没有根 `.github/workflows/`；旧工作流位于实现子模块，不能替主仓库运行。正式发行仍使用 LIghtJUNction/MagicNet，源码仓库固定为 magicnet-android。当前源码提交为 `b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`，已先推送源码 main 并回读核对。软件版本仍为 v1.8.0，未创建新标签、草稿或发行版。

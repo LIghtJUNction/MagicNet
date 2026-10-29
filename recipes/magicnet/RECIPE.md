@@ -32,3 +32,5 @@ source = "../software-quality"
 2026-10-29 v1.8.1 发行准备：软件版本 v1.8.1 / versionCode 10609，当前源码 gitlink 为 `68ad77453d752845eedb5dd8ca56110c18de4b26`。发行说明与官方更新地址同步；最终构建、Android 验收和公开发布结果另记 VERIFICATION.md。
 
 同日正式验收发现并修正 POSIX shell 的单节点失败传播差异，当前发行候选源码固定 `8a2e14609ffaa802ca6ac7dc844017637749430d`；完整验收与公开发行状态以 VERIFICATION.md 为准。
+
+发行门槛中的模拟进程退出夹具改为原子移走目录，避免把普通目录逐文件删除当成 /proc 的退出可见性；仅修改测试，不放宽生产进程身份校验。最终发行候选源码为 `9770f8f29db8e240eff24f774fb32807f2f3e005`。
