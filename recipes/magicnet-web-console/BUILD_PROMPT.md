@@ -30,6 +30,7 @@ Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字�
 串行执行直到 native exit/error，调用者超时不等于取消，不能提前释放执行槽。晚回调、切页、双提交和新操作的 ownership 检查防止旧结果覆盖。
 原生输出收集上限 8,388,608 UTF-16 单元及 65,536 事件，两流合计，空事件计入；溢出清空丢弃且等待真实退出，明确 output-limit 错误，不把部分 JSON 当成功；终结路径移除 callback。
 长后台任务通过设备 canonical/机器 status 恢复，关闭 WebUI 不丢失 module-update 工作。任务“接受”“完成”“需重启”和“已生效”分开。
+订阅后台任务按真实、脱敏后保留的操作标识识别：URL 的 `webui payload apply-subscription`、本地文件的 `webui payload apply-subscription-source` 与旧 `sub apply-file` 都进入同次完成检查，不能只识别旧命令或依赖翻译后的按钮文案。当前任务仍 running、error 或 timeout 且无同次完成证据时，旧订阅 success 不能将其改成 done；私密载荷路径和内容仍不进入任务诊断。
 
 订阅全流程按 SUBSCRIPTION_FLOW.md 的 UI-SUB-001–UI-SUB-012 实现。多行输入、候选来源数、私密载荷、保存回读和同次激活结果必须对应同一来源集合；2–5 个来源不能在任何边界变成第一个来源。来源总数取已确认配置，不能用带用量的行数或节点总数反推。“检查来源”的 URL 语法检查与域名解析不表示下载、解析、激活或流量成功。URL 身份和合并/回滚行为服从根包提供的 runtime 订阅合同；需要同步的规范化修正必须同时覆盖所有入口，不能让界面和设备各用一套规则。
 
