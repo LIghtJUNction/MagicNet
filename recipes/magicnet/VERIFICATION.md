@@ -1,5 +1,20 @@
 # 实现与发行验证
 
+## 2026-10-30 / 内核同步：受控测量与中间候选检查
+
+本节记录最终集成前已经完成的结果。sing-tun A/B 使用两个固定模块版本和共同测试；Linux 配置检查使用中间候选 `88a08420497c1de85a73b97ac63410c02e4d7ed3`。最终采用的 fork/Android gitlink 及后续产物身份在集成完成后另记。
+
+| 检查 | 实际结果与范围 |
+| --- | --- |
+| 构建助手离线回归 | `scripts/test-ci-submodules.py` 的 3 项通过：使用编译器替身检查脏源码拒绝与固定 gitlink，并验证本地 Git 递归分支更新/失败传播；没有将它记作真实 Go 编译 |
+| 脚本语法 | 5 个构建/子模块/eBPF shell 入口的 Bash 语法，以及 TUN proof、对应测试和 loopback DNS 三个 Python 文件的 AST 解析通过 |
+| sing-tun 生命周期 A/B | 两个固定版本、两种规模、五个场景、每版三次，共 60 条观测逐条核对；10,000 条 ACK 后判定表归零，该路径 GC 后堆增量减少 1,120,000 B；双向 FIN/RST 在 31 秒虚拟时间后由真实清扫循环回收，活动/半关闭控制组保留。方法和原始数值见 PERFORMANCE.md |
+| 中间候选 Linux 版本 | `1.15.0-alpha.13+LIghtJUNction.88a08420497c`，Go `1.26.10 linux/amd64`，CGO disabled，全部生产 release tags |
+| 中间候选 TUN 配置 | `scripts/test-android-tun-proof.py --check-core` 的正向与 reject 两个夹具被真实 core check 接受；不创建 TUN |
+| 中间候选 DNS 通信 | `scripts/test-dns-loopback-listeners.py --core` 的 IPv4/IPv6 × TCP/UDP 四组均通过；真实 core.run、受控本地 DNS 应答，仅使用 loopback sockets |
+
+该 Linux 中间产物 SHA-256 为 `0a74d2d5fb0d75978a4294838cb14a12124a6a31cbdb3d9c90d1aa5a38b72e92`。最终提交若改变，源码与产物身份按实际重新核对。ShellCheck 未安装，因此本节只记录已执行的 Bash 语法检查。Android 真机、实际 TUN/eBPF 挂载、真实对端和公网通信不在本节验证范围。
+
 ## 2026-10-30 / 配方 0.3.2：内核合同先行
 
 本阶段只更新配方，当前 Android 实现仍为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，内核仍为 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。新增 engine/CORE_LIFECYCLE.md、根 M44 与 CORE-A01–A06，规范上游同步、握手清理、并发关闭及测量口径。
