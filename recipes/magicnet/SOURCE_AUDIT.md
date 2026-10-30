@@ -157,3 +157,12 @@ link_encryption_none_complete_rc=1
 构建读取 fork 的 `release/DEFAULT_BUILD_TAGS_OTHERS`、`release/LDFLAGS` 与父仓库的 `sing-box.version`，使用 `GOTOOLCHAIN=local`、`GOWORK=off`、`-mod=readonly`；Android arm64 为 CGO=0。产品显示版本和源码身份分别记录。现有启动器已提供 192/256/384/512 MiB 的 GOMEMLIMIT 分档并尊重用户覆盖，本轮优化以实际资源归属和释放为准。
 
 新增的 CORE 合同要求同步固定上游及完整 WireGuard 差异、保留 AWG，覆盖握手失败回调与流绑定/关闭竞态。先提交合同，后记录经验证内核和实现提交；本节准备记录不改变历史 #426 的现场证据结论。
+
+
+## 10. 2026-10-30 最终内核集成（配方 0.3.3）
+
+最终 `magicnet-android@396d71df3bd98316324e3533e2d2106e7392250e` 基于 `0952cb01b001e41e1074c2e5f4a731a4ad42b222`，固定 `sing-box@ff669d45e6562a790a49ef066340dbed5df46363`；完整提交、tree、实际构建和产物摘要见 PROVENANCE.md / VERIFICATION.md。最新订阅、恢复与 UI 源码保留，消费仓只改核心 gitlink、版本及验收材料，MagicSingBox 与规则保持原固定点。
+
+内核审查覆盖完整目标上游差异、sing-tun 版本锁和 WireGuard 复制源码。路由握手失败的资源清理使用已有关闭机制；多组真实 AttachConnection 屏障测试覆盖挂接与关闭重叠时的 remover 注册，不能外推为完全关闭后首次挂接的新合同。缓存 DNS 拒绝路径补回原有失败观测，WireGuard pause 读取当前 manager 状态并安全处理尚未初始化 manager 的情况，均有旧版反例与最终 race 回归。细节见[固定内核报告](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/IMPLEMENTATION_REPORT.md)。
+
+受控 sing-tun A/B 验证 ACK 判定表删除和 FIN/RST 会话回收，同时保留活动/半关闭控制组。原始日志、共同测试和完整 runner 可从固定内核 validation 目录复跑；内存结论只属于已测路径。最终 canonical 核心由现有助手实际构建 Linux/Android 两目标，Linux 真实 check 和 loopback DNS 通过；设备网络、真实加密服务器和长期 RSS 仍未知。

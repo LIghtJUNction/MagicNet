@@ -43,12 +43,13 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | --- | --- |
 | Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
 | Recipe | `0.3.3` |
-| Fixed implementation commit | `0952cb01b001e41e1074c2e5f4a731a4ad42b222` |
-| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards and bounded subscription observation |
+| Fixed implementation commit | `396d71df3bd98316324e3533e2d2106e7392250e` |
+| Fixed sing-box core | `ff669d45e6562a790a49ef066340dbed5df46363` / `1.15.0-alpha.13` |
+| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization and connection lifecycle fixes |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
 
-Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`; fixed source identities and measured results are tracked in the verification record.
+Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`. The fixed core passed host tests, Linux amd64 and Android arm64 builds and final Linux configuration/DNS checks. Measured memory results apply to the specific sing-tun lifecycle experiment; Android RSS and device traffic remain unverified. Source identities, exclusions and original evidence are tracked in the verification record.
 
 ## Install the published software
 

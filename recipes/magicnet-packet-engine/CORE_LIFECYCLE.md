@@ -4,7 +4,7 @@
 
 ## CORE-001：固定同步对象
 
-本轮起点为 `LIghtJUNction/sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`，同步目标为 `SagerNet/sing-box` 的 testing 提交 `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。继续使用 1.15 预发布轨道；提交身份、上游标签和产品显示版本分别记录。该目标位于 1.15.0-alpha.13 之后，产品构建版本使用 `1.15.0-alpha.13+LIghtJUNction.<fork SHA 前 12 位>`，并记录完整 fork revision。
+本轮消费仓起始固定点为 `LIghtJUNction/sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`；fork 主线同步基线为 `ef1ac197876a45aee818ee608b15740c10b8fa3b`，同步目标为 `SagerNet/sing-box` 的 testing 提交 `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。继续使用 1.15 预发布轨道；提交身份、上游标签和产品显示版本分别记录。该目标位于 1.15.0-alpha.13 之后，产品构建版本使用 `1.15.0-alpha.13+LIghtJUNction.<fork SHA 前 12 位>`，并记录完整 fork revision。
 
 同步范围包括上游 `sing-tun` 的连接生命周期改动、路由握手失败的退出路径及 WireGuard 复制源码的完整上游差异。逐项处理本 fork 的差异，保留 AWG、eBPF、VLESS Encryption 和全部现有 release build tags。依赖的版本、替换项与 go.sum 一起固定；构建使用只读模块解析。最终采用的 fork 和 Android 实现完整 SHA 写入 PROVENANCE、VERIFICATION 与 gitlink。
 

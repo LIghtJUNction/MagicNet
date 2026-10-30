@@ -34,7 +34,7 @@
 
 ### 复现与范围
 
-本轮共同测试为 `lifecycle_ab_test.go.txt`，复跑入口为 `run_lifecycle_ab.py`：它复制两个固定模块后注入共同测试，不修改模块缓存；逐条核对三次、两种规模、五个场景的 60 条观测。原始结果 JSON 的 SHA-256 为 `d302960d97ee5a185755b6e12c95130d73fbd2a5bb3146ffdf52d95d7c0c9b81`。最终内核证据目录记录对应复现材料及源码身份。
+本轮共同测试为 `lifecycle_ab_test.go.txt`，复跑入口为 `run_lifecycle_ab.py`：它复制两个固定模块后注入共同测试，不修改模块缓存；逐条核对三次、两种规模、五个场景的 60 条观测。原始结果 JSON 的 SHA-256 为 `d302960d97ee5a185755b6e12c95130d73fbd2a5bb3146ffdf52d95d7c0c9b81`。复现源码、原始 JSON/日志与命令已固定在 [sing-box@ff669d45e6562a790a49ef066340dbed5df46363 的 validation 目录](https://github.com/LIghtJUNction/sing-box/tree/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/validation)。该目录的 README 记录完整 runner 的独立复跑，10,000 条场景结果一致；原始记录仍保留本表的三次读数，不用复跑覆盖历史样本。
 
 本轮证据为受控宿主路径测量。整核心 RSS、Android 实机内存、真实 TUN 吞吐、CPU/延迟和电池开销仍待测量；产品 GOMEMLIMIT 分档、默认 stack 与 build tags 保持原合同。
 

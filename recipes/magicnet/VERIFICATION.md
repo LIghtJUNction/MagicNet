@@ -1,5 +1,56 @@
 # 实现与发行验证
 
+## 2026-10-30 / 配方 0.3.3：最终内核集成与验收
+
+当前源码固定为 [`magicnet-android@396d71df3bd98316324e3533e2d2106e7392250e`](https://github.com/LIghtJUNction/magicnet-android/commit/396d71df3bd98316324e3533e2d2106e7392250e)，内核固定为 [`sing-box@ff669d45e6562a790a49ef066340dbed5df46363`](https://github.com/LIghtJUNction/sing-box/commit/ff669d45e6562a790a49ef066340dbed5df46363)，显示版本为 `1.15.0-alpha.13+LIghtJUNction.ff669d45e656`。已完成固定上游同步、宿主正确性验证、两目标核心构建，以及最终 Linux 产物的配置与真实 loopback DNS 检查；Android 设备验收与新模块发行分别保留独立门槛。
+
+### 固定对象与源码证据
+
+上游为 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。源码级测试在本地 `9caf2637c42113a40f1302b87ff9525220a0ff54` 上运行，与 canonical `d6316199ef905c8271e58b23dbf52456d2e49dde` 的 tree 同为 `a6b2907483435e507d5090cb5ce00d84899d10f5`。最终内核的 tree 为 `b5e4c5a7559369fa8f46842b0a0fc45c5aa1ca13`，其额外变化只有 SPECS 下的报告和文本证据。完整上游路径审查、命令、原始日志与失败反例见[内核报告](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/IMPLEMENTATION_REPORT.md)和[validation 目录](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/validation)。
+
+| 门槛 | 实际结果与范围 |
+| --- | --- |
+| 默认 `go test ./...`，明确排除 13 个环境用例 | 47 个 `ok` 包：45 个实际执行测试，2 个排除后为 `[no tests to run]`；另有 111 个无测试文件包。Go test cache 的复用保留在日志，不把包数写成用例数 |
+| 全部生产 tags 的目标测试集 | 22 个实际执行测试包通过，11 个包无测试文件；是目标包集合，不是全部 production-tags `./...` |
+| 最终 lifecycle race | route、dns、transport/wireguard 的 11 个选定测试，`-race -count=1`，退出 0；包括握手清理、挂接/关闭重叠、DNS 拒绝归属和 pause/idle 处理 |
+| 显式 vet | route、dns、transport/wireguard，以及复制 WireGuard 的全部包，均退出 0 |
+| 上游与 fork 审核 | 166 个上游变化路径逐项检查；132 个未被 fork 修改的路径与上游 blob 一致，其余 34 个保留必要合并；完整 WireGuard 复制源码差异、AWG 与原生产 tags 保留 |
+| sing-tun 内存 A/B | 两个固定版本、同一测试、各三次；10,000 条 ACK 后判定表由旧版 10,000 项变为 0，该路径 GC 后堆留存减少 1,120,000 B；FIN/RST 与活动/单侧 FIN 控制组均符合预期，详见 PERFORMANCE.md |
+
+默认测试使用 `-ldflags=-checklinkname=0` 和精确 anchored `-skip` 排除以下 13 个顶层测试；其功能不能按“已通过”计算，源码测试与断言没有删减：
+
+| 环境缺失 | 显式排除的测试 |
+| --- | --- |
+| network namespace，operation not permitted | `TestUnshareNamespace` |
+| socket/process 映射不可用，process not found | `TestDumpSocketDiagTCP`、`TestDumpSocketDiagUDP`、`TestLinuxSearcherFindProcessInfo` |
+| 外部 1.1.1.1:443 连接被拒绝 | `TestTLSRecordFragment`、`TestTLSFragment`、`TestTLS2Fragment` |
+| raw socket，operation not permitted | `TestIntegrationConn_RealTLSHandshake`、`TestIntegrationSpoofer`、`TestIntegrationConn_InjectsThenForwardsRealCH`、`TestIntegrationConn_IPv6_InjectsThenForwardsRealCH`、`TestIntegrationConn_FakeAndRealHaveDistinctSNIs`、`TestIntegrationConn_IPv6_FakeAndRealHaveDistinctSNIs` |
+
+### 最终 canonical 二进制
+
+采用 Go `1.26.10 linux/amd64`，从干净最终内核 checkout 调用消费仓原 `scripts/build-sing-box.sh`，读取内核 release tags/ldflags；Linux amd64 和 Android arm64 均实际构建成功。保留全部 23 个生产 tags、`-mod=readonly`、`GOTOOLCHAIN=local`、`GOWORK=off`，两个目标均 CGO=0。最终元数据重链后重新执行下面的烟测，没有把源码测试的旧二进制摘要改写成新产物。
+
+| 最终产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Linux amd64 | 86,528,126 | `8bfcadbf1086abbdcb7d1bd9823bda4cb990a2f0f980975fd84f442ceac91c56` |
+| Android arm64 | 88,539,396 | `8f0ae06b16da151dd0cec4b47b130b13d819c786480038a3ec8a272d18d22840` |
+
+Linux 真实 `version` 输出完整 canonical 前缀；两目标 `go version -m` 中工具链、完整 tags、GOOS/GOARCH、CGO 与 ELF 架构均匹配，并检查嵌入版本。Android 产物只作交叉构建和静态读取，未执行。体积和摘要用于产物身份，不是内存收益。
+
+| 最终 Linux 检查 | 结果 |
+| --- | --- |
+| `test-android-tun-proof.py --check-core` | 两份合法 positive / reject-sentinel 配置被真实 check 接受，退出 0；不创建 TUN，reject-sentinel 是合法拒绝规则 |
+| 非法配置负例 | 未知 inbound type 的合成配置返回 `unknown inbound type`，按预期退出 1 |
+| `test-dns-loopback-listeners.py --core` | 真实启动核心，IPv4/IPv6 × TCP/UDP 四项通过；仅 loopback 和合成 DNS，应答/进程均按夹具清理 |
+
+[消费仓验收说明](https://github.com/LIghtJUNction/magicnet-android/blob/396d71df3bd98316324e3533e2d2106e7392250e/docs/sing-box-update-2026-10-30.md)与[结构化原始记录](https://github.com/LIghtJUNction/magicnet-android/blob/396d71df3bd98316324e3533e2d2106e7392250e/docs/validation/sing-box-2026-10-30.json)保存完整构建命令、固定 source/tree、两目标 build settings、摘要及实际烟测输出。配置仓库 MagicSingBox、规则、现有 GOMEMLIMIT 分档与覆盖、默认 stack 均未改变；未以减少功能或预算制造收益。
+
+### 配方检查与剩余门槛
+
+根配方 0.3.3、engine 0.2.1，M01–M48 连续且唯一，保留同期新增的订阅 M44–M47 与最新 UI。最终 `python3 scripts/check-recipes.py` 使用 CI 固定的 Recipkg CLI 0.1.1，完成目录 check、临时 pack、归档 check 与完整中文提示词验证：8 包、56 个普通 UTF-8 Markdown，全部非 LOCK 正文进入提示词；临时包和提示词清理。`git diff --check` 通过。
+
+本轮完成的是核心更新及源码固定点，未构建或发布新的完整 MagicNet Android 模块，未执行设备部署。实际 Android TUN/eBPF、AWG/WireGuard 对端、pause/wake、网络切换、热点、长期吞吐与 Android RSS 未验证；不能将宿主 A/B 或 loopback 通信外推为这些结果。没有主动触发远端 CI；MagicNet 工作流仅 PR/手动入口，源码最终提交使用 `[skip ci]`。历史 v1.8.1 发行和此前候选结果保留各自固定身份。
+
 ## 2026-10-30 / 内核同步：受控测量与中间候选检查
 
 本节记录最终集成前已经完成的结果。sing-tun A/B 使用两个固定模块版本和共同测试；Linux 配置检查使用中间候选 `88a08420497c1de85a73b97ac63410c02e4d7ed3`。最终采用的 fork/Android gitlink 及后续产物身份在集成完成后另记。
@@ -18,7 +69,7 @@
 
 ## 2026-10-30 / 内核合同先行与配方 0.3.3 整合
 
-本阶段只更新配方，当前 Android 实现仍为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，内核仍为 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。新增 engine/CORE_LIFECYCLE.md 与 CORE-A01–A06，规范上游同步、握手清理、并发关闭及测量口径。
+在合同先行阶段只更新配方，当时 Android 实现仍为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，内核仍为 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。新增 engine/CORE_LIFECYCLE.md 与 CORE-A01–A06，规范上游同步、握手清理、并发关闭及测量口径。
 
 本地使用 CI 固定的 Recipkg CLI `f6f5983d558937677c712fea291c65b376487568`（0.1.1），通过 `python3 scripts/check-recipes.py` 完成目录 check、pack、归档 check 与完整中文 build 提示词验证：8 个包、56 个普通 UTF-8 Markdown 文件，所有非 LOCK 正文完整进入提示词。检查同时核对包身份、重复路径、链接、路径越界与 NUL；临时归档和提示词自动清理。`git diff --check` 通过，源码与共享技能 gitlink 均未更改。
 

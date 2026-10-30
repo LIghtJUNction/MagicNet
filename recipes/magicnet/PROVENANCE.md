@@ -1,10 +1,20 @@
 # 来源、证据与未验证项
 
+## 2026-10-30 / 配方 0.3.3：最终内核与消费固定点
+
+最终采用 [sing-box `ff669d45e6562a790a49ef066340dbed5df46363`](https://github.com/LIghtJUNction/sing-box/commit/ff669d45e6562a790a49ef066340dbed5df46363)，tree `b5e4c5a7559369fa8f46842b0a0fc45c5aa1ca13`，包含上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。fork 主线从 `ef1ac197876a45aee818ee608b15740c10b8fa3b` 继续合并，保留真实 merge 父提交与 fork 功能；消费仓原固定点则是 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`，两者角色不同。旧消费基础版本为 `1.15.0-alpha.10`，而其 `git describe` 为 `v1.14.2-386-g871b7a34`；保留这一历史差异，以完整提交和产物元数据确认身份。上游完整差异、WireGuard 复制源码来源及最小修复依据见[内核报告](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/IMPLEMENTATION_REPORT.md)。
+
+当前 Android 实现为 [`396d71df3bd98316324e3533e2d2106e7392250e`](https://github.com/LIghtJUNction/magicnet-android/commit/396d71df3bd98316324e3533e2d2106e7392250e)，tree `3c758dfbe38c482d909bb96160ec64bafdea7da5`，父提交为 `0952cb01b001e41e1074c2e5f4a731a4ad42b222`。仅更新 sing-box gitlink、sing-box.version 为 `1.15.0-alpha.13` 和验收材料；原五个其他嵌套 gitlink、订阅修复、生命周期和最新 UI 保留。主仓库 `generated/magicnet-android` 固定该公开提交；配置仓库 MagicSingBox 仍为 `e4ecf47499c35bf25e10d04257a21a4f7975ebad`。
+
+源码测试对象 `9caf2637c42113a40f1302b87ff9525220a0ff54` 与 GitHub canonical `d6316199ef905c8271e58b23dbf52456d2e49dde` 的 tree 同为 `a6b2907483435e507d5090cb5ce00d84899d10f5`。最终内核相对该 tree 只更新 SPECS 报告和文本证据。最终 Linux/Android 二进制从干净 `ff669d45e6562a790a49ef066340dbed5df46363` 重新构建并核对身份，随后用最终 Linux 产物重新运行配置和 loopback DNS 检查，结果与摘要见[消费仓验收](https://github.com/LIghtJUNction/magicnet-android/blob/396d71df3bd98316324e3533e2d2106e7392250e/docs/sing-box-update-2026-10-30.md)及 VERIFICATION.md。
+
+配方先定义 CORE 合同，再实施与测量。普通 merge 保留同期 `MagicNet@48d539315ffd1814d0f394d6d2d83d4365ac629b` 的订阅、恢复和 README 改动；已整合的配方前缀对象为 `81c298443c6264cc0c1afd23fa542611aac1512f`，tree `231df500850dc0d133f1346cb8f9102fc8ce5a42`。根配方为 0.3.3、engine 为 0.2.1，核心验收为 M48；原先 M44–M47 的订阅要求保留。
+
 ## 2026-10-30 / 内核同步合同与配方 0.3.3 整合
 
-输入为用户更新 fork sing-box、同步上游、降低内存和规范修复 bug 的要求。配方基线为 `MagicNet@a7a05308aadbbf4d8362780d2773bf963437b1a5`，当前实现为 `magicnet-android@b113f5128549172da6cb1f6e62f0b42d31adb956`，其内核固定 `sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。
+输入为用户更新 fork sing-box、同步上游、降低内存和规范修复 bug 的要求。配方基线为 `MagicNet@a7a05308aadbbf4d8362780d2773bf963437b1a5`，当时实现为 `magicnet-android@b113f5128549172da6cb1f6e62f0b42d31adb956`，其内核固定 `sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。
 
-本轮先定义 engine/CORE_LIFECYCLE.md，目标为 [SagerNet/sing-box testing e5d91fa79f6319d5de940d6c81d81f0fe53b9476](https://github.com/SagerNet/sing-box/commit/e5d91fa79f6319d5de940d6c81d81f0fe53b9476)，保留 1.15 预发布轨道、fork 专属协议和全部生产 tags。内核合同初稿在本地使用根包 0.3.2、engine 0.2.1 与 M44。合并同期主线的订阅配方 0.3.2 后，根包提升为 0.3.3，核心验收顺延为 M48，CORE-A01–A06 保持原名；其他组件合同和历史实测归属保持原版本。当前阶段仍使用上述旧内核 gitlink，候选源码与实际检查在完成后另记。
+本轮先定义 engine/CORE_LIFECYCLE.md，目标为 [SagerNet/sing-box testing e5d91fa79f6319d5de940d6c81d81f0fe53b9476](https://github.com/SagerNet/sing-box/commit/e5d91fa79f6319d5de940d6c81d81f0fe53b9476)，保留 1.15 预发布轨道、fork 专属协议和全部生产 tags。内核合同初稿在本地使用根包 0.3.2、engine 0.2.1 与 M44。合并同期主线的订阅配方 0.3.2 后，根包提升为 0.3.3，核心验收顺延为 M48，CORE-A01–A06 保持原名；其他组件合同和历史实测归属保持原版本。合同先行阶段使用上述旧内核 gitlink，最终固定点和实际检查见本文件首节。
 
 ## 2026-10-30 / 配方 0.3.2：候选需求整合与主线维护
 
