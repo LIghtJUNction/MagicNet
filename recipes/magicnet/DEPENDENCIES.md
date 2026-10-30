@@ -34,7 +34,7 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复及日志内存优化；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `b113f5128549172da6cb1f6e62f0b42d31adb956`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化，以及增加留白和减少重复边框的前端视觉精修；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

@@ -1,5 +1,11 @@
 # 来源、证据与未验证项
 
+## 2026-10-30 / 前端留白与边框精修
+
+输入为用户“多点留白、少一点边框”的界面要求，在现有 Vue WebUI 上统一空间、排版、导航与容器层级。实现提交 [`b113f5128549172da6cb1f6e62f0b42d31adb956`](https://github.com/LIghtJUNction/magicnet-android/commit/b113f5128549172da6cb1f6e62f0b42d31adb956)，父提交为 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`，tree 为 `2e18248622aa946ca88a243915aa5ed015e9ad37`；父提交的服务交接、PID 校验与日志修复完整保留。
+
+整合后重新通过 338 项前端测试、类型检查和生产构建。浏览器预览中的多页面、多尺寸、语言主题、草稿及焦点检查，以及 Android 真机和网络验证范围，见 VERIFICATION.md 本轮记录。
+
 ## 2026-10-30 / 配方 0.3.1：生命周期、PID 与日志路径
 
 输入为 MagicNet [#429](https://github.com/LIghtJUNction/MagicNet/issues/429)、[#430](https://github.com/LIghtJUNction/MagicNet/issues/430) 及既有 #426 记录，固定实现基线为 `magicnet-android@a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。本轮实际修改现有 Rust/shell 实现，提交 [`72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`](https://github.com/LIghtJUNction/magicnet-android/commit/72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae)，tree `1976d9f38b6a2e0520535c7256130ebe1cff114b`。未更换六个嵌套源码依赖，不是从配方独立重写。

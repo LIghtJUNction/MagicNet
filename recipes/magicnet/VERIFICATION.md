@@ -203,3 +203,27 @@ GitHub 配方仓库继续使用原 MagicNet 仓库并带有 `recipkg` topic；�
 配方与源码 pin 同步后，`recipkg check recipes/magicnet`、临时归档 `recipkg pack`、归档 `recipkg check` 和 `recipkg build --lang zh-CN` 均通过。归档有 8 个包、53 个 Markdown 文件，没有 `.env`、Git 元数据、源码或生成目录；build prompt 包含新固定提交及批次合同。临时归档和提示词在检查后清理。
 
 未进行 Android 打包、签名、发布、安装、设备写入或真实多源网络验收。#426 仍只有单源成功附件，现场根因未确定；`subscription_batch_v1`、逐来源真实转换完整性、跨 tag 的来源归属、浏览器/真机验收仍未完成。源码 push 与本地/远端配方 gitlink push 分别记录，不把源码 `main` 更新称为产品发布。
+
+## 2026-10-30 前端留白与边框调整
+
+源码 `b113f5128549172da6cb1f6e62f0b42d31adb956` 已同步到 `LIghtJUNction/magicnet-android` 的 `main`。该提交基于同时到达的服务生命周期修复 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`，保留其全部改动；整合后重新运行前端检查，结果如下。
+
+本轮沿用矿白、石墨与玉绿配色，统一页面边距、分区间距和字体层级，移除普通卡片、统计项及桌面侧栏的重复外框。表单、错误提示与键盘焦点保留必要边界；设计要求已同步到 WebUI 配方及实现仓库的 DESIGN.md。
+
+### 已完成的检查
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| 前端 `npm run check` | 338 项测试全部通过 |
+| 类型与生产构建 | `vue-tsc` 检查及 Vite 生产构建成功 |
+| 中文浅色，14 个页面 | 320px 与 1280px 宽度下，可见元素均未造成页面横向溢出 |
+| 俄文深色，概览与订阅 | 320、360、390、430、640、844（横屏）、900、1180、1280px 九种宽度下，均未出现页面横向溢出 |
+| 英文深色，订阅 | 320px 与 1280px 宽度下均未出现页面横向溢出 |
+| 快捷导航与焦点恢复 | 英文搜索 Terminal 后按 Enter 成功跳转；中文概览按 Escape 关闭快捷导航后，焦点回到 `.mn-palette-trigger`（aria-label 为“快速跳转”）；系统工具菜单按 Escape 关闭后也恢复触发按钮焦点 |
+| 订阅编辑连续性 | 两行临时草稿在主题、语言及路由切换后保留 |
+| 浅色辅助文字 | `#5B6F6D` 在四种浅色背景上的最低对比度为 4.61:1 |
+| 配方归档与完整提示词 | 使用 CI 固定的 Recipkg CLI 0.1.1，运行 `python3 scripts/check-recipes.py`，目录 check、pack、归档 check 及中文 build 提示词均通过；递归包含 8 个包、55 个 UTF-8 Markdown 文件，所有非 LOCK 正文完整进入提示词 |
+
+桌面刷新后，预览应用来源 `terminal.local` 未出现 error 级日志。检查完成后已清空临时订阅草稿。
+
+以上界面结果来自浏览器预览。本轮未执行 Android 真机安装、WebView 触屏或真实网络链路测试。
