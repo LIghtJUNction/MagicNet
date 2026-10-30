@@ -13,6 +13,8 @@ sub.inspect 才含 URL、User-Agent、过滤器和提供者用量；wifi.inspect
 network-access.inspect 的包身份/候选也是私密。状态不返回原始 UID、节点名、凭据或失败原文。
 用量按 URL 的摘要关联，不按列表位置；待提交事务不展示新用量；generation 或 URL 改变时拒绝混合快照。
 
+sub.status / sub.inspect 对 URL 与本地来源采用 C-SUB-008 的同一有界、零写入观测；坏编码、NUL、链接、非普通文件、超限或 I/O 错误返回非零结构化失败，不能吞成零来源。service.status 的订阅来源观测失败用 subscription.source=unknown 表达，同时保留独立进程/API/数据面结果。错误与支持包不泄露私密输入，读取缺失路径不创建父目录。
+
 ## override 写协议
 
 对象遵守 JSON Merge Patch：对象递归 merge，数组整体替换，null 删除，空对象 reset。

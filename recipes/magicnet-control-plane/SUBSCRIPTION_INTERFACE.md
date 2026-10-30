@@ -1,6 +1,6 @@
 # 订阅入口、状态与逐源结果合同
 
-本文件是重建输入。C-SUB-001–004 提炼自固定的 v1.8.0 源码；C-SUB-005–007 是本轮为多来源可诊断性和错误恢复补充的明确要求，不能声称旧二进制已经提供。原有命令、schema=1 和私密边界继续有效。订阅业务规则由 runtime 的 SUBSCRIPTION_CONTRACT.md 定义，界面由 webui 的 SUBSCRIPTION_FLOW.md 定义。
+本文件是重建输入。C-SUB-001–004 提炼自固定的 v1.8.0 源码；C-SUB-005–007 为多来源可诊断性和错误恢复补充明确要求，0.2.3 的 C-SUB-008 补齐共享只读来源观测。不能声称旧二进制已经提供这些增量能力。原有命令、schema=1 和私密边界继续有效。订阅业务规则由 runtime 的 SUBSCRIPTION_CONTRACT.md 定义，界面由 webui 的 SUBSCRIPTION_FLOW.md 定义。
 
 ## C-SUB-001：入口不能把批量列表降成单 URL
 
@@ -49,9 +49,9 @@ cli --json sub inspect 必须在 capabilities.private_commands 中单列。其 d
 
 每个 source_usage 行包含 id（规范请求 URL 的 SHA-256 小写十六进制）、index（1 起始）、hostname、state（fresh/cached/unknown），及 upload_bytes、download_bytes、total_bytes、expire_epoch、updated_epoch。规范请求 URL 移除 fragment、转小写 scheme/ASCII 主机、省略默认 443、空路径补 `/`，并将原始非 ASCII path/query 按 UTF-8 字节百分号编码；其余 ASCII path/query 字节、顺序、重复键和已有百分号转义原样保留。缺失/无效数值是 null；字节数须为不超过 9007199254740991 的非负整数；时间须为正整数且不超过 253402300799。expire=0 或越界不能显示成已到期。fresh 只表示该条可信元数据的新鲜度，不证明全部订阅或代理通信成功。
 
-用量以完整来源身份绑定，不能按 index、域名或节点名匹配；来源重排、同主机不同查询令牌都必须独立。最近更新失败/中断时，旧 fresh 最多显示 cached；待提交事务不展示新用量；本地模式 source_usage 为空。URL 或 generation 在观察期间改变，返回 machine.snapshot_changed 并拒绝混合快照。它是变更检测，不是全 OS 原子快照；临时多次读取同值也不证明没有 ABA 变化，重建应使用受控代次/锁保证同次投影。
+用量以完整来源身份绑定，不能按 index、域名或节点名匹配；来源重排、同主机不同查询令牌都必须独立。最近更新失败/中断时，旧 fresh 最多显示 cached；待提交事务不展示新用量；本地模式 source_usage 为空。URL、本地来源内容或 generation 在观察期间改变，返回 machine.snapshot_changed 并拒绝混合快照。它是变更检测，不是全 OS 原子快照；临时多次读取同值也不证明没有 ABA 变化，重建应使用受控代次/锁保证同次投影。
 
-来源配置读取上限 64 KiB，User-Agent 检查读取上限 1 KiB，过滤器读取上限 8 KiB，独立用量元数据上限 2 KiB；合法业务输入的更小限制仍按 runtime 合同。必要配置意图的 symlink、特殊文件、超限或格式错误使 inspect 结构化失败，错误不回显私密值。可选用量 metadata 缺失、不可信、损坏或超限时只保留该来源行并降为 unknown/null，不删除来源或使全部配置读取失败。页面刷新失败时可保留用户草稿，清空未经确认的即时用量与有效状态并标未知。
+远程 URL 清单读取上限 64 KiB，本地订阅正文上限 8 MiB；两者与公共状态共用 C-SUB-008 的观测。User-Agent 检查读取上限 1 KiB，过滤器读取上限 8 KiB，独立用量元数据上限 2 KiB；合法业务输入的更小限制仍按 runtime 合同。必要配置意图的 symlink、特殊文件、超限或格式错误使 inspect 结构化失败，错误不回显私密值。可选用量 metadata 缺失、不可信、损坏或超限时只保留该来源行并降为 unknown/null，不删除来源或使全部配置读取失败。页面刷新失败时可保留用户草稿，清空未经确认的即时用量与有效状态并标未知。
 
 ## C-SUB-004：单一状态与 MCP
 
@@ -103,4 +103,16 @@ generation 与本次 UI 任务的绑定必须来自受控任务回执：同一 t
 6. owner unknown、5 秒初始化窗口、stale PID、残余 journal、读取 I/O 错误分别验证 null/pending/interrupted/recovery_pending/结构化失败；状态读不产生修复副作用。
 7. 在 URL 查询、UA、节点名称、转换器 stderr 填合成 canary；扫描公共 JSON、canonical、MCP 自动资源、Issue、任务标签，均不得泄漏；明确本地 inspect 可按需读取编辑值。
 
-以上是重建验收，不是本轮对旧版全部接口的运行结果。实际提取/探针结果统一记于根 VERIFICATION.md。
+## C-SUB-008：共享有界、零写入的来源观测
+
+sub.status 与 sub.inspect 使用同一来源读取与校验规则；私密入口只扩充授权字段，不能比公共入口多一层才发现损坏来源。远程 URL 清单最多 64 KiB，本地订阅正文最多 8 MiB，均按实际读取字节数限制并拒绝无效 UTF-8、NUL、symlink、目录、FIFO、设备及其他非普通文件。路径遍历与最终打开均不得跟随不可信链接；检查和读取不能被替换竞态绕过。文件或其父目录确实不存在可作为未配置，合法空 URL 清单保留原有零来源语义；存在但不可读、损坏或超限不能成功返回零来源。本地有效来源计数为 1。
+
+读取全过程零写入：不创建缺失的配置、状态或父目录，不补权限，不修复来源，不下载、不启动 updater、不发布 canonical、不回收锁。sub.status / sub.inspect 对来源观测失败返回 machine.subscription_observation_failed，观察期间来源或代次变化返回 machine.snapshot_changed；均为非零退出的 schema-1 错误 envelope。错误消息使用固定脱敏描述，不包含路径中的秘密、URL、文件正文、原始 I/O 错误或合成 canary。
+
+私密 inspect 的前后快照同时覆盖 URL 清单与本地正文。可用受控 generation 或内部内容摘要检测变化，摘要不进入公共输出；局部前后相等仍不能宣传为全系统原子快照。必要来源观测与可选用量 metadata 的降级边界不同，继续遵守 C-SUB-003。
+
+canonical producer 与支持包复用同一观测语义。来源不可读时，subscription canonical 的 state、source 与 configured_count 使用 unknown token；支持包的 source_mode、configured_count 同样为 unknown，不能把故障写成零来源、未配置或成功。service.status 中 subscription.source 为 unknown，同时保留已独立观察到的进程/API/数据面事实；订阅观测失败不能抹掉独立服务证据。key=value canonical 仍为 schema=1，消费者须识别 unknown，不能转换为整数 0。公共机器读取本身不负责写回这些文件。
+
+验收分别覆盖两种来源模式的合法边界、边界加 1 字节、坏 UTF-8、NUL、链接、目录/FIFO、权限错误、文件与父目录缺失、观察中改写，以及含唯一 canary 的失败输入。比较 status、inspect、canonical producer、service.status 与支持包：缺失允许未配置；坏数据结构化失败或明确 unknown；所有只读调用前后目录树及文件摘要不变，公共输出无 canary。
+
+以上是重建与维护验收，不是本轮对旧版全部接口的运行结果。实际提取/探针结果统一记于根 VERIFICATION.md。

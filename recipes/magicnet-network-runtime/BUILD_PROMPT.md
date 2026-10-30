@@ -4,6 +4,8 @@
 
 必须完整阅读 [SUBSCRIPTION_CONTRACT.md](SUBSCRIPTION_CONTRACT.md)、[LIFECYCLE_CONTRACT.md](LIFECYCLE_CONTRACT.md) 与 [ACCEPTANCE.md](ACCEPTANCE.md)。runtime 0.1.1 从固定 v1.8.0 源码补齐订阅端到端合同，包含 #426 多源反馈、URL 身份统一、同名不同节点、逐源转换完整性和批次诊断；0.1.2 补齐 #429、#430 暴露的命令预算、服务交接和 PID 范围要求。
 
+0.1.3 增加实际引用目标与冲突 tag 的对应检查、逐来源原生已知数量下界和网络策略部分恢复的完整基线。保留 LIFE-A01–A07；新增 SUB-A19–A20，不将数量下界等同于完整字段语义，也不因原生格式未知而拒绝受支持转换器。
+
 ## 生命周期与所有权
 
 启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
@@ -17,6 +19,7 @@ URL 来源每行一个公网 HTTPS，最多五个；与本地文件来源互斥�
 下载每跳验证 URL/TLS、公网解析地址和重定向，拒绝本机/私网/metadata 等目标及降级，防 DNS rebinding。用受控路径，不读用户 curl 配置或危险 loader/proxy 环境。
 候选来源、完整 JSON 节点数组、合并配置、selector 选择、用量和 journal 同属一事务。jq 结构化合并，禁止用 AWK/正则改 JSON。空/不合格组 fail-closed；节点命名碰撞不覆盖受控服务 selector。
 逐源转换完整性先于跨源合并：同名不同端点保留，真正重复可合并并保留来源；不能用去重后的总数与去重前原始条数比较而误拒多源，也不能为避免拒绝而放过丢字段。任一来源获取失败且无同身份缓存，或无法完整转换，整批保留旧代。新增批次状态采用 control 的 SUBSCRIPTION_INTERFACE.md / subscription_batch_v1，区分本次候选与旧已保存配置，不能只报旧 configured_count。
+引用只阻断无法确认目标的实际冲突，指向无关 `base` 的 detour 不能阻碍两个异端点 `HK` 保留；允许的重命名与同源引用重写按 SUB-007。每个有可靠原生数量的来源，在用户过滤和跨源合并前，按一致的有效节点计数与完全重复折叠语义独立校验转换数量下界；同源完全重复可折叠，其他来源不能补数。未知格式允许转换，未知计数不能公开为已确认零；数量通过仍需独立验证字段语义。
 VMess WebSocket 独立保留 server、Host、SNI、path；SOCKS 用户名/密码同时有效。失败/中断保留旧源、配置、选择及恢复证据。URL→本地→URL 同样原子；本地内容不上传公共服务。
 原生节点计数与构建须显式处理单节点解析失败，在 POSIX sh/dash、Bash 和 Android BusyBox 下保持相同失败语义；不能因 set -e 提前退出而把已知的语义不完整误报成计数设施错误，也不能让其他有效节点掩盖不完整来源。
 URL 规范化清单、来源索引或缓存映射写入失败时立即停止该批次；先退出读取循环，再统一清理本次临时文件，保留旧有效配置，不能继续提交部分来源。
@@ -41,4 +44,5 @@ disable 保留身份与可恢复设置；enable 检查 revision；logout 先确�
 
 只经已存在 provider 的能力证据识别 AOSP/Oplus 等支持情况，不按品牌猜成功。status/inspect/check 只读；repair/reapply/rollback 必须使用完整身份/原策略摘要候选并显式 --confirm。
 写前重新读取全部共享包/用户/策略；私密 0700 目录和 0600 journal 先原子持久化并 sync，再调用 setter/readback；最多 128 身份、每 record 64 KiB。prepared/applied/rollback_prepared/rolled_back 区分；超时和响应丢失保留证据。相同重复无副作用，第三方变更拒绝覆盖；限制回来必须新的显式 reapply，不后台反复清除。
+repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确认 UID/包身份集合及每项原策略，另记每项执行与回读进度。不能把“本次剩余待处理子集”写回成完整原始基线；setter 忽略写入、写后回应丢失或回滚中断仍可按读回恢复。第三方策略位或共享包身份变化明确冲突；全部项恢复前不报告 rolled_back，冲突或超时不丢原策略。
 不关闭厂商控制器，不放松 SELinux，不加 ALLOW_MULTI；API 配置回读成功不是 DNS/Play 成功。

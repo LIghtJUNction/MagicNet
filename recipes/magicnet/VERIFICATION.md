@@ -1,5 +1,39 @@
 # 实现与发行验证
 
+## 2026-10-30 / 配方 0.3.2：分支需求整合与订阅维护
+
+本轮先更新配方，再进行源码修复。规格基于主仓库 `a7a05308aadbbf4d8362780d2773bf963437b1a5`，并同步保留 `d2a6c6ffa57bf39ae01cebee9defc852c8e685c0` 的 README 更新、最新 WebUI 设计、M41–M43 和源码 gitlink `b113f5128549172da6cb1f6e62f0b42d31adb956`；根包升为 0.3.2，control 为 0.2.3，runtime 为 0.1.3。来源为重建候选中的可复用需求及当前订阅合并、只读状态与模块目录问题；候选实现未替换主线源码。
+
+新增 M44–M47、SUB-A19–A20、C-SUB-008，要求实际冲突引用才阻断同名节点、逐来源独立检查已知原生数量下界、URL/本地来源共享有界零写入观测，以及主仓库保留 module.yaml 和引用资源。支持包与 canonical 读取失败保持 unknown，service.status 保留独立服务事实。目录晋升、旧成功回执、网络策略完整恢复基线及 B/C 草稿反例并入原有验收。数量下界只补有限的丢节点检查，完整语义保真仍需独立证据。
+
+**规格落盘时未验证：** 当前 main 的源码修复、对应主机回归和集成结果均待本轮实际执行后补记。独立候选的历史结果不能移作本轮结果；真实转换器、Android/manager、OEM 网络、真实多源订阅与 #426 现场根因继续按已有边界记录。产品构建与验收使用本地检查；未发布新安装包或部署设备。
+
+**本地材料检查：** 使用 Recipkg CLI 0.1.1 执行 `python3 scripts/check-recipes.py`，目录 check、临时 pack、归档 check 和中文完整 build 提示词通过。归档含 8 包、55 个普通 UTF-8 Markdown，逐项检查无重复/危险路径、链接或 NUL，全部非 LOCK 正文完整进入提示词；临时归档与提示词已清理。`git diff --check` 通过。这只验证配方材料，不代表新增产品验收通过。
+
+**主仓库修复与维护准备：** 根 `module.yaml` 从当前源码恢复，模块身份、官方地址、arm64-v8a、完整包名及 README/icon 的普通文件引用检查通过；`scripts/test-release.py` 的 16 项本地回归通过。一次性分支维护清单包含 62 个已证实为主线祖先的分支，以及本次内容整合后才成为祖先的配方候选分支。任务重新检查当前 main、每个分支 SHA、祖先关系及开放 PR，再用带精确 lease 的一次原子推送删除；两项隔离 Git 实验确认任何过期 lease 都使整批零删除、匹配 lease 只删除指定分支。清理的远端结果另记，完成后移除一次性入口；独立源码候选保留。
+
+## 2026-10-29 / 独立重建候选：历史输入与证据
+
+本节吸收配方候选 [`8acb763ff50f3626213c94165f4f3e3ae35ef247`](https://github.com/LIghtJUNction/MagicNet/blob/8acb763ff50f3626213c94165f4f3e3ae35ef247/recipes/magicnet/VERIFICATION.md) 的历史记录，保留候选来源和未完成边界。本轮未重新执行这些测试。它描述 Go 控制器、原生 ES modules WebUI、Android Java bridge 与组件安装器组成的独立候选，软件标识 v1.8.1 / versionCode 10609 / channel candidate；其代码与下文已正式发行的 Rust/Vue v1.8.1 是不同实现，不能互换验证证据。
+
+候选记录称从空目录和新上下文，使用完整冻结配方生成，未读取旧 MagicNet 实现、二进制或测试；共享文件系统与读取约束不等于 OS 级隔离。实际输入为 335,805 bytes、8 包、53 个 Markdown，SHA-256 `502e160a363ffdc6e60477261ac15b74884b07f37de78af69558b0806f8e717a`。原始提示词随候选源码保存于 `recipe/BUILD_PROMPT.md`，不以本轮新配方替换或追认新增要求已经输入。
+
+功能提交为 `280f044a0dc63f49965a910efd9509abd13a316b`，本地最终交付为 `532d51e71bf1d91017409bfe16b6601a2bfbee75`；公开候选为 [`b22f9f280ddaf729da47078c13838a73e6d89294`](https://github.com/LIghtJUNction/magicnet-android/tree/b22f9f280ddaf729da47078c13838a73e6d89294)，记录中的完整 tree 同为 `f45d5e0b5bee6245d8968ed35d6e4aa23a57c54b`。复用核心固定 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`、规则固定 `f3335f9420d07b8c50b26488df2a9492da6bbb44`；依赖、许可证、具体产物摘要和完整报告见[候选源码 VERIFICATION](https://github.com/LIghtJUNction/magicnet-android/blob/b22f9f280ddaf729da47078c13838a73e6d89294/VERIFICATION.md)。
+
+| 历史记录中的检查 | 记录结果 | 范围 |
+| --- | --- | --- |
+| 真实 CLI 与固定核心 check 订阅回归 | 204 断言通过 | 合成格式、身份、同名节点、payload、长字段、批次和隐私 |
+| 受控 HTTPS 来源夹具 | 10 个叶场景通过 | 五源、缓存、回滚与获取边界；不是公网服务商成功 |
+| 公共 batch schema / 机器接口 | 18 份结果 / 10 项通过 | 实际输出的类型、计数、代次、严格 envelope 与拒绝行为 |
+| MCP daemon | 29 项通过 | 回环认证、85 工具 schema、私密边界、7 资源与 notification 零写入 |
+| 独立恢复 / 关键 UI 流程 | 13 项 / 10 项通过 | 晋升、回执、部分恢复、B/C 草稿和本地导入 |
+| 包与真实目录 rename | 16 项通过 | 7 组件、别名、权限、离线安装与目录晋升；宿主替换为对应 host 二进制后验证，不等于真实 manager 安装 |
+| 最终 Go race / vet | 56 个顶层、72 个含子用例通过；vet 通过 | 只属于该候选的固定提交，不与其他断言数量相加 |
+
+候选的四个反例形成了本轮保留的要求：staging 绝对路径晋升后失效；旧成功回执绕过当前锁与恢复检查；部分 repair 缩减原完整回滚基线；零来源曾取消编辑后导入 B，导致新草稿 C 被隐藏。它们分别进入 M12、M13、M11 和 UI-SUB-CASE-07。候选记录还保留首版失败、修复后复验与夹具修正，不能将公开反例改称未见测试，也不能据此推断当前 Rust/Vue main 存在相同缺陷。
+
+M40/RELEASE_CONTRACT 在候选 53 文件输入冻结之后新增，正式发布适配及同提交 Android/KernelSU 门槛未完成；M41–M43 和最新 UI 合同同样不能追认已被旧输入覆盖。候选没有外部 converter 实现/交付，不是单纯测试环境缺工具。实际 Android manager 安装重启、SELinux/binder/OEM、TUN/eBPF/TC 数据面、热点/IPv6、真实应用 DNS、真实多服务商导入、VLESS 加密服务器互通及长期运行仍未验收。该候选当时没有创建官方 Release 或部署设备，#426 的现场根因仍未证实。
+
 ## 2026-10-30 / 配方 0.3.1：#429、#430 与日志资源开销
 
 本轮在既有实现上修复，源码提交为 [`72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`](https://github.com/LIghtJUNction/magicnet-android/commit/72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae)，tree `1976d9f38b6a2e0520535c7256130ebe1cff114b`，父提交为 v1.8.1 源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。源码先推送到已授权的 `main`，主仓库再固定同一 gitlink；不是从零独立重建。配方根包为 0.3.1，control 为 0.2.2，runtime 为 0.1.2。
@@ -40,7 +74,7 @@ Rust 的一项既有忽略需要单独构建的 AOSP Android-profile mksh 和 wa
 
 公开 API 已确认稳定标记、19 个附件及相同目标提交；匿名下载的安装器和 6 个元数据附件均与服务端 SHA-256、SHA256SUMS 一致，公开 update.json 与本仓库相同。所有附件的完整字节检查由上述 GitHub 恢复运行执行；本机没有重新下载完整离线包。下方保留各轮失败与当时 pending 的准备记录，不将原发布工作流写成全绿。
 
-尚未执行 arm64 真机安装、真实订阅/网络互通或长期运行验收，也没有执行从空目录独立重建。Android 15 / KernelSU / x86_64 模拟器结果不能代替这些验证。
+本节正式发行版来自既有实现迭代，没有执行从空目录独立重建；独立 Go 候选另按上节记录。尚未执行该正式版的 arm64 真机安装、真实订阅/网络互通或长期运行验收。Android 15 / KernelSU / x86_64 模拟器结果不能代替这些验证。
 
 ## 2026-10-29 / v1.8.1 发行准备
 

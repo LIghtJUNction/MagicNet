@@ -1,6 +1,6 @@
 # 运行时验收
 
-未来实现必须运行，当前未做新实现验收。
+本文件定义重建与维护验收标准。各轮实际执行的源码提交、主机与 Android 结果见根 VERIFICATION.md；局部或候选结果不能替代当前 main 的整表验收。
 
 0.1.2 另须逐项执行 [LIFECYCLE_CONTRACT.md](LIFECYCLE_CONTRACT.md) 的 LIFE-A01–A07；主机结果与 Android 设备结果分别记录。
 
@@ -25,7 +25,7 @@
 | 相同配置、仅无关文件修改、规则内容修改 | config apply | 前两者不重启，真正有效变化校验后才重启 |
 | 模式文件缺失、CRLF、无末尾换行、空值/未知值/重复字段、解析器部分输出后失败、输出写入失败 | transparent mode 读取 | 缺失默认 tun；只接收 tun|ebpf；非法内容和 I/O 错误非零，不泄露部分有效 token；频繁读取避免不必要的外部进程 |
 | 非 Tailnet CGNAT、暂停/恢复/登出、自定义状态目录、失败停止 | Tailscale 操作 | 非 Tailnet 正常 LAN 处理；不删外部目录/账号；失败不重新启用 |
-| missing provider、过期候选、限制被外部改写、setter 忽略写入、崩溃 | network-access 流程 | unsupported/conflict/readback error/持久恢复准确；零自动清除 |
+| missing provider、过期候选、策略位/共享包身份被外部改写、setter 忽略写入或写后回应丢失、崩溃、多个 UID 仅部分 repair 或 rollback 成功 | network-access 流程 | unsupported/conflict/readback error/持久恢复准确；外部冲突零写入，零自动清除；完整身份与原策略基线保留，逐项进度不得覆盖为剩余子集，全部恢复后才报告 rolled_back |
 
 设备验收还需真实 App UID 的 DNS、前后台连接、IPv4/IPv6、网络切换、热点客户端和厂商网络栈；Google Play/GMS、Tailscale TSMP/业务连接与 no-op 生命周期锁争用都需要真机覆盖。本机 mock 不覆盖这些。
 
@@ -53,6 +53,8 @@
 | SUB-A16 / SUB-014 | off/12/24/48/72，非法值；重复启用/禁用、模块禁用/卸载、owner orphan/unknown；受控推进计划时钟 | 合法计划持久且最多一个 owner；等待和写操作有界；unknown 不起第二个任务；定时更新与手动同合同，不顺带更新分类数据 |
 | SUB-A17 / SUB-015 | O 一源，本次提交三源，第二源失败；旧后端无批次能力、新后端有 subscription_batch_v1；旧结果晚到 | 新结果能看到 candidate=3 而 current committed=1，失败源/阶段与同一generation相符；旧能力明确unknown，不伪造零；晚到结果不覆盖新代；canonical/公共 JSON 均无私密来源身份 |
 | SUB-A18 / SUB-005、010 | VLESS encryption=none 与合法非none长密钥，分别由链接、YAML、JSON、本地文件和多源导入；无效串、核心不支持、转换器丢字段 | 合法字段跨预览/payload/转换/配置/核心读取保持；长密钥不按tag/UA上限截断；不支持或坏参数在替换前明确拒绝。真实互通另测，JSON字段存在不证明协议成功 |
+| SUB-A19 / SUB-007 | A/B 各含异端点 `HK`，先无引用，再增加仅指向无冲突 `base` 的 detour/selector/default，最后改成实际引用冲突 `HK`；另有可确认同源身份并完整重写的场景 | 前两种均保留两个 HK 语义节点及正确 base 引用；只在实际冲突引用无法确认目标时拒绝整批且 O 不变；已确认重写不误指另一来源，不能用“存在任意引用”作为全局拒绝条件 |
+| SUB-A20 / SUB-005、006 | A 原生已知 2 个不同有效节点、转换器仅输出 1 个，B 输出更多；另测同源完全重复、未知原生格式经支持转换器成功、已知坏字段和合法过滤 | 在用户过滤和跨源合并前，按一致的有效节点计数/完全重复折叠语义检查本来源下界，A 丢失被拒绝且 B 不能补数；同源完全重复允许折叠，不以原始重复行总数误拒。无可靠原生下界允许合法转换，不能公开为已确认零；已知语义错误仍拒绝，合法后续过滤不触发数量误判。数量下界与完整语义分别记录，数量相等不算字段保真证明 |
 
 SUB-A04 的旧实现聚合层反例已做受控复现，见合同第 17 节；该结果是“发现旧缺陷”，不是 SUB-A04 已通过。#426 真实现场根因仍未知，直到能绑定同一版本、输入语义和失败阶段完成复现。
 

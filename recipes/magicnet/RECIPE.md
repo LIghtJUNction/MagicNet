@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.1"
+version = "0.3.2"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -24,6 +24,8 @@ source = "../software-quality"
 ~~~
 
 配方版本与被观察软件版本分开管理；初始来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，后续 v1.8.0 迭代与证据见 PROVENANCE.md 和 VERIFICATION.md。0.2.1 修正源码子模块布局与获取方法，没有改变 Android 软件版本。实现源码不属于本包。
+
+0.3.2 整合独立候选发现的目录晋升、更新回执重放、网络策略恢复和订阅草稿验收，并补齐冲突引用、逐来源数量下界、共享只读来源检查与模块目录元数据。control 为 0.2.3，runtime 为 0.1.3；保留 M41–M43 和最新 WebUI 视觉合同。规格先于本轮源码修复，实施与测试结果见 VERIFICATION.md；候选源码仍作为独立历史证据，不替换现行 gitlink。
 
 0.3.1 将 #429、#430 的超时继承、持久核心交接与 32 位 PID 校验问题纳入实现和重建合同，同时约束日志尾读的临时内存。依赖闭包仍为八包；本次配方版本变更不改变已公开 Android 安装包的版本，实际源码和验证结果见 VERIFICATION.md。
 
