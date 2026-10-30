@@ -4,6 +4,8 @@
 
 依赖 runtime 负责实际进程生命周期、订阅与网络策略；必须委托它的事务，不在 MCP 或 WebUI 再建一套特权逻辑。集成验收：人类 CLI、schema-1 和认证工具操作同一设备状态，同一失败不被包装成成功。
 
+control 0.2.3 增加 C-SUB-008：公共 sub.status、私密 sub.inspect、canonical producer 与支持包共用有界来源观测。URL 清单 64 KiB、本地正文 8 MiB；坏编码、NUL、链接、非普通文件和超限明确失败，缺失允许未配置。读取不创建任何目录或文件；canonical 与支持包的未知来源/数量不能伪报为零，service.status 保留独立服务事实。
+
 ## 人类入口
 
 保留 CLI_REFERENCE.md 的命令族与参数。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
@@ -34,4 +36,4 @@ MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照�
 - [STATE_CONTRACT.md](STATE_CONTRACT.md)
 
 - [MCP_TOOL_SCHEMAS.md](MCP_TOOL_SCHEMAS.md)：完整已观察的工具目录。
-- [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–007，完整多源入口、公共/私密读取、逐源批次能力、计数和恢复；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。
+- [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–008，完整多源入口、公共/私密读取、逐源批次能力、计数、恢复及共享只读观测；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。

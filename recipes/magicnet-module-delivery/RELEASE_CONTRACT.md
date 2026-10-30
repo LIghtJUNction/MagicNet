@@ -9,6 +9,12 @@
 - 源码只能取本次主仓库提交的 mode-160000 gitlink，不跟随源码 main 的浮动 tip。工作流代码引用固定完整提交；构建与 Android 验收均显式检出并核对同一实现 SHA。
 - 机器可读 build-source.json 使用 schema=1，包含 repository、source_repository、recipe_sha、source_sha、version、version_code。version_code 是十进制字符串；两个 SHA 均是完整提交。build-submodules.txt 记录完整初始化且未偏离 gitlink 的依赖快照。
 
+## 模块目录元数据
+
+主仓库根保留受跟踪的 `module.yaml`，以及其 `description`、`icon` 等字段实际引用的资源。引用必须指向该仓库可解析的安全相对路径和普通文件；迁移成配方仓库、整合分支或更换源码实现时不能丢掉这些入口，也不能仅以源码子模块内存在同名 manifest 视为目录合同满足。
+
+目录 metadata 的模块身份为 `MagicNet`，homepage/support 指向官方 `LIghtJUNction/MagicNet`，架构与真实交付保持一致，release.assetPattern 对应 `MagicNet-full.zip`。构建/目录检查核对 manifest、资源、模块身份和正式发布资产名称，缺失或失效引用给明确失败；发布时再次与完整资产清单核对。配方版本不替代模块软件版本，目录元数据恢复本身不证明安装或设备验收通过。
+
 ## 权限与门槛
 
 构建和 Android 验收只有读取权限；只在主仓库 main 的显式 publish 请求中，独立发布 job 获得 contents:write。源码仓库不得创建官方软件 Release 或带发行请求的版本 PR。

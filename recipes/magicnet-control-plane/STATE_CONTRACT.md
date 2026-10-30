@@ -18,4 +18,4 @@ Tailscale enabled/resumable/logout_pending 与是否在线分开。
 module-update accepted/installer exited/staged/reboot_required 与 effective installed version 分开。
 网络策略 configured_verified 只表示 setter 后 API readback 一致，不表示 Play Store/DNS/下载可用。
 
-订阅当前已提交来源数、失败候选来源数、source缓存文件数、节点数和套餐记录行数分别是不同事实。subscription_batch_v1 使用机器接口表达同 generation 的多字段视图，不新增第二份 public marker 来让客户端自行拼凑。来源列表读取错误不能发布成零来源成功；恢复中和未知 owner 的规则见 SUBSCRIPTION_INTERFACE.md。
+订阅当前已提交来源数、失败候选来源数、source缓存文件数、节点数和套餐记录行数分别是不同事实。subscription_batch_v1 使用机器接口表达同 generation 的多字段视图，不新增第二份 public marker 来让客户端自行拼凑。来源读取失败时，subscription canonical 的 state/source/configured_count 为 unknown token，支持包的 source_mode/configured_count 同样未知，不能发布成零来源成功。service.status 的 subscription.source 为 unknown 而独立服务事实保留；生产者和消费者共同遵守 SUBSCRIPTION_INTERFACE.md 的 C-SUB-008。普通读取不为补状态创建文件或目录。

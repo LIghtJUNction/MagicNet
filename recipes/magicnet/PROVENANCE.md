@@ -1,10 +1,18 @@
 # 来源、证据与未验证项
 
-## 2026-10-30 / 配方 0.3.2：内核同步合同
+## 2026-10-30 / 内核同步合同与配方 0.3.3 整合
 
 输入为用户更新 fork sing-box、同步上游、降低内存和规范修复 bug 的要求。配方基线为 `MagicNet@a7a05308aadbbf4d8362780d2773bf963437b1a5`，当前实现为 `magicnet-android@b113f5128549172da6cb1f6e62f0b42d31adb956`，其内核固定 `sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。
 
-本轮先定义 engine/CORE_LIFECYCLE.md，目标为 [SagerNet/sing-box testing e5d91fa79f6319d5de940d6c81d81f0fe53b9476](https://github.com/SagerNet/sing-box/commit/e5d91fa79f6319d5de940d6c81d81f0fe53b9476)，保留 1.15 预发布轨道、fork 专属协议和全部生产 tags。根包为 0.3.2、engine 为 0.2.1，新增 M44 与 CORE-A01–A06；其他组件合同和历史实测归属保持原版本。当前阶段仍使用上述旧内核 gitlink，候选源码与实际检查在完成后另记。
+本轮先定义 engine/CORE_LIFECYCLE.md，目标为 [SagerNet/sing-box testing e5d91fa79f6319d5de940d6c81d81f0fe53b9476](https://github.com/SagerNet/sing-box/commit/e5d91fa79f6319d5de940d6c81d81f0fe53b9476)，保留 1.15 预发布轨道、fork 专属协议和全部生产 tags。内核合同初稿在本地使用根包 0.3.2、engine 0.2.1 与 M44。合并同期主线的订阅配方 0.3.2 后，根包提升为 0.3.3，核心验收顺延为 M48，CORE-A01–A06 保持原名；其他组件合同和历史实测归属保持原版本。当前阶段仍使用上述旧内核 gitlink，候选源码与实际检查在完成后另记。
+
+## 2026-10-30 / 配方 0.3.2：候选需求整合与主线维护
+
+配方候选 [`8acb763ff50f3626213c94165f4f3e3ae35ef247`](https://github.com/LIghtJUNction/MagicNet/commit/8acb763ff50f3626213c94165f4f3e3ae35ef247) 提供目录晋升、回执重放、完整网络策略基线和 B/C 草稿反例，已通过合并提交 [`25ff00f4d537f1db99d079a3a6ba5de4f7a2adc9`](https://github.com/LIghtJUNction/MagicNet/commit/25ff00f4d537f1db99d079a3a6ba5de4f7a2adc9) 整合到最新主线合同。候选源码 `b22f9f280ddaf729da47078c13838a73e6d89294`、冻结输入和既有验证均作为独立历史证据保留；主线继续基于 `b113f5128549172da6cb1f6e62f0b42d31adb956` 维护，M41–M43、最新 UI 和正式发布合同保留。
+
+本轮新增实际冲突引用、逐源已知计数下界、公共/私密共享只读来源观测，以及根 module.yaml 与引用资源的合同。根 0.3.2、control 0.2.3、runtime 0.1.3 的规格先于源码实施；计数下界不证明完整字段保真，候选测试不证明当前 main 通过。新增验收的实际结果与仍未知项统一记于 VERIFICATION.md。
+
+随后发布的现行源码修复为 [`0952cb01b001e41e1074c2e5f4a731a4ad42b222`](https://github.com/LIghtJUNction/magicnet-android/commit/0952cb01b001e41e1074c2e5f4a731a4ad42b222)，tree `ca1bfbb33779c9fbdf541b3399029269e5f0502d`，父提交为上述 b113f512；主仓库 gitlink 固定此提交。直接证据包括两个旧版失败反例、逐来源与引用的六组回归、共享有界观测的坏输入/零写入/脱敏测试，以及 827 个不同 Rust 测试的最终通过结果。真实转换器和 #426 现场仍未证实，不将数量下界写成完整订阅语义保真。
 
 ## 2026-10-30 / 前端留白与边框精修
 

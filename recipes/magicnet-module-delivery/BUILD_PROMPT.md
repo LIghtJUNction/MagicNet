@@ -7,6 +7,7 @@
 bin/ 保存运行程序，cli -> bin/magicnet-cli 是兼容入口；默认完整包包含 sing-box、受控默认配置和真实规则。service.sh/boot-completed.sh 进入真实生命周期；不加无作用 post-fs-data.sh/uninstall.sh 占位。卸载有真实清理时调用受控框架钩子。
 首次/升级先校验组件，再迁移配置/权限/订阅引导；用户配置和有效订阅保留，不能先卸载再“升级”。历史缓存清理是有界一次迁移，不做开机全盘扫描。
 备份与恢复由同一迁移清单派生，新增状态路径不需要维护两份列表。旧完整 config 只作节点恢复及私密回滚材料，活动配置由新模板重建并独立验证；此类备份专用项必须显式声明。复制/权限/恢复错误非零退出并保留恢复证据，不得静默成功。
+安装验收必须实际把 staging 目录晋升到最终模块目录，再重新解析受控路径。晋升后自有缓存、checkpoint、last-known-good 与恢复 journal 仍可读取；不能留下指向已消失 staging 的绝对路径。仅重定位可证明属于模块的路径，用户显式配置的外部自定义路径保持原意图，不按字符串前缀盲目改写。
 核心/完整包、组件、manifest、摘要在最终字节确定后生成。保留：
 MagicNet-core.zip、兼容 MagicNet.zip 与 magicnet_installer.zip、MagicNet-full.zip、MagicNet-component-<id>-<sha256>.zip、components.json、package-sizes.json、SHA256SUMS。组件 ZIP 不是独立 root 模块。
 MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip 是完全相同核心包字节的三个发布名，SHA-256 相同，模块 ID 均为 MagicNet。管理器先于安装脚本选择 ID，不能创建另一个 magicnet_installer 模块再嵌套安装，也不能借别名重复下载核心包。
@@ -26,7 +27,7 @@ components.json 固定架构、实际路径、模式、大小和 SHA-256。组�
 .config/magicnet/module-update.conf 是意图；.state/machines/module-update.state 是唯一 public 状态。phase idle/checking/available/up_to_date/downloading/verifying/installing/reboot_required/failed，每阶段主动原子发布；crash 不能永远 running。
 固定 GitHub API release/asset ID URL，JSON 与 octet-stream Accept 分开；200 与允许主机的302均支持，每跳校验 HTTPS/公网地址/主机/头，禁用不受信 curl 配置/代理/loader 环境。core ZIP 同时匹配 GitHub asset SHA-256 与 SHA256SUMS，但不能称作独立公钥签名。
 校验空间、ZIP、module metadata、组件与设备架构，再用固定绝对路径调用真实 manager；不能只靠 ksud 文件存在推断 KernelSU 有内核支持。
-有 pending modules_update/MagicNet、update/disable/remove marker 或 recovery_required 时拒绝新 install及过期成功重放；不删外部 pending。
+有 pending modules_update/MagicNet、update/disable/remove marker 或 recovery_required 时拒绝新 install 及绕过这些阻断的历史成功回执重放；不删外部 pending。命中幂等 ledger 后也必须在同一受控 owner 内先核对当前 marker、pending 及恢复状态，再返回可适用的历史结果；健康状态下同 ID 同意图仍不重复安装。损坏 journal 或另一任务的恢复阻断不能被旧成功绕过，不启动新 worker、不覆盖原 ledger 或恢复证据。
 manager exit 0 后还要验证 staged 身份/版本与 update marker，才 reboot_required。保存重启前 effective baseline；不同 boot 后 staged 消失、安装 metadata、manifest 和实际 CLI hash 一致才承认新版本生效。无自动重启。
 manager 开始后 partial/interrupted failure 由 manager 拥有，不以删除新出现目录伪装 rollback；保留证据并 recovery_required。
 
