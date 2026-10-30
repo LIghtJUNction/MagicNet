@@ -6,6 +6,8 @@
 
 本地使用 CI 固定的 Recipkg CLI `f6f5983d558937677c712fea291c65b376487568`（0.1.1），通过 `python3 scripts/check-recipes.py` 完成目录 check、pack、归档 check 与完整中文 build 提示词验证：8 个包、56 个普通 UTF-8 Markdown 文件，所有非 LOCK 正文完整进入提示词。检查同时核对包身份、重复路径、链接、路径越界与 NUL；临时归档和提示词自动清理。`git diff --check` 通过，源码与共享技能 gitlink 均未更改。
 
+按上游 multiFlowTracker 的实际范围收窄 CORE-003 与 CORE-A02：覆盖挂接已开始后与关闭重叠时的完整注册清理，遵守所属组件锁顺序。移除关闭完成后首次挂接和强制锁外 Close 的额外要求。显示版本固定为 1.15.0-alpha.13 加 fork revision。此规范修正另作提交保留过程。
+
 内核候选、Android 交叉构建和运行结果在对应实现完成后单列，历史验证继续归属原固定提交。当前未运行远程 CI、发布或设备操作。
 
 ## 2026-10-30 / 配方 0.3.1：#429、#430 与日志资源开销

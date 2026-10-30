@@ -47,7 +47,7 @@
 | M41 | LIFE-A01–A04：短启动预算、长命守护、就绪前控制方退出/超时、就绪后 worker 组终止与回滚 | 预算不向后续操作泄露；未交接核心按 TERM/KILL 清理，未确认退出则保留互斥并报告清理未完成；已交接核心独立存活，回滚仍有效，无新增常驻守护 |
 | M42 | LIFE-A05–A07：真实 mksh、POSIX sh、Bash/BusyBox 的 PID 边界，配置/订阅锁恢复及信号路径 | 四处共用无溢出校验；合法 PID 不误拒，越界不触达 kill，unknown 不回收；主机与 Android 结果分开 |
 | M43 | control 验收 12：常规与密集短行日志、CRLF/UTF-8/截断/追加、相同输入的分配与时间对比 | 输出和隐私语义不变；1 MiB 与 1000 行预算保留；行索引按请求行数有界，报告局部收益口径 |
-| M44 | CORE-A01–A06：固定上游同步、TCP/UDP 握手失败、AttachFlow/CloseFlow 顺序与竞态、资源回收和同参数内存测量 | 错误回调与连接一起清理，关闭后无遗留引用；生产 tags、eBPF、Encryption 与 AWG 保留；宿主、Android 构建和真机结果各有对应 SHA 与证据 |
+| M44 | CORE-A01–A06：固定上游同步、TCP/UDP 握手失败、AttachFlow/CloseFlow 重叠与竞态、资源回收和同参数内存测量 | 错误回调与连接一起清理，挂接和关闭重叠时不丢注册或重复释放；生产 tags、eBPF、Encryption 与 AWG 保留；宿主、Android 构建和真机结果各有对应 SHA 与证据 |
 
 M18–M29 来自 [FEEDBACK.md](FEEDBACK.md) 的 Issue 反馈。迁移阶段仅运行材料检查和原实现基线，后续 v1.8.0 在既有实现上按新配方开发；各场景的本地、设备和网络结果分别记录，不宣称已经独立从零重建或全部验收通过。
 
