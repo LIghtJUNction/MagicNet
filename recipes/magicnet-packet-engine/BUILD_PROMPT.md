@@ -4,6 +4,8 @@
 来源 fork 为 LIghtJUNction/sing-box，完整 revision 871b7a3440cd9c850f1b09ef3b4ada9babb4384b；父仓库 sing-box.version 写 1.15.0-alpha.10，但 git describe 为 v1.14.2-386-g871b7a34，二者不是同一身份字段，重建应校验提交及产物元数据，不能只看版本名。
 可以按其实际许可证复用固定 fork/上游协议实现；源码是明确外部构建前提，不藏进配方，不作为无配方的依赖。需要网络/上游许可时显式记录。语言自由不意味着要手写未经验证的密码学。
 
+完整阅读 [CORE_LIFECYCLE.md](CORE_LIFECYCLE.md) 的 CORE-001–005 与 CORE-A01–A06。上游同步目标、连接资源归属、并发关闭和内存验证由该合同约束；上面的 fork SHA 仍为本轮实施前已接入的固定点。
+
 ## 兼容接口
 
 提供 sing-box run、check、version 及本地 Clash API 所需配置/API；支持混合入站 127.0.0.1:7892、controller 默认 127.0.0.1:9090、TUN、selector/urltest/direct/block、DNS 与规则集、Tailscale/WireGuard endpoint 和订阅原生协议。

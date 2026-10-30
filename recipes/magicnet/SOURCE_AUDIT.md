@@ -149,3 +149,11 @@ link_encryption_none_complete_rc=1
 仍缺 #426 失败批次的真实证据、真实转换器的全部复杂格式/Encryption 对照、Android 原生桥到内核的多源事务、实际加密服务器、多 OEM、热点 IPv6 和长时稳定性。最低全产品 Android/WebView 版本与性能预算仍未知。
 
 0.3.0 已将本轮可提取行为和修正规则写成完整可交付输入；“可开始重建”不等于已经证明全产品一比一重建成功。已运行的命令和具体限制见 VERIFICATION.md；历史 v1.8.0 的构建/设备记录继续归属原版本，不改写成此轮新结果。
+
+## 9. 2026-10-30 内核同步准备（配方 0.3.2）
+
+当前主仓库为配方与发布入口；`magicnet-android@b113f5128549172da6cb1f6e62f0b42d31adb956` 包含最新前端和生命周期修复，内核从独立 fork 的固定 gitlink 构建。`MagicSingBox` 是默认配置仓库，继续使用 `e4ecf47499c35bf25e10d04257a21a4f7975ebad`。
+
+构建读取 fork 的 `release/DEFAULT_BUILD_TAGS_OTHERS`、`release/LDFLAGS` 与父仓库的 `sing-box.version`，使用 `GOTOOLCHAIN=local`、`GOWORK=off`、`-mod=readonly`；Android arm64 为 CGO=0。产品显示版本和源码身份分别记录。现有启动器已提供 192/256/384/512 MiB 的 GOMEMLIMIT 分档并尊重用户覆盖，本轮优化以实际资源归属和释放为准。
+
+新增的 CORE 合同要求同步固定上游及完整 WireGuard 差异、保留 AWG，覆盖握手失败回调与流绑定/关闭竞态。先提交合同，后记录经验证内核和实现提交；本节准备记录不改变历史 #426 的现场证据结论。

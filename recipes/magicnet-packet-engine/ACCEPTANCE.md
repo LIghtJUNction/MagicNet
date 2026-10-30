@@ -12,4 +12,6 @@
 10. 对同一锁定核心比较 mixed 与 Go/default TUN stack，覆盖 hotspot 回程、DNS、IPv4/IPv6、应用策略、长连接、CPU/RSS/延迟；旧栈与新栈结果可追溯，所有目标平台通过前不更改生产默认。该 stack 维度独立于 tun|ebpf 模式。
 11. 执行 VLESS_ENCRYPTION.md 的 VE-005 矩阵：普通/none 回归、三种 appearance、两种 RTT、32/1184 字节有效测试公钥、多 key/padding、非法值与长字段、各导入/编辑/刷新/恢复入口，均不得丢字段后假成功。真实核心 check、受控服务器互通和取消/超时资源分别记录；仅原生解析探针通过不算协议通过。
 
+12. 执行 CORE_LIFECYCLE.md 的 CORE-A01–A06：握手错误回调、绑定/关闭顺序及竞态、重复流的资源回收、固定参数内存测量、上游 WireGuard 完整差异与 AWG 保留、生产 tags 和 Android arm64 构建。每项绑定实际候选 SHA，并分开记录宿主与设备结果。
+
 本次迁移未重新编译或运行 Android 数据面；这些场景均未验证。固定 fork 可用作合法实现前提，不代表已由配方独立重建。

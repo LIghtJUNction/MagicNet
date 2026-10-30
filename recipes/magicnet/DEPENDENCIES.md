@@ -13,15 +13,15 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.1 闭包与具体接口
+## 0.3.2 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.1 | 全产品保留范围、M01–M43、来源和真实验证 |
+| magicnet | 0.3.2 | 全产品保留范围、M01–M44、来源和真实验证 |
 | magicnet-control-plane | 0.2.2 | C-SUB完整入口、公共/私密状态、命令预算与日志尾读 |
 | magicnet-network-runtime | 0.1.2 | SUB-001–015，LIFE-001–004，订阅事务和服务交接 |
 | magicnet-web-console | 0.2.1 | UI-SUB-001–012，完整输入与同代反馈、草稿/隐私 |
-| magicnet-packet-engine | 0.2.0 | VE-001–006，固定核心Encryption客户端能力与实测边界 |
+| magicnet-packet-engine | 0.2.1 | VE-001–006、CORE-001–005，固定上游与连接资源归属 |
 | magicnet-routing-policy | 0.2.1 | 增量分流与订阅归属、POLICY-A01–07 |
 | magicnet-module-delivery | 0.2.1 | 安装更新与三个核心包发布名的同身份合同 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
@@ -31,6 +31,8 @@ graph TD
 delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和官方发行仓库，定义 schema-1 构建来源记录、固定源码构建、同提交 Android 验收与草稿发布门槛；草稿按唯一数字 release ID 校验与公开，发布控制失败的独立恢复复用原通过记录与不可变产物。不新增运行时配方依赖。
 
 0.3.1 的生命周期修复只使用现有 Rust 标准库/libc 与 shell 内建能力，日志优化不增加库依赖。验证端使用真实 mksh 与固定 KernelSU BusyBox；这些宿主测试工具不进入产品常驻进程或 Markdown 配方负载。
+
+0.3.2 的 engine 同步对象为固定 sing-box/sing-tun 版本及既有 WireGuard 复制源码，保留 AWG 与 fork 差异。完整核心依赖锁和 gitlink 在源码实现中维护；CORE_LIFECYCLE.md 规定来源、兼容与验证要求，八包配方闭包保持不变。
 
 ## 实现与观察材料
 

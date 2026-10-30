@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.1）
+# 重建 MagicNet（配方 0.3.2）
 
 为 Android root 用户重建 MagicNet：从首次安装与订阅导入，到按应用、Wi-Fi、热点分流，再到节点、故障诊断和自动化控制。保留来源版本的完整用户行为，不能交付只有静态页面或包装命令的演示。
 
@@ -19,6 +19,8 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、FEEDBACK.md、SOURCE_AUDIT.md、PERFORMANCE.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖和所有递归依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
 
 本轮增加的具体合同为 control/SUBSCRIPTION_INTERFACE.md、runtime/SUBSCRIPTION_CONTRACT.md、webui/SUBSCRIPTION_FLOW.md、engine/VLESS_ENCRYPTION.md；这里的前缀是依赖职责简称，包名及实际位置由 RECIPE/LOCK 决定。依赖完整闭包仍是八包，不因补充合同新增常驻服务。
+
+0.3.2 增加 engine/CORE_LIFECYCLE.md：同步固定上游、保留 fork 协议和生产 tags；握手失败完成连接与回调清理，流绑定和关闭共享一致的并发状态。根验收 M44 对应 CORE-A01–A06，内存结果按实际测量路径记录。
 
 0.3.1 增加 runtime/LIFECYCLE_CONTRACT.md，并补齐 control 的命令预算和日志内存要求：一次启动操作的超时不能被长期守护继承；核心就绪前由启动方负责回收，就绪后不受旧命令进程组的超时清理影响；PID 校验在 Android mksh 的 32 位算术下也必须准确。日志读取只为请求的尾部行分配索引，避免短行文件放大临时内存。根验收 M41–M43 与对应组件验收共同约束这些行为。
 

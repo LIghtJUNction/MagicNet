@@ -1,5 +1,13 @@
 # 实现与发行验证
 
+## 2026-10-30 / 配方 0.3.2：内核合同先行
+
+本阶段只更新配方，当前 Android 实现仍为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，内核仍为 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。新增 engine/CORE_LIFECYCLE.md、根 M44 与 CORE-A01–A06，规范上游同步、握手清理、并发关闭及测量口径。
+
+本地使用 CI 固定的 Recipkg CLI `f6f5983d558937677c712fea291c65b376487568`（0.1.1），通过 `python3 scripts/check-recipes.py` 完成目录 check、pack、归档 check 与完整中文 build 提示词验证：8 个包、56 个普通 UTF-8 Markdown 文件，所有非 LOCK 正文完整进入提示词。检查同时核对包身份、重复路径、链接、路径越界与 NUL；临时归档和提示词自动清理。`git diff --check` 通过，源码与共享技能 gitlink 均未更改。
+
+内核候选、Android 交叉构建和运行结果在对应实现完成后单列，历史验证继续归属原固定提交。当前未运行远程 CI、发布或设备操作。
+
 ## 2026-10-30 / 配方 0.3.1：#429、#430 与日志资源开销
 
 本轮在既有实现上修复，源码提交为 [`72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`](https://github.com/LIghtJUNction/magicnet-android/commit/72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae)，tree `1976d9f38b6a2e0520535c7256130ebe1cff114b`，父提交为 v1.8.1 源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。源码先推送到已授权的 `main`，主仓库再固定同一 gitlink；不是从零独立重建。配方根包为 0.3.1，control 为 0.2.2，runtime 为 0.1.2。

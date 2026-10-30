@@ -33,9 +33,9 @@ recipkg check recipes/magicnet
   set -eu
   recipe_tmp="$(mktemp -d)"
   trap 'rm -rf "$recipe_tmp"' EXIT
-  recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
-  recipkg check "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
-  recipkg build "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz" --lang zh-CN
+  recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz"
+  recipkg check "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz"
+  recipkg build "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz" --lang zh-CN
 )
 ~~~
 
@@ -44,6 +44,10 @@ recipkg check recipes/magicnet
 完成后把真实构建、功能、失败恢复、Android 设备及网络验收结果写入 `recipes/magicnet/VERIFICATION.md`。归档和提示词检查通过只说明重建材料完整，不代表实现已生成、Android 包可安装或真实流量可用。不要把 `.env`、订阅、凭据、设备状态或原始私密日志交给 Agent，也不要打进归档。
 
 Recipkg 只生成完整的构建提示词，不会调用模型或自行实现软件；软件重建和验收由代码 Agent 执行。
+
+## 0.3.2 内核同步与连接清理
+
+新增 [内核生命周期合同](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md)，固定上游同步范围，保留全部 fork 能力，要求握手失败和并发关闭完整回收资源。配方先提交，内核候选与实际内存数据随后按固定版本记录；当前实现身份见下文与 VERIFICATION。
 
 ## 0.3.1 生命周期与资源使用
 
@@ -86,7 +90,7 @@ cd generated/magicnet-android
 kam build -j 2
 ~~~
 
-当前源码固定为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，在 v1.8.1 源码基础上包含服务交接、PID 校验和日志内存修复，以及增加留白、减少重复边框的前端视觉精修；该新提交尚未发布为 Android 安装包。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.1，当前 Android 正式版为 [v1.8.1 / 10609](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)；[安装说明](docs/releases/v1.8.1.md)及实际构建、恢复发布与设备验证范围见 VERIFICATION。
+当前源码固定为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，在 v1.8.1 源码基础上包含服务交接、PID 校验和日志内存修复，以及增加留白、减少重复边框的前端视觉精修；该新提交尚未发布为 Android 安装包。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.2，当前 Android 正式版为 [v1.8.1 / 10609](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)；[安装说明](docs/releases/v1.8.1.md)及实际构建、恢复发布与设备验证范围见 VERIFICATION。
 
 已有同名目录时先核对其本地修改，不覆盖或清空。源码包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具，详情见 [源码构建指南](generated/magicnet-android/docs/build.md)。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`generated/magicnet-android/dist/MagicNet.zip` 是从主仓库看见的本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按源码内的发行文档打包和验证。
 

@@ -1,5 +1,11 @@
 # 来源、证据与未验证项
 
+## 2026-10-30 / 配方 0.3.2：内核同步合同
+
+输入为用户更新 fork sing-box、同步上游、降低内存和规范修复 bug 的要求。配方基线为 `MagicNet@a7a05308aadbbf4d8362780d2773bf963437b1a5`，当前实现为 `magicnet-android@b113f5128549172da6cb1f6e62f0b42d31adb956`，其内核固定 `sing-box@871b7a3440cd9c850f1b09ef3b4ada9babb4384b`。
+
+本轮先定义 engine/CORE_LIFECYCLE.md，目标为 [SagerNet/sing-box testing e5d91fa79f6319d5de940d6c81d81f0fe53b9476](https://github.com/SagerNet/sing-box/commit/e5d91fa79f6319d5de940d6c81d81f0fe53b9476)，保留 1.15 预发布轨道、fork 专属协议和全部生产 tags。根包为 0.3.2、engine 为 0.2.1，新增 M44 与 CORE-A01–A06；其他组件合同和历史实测归属保持原版本。当前阶段仍使用上述旧内核 gitlink，候选源码与实际检查在完成后另记。
+
 ## 2026-10-30 / 前端留白与边框精修
 
 输入为用户“多点留白、少一点边框”的界面要求，在现有 Vue WebUI 上统一空间、排版、导航与容器层级。实现提交 [`b113f5128549172da6cb1f6e62f0b42d31adb956`](https://github.com/LIghtJUNction/magicnet-android/commit/b113f5128549172da6cb1f6e62f0b42d31adb956)，父提交为 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`，tree 为 `2e18248622aa946ca88a243915aa5ed015e9ad37`；父提交的服务交接、PID 校验与日志修复完整保留。
