@@ -43,9 +43,9 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | --- | --- |
 | Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
 | Recipe | `0.3.3` |
-| Fixed implementation commit | `396d71df3bd98316324e3533e2d2106e7392250e` |
+| Fixed implementation commit | `fd0e2dabf668e9b8cd6e16f5058e06517fe110c2` |
 | Fixed sing-box core | `ff669d45e6562a790a49ef066340dbed5df46363` / `1.15.0-alpha.13` |
-| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization and connection lifecycle fixes |
+| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
 

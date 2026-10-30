@@ -1,5 +1,13 @@
 # 来源、证据与未验证项
 
+## 2026-10-30 / 手机端导航与输入体验
+
+输入为用户进一步美化手机端使用体验的要求，沿用前轮的留白、配色和边框规则。先更新 `magicnet-web-console` 的 BUILD_PROMPT、DESIGN 与验收 20–25，再实现底部分区页面面板、可视视口内的快捷跳转、应用列表分批展示、终端分行输入与配置编辑器可读性。现有 Vue 实现的设计版本更新为 Fieldnotes 5.2.0。
+
+实现提交为 [`fd0e2dabf668e9b8cd6e16f5058e06517fe110c2`](https://github.com/LIghtJUNction/magicnet-android/commit/fd0e2dabf668e9b8cd6e16f5058e06517fe110c2)，tree 为 `1de7a117b2b54ba48dcd12b2447fbe43bef19474`，父提交为 `396d71df3bd98316324e3533e2d2106e7392250e`；开发期间到达的订阅修复 `0952cb01b001e41e1074c2e5f4a731a4ad42b222` 和内核更新完整保留，两者没有 WebUI 文件交叠。
+
+直接证据包括 338 项前端测试、类型检查与生产构建、14 页窄屏浏览器检查、135 个合成应用的递增展示、130 条逻辑夹具的选择范围，以及焦点、草稿和编辑器尺寸观察。新增及更新 E2E 文件仅完成语法检查，未运行 Playwright runner；无原生桥的浏览器预览不作为 Android 软键盘、设备写入或网络成功证据。实际结果与本轮通过的配方目录、归档和完整提示词检查见 VERIFICATION.md 本轮记录。
+
 ## 2026-10-30 / 配方 0.3.3：最终内核与消费固定点
 
 最终采用 [sing-box `ff669d45e6562a790a49ef066340dbed5df46363`](https://github.com/LIghtJUNction/sing-box/commit/ff669d45e6562a790a49ef066340dbed5df46363)，tree `b5e4c5a7559369fa8f46842b0a0fc45c5aa1ca13`，包含上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。fork 主线从 `ef1ac197876a45aee818ee608b15740c10b8fa3b` 继续合并，保留真实 merge 父提交与 fork 功能；消费仓原固定点则是 `871b7a3440cd9c850f1b09ef3b4ada9babb4384b`，两者角色不同。旧消费基础版本为 `1.15.0-alpha.10`，而其 `git describe` 为 `v1.14.2-386-g871b7a34`；保留这一历史差异，以完整提交和产物元数据确认身份。上游完整差异、WireGuard 复制源码来源及最小修复依据见[内核报告](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/IMPLEMENTATION_REPORT.md)。
