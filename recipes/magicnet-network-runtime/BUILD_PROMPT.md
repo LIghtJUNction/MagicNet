@@ -2,7 +2,7 @@
 
 依赖 engine 提供 sing-box/check/Clash API/TUN/eBPF，依赖 policy 提供默认配置、selector 和本地规则数据。先结构化生成候选配置，再 sing-box check，最后在串行、有截止时间的生命周期事务里生效。集成验收：两种数据面、业务策略、订阅来源、API 与公共状态一致，失败恢复旧有效状态。
 
-必须完整阅读 [SUBSCRIPTION_CONTRACT.md](SUBSCRIPTION_CONTRACT.md) 与 [ACCEPTANCE.md](ACCEPTANCE.md)。runtime 0.1.1 从固定 v1.8.0 源码补齐订阅端到端合同，包含 #426 多源反馈、URL 身份统一、同名不同节点、逐源转换完整性和批次诊断；标注“重建修正”的条目是本轮目标，不表示旧实现已修复。
+必须完整阅读 [SUBSCRIPTION_CONTRACT.md](SUBSCRIPTION_CONTRACT.md)、[LIFECYCLE_CONTRACT.md](LIFECYCLE_CONTRACT.md) 与 [ACCEPTANCE.md](ACCEPTANCE.md)。runtime 0.1.1 从固定 v1.8.0 源码补齐订阅端到端合同，包含 #426 多源反馈、URL 身份统一、同名不同节点、逐源转换完整性和批次诊断；0.1.2 补齐 #429、#430 暴露的命令预算、服务交接和 PID 范围要求。
 
 ## 生命周期与所有权
 

@@ -13,13 +13,13 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.0 闭包与具体接口
+## 0.3.1 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.0 | 全产品保留范围、M01–M39、来源和真实验证 |
-| magicnet-control-plane | 0.2.1 | C-SUB完整入口、公共/私密状态、subscription_batch_v1 |
-| magicnet-network-runtime | 0.1.1 | SUB-001–015，多源完整性、统一身份、合并与事务 |
+| magicnet | 0.3.1 | 全产品保留范围、M01–M43、来源和真实验证 |
+| magicnet-control-plane | 0.2.2 | C-SUB完整入口、公共/私密状态、命令预算与日志尾读 |
+| magicnet-network-runtime | 0.1.2 | SUB-001–015，LIFE-001–004，订阅事务和服务交接 |
 | magicnet-web-console | 0.2.1 | UI-SUB-001–012，完整输入与同代反馈、草稿/隐私 |
 | magicnet-packet-engine | 0.2.0 | VE-001–006，固定核心Encryption客户端能力与实测边界 |
 | magicnet-routing-policy | 0.2.1 | 增量分流与订阅归属、POLICY-A01–07 |
@@ -30,9 +30,11 @@ graph TD
 
 delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和官方发行仓库，定义 schema-1 构建来源记录、固定源码构建、同提交 Android 验收与草稿发布门槛；草稿按唯一数字 release ID 校验与公开，发布控制失败的独立恢复复用原通过记录与不可变产物。不新增运行时配方依赖。
 
+0.3.1 的生命周期修复只使用现有 Rust 标准库/libc 与 shell 内建能力，日志优化不增加库依赖。验证端使用真实 mksh 与固定 KernelSU BusyBox；这些宿主测试工具不进入产品常驻进程或 Markdown 配方负载。
+
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复和跨仓库构建发布兼容；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复及日志内存优化；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

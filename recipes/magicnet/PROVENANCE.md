@@ -1,5 +1,13 @@
 # 来源、证据与未验证项
 
+## 2026-10-30 / 配方 0.3.1：生命周期、PID 与日志路径
+
+输入为 MagicNet [#429](https://github.com/LIghtJUNction/MagicNet/issues/429)、[#430](https://github.com/LIghtJUNction/MagicNet/issues/430) 及既有 #426 记录，固定实现基线为 `magicnet-android@a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。本轮实际修改现有 Rust/shell 实现，提交 [`72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`](https://github.com/LIghtJUNction/magicnet-android/commit/72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae)，tree `1976d9f38b6a2e0520535c7256130ebe1cff114b`。未更换六个嵌套源码依赖，不是从配方独立重写。
+
+直接证据包括：真实 mksh 的整数溢出与生产锁函数复现；真实 Linux 进程组、管道、flock、fd 与控制进程退出实验；旧/新日志函数的输出对照和 allocator 计数。核心网络行为使用受控假进程，不能作为 Android 网络数据面的成功证据。最终门槛、失败夹具修正和未执行项见 VERIFICATION.md；日志基准绑定原始基线与随源码提交的复现工具，见 PERFORMANCE.md。
+
+配方增加 runtime/LIFECYCLE_CONTRACT.md，根包为 0.3.1、control 为 0.2.2、runtime 为 0.1.2，完整闭包仍为八包。当前源码 main 修复不改变已公开 v1.8.1 的标签或安装物，也不证明 #426 的现场因果。历史性能和发行记录保留各自原提交，不移作本轮测量。
+
 ## 2026-10-29 / 配方 0.3.0：源码再提取
 
 本节记录首次提取阶段：从配方0.2.1固定提交0a773436c3b21a56931bbfc77b323c42218cf52b继续，实际读取独立源码0dca28dd984d82333707cbf4b222596934b4d847及固定内核871b7a3440cd9c850f1b09ef3b4ada9babb4384b。当时源码与gitlink未修改，也没有发布Android新版本。后续源码修复另见本文件末尾。

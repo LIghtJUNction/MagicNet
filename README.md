@@ -33,9 +33,9 @@ recipkg check recipes/magicnet
   set -eu
   recipe_tmp="$(mktemp -d)"
   trap 'rm -rf "$recipe_tmp"' EXIT
-  recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet-0.3.0.recipe.tar.gz"
-  recipkg check "$recipe_tmp/magicnet-0.3.0.recipe.tar.gz"
-  recipkg build "$recipe_tmp/magicnet-0.3.0.recipe.tar.gz" --lang zh-CN
+  recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
+  recipkg check "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
+  recipkg build "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz" --lang zh-CN
 )
 ~~~
 
@@ -45,7 +45,11 @@ recipkg check recipes/magicnet
 
 Recipkg 只生成完整的构建提示词，不会调用模型或自行实现软件；软件重建和验收由代码 Agent 执行。
 
-## 0.3.0 重建准备
+## 0.3.1 生命周期与资源使用
+
+在 0.3.0 材料之上，补齐 [#429](https://github.com/LIghtJUNction/MagicNet/issues/429) 的命令预算与核心进程交接、[#430](https://github.com/LIghtJUNction/MagicNet/issues/430) 的 Android shell PID 校验，以及日志尾读的临时内存要求。普通启动与订阅激活共用交接流程，四处 PID 入口使用同一无溢出校验，CLI/MCP 复用日志快照读取。源码修复、回归范围和性能口径分别见 [VERIFICATION.md](recipes/magicnet/VERIFICATION.md) 与 [PERFORMANCE.md](recipes/magicnet/PERFORMANCE.md)；本轮未发布新 Android 安装包。
+
+### 0.3.0 重建准备记录
 
 本轮针对 [#426](https://github.com/LIghtJUNction/MagicNet/issues/426) 实际读取固定 v1.8.0 源码，补齐多来源订阅、同名节点、统一 URL 身份、缓存与逐源状态、WebUI 草稿/反馈、VLESS Encryption 字段保真及安装包别名合同。查看 [源码提取与覆盖记录](recipes/magicnet/SOURCE_AUDIT.md) 和 [本轮验证](recipes/magicnet/VERIFICATION.md)。当前源码修复与构建发布入口见下方维护说明及 VERIFICATION；新增合同尚未执行独立重建或设备验收。
 
@@ -82,7 +86,7 @@ cd generated/magicnet-android
 kam build -j 2
 ~~~
 
-当前源码固定为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`，包含 v1.8.1 的订阅修复及跨仓库构建发布兼容。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.0，当前 Android 正式版为 [v1.8.1 / 10609](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)；[安装说明](docs/releases/v1.8.1.md)及实际构建、恢复发布与设备验证范围见 VERIFICATION。
+当前源码固定为 `72b6e8fca99b2bff54e7f59cb4b2b5a28dd111ae`，在 v1.8.1 源码基础上包含本轮服务交接、PID 校验和日志内存修复；该新提交尚未发布为 Android 安装包。导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 Git tree 与原仓库 v1.8.0 的 `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` 相同；原历史及发布标签保留在 MagicNet。配方版本为 0.3.1，当前 Android 正式版为 [v1.8.1 / 10609](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)；[安装说明](docs/releases/v1.8.1.md)及实际构建、恢复发布与设备验证范围见 VERIFICATION。
 
 已有同名目录时先核对其本地修改，不覆盖或清空。源码包含工具链说明与依赖锁；需要 Rust、cargo-ndk/Android NDK、Go、Node/npm、Java/d8、KAM 和打包工具，详情见 [源码构建指南](generated/magicnet-android/docs/build.md)。构建时使用固定依赖与 go.sum，内核脚本默认经 Go 公共模块缓存获取固定版本。`generated/magicnet-android/dist/MagicNet.zip` 是从主仓库看见的本地完整构建输出；正式轻量安装器、分组件和离线完整包还需按源码内的发行文档打包和验证。
 

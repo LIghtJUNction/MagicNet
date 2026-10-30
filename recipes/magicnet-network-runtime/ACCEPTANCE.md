@@ -2,6 +2,8 @@
 
 未来实现必须运行，当前未做新实现验收。
 
+0.1.2 另须逐项执行 [LIFECYCLE_CONTRACT.md](LIFECYCLE_CONTRACT.md) 的 LIFE-A01–A07；主机结果与 Android 设备结果分别记录。
+
 | 输入/故障 | 操作 | 预期 |
 | --- | --- | --- |
 | 可用 HTTPS、私网跳转、DNS rebinding、TLS 错误、六个来源、复杂无转换器 YAML | 保存订阅 | 只有合法候选生效；拒绝项保留原来源、字节、选择和进程 |
