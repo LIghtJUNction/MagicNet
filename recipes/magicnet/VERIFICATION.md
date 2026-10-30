@@ -6,11 +6,41 @@
 
 新增 M44–M47、SUB-A19–A20、C-SUB-008，要求实际冲突引用才阻断同名节点、逐来源独立检查已知原生数量下界、URL/本地来源共享有界零写入观测，以及主仓库保留 module.yaml 和引用资源。支持包与 canonical 读取失败保持 unknown，service.status 保留独立服务事实。目录晋升、旧成功回执、网络策略完整恢复基线及 B/C 草稿反例并入原有验收。数量下界只补有限的丢节点检查，完整语义保真仍需独立证据。
 
-**规格落盘时未验证：** 当前 main 的源码修复、对应主机回归和集成结果均待本轮实际执行后补记。独立候选的历史结果不能移作本轮结果；真实转换器、Android/manager、OEM 网络、真实多源订阅与 #426 现场根因继续按已有边界记录。产品构建与验收使用本地检查；未发布新安装包或部署设备。
+### 主线实施与顺序
+
+先发布配方合并提交 [`25ff00f4d537f1db99d079a3a6ba5de4f7a2adc9`](https://github.com/LIghtJUNction/MagicNet/commit/25ff00f4d537f1db99d079a3a6ba5de4f7a2adc9)，父提交为当前 main `d2a6c6ffa57bf39ae01cebee9defc852c8e685c0` 和配方候选 `8acb763ff50f3626213c94165f4f3e3ae35ef247`。其 tree 为 `50422e8a4c154d72c6a08626c55b6b7e0b4cf7d8`，当时仍固定原源码；随后发布测试后的源码 [`0952cb01b001e41e1074c2e5f4a731a4ad42b222`](https://github.com/LIghtJUNction/magicnet-android/commit/0952cb01b001e41e1074c2e5f4a731a4ad42b222)，父提交为 `b113f5128549172da6cb1f6e62f0b42d31adb956`，tree 为 `ca1bfbb33779c9fbdf541b3399029269e5f0502d`。主仓库最终 gitlink 固定该源码提交；已有生命周期、PID、日志和 UI 改动保留，源码依赖锁与六个嵌套固定点未变。
+
+- **同名节点与引用：** 旧实现只要存在任何 tag 冲突和任何被引用节点，就拒绝合并。现在只检查引用目标是否属于冲突集合；指向无冲突 base 的 detour/selector/default 不再阻断两个不同端点的 HK 节点。真正歧义引用仍拒绝并保留旧输出，稳定命名不随来源顺序变化。已确认同源身份后的完整引用重写仍是更完整的配方目标，本补丁没有宣称实现它。
+- **逐来源下界：** 在过滤与跨源合并前，对能可靠原生计数的来源逐项检查转换结果。A 丢失的节点不能由 B 的额外节点补足；完全重复折叠和提示节点过滤使用一致计数。无可靠原生下界的受支持格式仍可走转换器，读取/提取错误则失败。该检查不能证明逐字段语义保真，也没有实现新的 subscription_batch_v1。
+- **来源观测：** sub.status 与 sub.inspect 共享 URL 64 KiB、本地内容 8 MiB 的有界读取和校验。缺失可表示未配置，坏编码、NUL、链接、非普通文件、超限及 I/O 错误返回固定结构化错误；canonical 与支持摘要保留 unknown，service.status 继续报告独立服务证据。相关有界读取不创建缺失目录；本地内容摘要只供内部变化检测。旧兼容读取的所有路径未在本轮全面迁移，inspect 也不是跨文件原子快照。
+
+### 本地验证与限制
+
+| 门槛 | 本轮实际结果 |
+| --- | --- |
+| Rust workspace / all-targets / all-features，locked、offline | 827 个不同测试最终通过、1 个既有 ignored；包含 774 个 unit 与 53 个 integration，结果来自首轮和必要复跑，不重复累计 |
+| Rust fmt / 严格 Clippy | 通过；拒绝 warnings、dbg_macro、todo、unimplemented |
+| Clash/协议订阅套件 | 34 项中 30 通过，4 项因未提供真实 converter 跳过；六组新增回归通过 |
+| 旧版反例 | 无关引用导致误拒、另一来源补数掩盖丢节点，两项新增回归在原代码上失败 |
+| Shell 兼容与静态检查 | 新增回归在真实 mksh R59 和固定 KernelSU BusyBox ash 上通过；Bash 完整套件通过，生产改动的 ash ShellCheck warning 级检查通过 |
+| 配方与发布边界 | Recipkg 目录/归档/完整提示词检查通过，8 包、55 Markdown；主仓库发布边界 16 项通过，module.yaml 身份及引用文件检查通过 |
+| 差异与审查 | 两仓库 diff whitespace 检查通过；独立只读 Rust 与清理脚本审查未发现阻塞问题 |
+
+Rust 首轮在 service_launch 的一个 fixture 复制后启动步骤遇到 `ETXTBSY / Text file busy`，尚未到达产品行为断言，Cargo 因此停止；不能写成单次完整运行全绿。该组单线程复跑 9/9 通过，并补跑其后尚未执行的 supervisor_evidence 18/18、transparent_recovery 1/1。没有为此修改产品或削弱测试。既有 ignored 需要单独构建的 AOSP Android-profile mksh 和 watcher fixture；宿主验证使用能正确观察 `/proc` 与进程组的环境。
+
+本轮未运行产品远程 CI、完整 Android/前端构建、真实转换器、manager 安装、OEM 网络或真实多源订阅，也没有新版本、安装包或部署。唯一主动远程维护是下述分支清理。M11–M13 的候选反例、完整 M32/M44 引用与来源归属目标，以及设备层验收继续保留各自证据边界；独立候选历史测试不替代当前实现结果。#426 附件仍只有单源成功记录，已修复的同类缺陷不能证明其现场根因，Issue 保持开放。
 
 **本地材料检查：** 使用 Recipkg CLI 0.1.1 执行 `python3 scripts/check-recipes.py`，目录 check、临时 pack、归档 check 和中文完整 build 提示词通过。归档含 8 包、55 个普通 UTF-8 Markdown，逐项检查无重复/危险路径、链接或 NUL，全部非 LOCK 正文完整进入提示词；临时归档与提示词已清理。`git diff --check` 通过。这只验证配方材料，不代表新增产品验收通过。
 
-**主仓库修复与维护准备：** 根 `module.yaml` 从当前源码恢复，模块身份、官方地址、arm64-v8a、完整包名及 README/icon 的普通文件引用检查通过；`scripts/test-release.py` 的 16 项本地回归通过。一次性分支维护清单包含 62 个已证实为主线祖先的分支，以及本次内容整合后才成为祖先的配方候选分支。任务重新检查当前 main、每个分支 SHA、祖先关系及开放 PR，再用带精确 lease 的一次原子推送删除；两项隔离 Git 实验确认任何过期 lease 都使整批零删除、匹配 lease 只删除指定分支。清理的远端结果另记，完成后移除一次性入口；独立源码候选保留。
+### 主仓库与分支清理
+
+根 `module.yaml` 从当前源码恢复，模块身份、官方地址、arm64-v8a、完整包名及 README/icon 的普通文件引用检查通过，修复迁移后根入口缺失问题。该本地检查不等于第三方模块目录端到端验收。
+
+[一次性维护运行 41076308232](https://github.com/LIghtJUNction/MagicNet/actions/runs/41076308232) 成功，2026-10-30 14:58:15 UTC 完成 63 个分支删除：62 个既有主线祖先，加本次合并的配方候选分支。日志删除集合与审核清单完全一致，随后逐页远端回读确认名单残留 0、分支由 246 降到 183；两仓库开放 PR 均为 0。已并入 main 的提交历史保留。
+
+维护先检查 main、分支 SHA、祖先关系与开放 PR，再以每个目标的精确 lease 执行一次原子删除。两项隔离 Git 实验证明过期 lease 导致整批零删除，匹配 lease 只删除指定分支。main/PR 检查是执行前快照，原子租约实际覆盖待删分支；不将其夸大为覆盖一切并发操作。完成后删除一次性 workflow、脚本与清单，历史提交和运行日志保留证据。
+
+源码仓库仍为两个分支，`rebuild/recipe-0.3.1` 保留在 `b22f9f280ddaf729da47078c13838a73e6d89294`。候选删除了现行发布入口所依赖的 kam.toml、module.prop、update.json 等布局，M40 正式发布适配及同提交 Android/KernelSU 门槛未完成，直接替换当前源码会破坏发布链。其可用配方需求与历史证据已整合；其他尚未证明完整入主线的分支也保留。
 
 ## 2026-10-29 / 独立重建候选：历史输入与证据
 

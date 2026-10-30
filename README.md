@@ -5,7 +5,7 @@
   <p>Subscriptions · app and domain routing · DNS · TUN/eBPF · sing-box-compatible runtime · web console</p>
 
   [![Android release](https://img.shields.io/badge/Android-v1.8.1%20%2F%2010609-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)
-  [![Recipe](https://img.shields.io/badge/recipe-0.3.1-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
+  [![Recipe](https://img.shields.io/badge/recipe-0.3.2-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
   [![Last commit](https://img.shields.io/github/last-commit/LIghtJUNction/MagicNet?style=flat-square)](https://github.com/LIghtJUNction/MagicNet/commits/main)
 
@@ -42,9 +42,9 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | Layer | Current state |
 | --- | --- |
 | Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
-| Recipe | `0.3.1` |
-| Fixed implementation commit | `b113f5128549172da6cb1f6e62f0b42d31adb956` |
-| Unreleased implementation work | process handoff, PID validation, log-memory fixes and frontend visual refinement |
+| Recipe | `0.3.2` |
+| Fixed implementation commit | `0952cb01b001e41e1074c2e5f4a731a4ad42b222` |
+| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards and bounded subscription observation |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
 
@@ -81,9 +81,9 @@ recipe_tmp="$(mktemp -d)"
 trap 'rm -rf "$recipe_tmp"' EXIT
 
 recipkg pack recipes/magicnet \
-  -o "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
-recipkg check "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz"
-recipkg build "$recipe_tmp/magicnet-0.3.1.recipe.tar.gz" --lang zh-CN
+  -o "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz"
+recipkg check "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz"
+recipkg build "$recipe_tmp/magicnet-0.3.2.recipe.tar.gz" --lang zh-CN
 ```
 
 `recipkg build` produces a complete implementation prompt. It does not call a model or build the software itself. Give the full generated prompt to the implementation agent, then require it to execute every item in [`ACCEPTANCE.md`](recipes/magicnet/ACCEPTANCE.md) and record real results in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
