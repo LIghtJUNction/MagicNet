@@ -7,8 +7,8 @@
 资源固定为 magicnet://status/service、transparent、dns、network、subscription、wifi、overrides。未知资源失败；自动资源脱敏。
 prompts 包含 diagnose-network 与 edit-config-overrides，不嵌入真实配置。
 
-generic magicnet_cli 是 argv 接口，不是 shell。拒绝 mcp secret、sub 私密 dump/user-agent/filter 默认值、人类 sub status 与 wifi 默认/status/list/check/watch、config-editor 私密 getter、backup 默认 export、override/wifi/network-access inspect、原始 service/mcp logs、diagnose（包括尾随参数）和 __ 开头的内部命令名。普通节点名/SSID 可以以 __ 开头，不能误伤参数。
-file_list/read 拒绝 .config/sing-box、密钥及临时/备份别名、Wi-Fi 列表、module-update 意图、.log、私密 journal/identity/download/transaction/installer/wifi-policy 状态树及 symlink 别名；.state/machines 可读。
+generic magicnet_cli 是 argv 接口，不是 shell。拒绝 mcp secret、sub 私密 dump/user-agent/filter 默认值、人类 sub status 与 wifi 默认/status/list/check/watch、人类 hotspot / hotspot status（接口名、客户端网段和回程对端；保留 --json hotspot status 与 named magicnet_hotspot_status）、config-editor 私密 getter、backup 默认 export、override/wifi/network-access inspect、原始 service/mcp logs、diagnose（包括尾随参数）和 __ 开头的内部命令名。普通节点名/SSID 可以以 __ 开头，不能误伤参数。
+file_list/read 拒绝 .config/sing-box、密钥及临时/备份别名、Wi-Fi 列表、module-update 意图、.log、私密 journal/identity/download/transaction/installer/wifi-policy/hotspot 状态树及 symlink 别名；.state/machines 可读。
 log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs named tool 也走脱敏路径。
 私密配置、订阅、覆写检查、流量等保留明确 named tool，不在普通状态汇总自动调用。module-update 只有 named status；network-access 只有 named status/inspect，不暗加自动修复。
 抓包、测速、连接关闭、备份、配置变更都是明确操作，不能被状态读取触发。

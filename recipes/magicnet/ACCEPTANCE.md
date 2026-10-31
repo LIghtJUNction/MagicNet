@@ -12,7 +12,7 @@
 | M06 | Wi-Fi 名单命中/未命中、禁用；热点接口晚出现/消失 | mode 语义准确，未知不当作未命中；热点 pending 可见，关闭恢复先前 offload 与仅自有路由 |
 | M07 | 覆写对象/数组/null；两个客户端同时编辑；失败激活与外部改写 | 合并/替换/删除准确；stale revision 冲突；无效写零副作用；回滚不覆盖第三方改动；保存≠运行 |
 | M08 | WebUI 操作超时后立刻第二次写，关闭再重开 | 原生命令退出前串行槽仍被持有；长任务由设备文件恢复；旧响应不能覆盖新状态 |
-| M09 | 未认证 MCP、错误类型/未知字段、私密文件及 symlink 别名、diagnose 尾随参数 | 独立拒绝；无命令执行与敏感值泄漏；资源只返回脱敏 schema-1 |
+| M09 | 未认证 MCP、错误类型/未知字段、私密文件及 symlink 别名（含 .state/hotspot）、人类 hotspot status、diagnose 尾随参数 | 独立拒绝；无命令执行与敏感值泄漏；资源只返回脱敏 schema-1；`--json hotspot status` 保持脱敏 |
 | M10 | 手动停止核心后保存配置、暂停/恢复 Tailscale；共享 CGNAT 非 Tailnet 目的地 | 不意外启动核心；不强迫整个 CGNAT 走 Tailnet；登出只删模块自有身份 |
 | M11 | network-access 检查、缺少确认、stale 候选、成功 repair、第三方改策略、部分 repair/rollback 后再恢复 | 检查零写入；只改审阅的身份；有界私密 journal 保留完整 UID/包身份和原策略，逐项进度不覆盖为剩余子集；冲突拒绝；配置 readback 不能宣称 Play 可用 |
 | M12 | 替换组件 ZIP 字节、路径穿越、缺组件、网络中断、移动文件时强杀；真实 staging 目录晋升 | 校验前不激活；拒绝不安全包；旧配置保留；重试先恢复；不删除无法证明归属的 staging；自有路径随安装目录正确晋升，缓存/checkpoint/last-known-good 及外部自定义路径意图保留 |

@@ -1,5 +1,24 @@
 # 实现与发行验证
 
+## 2026-10-31 / 日常 issue、安全与冗余扫描
+
+定时扫描只打开了 [#426](https://github.com/LIghtJUNction/MagicNet/issues/426)。配套 [MagicNet#431](https://github.com/LIghtJUNction/MagicNet/pull/431) 与 [magicnet-android#1](https://github.com/LIghtJUNction/magicnet-android/pull/1) 已覆盖多源截止时间和任务反馈，本轮不重复实现，也不把配方合同写成现场根因已确认。
+
+固定源码仍是 [`magicnet-android@fd0e2dabf668e9b8cd6e16f5058e06517fe110c2`](https://github.com/LIghtJUNction/magicnet-android/commit/fd0e2dabf668e9b8cd6e16f5058e06517fe110c2)。静态审查发现 MCP 旁路：`magicnet_file_read` / `file_list` 可读 `.state/hotspot` journal（下游接口名、客户端网段、回程对端），generic `magicnet_cli` 也可执行人类 `hotspot` / `hotspot status`。这与 named `magicnet_hotspot_status` / `--json hotspot status` 的最小披露合同冲突。本地源码提交 `4905935800468e4d723898d62fb81a24a0431d61` 已拒绝上述路径并删除未使用的 `magicnet_prepare_singbox_nodes` 包装；`cargo +1.87.0 test -p magicnet-cli --bin magicnet-cli mcp_server` 为 58 通过。本环境不能向 GitHub `magicnet-android` 推送，因此主仓库 gitlink 不改为未发布指针。
+
+死代码扫描覆盖 `lib/magicnet/**/*.sh` 389 个函数名：除保留名单外，仅该锁定包装是生产残留。继续保留 `magicnet_lifecycle_sync`、`magicnet_kernel_route_rule_start/end/fallback_rule`、`magicnet_ip6tables_nat_ensure`、`kamfw_phase_action` / `kamfw_phase_service` 和动态调用的 `magicnet_hotspot_watchdog_start_unlocked`。
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| 开放 Issue / PR | #426 仍开；#431 与 android#1 处理订阅预算，不在本轮改写 |
+| MCP 热点旁路回归 | 本地 58 项 `mcp_server` 测试通过，含 `.state/hotspot` 与人类 hotspot status 拒绝 |
+| 源码发布 | GitHub 推送失败（无凭据）；gitlink 保持 `fd0e2dab` |
+| Recipkg CLI 0.1.1 | `python3 scripts/check-recipes.py`：8 包、56 个 UTF-8 Markdown，目录/归档/完整中文提示词通过 |
+| 发布边界 | `python3 scripts/test-release.py` 16 项通过；`git diff --check` 通过 |
+| 设备 / 网络 | 未运行 Android 安装、真实热点客户端或订阅现场复测 |
+
+配方合同已写明拒绝人类 hotspot status 与 `.state/hotspot`。未发布源码不能算 Android 修复已部署，也不能关闭 #426。
+
 ## 2026-10-30 / 手机端导航与输入体验
 
 本轮先补齐 WebUI 的手机端设计和验收合同，再调整现有 Vue 实现。源码 [`fd0e2dabf668e9b8cd6e16f5058e06517fe110c2`](https://github.com/LIghtJUNction/magicnet-android/commit/fd0e2dabf668e9b8cd6e16f5058e06517fe110c2) 已发布到源码仓库 `main`，tree 为 `1de7a117b2b54ba48dcd12b2447fbe43bef19474`，父提交为内核更新 `396d71df3bd98316324e3533e2d2106e7392250e`。开发期间到达的订阅修复 `0952cb01b001e41e1074c2e5f4a731a4ad42b222` 与该内核更新均已保留，两者没有 WebUI 文件交叠。
