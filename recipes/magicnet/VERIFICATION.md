@@ -8,7 +8,11 @@
 
 首次完整浏览器运行 762 通过、5 跳过、1 项 landscape 订阅设置加载超时。该文件在同一源码与系统 Chromium 下重复三次，21 项全部通过；完整浏览器复核与 shell 最终复核另行记录，不抹去首次失败。首次 shell 门槛发现宿主机系统 sing-box 不支持 fork 的 `lazy_start`；从固定 `ff669d45e6562a790a49ef066340dbed5df46363` 构建 Linux core 复核。后续 PID 夹具因 mise Python shim 以 decoy argv 启动失败，最终复核将真实 `/usr/bin/python3` 放在 PATH 前端；组件首次因缺失 GOTMPDIR 失败，创建该缓存临时目录后全组通过。以上为环境修正，不绕过测试、不改设备运行策略。
 
-正式发布工作流尚未请求；此记录不是 Release、模拟器或真机成功证据。#426 的现场根因仍未证实，继续开放等待脱敏现场复测。未安装到真机，未披露或使用私人订阅值。
+随后完整本地浏览器复核为 763 通过、5 跳过。shell 后续发现缺少 mksh，使用临时提取的 Debian mksh 复核；本地三个 sing-box client checkout 已偏离嵌套 gitlink 且无文件修改，保留既有位置，以真实 `submodule-revisions.txt` 记录输入；shell 最终复核仍未完成，不宣称通过。
+
+正式发布 run [`41296767905`](https://github.com/LIghtJUNction/MagicNet/actions/runs/41296767905) 固定配方 `bb3c386c9a924b4a7418fae9017fc55e77a88fbb` 与上述源码 SHA。Android/KernelSU x86_64、模拟器门槛、模块构建打包和完整质量（包括浏览器）通过；build job 最后因 `Build changed update.json metadata` 失败，publish skipped，未公开 v1.8.2。只读诊断确认 kam.toml 的 mmrl.repo.changelog 与 changelog_file 仍指向 v1.8.1，KAM 导出与已提交 update.json 不一致。按确认的关键验证失败阻塞规则暂停发布，等待用户确认修复与重新正式发布；不使用独立草稿恢复绕过失败的 build。
+
+#426 的现场根因仍未证实，继续开放等待脱敏现场复测。未安装到真机，未披露或使用私人订阅值。
 
 以下两节为合并 PR 时保留的历史扫描记录；其中“未合并、不能推送、gitlink 保持不变”等描述只对应当时环境，不代表本轮整合后的状态。本轮验证与源码固定提交另行记录。
 
