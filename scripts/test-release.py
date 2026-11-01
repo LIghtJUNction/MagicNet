@@ -36,7 +36,10 @@ class ReleaseTest(unittest.TestCase):
             "zipUrl": f"https://github.com/{RELEASE.REPOSITORY}/releases/download/v1.2.3/magicnet_installer.zip",
             "changelog": f"https://github.com/{RELEASE.REPOSITORY}/blob/main/docs/releases/v1.2.3.md",
         }
-        self.write(self.source / "kam.toml", '[prop]\nid="MagicNet"\nversion="v1.2.3"\nversionCode=123\n')
+        self.write(self.source / "kam.toml", '[prop]\nid="MagicNet"\nversion="v1.2.3"\nversionCode=123\n'
+                   '[mmrl.repo]\nchangelog="' + self.update["changelog"] + '"\n'
+                   'changelog_file="docs/releases/v1.2.3.md"\n')
+        self.write(self.source / "docs/releases/v1.2.3.md", "Synthetic source release notes.\n")
         self.prop = 'id=MagicNet\nversion=v1.2.3\nversionCode=123\n'
         self.write(self.source / "src/MagicNet/module.prop", self.prop)
         self.write(self.source / "update.json", json.dumps(self.update))
@@ -69,6 +72,22 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(result["source_sha"], self.source_sha)
         self.assertEqual(result["recipe_sha"], self.environment["GITHUB_SHA"])
         self.assertEqual(self.git(self.root, "status", "--porcelain"), before)
+
+    def test_stale_kam_changelog_is_rejected_before_build(self):
+        path = self.source / "kam.toml"
+        original = path.read_text()
+        for old, new, error in (
+            (self.update["changelog"], self.update["changelog"].replace("v1.2.3", "v1.2.2"), "KAM changelog URL"),
+            ('changelog_file="docs/releases/v1.2.3.md"', 'changelog_file="docs/releases/v1.2.2.md"', "KAM changelog_file"),
+        ):
+            with self.subTest(field=error):
+                self.write(path, original.replace(old, new))
+                with self.assertRaisesRegex(ValueError, error):
+                    RELEASE.plan(self.root, "build")
+        self.write(path, original)
+        (self.source / "docs/releases/v1.2.3.md").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing source release notes"):
+            RELEASE.plan(self.root, "build")
 
     def test_source_checkout_cannot_follow_newer_main(self):
         self.git(self.source, "commit", "--allow-empty", "-m", "Unselected source commit")
@@ -126,6 +145,10 @@ class ReleaseTest(unittest.TestCase):
                             RELEASE.plan(self.root, "publish")
 
     def assets(self):
+        # Rebuilding after a negative assertion must not leave a component from
+        # an earlier ZIP timestamp under its former content-addressed filename.
+        for previous in self.directory.iterdir():
+            previous.unlink()
         component = self.directory / "component.zip"
         with zipfile.ZipFile(component, "w") as archive:
             archive.writestr("bin/synthetic", b"synthetic payload")

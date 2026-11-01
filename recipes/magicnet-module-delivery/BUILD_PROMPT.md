@@ -2,6 +2,8 @@
 
 交付 Magisk/KernelSU/APatch 可安装的 MagicNet Android arm64 模块。根名保持 MagicNet，安装位置 /data/adb/modules/MagicNet。参考版依赖 KAM/KamHooks/KamModuleX 和 kamfw；实现可替换构建语言，模块入口、生命周期和恢复兼容必须保留。
 
+发布前必须核对 KAM changelog URL、同版本源码 changelog_file 与 update.json 一致，旧版本路径或缺失说明应在构建前失败，不能靠构建后覆盖字段掩盖漂移。
+
 ## 模块布局与安装
 
 bin/ 保存运行程序，cli -> bin/magicnet-cli 是兼容入口；默认完整包包含 sing-box、受控默认配置和真实规则。service.sh/boot-completed.sh 进入真实生命周期；不加无作用 post-fs-data.sh/uninstall.sh 占位。卸载有真实清理时调用受控框架钩子。

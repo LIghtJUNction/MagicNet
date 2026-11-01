@@ -33,7 +33,8 @@ def metadata(root):
     require(git(source, "rev-parse", "HEAD") == source_sha, "Source checkout differs from gitlink")
     url = git(root, "config", "-f", ".gitmodules", "--get", f"submodule.{SOURCE}.url")
     require(url == f"https://github.com/{SOURCE_REPOSITORY}.git", "Unexpected source repository")
-    prop = tomllib.loads((source / "kam.toml").read_text())["prop"]
+    kam = tomllib.loads((source / "kam.toml").read_text())
+    prop = kam["prop"]
     module = dict(line.split("=", 1) for line in (source / "src/MagicNet/module.prop").read_text().splitlines()
                   if "=" in line and not line.startswith("#"))
     update = json.loads((source / "update.json").read_text())
@@ -49,6 +50,11 @@ def metadata(root):
     require(update["zipUrl"] == f"{base}/releases/download/{version}/magicnet_installer.zip",
             "Updater must use the official versioned installer")
     require(update["changelog"] == f"{base}/blob/main/docs/releases/{version}.md", "Invalid changelog URL")
+    repo = kam.get("mmrl", {}).get("repo", {})
+    require(repo.get("changelog") == update["changelog"], "KAM changelog URL differs from update.json")
+    notes = f"docs/releases/{version}.md"
+    require(repo.get("changelog_file") == notes, "KAM changelog_file differs from software version")
+    require((source / notes).is_file(), "Missing source release notes")
     return {"source_sha": source_sha, "recipe_sha": git(root, "rev-parse", "HEAD"),
             "version": version, "version_code": str(code)}
 

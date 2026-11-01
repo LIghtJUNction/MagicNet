@@ -5,7 +5,7 @@
 ## 输入与身份
 
 - 主仓库 `.github/workflows/release.yml` 只接受手动请求，默认 `mode=build`；`mode=publish` 才请求正式发行。普通 push 不启动重型打包或发布。
-- 软件版本来自固定源码的模块 metadata，不使用 Recipkg 配方版本。kam、module.prop、源码与主仓库 update.json 必须一致；更新 URL 固定为官方仓库本次版本的 magicnet_installer.zip。
+- 软件版本来自固定源码的模块 metadata，不使用 Recipkg 配方版本。kam、module.prop、源码与主仓库 update.json 必须一致；更新 URL 固定为官方仓库本次版本的 magicnet_installer.zip。构建前校验 KAM 的 changelog URL 与 update.json 一致，changelog_file 指向同版本的现存源码发布说明；禁止等构建完成后才发现导出 metadata 漂移。
 - 源码只能取本次主仓库提交的 mode-160000 gitlink，不跟随源码 main 的浮动 tip。工作流代码引用固定完整提交；构建与 Android 验收均显式检出并核对同一实现 SHA。
 - 机器可读 build-source.json 使用 schema=1，包含 repository、source_repository、recipe_sha、source_sha、version、version_code。version_code 是十进制字符串；两个 SHA 均是完整提交。build-submodules.txt 记录完整初始化且未偏离 gitlink 的依赖快照。
 
