@@ -4,7 +4,7 @@
 
 用户确认继续后，源码提交 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f) 仅将 KAM changelog URL 与 changelog_file 同步至 v1.8.2；行为仍为 f5276f44，未改运行代码或依赖。主仓库发布前计划现在拒绝旧 URL、旧本地路径及缺失源码说明，17 项发布测试通过。修复了合成 ZIP 测试重复生成时旧内容寻址附件可能残留的夹具问题，不放宽真实附件清单检查。
 
-此前最终本地 shell 门槛现已全部通过（真实固定 core、临时 mksh、真实 Python 与如实记录的本地子模块快照）；浏览器为 763 通过、5 跳过。源码元数据改动不冒充重新运行全部行为测试；上次正式运行的完整质量与 Android 门槛证据仍绑定 f5276f44。重新发布必须绑定新固定提交并重新满足官方全部门槛，旧失败不能改写为成功。配方目录、pack、归档及完整提示词（8 包、56 Markdown）与空白检查重新通过。正式新 run 与公开状态另行记录。
+此前最终本地 shell 门槛现已全部通过（真实固定 core、临时 mksh、真实 Python 与如实记录的本地子模块快照）；浏览器为 763 通过、5 跳过。源码元数据改动不冒充重新运行全部行为测试；上次正式运行的完整质量与 Android 门槛证据仍绑定 f5276f44。重新发布必须绑定新固定提交并重新满足官方全部门槛，旧失败不能改写为成功。配方目录、pack、归档及完整提示词（8 包、56 Markdown）与空白检查重新通过。正式重发 run [`41299804577`](https://github.com/LIghtJUNction/MagicNet/actions/runs/41299804577) 的 plan、build、Android harness、Android 15/KernelSU x86_64、Android gate 和 publish 全部成功。稳定版 [`v1.8.2`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.2) 已公开，非 draft、非 prerelease；标签固定配方 `3a1a2fee56f685c17d9e72e2b1553ce5fa4c0fc4`，build-source.json 固定源码 `689bd6146b2dfdd481c8e6df395e05509b51593f`、versionCode `10610`。全部 19 个公开附件下载到本机 `/home/lightjunction/Backups/MagicNet/releases/2026-11-01-v1.8.2/`，正式 verify 通过，另按公开 Release API 逐一比对名称集合、uploaded 状态、大小和 SHA-256 全部通过；MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip 字节相同。verify-uploaded 是草稿专用检查器，拒绝已经公开的身份，因此公开后回读用单独的严格 API 比对，不伪造 draft 响应。核心 ZIP 3,482,525 字节，完整 ZIP 65,459,204 字节。未部署或安装真机；#426 已补发布与复测说明，继续开放。
 
 ## 2026-11-01 / v1.8.2 整合与发布准备
 
