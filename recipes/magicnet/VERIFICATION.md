@@ -1,5 +1,15 @@
 # 实现与发行验证
 
+## 2026-11-01 / v1.8.2 整合与发布准备
+
+用户授权处理两个仓库全部开放 issue/PR 后发布新版本。MagicNet #431/#432/#433 的合同已整合，magicnet-android #1 通过保留父提交的 merge 整合；MCP 隐私修复与版本准备提交为 [`f5276f44248376e7ebfee95a033601296164947e`](https://github.com/LIghtJUNction/magicnet-android/commit/f5276f44248376e7ebfee95a033601296164947e)，主仓库 gitlink 固定此公开提交。软件为 v1.8.2 / 10610，配方仍为 0.3.3；未独立重建。
+
+本地已通过 Rust fmt、严格 clippy、全部 workspace/all-targets/all-features 测试（Rust 1.99.1）；MCP 定向 58 项回归；WebUI `npm run check` 的单元测试、类型检查与生产构建；组件完整质量门槛；真实固定 Proxylink `44929c0984944870297c260dc43a4aa9262f9e1c` 的 36 项订阅回归（无 skip）；配方 check、pack、归档检查和完整中文提示词检查（8 包、56 Markdown）；主仓库发布边界 16 项回归与 diff 空白检查。
+
+首次完整浏览器运行 762 通过、5 跳过、1 项 landscape 订阅设置加载超时。该文件在同一源码与系统 Chromium 下重复三次，21 项全部通过；完整浏览器复核与 shell 最终复核另行记录，不抹去首次失败。首次 shell 门槛发现宿主机系统 sing-box 不支持 fork 的 `lazy_start`；从固定 `ff669d45e6562a790a49ef066340dbed5df46363` 构建 Linux core 复核。后续 PID 夹具因 mise Python shim 以 decoy argv 启动失败，最终复核将真实 `/usr/bin/python3` 放在 PATH 前端；组件首次因缺失 GOTMPDIR 失败，创建该缓存临时目录后全组通过。以上为环境修正，不绕过测试、不改设备运行策略。
+
+正式发布工作流尚未请求；此记录不是 Release、模拟器或真机成功证据。#426 的现场根因仍未证实，继续开放等待脱敏现场复测。未安装到真机，未披露或使用私人订阅值。
+
 以下两节为合并 PR 时保留的历史扫描记录；其中“未合并、不能推送、gitlink 保持不变”等描述只对应当时环境，不代表本轮整合后的状态。本轮验证与源码固定提交另行记录。
 
 ## 2026-11-01 / MCP 应用 UID、包名与 selector 最小披露
