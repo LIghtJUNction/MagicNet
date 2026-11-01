@@ -166,3 +166,11 @@ link_encryption_none_complete_rc=1
 内核审查覆盖完整目标上游差异、sing-tun 版本锁和 WireGuard 复制源码。路由握手失败的资源清理使用已有关闭机制；多组真实 AttachConnection 屏障测试覆盖挂接与关闭重叠时的 remover 注册，不能外推为完全关闭后首次挂接的新合同。缓存 DNS 拒绝路径补回原有失败观测，WireGuard pause 读取当前 manager 状态并安全处理尚未初始化 manager 的情况，均有旧版反例与最终 race 回归。细节见[固定内核报告](https://github.com/LIghtJUNction/sing-box/blob/ff669d45e6562a790a49ef066340dbed5df46363/SPECS/TASKS/051-UPSTREAM_MERGE_235/IMPLEMENTATION_REPORT.md)。
 
 受控 sing-tun A/B 验证 ACK 判定表删除和 FIN/RST 会话回收，同时保留活动/半关闭控制组。原始日志、共同测试和完整 runner 可从固定内核 validation 目录复跑；内存结论只属于已测路径。最终 canonical 核心由现有助手实际构建 Linux/Android 两目标，Linux 真实 check 和 loopback DNS 通过；设备网络、真实加密服务器和长期 RSS 仍未知。
+
+## 11. 2026-11-01 MCP 最小披露补记
+
+公开 gitlink 仍是 `magicnet-android@fd0e2dab`。宿主复查发现 generic `magicnet_file_read` / `file_list` 仍可读 `.state/app-policy` 原始 UID 列表、`.state/network-access-recovery` 包/UID journal、`.state/dns-leak-guard.ifaces` 与 eBPF 共享接口名、以及 `.config/magicnet` 下的应用包名清单和 `selector-selections.json`；generic `magicnet_cli` 的人类 `app` / `app list` / `packages` / `recommendations` 也会打印包名。这些路径绕过只暴露计数的 canonical 状态和 named `magicnet_app_inspect`。
+
+热点 journal / 人类 hotspot status 仍由未合并的 MagicNet#432 覆盖，本轮不重复该合同。#426 仍由 MagicNet#431 与 magicnet-android#1 跟踪，现场根因未确认。
+
+本地未发布源码 `1af833eeddcb1740b951d1dcaa93c751e33a6fa1` 删除了无调用方的 `magicnet_prepare_singbox_nodes` 锁包装；调用方继续使用已持锁的 `magicnet_prepare_singbox_nodes_unlocked`。此环境不能推送源码仓库，公开 gitlink 仍为 `fd0e2dab`。
