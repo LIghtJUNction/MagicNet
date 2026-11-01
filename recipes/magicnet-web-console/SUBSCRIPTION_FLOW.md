@@ -69,6 +69,8 @@ https://example.invalid/feed?token=alpha%26beta&format=clash
 
 **源码行为。** 初次配置动作为“添加并启用”，修改现有配置为“保存并应用”；没有实质变化时不能重复提交。通过背景任务执行，先取得已知设备基线，否则不发起激活。成功投递只显示“已提交，验证通过后生效”，不能立即关闭为成功。
 
+**后台操作识别。** 用受控命令参数中的操作标识识别订阅任务，并让脱敏保留这一标识：当前 URL 入口 `webui payload apply-subscription`、本地入口 `webui payload apply-subscription-source` 与旧 `sub apply-file` 均须走下述完成检查。不能只识别旧命令，也不能依赖可翻译的动作名称、私密载荷路径或内容；创建/追加载荷和只读查询不因此被当作订阅已经应用。当前任务为 running、error 或 timeout 且没有属于它的完成证据时，历史 `last.result=success` 不得将状态改为 done；真正同次完成和后续对账仍按原合同处理。
+
 **同次完成合同。** 必须确认该任务被接受、对应执行者真实退出且退出状态成功，并取得较提交前更新的设备尝试/生成标识和 `last.result=success`。没有新的尝试或生成标识时，旧 `success` 不能完成新任务；poll 读取失败不能借用旧快照。多源激活成功还必须与提交的来源集合、顺序及模式一致，必要的失败来源信息由运行时的规范状态提供。仅收到本地 bridge 完成、命令已接受或域名可解析都不能满足这些条件。
 
 重建还必须用本次受控 task/operation 回执证明 generation 确实属于这次提交，不能仅凭最新代次或数量相符认领另一个 CLI/MCP 的结果。无可信绑定时匿名显示批次，保留草稿并提示核对，不把“有新success”当作自己的保存完成。订阅已提交但 selector replay 失败沿用退出码0+独立警告；batch 为 committed、error_code=none、warning_code=selector_replay_failed，显示“订阅已提交，选择恢复待重试”，不能误报回滚或重复提交。
@@ -140,7 +142,7 @@ https://example.invalid/feed?token=alpha%26beta&format=clash
 | UI-SUB-CASE-05 | 两源已配置且仅一源有有效套餐metadata；交换顺序、使部分metadata无效，再删除一源 | 总数仍按配置；每源独立用量或unknown；无遗漏/串账/旧来源复活；本地源无远程用量 |
 | UI-SUB-CASE-06 | payload create/中间append/投递失败；含Unicode、引号、`&`、百分号编码 | 不执行半份apply；已有配置不变；失败清理结果明确；公共输出和Issue草稿无canary |
 | UI-SUB-CASE-07 | 提交B期间继续编辑C；先后收到旧/新回读与读取错误；初始零来源且曾取消编辑，再提交B使来源数变为1；最后显式取消C | 设备B完成后C仍可见且dirty，不能因来源数从0变1或旧取消状态而隐藏；只有匹配提交和修订才自动关闭，失败不覆盖草稿；显式取消C回到已确认基线并收起，取消本身零写入 |
-| UI-SUB-CASE-08 | 启动接受后实际未退出；旧success；launch超时；轮询超时；双击、切页、重开 | 不误报完成、不解锁第二个写任务；新结果需同次证据；独立只读状态仍可获取 |
+| UI-SUB-CASE-08 | 分别经 URL/本地 payload 的真实 apply 操作与旧 sub apply-file 发起任务；历史结果 success，当前任务 running/error/timeout、接受后实际未退出或轮询失败；另测同次完成标记、双击/切页/重开及 payload create/append、只读查询对照 | 脱敏后的实际操作标识仍进入订阅对账；历史 success 不覆盖当前运行/失败/超时，无同次成功证据不报 done，未确认退出不解锁第二 writer；确认失败退出后允许明确重试，有效同次结果按合同完成，创建/追加/只读对照不误认应用；独立只读状态仍可获取 |
 | UI-SUB-CASE-09 | URL↔本地；无效UTF-8/NUL/空/8MiB边界；空URL回读但模式/生成未改变 | 校验失败保留原源；只有新local模式与生成确认才完成；字节上限包括传输变换 |
 | UI-SUB-CASE-10 | 清空来源取消/确认；修改UA/过滤/周期后遇保存失败、刷新失败、新草稿和stale owner | 取消无写；清除不改核心配置或重启；设置保存/刷新结果分离；重试不丢草稿；unknown不当running |
 
