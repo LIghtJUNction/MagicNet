@@ -1,5 +1,27 @@
 # 实现与发行验证
 
+以下两节为合并 PR 时保留的历史扫描记录；其中“未合并、不能推送、gitlink 保持不变”等描述只对应当时环境，不代表本轮整合后的状态。本轮验证与源码固定提交另行记录。
+
+## 2026-11-01 / MCP 应用 UID、包名与 selector 最小披露
+
+每日 issue/安全扫描。公开产品 issue 仍是 #426，已由 MagicNet#431 与 magicnet-android#1 覆盖；热点 journal / 人类 hotspot status 由未合并的 MagicNet#432 覆盖，本轮不重复。公开源码 gitlink 保持 [`fd0e2dabf668e9b8cd6e16f5058e06517fe110c2`](https://github.com/LIghtJUNction/magicnet-android/commit/fd0e2dabf668e9b8cd6e16f5058e06517fe110c2)。
+
+宿主复查发现 generic `magicnet_file_read` / `file_list` 仍可读 `.state/app-policy` 原始 UID、`.state/network-access-recovery`、`.state/dns-leak-guard.ifaces`、eBPF 共享接口名，以及 `.config/magicnet` 应用包名清单和 `selector-selections.json`；generic `magicnet_cli` 的人类 `app` / `app list` / `packages` / `recommendations` 会打印包名。这些路径绕过只暴露计数的 canonical 状态和 named `magicnet_app_inspect`。
+
+配方合同已要求拒绝上述文件与人类清单；named `magicnet_app_list` / `magicnet_app_packages` / `magicnet_app_inspect` 仍是显式路径。本地未发布实现 SHA `1af833eeddcb1740b951d1dcaa93c751e33a6fa1` 同步实现并删除无调用方的 `magicnet_prepare_singbox_nodes` 锁包装。此环境不能推送源码仓库，因此不更新公开 gitlink。
+
+### 已执行的检查
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| Recipkg CLI 0.1.1 | `python3 scripts/check-recipes.py`：目录 check、临时 pack、归档 check、完整中文提示词通过；8 个包、56 个 UTF-8 Markdown |
+| 发布脚本 | `python3 scripts/test-release.py`：16 项通过 |
+| 格式 | `git diff --check` 通过 |
+| 本地 MCP 回归 | `cargo +1.87.0 test -p magicnet-cli --bin magicnet-cli mcp_server`：58 项通过，针对未发布源码提交。不是已发布 Android pin，也不是设备验收 |
+| 死代码扫描 | `lib/magicnet/**/*.sh` 388 个函数名；生产剩余仅已知保留项。已删除无调用方的 `magicnet_prepare_singbox_nodes`。保留 `magicnet_lifecycle_sync`、`magicnet_kernel_route_rule_start/end/fallback_rule`、`magicnet_ip6tables_nat_ensure`、`kamfw_phase_action`、`kamfw_phase_service`、`magicnet_hotspot_watchdog_start_unlocked` |
+
+本轮未请求发行，未部署设备，未关闭 #426。
+
 ## 2026-10-31 / 日常 issue、安全与冗余扫描
 
 定时扫描只打开了 [#426](https://github.com/LIghtJUNction/MagicNet/issues/426)。配套 [MagicNet#431](https://github.com/LIghtJUNction/MagicNet/pull/431) 与 [magicnet-android#1](https://github.com/LIghtJUNction/magicnet-android/pull/1) 已覆盖多源截止时间和任务反馈，本轮不重复实现，也不把配方合同写成现场根因已确认。
