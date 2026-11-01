@@ -99,6 +99,7 @@ link_encryption_none_complete_rc=1
 | WebUI、Rust、下载器对 fragment、host、默认端口及路径编码的身份不同 | WebUI、Rust 持久化和 shell 下载统一到 HTTPS 规范请求身份：移除 fragment、规范 scheme/host、默认端口和空路径，保留 ASCII path/query 字节顺序并按 UTF-8 字节编码原始非 ASCII 后缀。下载前先规范化、去重、检查最多五个唯一 URL；列表不合法或超限时不发起部分抓取。machine source usage 与缓存使用同一规范 URL 摘要。 | 未运行真实订阅网络请求、旧缓存迁移或 Android UI/设备回读；原始非 ASCII 主机的接受范围仍需按 runtime 合同单独核对。 |
 | 已配置来源缺 metadata 时，UI 少显示来源行并按 metadata 数量计数 | 行与计数改由同一私密 inspector 的已配置 URL 列表决定；缺失或含糊 metadata 时保留该来源行并显示 unknown。 | 未运行浏览器或设备验收。 |
 | VLESS `encryption` 在原生解析、分享链接、自定义出站和编辑器链路丢失 | 分享参数白名单及完整性检查接纳字段；YAML/链接转 JSON 保留它；结构化 override 只允许 VLESS 的受界字符串；编辑器提供私密输入并回读。 | 这不证明所有转换器格式/组合都支持，也不证明核心握手或真实服务器互通。 |
+| MCP `file_read` / 人类 `hotspot status` 泄漏热点接口名、客户端网段和回程对端 | 本地提交 `4905935800468e4d723898d62fb81a24a0431d61` 把 `.state/hotspot` 列入拒绝树，generic `magicnet_cli` 拒绝人类 hotspot status，保留 `--json` 与 named 脱敏工具。 | 未能推送到公开 `magicnet-android`；主仓库 gitlink 仍为 `fd0e2dab`。未做设备热点验收。 |
 
 完整的逐来源批次观测 `subscription_batch_v1`、真实转换器跨来源归属、真实服务商多源输入、核心检查与设备验收仍是未完成合同。不得据当前静态改动关闭 #426 或把未发行源码写成 Android 修复已部署。
 

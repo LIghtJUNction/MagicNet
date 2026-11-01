@@ -26,7 +26,7 @@ capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspe
 
 命令预算由当前调用读取一次，创建 shell worker 时移除一次性 `MAGICNET_COMMAND_TIMEOUT` 覆盖。持久核心的启动、就绪交接和失败清理遵循 runtime/LIFECYCLE_CONTRACT.md；内部启动命令不绕过 `--json` 的机器分派。
 
-MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照尾部 1 MiB，按原规则处理截断首行和无效 UTF-8，最多输出 1000 行，保留顺序、CRLF 与空行的处理规则及脱敏行为。定位末尾 N 行只扫描所需后缀，不为整个文件建立行数组；有效 UTF-8 直接复用读取缓冲区。用固定输入比较结果、临时分配和耗时，不把局部日志优化宣传成整机内存或网络吞吐提升。
+MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照尾部 1 MiB，按原规则处理截断首行和无效 UTF-8，最多输出 1000 行，保留顺序、CRLF 与空行的处理规则及脱敏行为。定位末尾 N 行只扫描所需后缀，不为整个文件建立行数组；有效 UTF-8 直接复用读取缓冲区。用固定输入比较结果、临时分配和耗时，不把局部日志优化宣传成整机内存或网络吞吐提升。generic `magicnet_cli` 拒绝人类 `hotspot` / `hotspot status`；`file_list` / `file_read` 拒绝 `.state/hotspot` 及其 symlink 别名。接口名、客户端网段和回程对端只留在人类 CLI 与私密 journal，不能经 MCP 自动路径泄漏。`--json hotspot status` 与 named `magicnet_hotspot_status` 仍是脱敏入口。
 
 ## 本包补充材料
 
