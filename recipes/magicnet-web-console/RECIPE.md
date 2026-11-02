@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.1"
+version = "0.2.2"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"

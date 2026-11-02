@@ -77,3 +77,12 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 
 - [VERIFICATION.md](VERIFICATION.md)：配方、实现与发行的实际检查结果。
 - [FEEDBACK.md](FEEDBACK.md)：走查限制、Issue 来源与吸收的验收要求。
+
+
+## Hybrid Mount 风格对齐（2026-11-03）
+
+参考 https://github.com/Hybrid-Mount/meta-hybrid_mount 的 webui/src/ui/miuix/theme.css，采用 Miuix 的分组卡片节奏；独立实现，不引入其 SolidJS 组件或运行依赖。以本节覆盖早期 Fieldnotes 配色和间距描述：中性浅灰底、白色卡片、蓝色操作色，深色为中性炭灰底与浅蓝操作色。公共卡片 24px 圆角，手机分组间距 12px，宽屏 20px；标题 28–36px，分区导航采用浅底分段控件。保留安全区、44px 触达下限、键盘避让、可见焦点、减少动效以及全部页面入口。
+
+接口与依赖：继续使用既有 schema=1 机器接口和 Vue 组件；不新增机器写接口、持久化字段、网络资源或 npm 依赖。configured/effective、unknown/pending 和错误状态保持原义。
+
+验收：本地类型检查和构建；既有行为测试；320px、390px 和桌面导航/布局浏览器回归，浅深主题正文及操作色对比度检查。浏览器模拟不等于设备验收。
