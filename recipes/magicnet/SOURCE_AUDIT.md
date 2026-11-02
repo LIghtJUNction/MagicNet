@@ -175,3 +175,14 @@ link_encryption_none_complete_rc=1
 热点 journal / 人类 hotspot status 仍由未合并的 MagicNet#432 覆盖，本轮不重复该合同。#426 仍由 MagicNet#431 与 magicnet-android#1 跟踪，现场根因未确认。
 
 本地未发布源码 `1af833eeddcb1740b951d1dcaa93c751e33a6fa1` 删除了无调用方的 `magicnet_prepare_singbox_nodes` 锁包装；调用方继续使用已持锁的 `magicnet_prepare_singbox_nodes_unlocked`。此环境不能推送源码仓库，公开 gitlink 仍为 `fd0e2dab`。
+
+## 12. 2026-11-02 日常扫描：#434 与剩余 MCP 旁路
+
+现行公开源码仍是 `magicnet-android@689bd6146b2dfdd481c8e6df395e05509b51593f`（v1.8.2）。#426 已由维护者关闭且无关联 commit，本轮不重开、不追认设备验证。新公开 issue 只有 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)：单源 fetch 在两次 direct retry 后失败，没有现场 URL 或 curl 码。
+
+宿主发现两处可修复缺口，均不能单独作为 #434 关闭理由：
+
+| 发现 | 处理 | 限制 |
+| --- | --- | --- |
+| IPv4-mapped `::ffff:a.b.c.d` 被 Rust 放行后被 shell 以首 hextet 0 拒绝，或被钉成 IPv6 `--resolve` | 按嵌入 IPv4 重新校验并只钉选 IPv4 | 合成夹具复现；未证明报告设备走了 mapped DNS |
+| generic `file_read` 仍可读路由/屏蔽域名清单、`block.conf`、`proxy-chain.json`；generic `magicnet_cli` 人类 `warp`/`node`/`route`/`block` 默认清单会打印端点、节点名或域名 | 合同与本地实现 `b1d235e050b243c3f78e36e37180dfd680a11f50` 拒绝上述路径；named node/block 工具保持显式 | 此环境不能推送 `magicnet-android`，公开 gitlink 不改为未发布指针 |

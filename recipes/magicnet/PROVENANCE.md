@@ -1,5 +1,11 @@
 # 来源、证据与未验证项
 
+## 2026-11-02 / 日常 issue、安全与冗余扫描
+
+输入为定时扫描。公开产品 issue 只剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)；#426 已由维护者关闭。无开放 PR。现行公开源码仍固定 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f)，配方继续 0.3.3，不是独立重建，也不更新公开 gitlink。
+
+本轮只吸收已在宿主复现的两项：订阅解析把 IPv4-mapped 地址按嵌入 IPv4 校验并钉选；MCP generic 文件读取与人类 CLI 不再转储路由/屏蔽域名、block URL、WARP 端点和节点名。#434 现场根因、代理通路和真机订阅仍未验证。
+
 ## 2026-11-01 / issue 与 PR 整合、v1.8.2 发布准备
 
 本轮按用户授权处理两个仓库的全部开放项：MagicNet #431、#432、#433 与 magicnet-android #1；公开 issue 只有 MagicNet #426。先合并订阅预算与任务反馈合同，再实现 MCP 热点、应用及接口元数据的通用访问限制，保留显式私密工具和脱敏状态入口。源码沿用既有实现维护，不是独立配方重建。

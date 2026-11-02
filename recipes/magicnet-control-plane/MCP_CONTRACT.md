@@ -7,8 +7,8 @@
 资源固定为 magicnet://status/service、transparent、dns、network、subscription、wifi、overrides。未知资源失败；自动资源脱敏。
 prompts 包含 diagnose-network 与 edit-config-overrides，不嵌入真实配置。
 
-generic magicnet_cli 是 argv 接口，不是 shell。拒绝 mcp secret、sub 私密 dump/user-agent/filter 默认值、人类 sub status 与 wifi 默认/status/list/check/watch、人类 hotspot 默认/status、人类 app 默认/list/packages/recommendations、config-editor 私密 getter、backup 默认 export、override/wifi/network-access inspect、原始 service/mcp logs、diagnose（包括尾随参数）和 __ 开头的内部命令名。普通节点名/SSID 可以以 __ 开头，不能误伤参数。保留 --json hotspot status 与 named magicnet_hotspot_status 的脱敏 envelope。
-file_list/read 拒绝 .config/sing-box、密钥及临时/备份别名、Wi-Fi 列表、应用包名清单、selector 选择、module-update 意图、.log、私密 journal/identity/download/transaction/installer/wifi-policy/hotspot/app-policy/network-access-recovery 状态树、dns-leak-guard 与 eBPF 共享接口名及 symlink 别名；.state/machines 可读。
+generic magicnet_cli 是 argv 接口，不是 shell。拒绝 mcp secret、sub 私密 dump/user-agent/filter 默认值、人类 sub status 与 wifi 默认/status/list/check/watch、人类 hotspot 默认/status、人类 app 默认/list/packages/recommendations、人类 warp 默认/status、人类 node 默认/list/current、人类 route 默认/list、人类 block 默认/list、config-editor 私密 getter、backup 默认 export、override/wifi/network-access inspect、原始 service/mcp logs、diagnose（包括尾随参数）和 __ 开头的内部命令名。普通节点名/SSID 可以以 __ 开头，不能误伤参数。保留 --json hotspot status 与 named magicnet_hotspot_status 的脱敏 envelope。named magicnet_node_list / magicnet_node_current / magicnet_block_list 仍是显式路径。
+file_list/read 拒绝 .config/sing-box、密钥及临时/备份别名、Wi-Fi 列表、应用包名清单、selector 选择、路由/屏蔽域名清单、block.conf、proxy-chain.json、module-update 意图、.log、私密 journal/identity/download/transaction/installer/wifi-policy/hotspot/app-policy/network-access-recovery 状态树、dns-leak-guard 与 eBPF 共享接口名及 symlink 别名；.state/machines 可读。
 log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs named tool 也走脱敏路径。
 私密配置、订阅、覆写检查、流量等保留明确 named tool，不在普通状态汇总自动调用。module-update 只有 named status；network-access 只有 named status/inspect，不暗加自动修复。
 抓包、测速、连接关闭、备份、配置变更都是明确操作，不能被状态读取触发。
@@ -100,4 +100,4 @@ log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs 
 - magicnet_webui_verify
 - magicnet_wifi_status
 
-`magicnet_app_inspect` 是主用户应用名/包名的显式私密只读 named tool，不进入自动资源、汇总或诊断；generic `magicnet_cli` 的 `app inspect`（无论 --json 位置）以及人类 `app` / `app list` / `packages` / `recommendations` 拒绝执行，不能绕过私密边界。named `magicnet_app_list` / `magicnet_app_packages` 仍是显式路径。完整目录现在为 85 个工具；风险 hints 不是操作授权。
+`magicnet_app_inspect` 是主用户应用名/包名的显式私密只读 named tool，不进入自动资源、汇总或诊断；generic `magicnet_cli` 的 `app inspect`（无论 --json 位置）以及人类 `app` / `app list` / `packages` / `recommendations` 拒绝执行，不能绕过私密边界。人类 `warp` / `node` / `route` / `block` 默认清单同样拒绝。named `magicnet_app_list` / `magicnet_app_packages` / `magicnet_node_list` / `magicnet_node_current` / `magicnet_block_list` 仍是显式路径。完整目录现在为 85 个工具；风险 hints 不是操作授权。
