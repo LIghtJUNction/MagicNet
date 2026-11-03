@@ -15,7 +15,7 @@ privileged 子进程不能执行任意拼接 shell；文件 payload 有界、私
 ## 机器入口
 
 任意位置出现 --json 都由机器 dispatcher 完整接管；恰好一个 flag，未支持命令给结构化错误，禁止回落成人类写路径。stdout 只有一个 JSON，诊断 stderr；错误保留非零退出。
-capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspect 明确私密且用户主动调用。generic MCP 文件读取不得绕过 named inspect：应用 UID/包名、selector/node 名、dns-leak-guard 接口名和 network-access recovery journal 走拒绝或显式私密工具。显式设计的 override、module-update、network-access 写例外必须保留各自并发、幂等、确认和回滚。
+capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspect 明确私密且用户主动调用。generic MCP 文件读取不得绕过 named inspect：应用 UID/包名、selector/node 名、路由/屏蔽域名清单、block.conf、proxy-chain.json、dns-leak-guard 接口名和 network-access recovery journal 走拒绝或显式私密工具。generic `magicnet_cli` 还拒绝人类 warp/node/route/block 默认清单；named `magicnet_node_list` / `magicnet_node_current` / `magicnet_block_list` 仍是显式路径。显式设计的 override、module-update、network-access 写例外必须保留各自并发、幂等、确认和回滚。
 配置值与运行值用 configured/effective；null/unknown 不等同于 false/stopped/success。状态读取不应偷偷发布 canonical 或更改用户意图。
 
 ## 运行资源

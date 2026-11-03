@@ -1,5 +1,26 @@
 # 实现与发行验证
 
+## 2026-11-02 / 日常 issue、安全与冗余扫描
+
+定时扫描时公开产品 issue 只剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)；#426 已由维护者关闭且无关联 commit，本轮不重开。两个仓库均无开放 PR。公开源码 gitlink 保持 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f)。
+
+#434 日志只证明单源 direct fetch 两次可重试失败后 `0/1`，没有 URL、解析地址或 curl 码，不能关闭。宿主复现 IPv4-mapped `::ffff:a.b.c.d` 被 Rust 放行后被 shell 拒绝或钉成 IPv6 `--resolve`；这与该症状相容，不是现场根因。generic `file_read` 仍可读路由/屏蔽域名清单、`block.conf` 与 `proxy-chain.json`，generic `magicnet_cli` 人类 `warp`/`node`/`route`/`block` 默认清单会打印端点、节点名或域名。
+
+配方合同已要求按嵌入 IPv4 校验并钉选 mapped 地址，并拒绝上述 MCP 旁路。本地未发布实现 SHA `b1d235e050b243c3f78e36e37180dfd680a11f50` 同步实现并删除无调用方的 `magicnet_prepare_singbox_nodes`。此环境不能推送源码仓库，因此不更新公开 gitlink。
+
+### 已执行的检查
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| Recipkg CLI 0.1.1 | `python3 scripts/check-recipes.py`：目录 check、临时 pack、归档 check、完整中文提示词通过；8 个包、56 个 UTF-8 Markdown |
+| 发布脚本 | `python3 scripts/test-release.py`：17 项通过 |
+| 格式 | `git diff --check` 通过 |
+| 订阅 fetch 夹具 | `scripts/test-subscription-fetch-policy.sh` 通过，含 mapped 公网接受、mapped 回环拒绝、IPv4 `--resolve` 钉选 |
+| 本地 MCP 回归 | `cargo +1.87.0 test -p magicnet-cli --bin magicnet-cli mcp_server`：58 项通过，针对未发布源码提交。不是已发布 Android pin，也不是设备验收 |
+| 死代码扫描 | `lib/magicnet/**/*.sh` 删除包装后 389 个函数名；生产剩余仅已知保留项。保留 `magicnet_lifecycle_sync`、`magicnet_kernel_route_rule_start/end/fallback_rule`、`magicnet_ip6tables_nat_ensure`、`kamfw_phase_action`、`kamfw_phase_service`、`magicnet_hotspot_watchdog_start_unlocked` |
+
+本轮未请求发行，未部署设备，未关闭 #434，也未把 mapped 地址修复写成该用户订阅已恢复。
+
 ## 2026-11-01 / v1.8.2 元数据修复与重新发布
 
 用户确认继续后，源码提交 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f) 仅将 KAM changelog URL 与 changelog_file 同步至 v1.8.2；行为仍为 f5276f44，未改运行代码或依赖。主仓库发布前计划现在拒绝旧 URL、旧本地路径及缺失源码说明，17 项发布测试通过。修复了合成 ZIP 测试重复生成时旧内容寻址附件可能残留的夹具问题，不放宽真实附件清单检查。

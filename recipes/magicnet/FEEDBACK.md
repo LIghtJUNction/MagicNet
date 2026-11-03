@@ -1,5 +1,11 @@
 # 用户走查与 Issue 反馈
 
+## 2026-11-02：#434 订阅更新失败
+
+公开 issue 仅剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)。报告称无论是否走代理，更新订阅都在 fetch 阶段失败：两次 `Retrying direct subscription fetch` 后 `Failed to download subscription #1 with curl`，整批 `0/1` 并保留旧配置。该日志只证明可重试传输/解析失败且缓存不可用，没有 URL、解析地址、curl 退出码或设备网络证据，不能据此关闭 issue 或写成现场根因已确认。
+
+宿主复查发现一处与该症状相容的双校验缺陷：Rust `sub resolve-host` 会把 IPv4-mapped 地址写成 `::ffff:a.b.c.d` 并按嵌入 IPv4 放行，shell 再校验时因首 hextet 为 0 整批拒绝，或把 mapped 地址原样写入 `--resolve`。这只是主机可复现缺口，不是 #434 的现场证明。本轮修正 mapped 地址按 IPv4 校验并钉选，不新增代理旁路，也不把合成 fetch 回归写成设备订阅已恢复。
+
 ## 2026-10-30：生命周期与代码资源开销
 
 本轮以 Rust/shell 实现 `magicnet-android@a5617d6371fe17494fb4b4a6f655a0c8a0f7461e` 为基线检查新增反馈，同时改进相关代码质量与资源使用。源码修复、配方合同和实际验证分别记录，历史发行仍绑定原提交。
