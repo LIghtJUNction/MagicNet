@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.1"
+version = "0.2.2"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"

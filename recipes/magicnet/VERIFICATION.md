@@ -459,3 +459,18 @@ GitHub 配方仓库继续使用原 MagicNet 仓库并带有 `recipkg` topic；�
 桌面刷新后，预览应用来源 `terminal.local` 未出现 error 级日志。检查完成后已清空临时订阅草稿。
 
 以上界面结果来自浏览器预览。本轮未执行 Android 真机安装、WebView 触屏或真实网络链路测试。
+
+
+## 2026-11-03 安装清理与核心内存
+
+- fork 固定到 `d0b1422df5c36f49e7dbbccd0d49732040051974`，已包含 SagerNet testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`，此次上游无新增提交。核心版本仍为 1.15.0-alpha.13，构建身份以新 SHA 区分。
+- UDP 32768 客户端突发后保留堆：基线 3149632–3186872 bytes，修改后 736–27416 bytes（3 次、宿主机、强制 GC）。缓存命中 5 次 300ms 基准均零分配，时间波动不足以宣称吞吐提升。
+- eBPF/common/option/include 主机测试及 Android arm64 测试编译通过；eBPF/common 与安装器 Go race 通过。组件测试 17、KernelSU 安装生命周期测试 10、身份/打包测试 11 通过。新增 513 文件跨批次清理验收，保留既有重复在线升级、失败恢复及未知目录保护测试。
+- 清除旧 v1.8.0 安装包、旧浏览器测试产物，共 128335481 bytes；未清除私密配置、源码、未提交客户端 gitlink 或唯一恢复材料。
+- adb 没有设备，真机安装、运行 RSS 和真实网络性能未验证。
+
+Android arm64 完整 sing-box 核心编译通过。发现并删除 target 指向已删除历史验证目录的断链；恢复正常本地构建输出路径。
+
+完整模块本地构建通过；最终增量安装器验收 21 项通过，归档安全 10 项及核心体积 5 项通过。构建时对 update.json 和配置模板的副作用已恢复，未修改正式 v1.8.3 Release。
+
+完整 Android 包的宿主安装尝试在组件启动时受阻：Linux 环境缺少 `/system/bin/linker64`，不能记为 Android 安装成功。宿主原生组件测试与模拟生命周期已通过。最终只保留 dist/MagicNet-full.zip 和 build-source.json（标明 local-validation-build-not-a-new-release）；清除重复包、组件 ZIP、临时核心与本轮 Rust target。既有正式 v1.8.3 不替换。

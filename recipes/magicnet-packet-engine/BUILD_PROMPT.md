@@ -1,7 +1,7 @@
 # TUN 与 eBPF 引擎
 
 重建满足 MagicNet 的 sing-box 兼容数据面。生产 Android arm64 保留 tun 与 with_ebpf；Linux amd64 用于校验/主机测试。模块只允许 tun|ebpf；内部 eBPF mode local/shared/hybrid 是其子配置，不是第三种模块模式。
-来源 fork 为 LIghtJUNction/sing-box，当前固定完整 revision `ff669d45e6562a790a49ef066340dbed5df46363`，已同步上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。父仓库 sing-box.version 为 `1.15.0-alpha.13`，产物版本为 `1.15.0-alpha.13+LIghtJUNction.ff669d45e656`；完整提交、基础版本与二进制摘要分别核对，不能只看版本名。更新前的消费固定点和历史版本差异保留于 PROVENANCE / VERIFICATION。
+来源 fork 为 LIghtJUNction/sing-box，当前固定完整 revision `d0b1422df5c36f49e7dbbccd0d49732040051974`，已同步上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。父仓库 sing-box.version 为 `1.15.0-alpha.13`，产物版本为 `1.15.0-alpha.13+LIghtJUNction.d0b1422df5c3`；完整提交、基础版本与二进制摘要分别核对，不能只看版本名。更新前的消费固定点和历史版本差异保留于 PROVENANCE / VERIFICATION。
 可以按其实际许可证复用固定 fork/上游协议实现；源码是明确外部构建前提，不藏进配方，不作为无配方的依赖。需要网络/上游许可时显式记录。语言自由不意味着要手写未经验证的密码学。
 
 完整阅读 [CORE_LIFECYCLE.md](CORE_LIFECYCLE.md) 的 CORE-001–005 与 CORE-A01–A06。上游同步目标、连接资源归属、并发关闭和内存验证由该合同约束；当前固定点的宿主测试、交叉构建及设备验收边界见根配方 VERIFICATION.md。
@@ -39,3 +39,8 @@ shared 真实 IPv4/IPv6 非原子分片按 best effort 原样绕过；egress 内
 要求 BPF_SYSCALL，local/hybrid 要 cgroup v2/CGroup BPF，shared/hybrid 要 scheduler/TC/clsact/BPF。IPv6 功能需要 IPv6。JIT 是性能优化；BTF、CO-RE、BPF_LSM、STREAM_PARSER 不是本入站通用必需项。按运行探测而非内核版本猜能力，厂商可能 backport。
 来源文档标明 Linux 6.6.0–6.6.46 的 LPM trie 更新风险；涉及 UID/来源 CIDR/bypass rule set 的策略需 6.6.47 或相应修复，已知不安全组合应拒绝而非冒险。其他厂商能力未知就报告未知。
 内部 tools ebpf status --mode ... --json 只做能力探测；模块 public 诊断为 cli transparent status/health。实际 readiness 必须检查当前受控进程的 cgroup/TC，而不是仅成功加载探针。
+
+
+## 安装清理与突发 UDP 内存（2026-11-03）
+
+更新和安装继续使用唯一、有 ownership 标记的事务目录；失败先恢复再清理，恢复失败保留唯一恢复材料。清理分批遍历，避免文件数量决定瞬时列表内存，不新增时间戳备份。UDP 索引达到 1024 项后，在最后一项释放时丢弃空索引的底层空间；小流量仍复用索引。保留分片锁、共享引用计数和旧连接不能删除新连接的规则。测试覆盖大批连接释放、重建及安装成功/失败/恢复/未知目录保护；记录性能与内存实测，不把微基准当作真机 RSS。接口和运行依赖不变。
