@@ -1,6 +1,6 @@
 # 实现与发行验证
 
-## 2026-11-03 / #434 修复、#435 合并与 v1.8.4 发行准备
+## 2026-11-03 / #434 修复、#435 合并与 v1.8.4 发行
 
 #434 报告者补充的日志给出 `HTTP status: 403` 与 curl 退出码 22：请求被订阅服务或其前置 CDN 拒绝，且未配置 UA，实际发送 curl 默认标识。源码 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a) 在默认 UA 遇 403 时于同一预算内改用 `clash.meta` 重试一次，不落盘、不覆盖用户 UA；仍失败时只记录数字状态并提示在订阅设置选择 UA。
 
@@ -14,7 +14,15 @@
 | fetch 策略 | `test-subscription-fetch-policy.sh`：403 回退、自定义 UA 不替换、mapped 公网钉 IPv4、mapped 回环拒绝 |
 | 子模组 | 修复 sing-box 内 clients 子模组遗留的过期 `index.lock` 并回到记录的 gitlink 后，`test-release-integrity.sh` 通过 |
 
-未运行 components 与 WebUI 组（本轮未改动），留给发行工作流的完整门槛。未进行真机安装验收；#434 需报告者在设备上确认。
+本地未运行 components 与 WebUI 组（本轮未改动）；随后发行工作流的 Release quality gate 已通过。未进行真机安装验收；#434 需报告者在设备上确认。
+
+发行 run [`41570680957`](https://github.com/LIghtJUNction/MagicNet/actions/runs/41570680957) 已完成且 conclusion=success；plan、build、Android harness、Android 15 / KernelSU / x86_64、Android Simulation Gate 与 publish 均成功。Android 证据属于模拟器离线生命周期，不代表真机或公网性能验收。
+
+[`v1.8.4`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4) 于 `2026-11-03T03:52:07Z` 公开；Release API 回读为 Latest、非 draft、非 prerelease。19 个附件均为 uploaded 且大小非零：`MagicNet.zip`、`MagicNet-core.zip`、`magicnet_installer.zip`、`MagicNet-full.zip`、`components.json`、`package-sizes.json`、`build-source.json`、`build-submodules.txt`、`update.json`、`SHA256SUMS`，以及 ecapture、jq、magicnet-cli、proxylink、sing-box、yq、rules、webui、zashboard 九个内容寻址组件 ZIP。
+
+下载回读的 `build-source.json` 确认 recipe SHA 为 `9768fe6430efa56290e495964b75e9acc0e8ad17`，source SHA 为 `d22086d28499ceb25c9f2b7d965e783ded6c286a`；发行附件与 GitHub main 根 `update.json` 均为 v1.8.4 / 10612。六个文本/JSON 附件已按实际下载字节核对 API SHA-256；全部其余附件的 API digest 与公开 `SHA256SUMS` 一致。本次没有重新下载 ZIP payload，不声称做了本地全量包解压验收。核心包与两个安装器别名的 API 大小/摘要相同（3,483,550 bytes），完整包为 65,461,674 bytes。
+
+已在 #434 补充中文版发布与设备复测说明：默认 UA 的 403 单次 `clash.meta` 回退、不覆盖自定义 UA、仍失败时选择提供商要求的 UA；未索取订阅链接，也未宣称现场问题已经验证恢复。
 
 ## 2026-11-02 / 日常 issue、安全与冗余扫描
 
