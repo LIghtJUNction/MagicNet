@@ -1,5 +1,9 @@
 # 来源、证据与未验证项
 
+## 2026-11-03 / #434、#435 与 v1.8.4
+
+输入为用户要求修复 #434、合并 PR 并发布。#435（文档合同）已合并；其引用的 `b1d235e0…` 未公开，现由 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a) 实现并成为 gitlink。runtime 配方 0.1.4 增加 SUB-A21，产品配方 0.3.6。不是独立重建。
+
 ## 2026-11-02 / 日常 issue、安全与冗余扫描
 
 输入为定时扫描。公开产品 issue 只剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)；#426 已由维护者关闭。无开放 PR。现行公开源码仍固定 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f)，配方继续 0.3.3，不是独立重建，也不更新公开 gitlink。

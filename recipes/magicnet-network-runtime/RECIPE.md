@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.3"
+version = "0.1.4"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.4 增加 #434 的默认 UA 403 单次回退（SUB-003、SUB-A21），并保留 0.1.3 的 IPv4-mapped 地址钉选。
 
 0.1.3 补齐冲突 tag 与实际引用的对应关系、逐来源原生已知数量下界，以及网络策略部分修复和回滚的完整基线。数量下界是有限防丢检查，完整字段语义仍按 SUB-005–007 验证；未知原生格式继续允许经受支持转换器处理。新增 SUB-A19–A20，与 control 的 C-SUB-008 共同定义本轮边界。
 

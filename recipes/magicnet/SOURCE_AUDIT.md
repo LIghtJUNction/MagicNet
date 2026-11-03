@@ -186,3 +186,7 @@ link_encryption_none_complete_rc=1
 | --- | --- | --- |
 | IPv4-mapped `::ffff:a.b.c.d` 被 Rust 放行后被 shell 以首 hextet 0 拒绝，或被钉成 IPv6 `--resolve` | 按嵌入 IPv4 重新校验并只钉选 IPv4 | 合成夹具复现；未证明报告设备走了 mapped DNS |
 | generic `file_read` 仍可读路由/屏蔽域名清单、`block.conf`、`proxy-chain.json`；generic `magicnet_cli` 人类 `warp`/`node`/`route`/`block` 默认清单会打印端点、节点名或域名 | 合同与本地实现 `b1d235e050b243c3f78e36e37180dfd680a11f50` 拒绝上述路径；named node/block 工具保持显式 | 此环境不能推送 `magicnet-android`，公开 gitlink 不改为未发布指针 |
+
+## 13. 2026-11-03：#435 实现公开与 #434 403 回退
+
+上一节所述本地提交 `b1d235e0…` 从未推送。公开实现为 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a)：mapped 地址按 IPv4 钉选、MCP 通用路径拒绝路由/屏蔽清单与人类 warp/node/route/block 默认输出、删除无调用方包装；另加默认 UA 403 的单次 `clash.meta` 回退（#434）。gitlink 已更新。

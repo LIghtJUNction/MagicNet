@@ -1,5 +1,21 @@
 # 实现与发行验证
 
+## 2026-11-03 / #434 修复、#435 合并与 v1.8.4 发行准备
+
+#434 报告者补充的日志给出 `HTTP status: 403` 与 curl 退出码 22：请求被订阅服务或其前置 CDN 拒绝，且未配置 UA，实际发送 curl 默认标识。源码 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a) 在默认 UA 遇 403 时于同一预算内改用 `clash.meta` 重试一次，不落盘、不覆盖用户 UA；仍失败时只记录数字状态并提示在订阅设置选择 UA。
+
+#435 已合并。其中记录的本地实现 `b1d235e0…` 从未推送，GitHub 查询不到该提交；本轮在公开源码中重新实现 mapped 地址钉选（Rust `sub resolve-host` 输出规范 IPv4，shell 对 `::ffff:a.b.c.d` 按 IPv4 校验与钉选）、MCP 路由/屏蔽清单拒绝，并删除 `magicnet_prepare_singbox_nodes`。gitlink 更新为该提交，软件版本 v1.8.4 / versionCode 10612。
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| Rust | `quality-gate.sh rust`：fmt、clippy `-D warnings`、workspace 全部测试通过 |
+| Shell/主机回归 | `quality-gate.sh shell`：106 步与 host 回归通过。宿主 `/usr/bin/sing-box` 为上游 1.14.4，不认识 fork 字段，改用本地构建的固定 fork（d0b1422d）；宿主 mise shim 干扰 decoy 进程测试，移出 PATH；mksh 由 R59c 源码临时构建 |
+| 订阅网络 | `test-subscription-network.py` 10 项（真实 curl + 本地 HTTPS）：默认 UA 403 → `clash.meta` 成功；仍 403 只多一次请求；自定义 UA 403 只请求一次 |
+| fetch 策略 | `test-subscription-fetch-policy.sh`：403 回退、自定义 UA 不替换、mapped 公网钉 IPv4、mapped 回环拒绝 |
+| 子模组 | 修复 sing-box 内 clients 子模组遗留的过期 `index.lock` 并回到记录的 gitlink 后，`test-release-integrity.sh` 通过 |
+
+未运行 components 与 WebUI 组（本轮未改动），留给发行工作流的完整门槛。未进行真机安装验收；#434 需报告者在设备上确认。
+
 ## 2026-11-02 / 日常 issue、安全与冗余扫描
 
 定时扫描时公开产品 issue 只剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)；#426 已由维护者关闭且无关联 commit，本轮不重开。两个仓库均无开放 PR。公开源码 gitlink 保持 [`689bd6146b2dfdd481c8e6df395e05509b51593f`](https://github.com/LIghtJUNction/magicnet-android/commit/689bd6146b2dfdd481c8e6df395e05509b51593f)。

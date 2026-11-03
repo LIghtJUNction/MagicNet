@@ -1,5 +1,9 @@
 # 用户走查与 Issue 反馈
 
+## 2026-11-03：#434 定位为 HTTP 403
+
+报告者补充 v1.8.2 / Android 17 的脱敏日志：`HTTP status: 403`、curl 退出码 22，UA 未自定义。结论是请求被订阅服务或 CDN 拒绝，常见原因是拒绝 curl 默认标识；不是 DNS、TLS 或 mapped 地址问题。v1.8.4 对默认 UA 的 403 增加一次 `clash.meta` 回退，源码 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a)。若提供商要求特定客户端，仍需用户在订阅设置中选择对应 UA。
+
 ## 2026-11-02：#434 订阅更新失败
 
 公开 issue 仅剩 [#434](https://github.com/LIghtJUNction/MagicNet/issues/434)。报告称无论是否走代理，更新订阅都在 fetch 阶段失败：两次 `Retrying direct subscription fetch` 后 `Failed to download subscription #1 with curl`，整批 `0/1` 并保留旧配置。该日志只证明可重试传输/解析失败且缓存不可用，没有 URL、解析地址、curl 退出码或设备网络证据，不能据此关闭 issue 或写成现场根因已确认。
