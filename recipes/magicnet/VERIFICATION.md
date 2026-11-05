@@ -1,5 +1,25 @@
 # 实现与发行验证
 
+## 2026-11-05 / 指定目标拒绝与 v1.8.5 准备
+
+源码已推送至 [`c75583b00527acf96310e96c124805db010d939a`](https://github.com/LIghtJUNction/magicnet-android/commit/c75583b00527acf96310e96c124805db010d939a)，模板已推送至 [`6da399473a1ab3f99661556886e0b6701581af24`](https://github.com/LIghtJUNction/MagicSingBox/commit/6da399473a1ab3f99661556886e0b6701581af24)。版本元数据为 `v1.8.5 / 10613`。四个完整域名采用原生拒绝，`dm.wo.com.cn` 同时限定目标端口 18080；前置 DNS/协议处理及其他域名、端口保持原有行为。安装和正常升级使用包内模板，普通应用分流不会把拒绝规则挪到业务规则之后。
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| 模板生成与规则模型 | `generate.py --check`、26 项 unittest 通过；包含精确域名、端口边界、TCP/UDP、模式/分类冲突及 DNS 优先级 |
+| 模板 CI | [Validate configuration 41963088773](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/41963088773) conclusion=success |
+| 默认配置 pin | `test-config-template-pin.sh` 通过；gitlink、CLI、安装器、WebUI、配置仓库文件的提交与 SHA-256 一致 |
+| 实际 shell 应用策略 | `test-app-routing-policy.sh` 通过；新增检查用内置模板执行黑/白名单应用策略各两次，拒绝规则值、数量及模式/应用前的次序不变 |
+| 路由与升级迁移 | `test-maintained-routing.py` 结构合同、`test-routing-optimizer.py` 11 项、`test-install-config-refresh.sh` 迁移合同通过 |
+| 安装模板夹具 | 21 项中 18 通过、2 跳过、1 前置条件失败；详见下段，不记整组通过 |
+| Rust 用户增量回归 | 新增从实际模板执行 apply/undo 的定向测试；本地无 cargo，未执行，需由源码及发行 CI 验证 |
+| 发布元数据 | 源码三处版本一致；根 `test-release.py` 17 项通过 |
+| 配方材料 | Recipkg 0.1.1（固定 CLI f6f5983）目录检查、pack、归档检查和完整中文提示词通过；8 个包、56 个 Markdown 文件 |
+
+安装模板失败项是 `test_live_backup_survives_failed_owner_probe`：当前环境的 `os.getpid()` 返回子 PID 命名空间编号，而 `/proc` 暴露父命名空间，`/proc/<os.getpid()>` 不存在，测试在进入备份逻辑前失败。相关测试与备份实现未修改。私有命名空间的环境修复被系统拒绝，未提权或更改宿主挂载；正式 GitHub runner 的原有门槛仍需验证。两项跳过分别因缺少 BusyBox 和未启用真实核心验收。
+
+本次记录时 `v1.8.5` 尚未公开，正式 `release.yml` 的 `mode=publish` 尚未触发；最新公开版本仍为 v1.8.4。当前 GitHub 插件不提供 workflow dispatch，本地未配置 GitHub CLI 凭据，云端发布页面未登录。保留原发布门槛，待已认证会话触发后，仍须完成同提交构建、完整质量、Android/KernelSU 模拟器及发行附件验证。未进行真机安装或真实网络流量验收。
+
 ## 2026-11-03 / #434 修复、#435 合并与 v1.8.4 发行
 
 #434 报告者补充的日志给出 `HTTP status: 403` 与 curl 退出码 22：请求被订阅服务或其前置 CDN 拒绝，且未配置 UA，实际发送 curl 默认标识。源码 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a) 在默认 UA 遇 403 时于同一预算内改用 `clash.meta` 重试一次，不落盘、不覆盖用户 UA；仍失败时只记录数字状态并提示在订阅设置选择 UA。

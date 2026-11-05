@@ -1,5 +1,13 @@
 # 来源、证据与未验证项
 
+## 2026-11-05 / 指定目标拒绝与 v1.8.5
+
+输入为用户指定五个目标并要求提交、推送及发布新版本。目标用途说明未独立核验，本轮仅记录匹配与拒绝行为。四个完整域名和 `dm.wo.com.cn:18080` 的精确范围见 routing-policy/POLICY_INVENTORY.md。
+
+固定模板为 [`MagicSingBox@6da399473a1ab3f99661556886e0b6701581af24`](https://github.com/LIghtJUNction/MagicSingBox/commit/6da399473a1ab3f99661556886e0b6701581af24)，配置 SHA-256 为 `6365ee9b4144974ced6012dc99b9712ceef3f721f58ae9eb0943024373b81d81`。它基于当前 main `2bb30e333a0bc78d68a58549b068fd9d2bca4eb4`，该提交与此前模板 pin 的文件树一致；仅增加两条原生拒绝规则、生成配置、范围回归及说明。
+
+实现为 [`magicnet-android@c75583b00527acf96310e96c124805db010d939a`](https://github.com/LIghtJUNction/magicnet-android/commit/c75583b00527acf96310e96c124805db010d939a)，固定上述模板并同步 CLI、安装器、WebUI 默认来源及软件版本。产品配方为 0.3.7，routing-policy 为 0.2.2；未独立重建，也未安装到设备。验证与公开发行状态见 VERIFICATION.md。
+
 ## 2026-11-03 / #434、#435 与 v1.8.4
 
 输入为用户要求修复 #434、合并 PR 并发布。#435（文档合同）已合并；其引用的 `b1d235e0…` 未公开，现由 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a) 实现并成为 gitlink。runtime 配方 0.1.4 增加 SUB-A21，产品配方 0.3.6。不是独立重建。

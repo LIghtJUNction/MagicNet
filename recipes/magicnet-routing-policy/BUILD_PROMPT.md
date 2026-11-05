@@ -1,6 +1,6 @@
 # 默认路由、DNS 和规则数据
 
-交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision e4ecf47499c35bf25e10d04257a21a4f7975ebad（MagicSingBox）；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
+交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision 6da399473a1ab3f99661556886e0b6701581af24（MagicSingBox）；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
 复用上游规则数据需要其许可与可获取性；数据是外部前提，配方不含 .srs 或原配置源码。没有数据时应明确缺失，不假造55份空规则。
 
 先读 POLICY_INVENTORY.md 的公开标签/默认值。默认 tun-in/magicnet0 和 loopback mixed-in，本地管理 API；runtime 在显式模式切换中物化 ebpf，不能在这里加 auto/TProxy/Redirect。
@@ -9,10 +9,26 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 
 ## 规则次序
 
-显式 mode → LAN/保留地址保护 → 原生应用提示 → 广告分类 → 业务分类 → 一般国家 IP/final。
+基础入口处理（53 端口 DNS 劫持、嗅探、DNS 协议劫持、ICMP 与 `0.0.0.0` 保护）→ 指定域名拒绝 → 显式 mode → LAN/保留地址保护 → 原生应用提示 → 广告分类 → 业务分类 → 一般国家 IP/final。
 具体 AI 在一般 AI 前，Gemini/YouTube 在 Google 前，iCloud 在 Apple 前，Bing/开发/游戏服务在 Microsoft 前，游戏下载在游戏社区/登录前，Telegram 在一般通信前。已知外国服务域不能因解析到 CN IP 被错误直连。
-DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
+业务 DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。以下指定域名拒绝只作用于路由，保持 DNS 捕获和解析配置。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
 不能恢复泛 analytics/tracker/github/captive 子串匹配。国内连通性探针是显式例外，不等于任意 captive 域放行。
+
+### 指定域名拒绝
+
+默认模板用两个原生 `action: reject` 规则表达以下固定目标，使用完整域名匹配，不扩展到父域名或子域名：
+
+| 精确域名 | 目标端口 |
+| --- | --- |
+| `flash.sec.miui.com` | 不限 |
+| `fraud-detection.engine.miui.com` | 不限 |
+| `eps.caict.ac.cn` | 不限 |
+| `gateway-papa.cloud.weizhi.com` | 不限 |
+| `dm.wo.com.cn` | 仅 `18080`，TCP/UDP |
+
+前四个域名共享一条拒绝规则；第五个域名使用另一条规则，同时匹配域名与目标端口。保留基础入口处理的优先级：DNS 请求继续由既有 DNS 规则处理，ICMP 和 `0.0.0.0` 沿用原行为。拒绝规则位于 `rule`、`global`、`direct` 模式分流及应用、用户增量和业务规则之前，不能通过后续 selector 选择覆盖。
+
+匹配依赖进入 sing-box 的流量带有可识别的目标域名。纯 IP 且无域名信息的连接、非目标域名以及 `dm.wo.com.cn` 的其他端口继续按原有规则处理。规则随固定内置模板分发，新安装与正常升级使用内置模板，无需额外执行社区模板更新；普通订阅刷新不删除这些规则。
 
 ## 维护与分发
 
@@ -34,7 +50,7 @@ DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DN
 
 最多 256 条规则、64 个自定义出口、每组 128 个成员；名称不为空、不含控制字符，最多 256 UTF-8 字节；域名使用 ASCII/Punycode 域后缀，应用使用带点包名。规则以 `(kind,value)` 唯一，目标必须存在。自定义 tag 不得覆盖订阅、内置出口或 endpoint；组/绕行引用不得缺失或成环。支持 selector/urltest 与 SOCKS、HTTP、Shadowsocks、Trojan、VLESS、VMess、Hysteria2、TUIC、AnyTLS 的受限结构化字段，最终以锁定内核的真实校验为准；不允许任意顶层内核字段混入这个扩展。WebUI 提供常用类型，复杂协议仍可经完整覆写编辑器处理。
 
-编译保留原数组及其相对次序。应用与域名规则位于显式模式、DNS 劫持、LAN 和 Tailnet 保护之后、普通业务分类之前。DNS 使用相同应用/域名条件与次序；拦截目标拒绝解析，其余目标复制固定的加密 DNS 模板并显式 detour 到该目标，使自定义组切换时解析仍走该组。直接链默认选择本地加密 DNS 模板，其余选择远端模板；模板选择基于配置，运行时组选择不改写模板地址。缺模板或 DNS tag 碰撞必须拒绝，不能悄悄改用其他出口。
+编译保留原数组及其相对次序。应用与域名规则位于指定域名拒绝、显式模式、DNS 劫持、LAN 和 Tailnet 保护之后、普通业务分类之前。增量规则的 DNS 使用相同应用/域名条件与次序；用户增量的拦截目标拒绝解析，其余目标复制固定的加密 DNS 模板并显式 detour 到该目标，使自定义组切换时解析仍走该组。直接链默认选择本地加密 DNS 模板，其余选择远端模板；模板选择基于配置，运行时组选择不改写模板地址。缺模板或 DNS tag 碰撞必须拒绝，不能悄悄改用其他出口。
 
 新出口、DNS server、路由与 DNS 规则的精确归属只保存在私密 checkpoint 的 `routing_owned`。重新生成时先去除自身上次生成项，再叠加当前意图，保留订阅与其他写者的新内容；已归属项被外部改成不同内容时返回 `override.routing_conflict`。撤销删除自己的项，不删除新增的订阅项。该 checkpoint 是恢复输入，不是公共状态接口。
 

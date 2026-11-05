@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.6"
+version = "0.3.7"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -24,6 +24,8 @@ source = "../software-quality"
 ~~~
 
 配方版本与被观察软件版本分开管理；初始来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，后续 v1.8.0 迭代与证据见 PROVENANCE.md 和 VERIFICATION.md。0.2.1 修正源码子模块布局与获取方法，没有改变 Android 软件版本。实现源码不属于本包。
+
+0.3.7 对应 v1.8.5：routing-policy 0.2.2 增加五个指定目标的精确拒绝合同，其中 `dm.wo.com.cn` 仅限 TCP/UDP 目标端口 18080；规则随内置模板分发，保留 DNS 行为并先于模式、应用与业务分流。实际源码、固定模板与验证结果见 PROVENANCE.md 和 VERIFICATION.md。
 
 0.3.6 对应 v1.8.4：runtime 0.1.4 增加默认 UA 遇 HTTP 403 的单次回退（#434）；合并 #435 的 IPv4-mapped 地址钉选与 MCP 路由/屏蔽清单拒绝，并由公开源码实现。
 

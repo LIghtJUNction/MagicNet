@@ -13,17 +13,17 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.3 闭包与具体接口
+## 0.3.7 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.3 | 全产品保留范围、M01–M48、候选整合和真实验证 |
+| magicnet | 0.3.7 | 全产品保留范围、M01–M49、候选整合和真实验证 |
 | magicnet-control-plane | 0.2.3 | C-SUB-001–008、共享只读来源检查、命令预算与日志尾读 |
-| magicnet-network-runtime | 0.1.3 | SUB-001–015，LIFE-001–004，逐源下界、引用与恢复 |
-| magicnet-web-console | 0.2.1 | UI-SUB-001–012，完整输入与同代反馈、草稿/隐私 |
-| magicnet-packet-engine | 0.2.1 | VE-001–006、CORE-001–005，固定上游与连接资源归属 |
-| magicnet-routing-policy | 0.2.1 | 增量分流与订阅归属、POLICY-A01–07 |
-| magicnet-module-delivery | 0.2.1 | 安装更新与三个核心包发布名的同身份合同 |
+| magicnet-network-runtime | 0.1.4 | SUB-001–015，LIFE-001–004，逐源下界、引用与恢复 |
+| magicnet-web-console | 0.2.2 | UI-SUB-001–012，完整输入与同代反馈、草稿/隐私 |
+| magicnet-packet-engine | 0.2.2 | VE-001–006、CORE-001–005，固定上游与连接资源归属 |
+| magicnet-routing-policy | 0.2.2 | 增量分流、订阅归属与指定目标拒绝，POLICY-A01–12 |
+| magicnet-module-delivery | 0.2.2 | 安装更新与三个核心包发布名的同身份合同 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
 
 本地相对配方依赖在pack时递归进入归档并由LOCK记录摘要，不能仅交付上表链接。新订阅状态字段以control为唯一authority，URL/节点身份以runtime为唯一authority，UI只投递意图和显示已协商结果；不创建新常驻服务或复制第二套订阅状态机。
@@ -36,9 +36,11 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 0.3.3 的 engine 同步对象为固定 sing-box/sing-tun 版本及既有 WireGuard 复制源码，保留 AWG 与 fork 差异。完整核心依赖锁和 gitlink 在源码实现中维护；CORE_LIFECYCLE.md 规定来源、兼容与验证要求，八包配方闭包保持不变。
 
+0.3.7 保持八包依赖图及既有内核/公共规则资产。指定目标拒绝直接写入固定默认模板，不新增运行库、规则下载来源或常驻服务；模板提交为 `6da399473a1ab3f99661556886e0b6701581af24`，`config.json` SHA-256 为 `6365ee9b4144974ced6012dc99b9712ceef3f721f58ae9eb0943024373b81d81`。
+
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，当前为 `fd0e2dabf668e9b8cd6e16f5058e06517fe110c2`。该提交接在基线 `0dca28dd984d82333707cbf4b222596934b4d847` 之后，包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化，增加留白和减少重复边框的前端视觉精修，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进；它不是 Android 发行版或部署证明。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，本轮为 `c75583b00527acf96310e96c124805db010d939a`，软件版本 `v1.8.5 / 10613`。该提交基于 v1.8.4 已发布源码 `d22086d28499ceb25c9f2b7d965e783ded6c286a`，引入上述固定模板、同步默认来源摘要与版本元数据，并补充应用分流及用户增量覆盖的保留回归。它不代表 Android 安装包已经公开或真机验收完成；实际结果见 VERIFICATION.md。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

@@ -43,6 +43,20 @@
 
 DNS server tags：bootstrap-local-dns, doh-google, doh-cloudflare.
 
+## 指定域名拒绝
+
+以下是默认模板中的固定路由规则，均使用原生 `action: reject`。前四个域名共用一条规则，第五个域名与目标端口共同构成另一条规则。
+
+| 精确域名 | 目标端口 |
+| --- | --- |
+| `flash.sec.miui.com` | 不限 |
+| `fraud-detection.engine.miui.com` | 不限 |
+| `eps.caict.ac.cn` | 不限 |
+| `gateway-papa.cloud.weizhi.com` | 不限 |
+| `dm.wo.com.cn` | 仅 `18080`，TCP/UDP |
+
+顺序为既有 DNS/嗅探/ICMP/`0.0.0.0` 处理之后，模式、应用、用户增量和业务分流之前。保留 DNS 捕获和解析配置；精确域名以外的父域名、子域名，以及 `dm.wo.com.cn` 的其他端口沿用原有规则。匹配范围为进入 sing-box 且目标域名可识别的流量。规则随内置模板分发，具体生成与验证要求见 BUILD_PROMPT.md 和 POLICY-A08–A12。
+
 ## 本地分类标签
 
 - lyc-geosite-ads：local / binary
