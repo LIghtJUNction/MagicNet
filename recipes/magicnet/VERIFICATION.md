@@ -2,7 +2,7 @@
 
 ## 2026-11-05 / 指定目标拒绝与 v1.8.5 准备
 
-源码已推送至 [`c75583b00527acf96310e96c124805db010d939a`](https://github.com/LIghtJUNction/magicnet-android/commit/c75583b00527acf96310e96c124805db010d939a)，模板已推送至 [`6da399473a1ab3f99661556886e0b6701581af24`](https://github.com/LIghtJUNction/MagicSingBox/commit/6da399473a1ab3f99661556886e0b6701581af24)。版本元数据为 `v1.8.5 / 10613`。四个完整域名采用原生拒绝，`dm.wo.com.cn` 同时限定目标端口 18080；前置 DNS/协议处理及其他域名、端口保持原有行为。安装和正常升级使用包内模板，普通应用分流不会把拒绝规则挪到业务规则之后。
+源码已推送至 [`c75583b00527acf96310e96c124805db010d939a`](https://github.com/LIghtJUNction/magicnet-android/commit/c75583b00527acf96310e96c124805db010d939a)，模板已推送至 [`6da399473a1ab3f99661556886e0b6701581af24`](https://github.com/LIghtJUNction/MagicSingBox/commit/6da399473a1ab3f99661556886e0b6701581af24)。源码版本元数据为 `v1.8.5 / 10613`。四个完整域名采用原生拒绝，`dm.wo.com.cn` 同时限定目标端口 18080；前置 DNS/协议处理及其他域名、端口保持原有行为。安装和正常升级使用包内模板，普通应用分流不会把拒绝规则挪到业务规则之后。
 
 | 检查范围 | 实际结果 |
 | --- | --- |
@@ -12,13 +12,35 @@
 | 实际 shell 应用策略 | `test-app-routing-policy.sh` 通过；新增检查用内置模板执行黑/白名单应用策略各两次，拒绝规则值、数量及模式/应用前的次序不变 |
 | 路由与升级迁移 | `test-maintained-routing.py` 结构合同、`test-routing-optimizer.py` 11 项、`test-install-config-refresh.sh` 迁移合同通过 |
 | 安装模板夹具 | 21 项中 18 通过、2 跳过、1 前置条件失败；详见下段，不记整组通过 |
-| Rust 用户增量回归 | 新增从实际模板执行 apply/undo 的定向测试；本地无 cargo，未执行，需由源码及发行 CI 验证 |
+| Rust 用户增量回归 | 本地无 cargo；[源码 rust job](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422219/job/127035012507) 对同一提交实际执行完整 `cargo test --workspace --all-targets --all-features --locked`，日志为 RUN → PASS，exit=0；覆盖新增模板 apply/undo 测试 |
 | 发布元数据 | 源码三处版本一致；根 `test-release.py` 17 项通过 |
 | 配方材料 | Recipkg 0.1.1（固定 CLI f6f5983）目录检查、pack、归档检查和完整中文提示词通过；8 个包、56 个 Markdown 文件 |
 
-安装模板失败项是 `test_live_backup_survives_failed_owner_probe`：当前环境的 `os.getpid()` 返回子 PID 命名空间编号，而 `/proc` 暴露父命名空间，`/proc/<os.getpid()>` 不存在，测试在进入备份逻辑前失败。相关测试与备份实现未修改。私有命名空间的环境修复被系统拒绝，未提权或更改宿主挂载；正式 GitHub runner 的原有门槛仍需验证。两项跳过分别因缺少 BusyBox 和未启用真实核心验收。
+安装模板失败项是 `test_live_backup_survives_failed_owner_probe`：当前环境的 `os.getpid()` 返回子 PID 命名空间编号，而 `/proc` 暴露父命名空间，`/proc/<os.getpid()>` 不存在，测试在进入备份逻辑前失败。相关测试与备份实现未修改。私有命名空间的环境修复被系统拒绝，未提权或更改宿主挂载；后续同一源码的 [shell job](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422219/job/127035012561) 日志确认 `test-install-config-template.sh` 实际执行（RUN → PASS，exit=0）；日志摘要未列各子测试数量，本地环境前置条件失败记录保留。两项跳过分别因缺少 BusyBox 和未启用真实核心验收。
 
-本次记录时 `v1.8.5` 尚未公开，正式 `release.yml` 的 `mode=publish` 尚未触发；最新公开版本仍为 v1.8.4。当前 GitHub 插件不提供 workflow dispatch，本地未配置 GitHub CLI 凭据，云端发布页面未登录。保留原发布门槛，待已认证会话触发后，仍须完成同提交构建、完整质量、Android/KernelSU 模拟器及发行附件验证。未进行真机安装或真实网络流量验收。
+### GitHub CI 最终回读
+
+源码提交 `c75583b00527acf96310e96c124805db010d939a` 的七个工作流均已完成，API 回读均为 `conclusion=success`：
+
+| 工作流 | 验证记录 |
+| --- | --- |
+| Network regression | [41963422271](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422271) |
+| Network Regression Evidence | [41963422222](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422222) |
+| Rules Release Integration | [41963422341](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422341) |
+| Install Onboarding | [41963422200](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422200) |
+| Build Kam Module | [41963422114](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422114) |
+| Code Quality | [41963422219](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422219) |
+| Android KernelSU Acceptance | [41963422220](https://github.com/LIghtJUNction/magicnet-android/actions/runs/41963422220) |
+
+上述结果属于固定源码提交的 CI。Android KernelSU Acceptance 是模拟器验收，不代表真机或真实网络流量验收；源码仓库的构建成功也不代表主仓库正式 Release 已经发布。
+
+### 正式发布与自动更新状态
+
+`v1.8.5` 尚未公开，正式 `release.yml` 的 `mode=publish` 尚未触发；最新公开版本仍为 [v1.8.4](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4)。当前 GitHub 插件不提供 workflow dispatch，本地未配置 GitHub CLI 凭据，发布页面的安全登录未完成。
+
+自动更新读取根仓库 `main/update.json`。为避免已安装用户收到指向未公开 ZIP 的更新提示，根 `update.json` 恢复为公开 `v1.8.4 / 10612` 的完整内容；固定源码及其 `update.json` 保留 `v1.8.5 / 10613`。本轮屏蔽实现和源码 CI 结果均已推送。
+
+该暂停状态下，`release.py plan` 会按原有一致性门槛拒绝 `Root/source update.json differs`。恢复发布认证后，先将固定源码提交的 `update.json` 同步到根仓库并提交，核对版本一致，再从官方 `main` 触发 `release.yml`（`mode=publish`、`prerelease=false`）。正式流程仍须完成同提交构建、完整质量、Android/KernelSU 模拟器及发行附件验证；未进行真机安装或真实网络流量验收。
 
 ## 2026-11-03 / #434 修复、#435 合并与 v1.8.4 发行
 
