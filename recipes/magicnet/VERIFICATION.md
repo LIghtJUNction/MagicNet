@@ -18,9 +18,13 @@
 
 最终 `38c6eea` 的 [Code Quality 42187346672](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672) 全部 7/7 jobs 成功。最终 `38c6eea` 的 [Network Regression Evidence 42187346632](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346632) 3/3 jobs 成功。实际 DNS 测试 job `127790723176` 于 08:25:41–08:25:47 UTC 再次通过生产物化、A/AAAA UDP/TCP 代理出口、节点直连引导、显式直连及代理失败零直连回退；公共请求为零。主项目增量提交的 [Recipe checks 42187909416](https://github.com/LIghtJUNction/MagicNet/actions/runs/42187909416) 成功。
 
-最终 [Build Kam Module 42187346674](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346674) 成功。完整 ARM64 模块 68,480,032 字节，SHA256 `1fdc0caa0c2d412562bc44058b8527210ebad6df75dbc0fcc17d1eba44bab234`；360 ZIP 条目 CRC、安全路径和开发内容排除通过，10 组件/168 文件的清单、摘要和权限核验通过。源码与 CI 合并提交的 tree 均为 `1e83b5b00e2f8b3aa2018358717a81e228820a94`；该包尚待 Android 复验，不将构建成功等同于设备验收成功。
+最终 [Build Kam Module 42187346674](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346674) 成功。完整 ARM64 模块 68,480,032 字节，SHA256 `1fdc0caa0c2d412562bc44058b8527210ebad6df75dbc0fcc17d1eba44bab234`；360 ZIP 条目 CRC、安全路径和开发内容排除通过，10 组件/168 文件的清单、摘要和权限核验通过。源码与 CI 合并提交的 tree 均为 `1e83b5b00e2f8b3aa2018358717a81e228820a94`；本候选的 x86_64 Android 夹具复验已通过；ARM64 完整包完成构建与文件核验，ARM64 执行未验证。
 
 [Android 42187346630](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346630) attempt 1 的前置 300 harness 项中 1 可选跳过、无失败；实际 12 个阶段为 3 通过、cold-boot 本地 TLS 正向控制失败、8 未运行。该控制固定回环地址并关闭代理，绕过 DNS 解析，但未保留具体 curl 退出码/错误，唯一原因未知。同一源码只启动一次失败 jobs 复验，未修改信任、超时或断言。首次证据与后续结论分别保存在[本轮 CI 记录](../../docs/evidence/dns-repair-ci-2026-11-06.json)。
+
+Android attempt 2 同一源码和固定依赖复验成功：12/12 阶段、5/5 重启、完整本地 TLS 正负控制通过；主 job `127798786927` 与 Simulation Gate `127807907321` 成功。原成功 harness 被复用，未双计测试。curl 重新构建后的摘要不同，因此不声称同一二进制重试；首次失败具体原因仍未知。实际 Google 探测仍为 `offline/upstream_unavailable`（`tls_failure`），未获得 HTTPS 204；设备流程通过不等于公网代理验证通过。
+
+最终源码七个 workflow 的最新结论均为 success。源码 PR #2 已合并为 `faa7d956324a20889cb921ff35c9f13b66dc0c1a`，合并 tree 与候选 tree 相同。证据增量的 [Recipe checks 42191149067](https://github.com/LIghtJUNction/MagicNet/actions/runs/42191149067) 成功；最后仅补入实际验收结果，配方版本与源码 pin 保持。
 
 本地实际核心运行被容器的 AF_NETLINK 权限阻断，已明确记录，未把跳过记作通过；上述运行证据来自 GitHub runner。物理手机、移动网络切换、Android Private DNS、应用自带 DoH 与真实用户节点未在本轮执行。未创建正式 Release 或安装用户设备。完整原因、合法对照和证据边界见 [DNS 修复记录](DNS_REPAIR_2026-11-06.md)。
 

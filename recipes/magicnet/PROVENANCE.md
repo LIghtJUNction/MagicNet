@@ -12,7 +12,11 @@
 
 最终候选的 [Network Regression Evidence 42187346632](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346632) 3/3 jobs、[Code Quality 42187346672](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672) 7/7 jobs 和 [Build Kam Module 42187346674](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346674) 成功。最终真实 DNS 数据包步骤为 job `127790723176`、08:25:41–08:25:47 UTC。构建 artifact `13489440458` 中完整 ARM64 包的实际摘要为 `1fdc0caa0c2d412562bc44058b8527210ebad6df75dbc0fcc17d1eba44bab234`，68,480,032 字节；独立核验 360 ZIP 条目及 10 组件/168 文件，保留原始构建字节。
 
-Android 42187346630 首次执行在 cold-boot 的本地 TLS 正向控制失败，3 阶段通过、8 后续阶段未运行；错误细节不足以确定唯一原因。只对完全相同源码做一次有界复验，不放宽 TLS、时间或验收断言，包在复验前仍为候选。首次失败 artifact `13488459388` 及其摘要、完整运行身份见[机器可读记录](../../docs/evidence/dns-repair-ci-2026-11-06.json)。
+Android 42187346630 首次执行在 cold-boot 的本地 TLS 正向控制失败，3 阶段通过、8 后续阶段未运行；错误细节不足以确定唯一原因。只对完全相同源码做一次有界复验，不放宽 TLS、时间或验收断言，复验前未把包当成设备验收通过。首次失败 artifact `13488459388` 及其摘要、完整运行身份见[机器可读记录](../../docs/evidence/dns-repair-ci-2026-11-06.json)。
+
+唯一复验 attempt 2 成功，artifact `13490268162` 的 SHA256 为 `c970fa57612434d5657069ddfc153a93f2a94dead0cfb53981aa0932f4b1de20`；12 阶段、5 次重启和本地 TLS 正负控制均通过。成功 harness 复用，不重复计数。相同源码/固定依赖重新构建产生了不同 curl 摘要，故不声称同一二进制重跑；首次失败原因仍未知。Google 产品探测仍为 `offline/tls_failure`、未获 204，不能把生命周期通过扩大为公网代理通过。
+
+源码 PR #2 合并提交 `faa7d956324a20889cb921ff35c9f13b66dc0c1a` 的 tree 与受测候选相同；七个源码 workflow 的最终结论均成功。ARM64 完整包只完成构建与文件核验，Android 执行证据为 x86_64 standalone TUN，物理设备仍未部署。
 
 本轮记录按 Research-Paper-Writing-Skills 的证据、自审和边界要求组织。配置级健康检查不等于完整动态出口证明，真实核心回环证据也不等于物理 Android 抓包。直连分类、用户显式 override/standalone、Private DNS 和应用自身加密解析的边界见 [DNS 修复记录](DNS_REPAIR_2026-11-06.md)；未经当前设备验收的范围不写成已修复或已部署。
 

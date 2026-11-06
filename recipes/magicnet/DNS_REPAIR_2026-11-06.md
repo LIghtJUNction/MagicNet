@@ -13,7 +13,7 @@
 | 模板内容摘要 | `config.json` SHA-256：`e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0` |
 | 实际核心 | `1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e`；源码 pin `d850ff0ff68e11a71aa8207627e0a826cb52808f` |
 
-本轮不改变 Android 软件版本，不创建正式 Release，不把用户设备视为已安装本次修改。
+源码 [PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2) 已合并为 `faa7d956324a20889cb921ff35c9f13b66dc0c1a`，合并后源码树与受测候选完全一致；模板 PR #21 亦已合并。主项目的配方、固定依赖和证据由 [PR #441](https://github.com/LIghtJUNction/MagicNet/pull/441) 归档。本轮保留 Android 软件版本 `v1.8.5`，交付完整修复验证包；没有创建正式 Release 或安装用户设备。
 
 ## 根因
 
@@ -32,7 +32,7 @@ sing-box 的新式 HTTPS DNS server 在没有 detour 时使用直接拨号；`dn
 
 profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.conf` 的精确内容或原不存在状态，回滚失败保留失败信息，失败路径不启动或停止核心。已有合法 profile 的成功路径保持。
 
-本次未增加常驻进程、周期探测或公共联网请求。正常模板复用现有 DNS server；手动 Cloudflare UDP/DoT/DoH profile 继续保留各自传输方式。没有从这些结构性事实推导未经测量的性能提升比例。
+DNS 修复没有增加常驻进程、周期探测或额外的产品侧公共探测请求。正常模板复用现有 DNS server；手动 Cloudflare UDP/DoT/DoH profile 继续保留各自传输方式。没有从这些结构性事实推导未经测量的性能提升比例。
 
 ## 验证证据
 
@@ -80,7 +80,7 @@ profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.con
 
 测试不访问公共 DNS、不使用用户订阅、不修改主机路由或防火墙，也不关闭 TLS 证书验证。CI 使用 `--require`，缺核心或能力不足会失败。模板的 [Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42182106388) 与源码的 [Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836609)亦已通过。
 
-最终候选 `38c6eea` 的 [Code Quality 42187346672](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672) 全部 7 个 job 成功，包括 Rust、Shell/host、WebUI、组件与 Android probe 合同。前一候选 `e2725d7` 的 [42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 也通过同一真实核心场景；每轮验证使用自己的运行记录，不将旧结果改写为新提交结果。最终 `38c6eea` 已重复通过该真实核心步骤及整套 Network Regression Evidence；其余远程门禁按最终运行记录单独核对。
+最终候选 `38c6eea` 的 [Code Quality 42187346672](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672) 全部 7 个 job 成功，包括 Rust、Shell/host、WebUI、组件与 Android probe 合同。前一候选 `e2725d7` 的 [42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 也通过同一真实核心场景；每轮验证使用自己的运行记录，不将旧结果改写为新提交结果。最终 `38c6eea` 已重复通过该真实核心步骤及整套 Network Regression Evidence；最终同一源码的 Network regression、Rules Release Integration、Install Onboarding、Build Kam Module 和 Android KernelSU Acceptance 亦全部成功；Android 的首次失败和唯一复验分开记录如下。
 
 ### 完整模块与 Android 验收
 
@@ -100,9 +100,15 @@ profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.con
 
 [Android KernelSU Acceptance 42187346630](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346630) 的首次执行失败，失败记录完整保留。前置 harness 套件 300 项中 1 项可选 CA 夹具跳过，其余通过；实际 Android 15 / KernelSU v3.2.0 / x86_64 TUN 流程的 environment、kernelsu-bootstrap、install-before-first-boot 通过，cold-boot 在 `curl_tls_positive_failed` 处失败，后续 8 个生命周期阶段未运行。已安装 curl 的摘要核验、核心运行、数据面就绪及该次重启的 root/SELinux Enforcing/原生 init 阶段均通过。
 
-失败发生于本地 HTTPS 正向控制：它用 `--resolve` 固定回环地址、显式关闭代理并经 ADB reverse 访问临时 TLS 服务，不使用 DNS 查询或代理出站。harness 未保留具体 curl 退出码或 TLS 错误细节，连接失败与测试服务请求计数不符会进入同一错误，因此不能认定唯一根因，也不能把整套 Android 验收写成成功。仅对同一提交的失败 jobs 启动一次复验；源码、TLS 信任、超时及断言均未修改。当前完整模块保留为候选，等待这次复验结论。
+失败发生于本地 HTTPS 正向控制：它用 `--resolve` 固定回环地址、显式关闭代理并经 ADB reverse 访问临时 TLS 服务，不使用 DNS 查询或代理出站。harness 未保留具体 curl 退出码或 TLS 错误细节，连接失败与测试服务请求计数不符会进入同一错误，因此不能认定唯一根因，也不能把首次 Android 验收写成成功。仅对同一提交的失败 jobs 启动一次复验；源码、TLS 信任、超时及断言均未修改。复验结论及其范围如下。
 
-原始运行身份、数据包断言、首次失败阶段与产物摘要见[机器可读证据](../../docs/evidence/dns-repair-ci-2026-11-06.json)。ARM64 完整模块的构建和文件审计，与 x86_64 模拟设备的执行验收分别记录。
+唯一一次复验（attempt 2）成功：12/12 生命周期阶段全部通过，5/5 重启均核对新 boot、root、SELinux Enforcing 和 KernelSU 原生 init。实际模块 curl 的本地 TLS 正向控制收到 1 次 GET；错误主机名与默认信任拒绝控制均未收到 GET，资源清理通过。Android 主 job `127798786927` 为 41 个成功步骤、7 个条件跳过、0 失败，最终 Simulation Gate 成功。已成功的前置 harness 在复验中复用，未将 300 项测试计成执行两遍。
+
+两次都使用相同源码快照和固定依赖，未修改 TLS 信任、时间预算或断言；但 CI 重新构建了组件，curl 摘要由 `3f49744aea2d375281bb5485f6c428b6606373326f9b262702bfa4ed5f24e062` 变为 `9150917b8986fa83002f6d8719955a63d14990505007d02490deb3a7163fa22f`。其余 curl 构建元数据一致。因此结论是同一源码的一次复验通过，不是同一二进制重试；首次失败原因仍未定位，首次 artifact 未被复验覆盖。
+
+Android 的正常产品探测仍记录 `offline/upstream_unavailable`、`primary_reason=tls_failure`，未观察到 Google HTTPS 204；这次产品探测失败后进入 60 秒退避，没有执行订阅刷新或重启恢复。生命周期与诊断行为通过，不代表实际公网代理质量已通过。
+
+原始运行身份、数据包断言、首次失败阶段与产物摘要见[机器可读证据](https://github.com/LIghtJUNction/MagicNet/blob/main/docs/evidence/dns-repair-ci-2026-11-06.json)。ARM64 完整模块的构建和文件审计，与 x86_64 模拟设备的执行验收分别记录。
 
 ### 配方与发布入口
 
