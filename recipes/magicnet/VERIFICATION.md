@@ -1,5 +1,33 @@
 # 实现与发行验证
 
+## 2026-11-06 / 正式HTTPS组件候选2bbbf2a
+
+固定[源码2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5](https://github.com/LIghtJUNction/magicnet-android/commit/2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5)，tree `73a97009348c6e487a62c2aa1d8b2c7647962259`。fa0e1ad新增正式curl/OpenSSL/zlib/内嵌CA组件、安装完整性、明确执行器原因和诊断来源；2bbbf2a仅修正宿主TLS proof的合法版本解析。真实Android仍按全部锁定版本精确核对。
+
+实际候选[Build42169118393](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118393)、[Quality42169118423](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118423)、[Android42169118312](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118312)和[Network42169118327](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118327)尚在执行，不能视为交付通过。fa0的宿主proof失败与Android未启动保留；旧b5无curl不交付。重启验收仅初次bootstrap late-load，后续核对当前boot三个原生init阶段及真实KSU/Enforcing，不重放生命周期。
+
+已完成宿主门禁包括Rust定向导出/执行器测试与严格fmt/Clippy，fa0完整Rust workspace实际RUN成功，新proof23通过/1原可选CA样本跳过，harness100通过，workflow26、acceptance32、KSU夹具11通过；生产curl产物边界9、组件18、archive13、core-size5、Go race、父发布控制21通过。八包59份Markdown配方闭包已实际重新验证，delivery推进0.2.6，control0.2.6/runtime0.1.7/root0.3.14。
+
+## 2026-11-06 / 上一候选b5fa1cd（未交付）
+
+固定[源码b5fa1cd64788bdc5d1dbbd6b88d799c25f895944](https://github.com/LIghtJUNction/magicnet-android/commit/b5fa1cd64788bdc5d1dbbd6b88d799c25f895944)，tree fe78eb29a1dd8ab06292606b4ccf84b27e13cb88；kamfw a7788737。保留同期重写与M59合同，根配方推进0.3.14，control0.2.6、runtime0.1.7。版本仍v1.8.5/10613，没有正式Release或用户设备部署。
+
+| 该候选精确门禁 | 结果 |
+| --- | --- |
+| [Code Quality42162571569](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571569) | 7/7 jobs通过；123个包装检查全部RUN/PASS、0 HIT，含108个host检查和完整浏览器套件 |
+| [Build42162571259](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571259) | 通过；13 ZIP、1092成员、CRC/摘要/manifest/pin/ELF全部核对，测试目录0匹配 |
+| [Android42162571341](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571341) | attempt1在disable-reboot失败；唯一一次复测在upgrade-preservation失败，根因是重复late-load覆盖执行中ksud的ETXTBSY；两次原生诊断内容均通过 |
+| [Network evidence42162571269](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571269) | attempt2通过；core/AVD原执行成功，visual首次字体下载超时后单job重试300项通过 |
+| 配方闭包 | 0.3.14/8包59份Markdown；最终报告更新后再次检查 |
+
+最终诊断内容修复完成15项导出单元测试、3项真实CLI集成、严格fmt/Clippy及独立代码审查。修改前真实CLI失败复现被保留；修改后含URL的service/transparent/DNS状态仍可解析，公共字段和11个实际事务阶段完整，私密值遮蔽，MCP采用有效只读入口。真实release报告再经Android解析器联调通过；宿主stopped状态不冒充设备就绪。88项Android harness与32项acceptance contract在最终SHA的Android前置job实际执行成功，分别记录workflow归属。
+
+真实构建曾暴露MagicNet外层与kamfw内层使用同一flock文件的自锁。81a把外层改为controller.lock，框架保留lifecycle.lock；实际固定框架通过四shell×两flock后端、并发启停、忙锁、FD关闭及退出清理。上游ea8758bf相对路径排除修复保留；a7788737新增GNU/BusyBox find字面路径回归。诊断加入supervisors与connectivity-watchdog尾部日志。
+
+失败记录未删除：aef Android在前10/12阶段后未能证明enable-reboot完成，保留失败；新harness不重发reboot，以新boot ID、boot_completed、root、Enforcing和late-load共同验收。81a的ShellCheck、未sanitize安装夹具、旧框架变量断言分别修正；d22构建、质量和Android虽均通过，独立真实文件审计仍发现JSON整段脱敏与错误MCP命令，因此没有交付该包。b5fa1cd修复实际内容并加强设备断言，预算和打包拒绝规则未放宽。
+
+本机最终CLI状态中位2.1547ms、未到期tick0.9993ms，诊断单次138.8830ms/19432字节/峰值53252KiB（包含核心校验子进程）。watchdog记录保留81a身份，未改的真实60秒监督循环空闲RSS1820KiB/PSS549KiB。最终Linux核心54规则两轮稳定RSS约72.33/73.23MiB，回环代理吞吐中位6.5838Gbit/s、代理和直连中位耗时差0.3024ms。真实样本、摘要和范围见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)、[CI](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。本机核心run受netlink权限阻断，最终本机综合状态仍blocked而CLI通过；CI实际转发不等于Google或手机数据面成功。
+
 ## 2026-11-06 / 跨层重写（完整回归 d58dbdc，最终整合 81a601）
 
 源码交付固定 [f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea](https://github.com/LIghtJUNction/magicnet-android/commit/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea)，与下列测试点的关系分别说明。
@@ -24,25 +52,6 @@
 
 262 个浏览器场景均未进入应用：Chromium 创建 socket 被禁止，扩大权限的执行请求被自动审批拒绝。346 项单元检查与构建不代替浏览器布局、触屏和焦点验证。没有 Android 实机部署、私密订阅、真实代理出口、手机内存/续航或长期稳定性验收。产品版本仍为 v1.8.5 / 10613，本轮未创建新 Release，也未以宿主 ZIP 夹具冒充完整 Android 发行包。
 
-## 2026-11-06 / 联网恢复、诊断与打包（最终aefcbfb）
-
-实现固定 [aefcbfbab80fe14008e4467eb0292251f7ce8f89](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)。本轮以下检查绑定其最终工作树；既有其他提交的远程CI不移用为本轮证据。
-
-| 范围 | 本轮实际结果 |
-| --- | --- |
-| 低频探测与恢复 | 12单元、8真实CLI集成通过，含2小时确定性故障仅8轮、并发去重、时钟/预算、恢复自身监督、探测中停止和恢复中取消回滚 |
-| 诊断 | 50单元/回归、3真实CLI集成通过，覆盖有界采集、脱敏、原子发布/失败保留、单JSON和零状态修改 |
-| 机器与生命周期 | machine17、observation6、service27（另1个原有Android专用ignored）、process_lifecycle5、module_update29通过 |
-| Shell | watchdog、supervisor-start-policy、subscription-lifecycle通过；config-lock-ownership与fswatch-lifecycle在bash/sh/mksh/BusyBox通过 |
-| 静态与前端 | Rust fmt和workspace/all-targets/all-features严格Clippy通过；WebUI346测试、typecheck和生产构建通过 |
-| 归档 | components17、archive-safety12、core-size5、release-validator19；另实际清理/拆分9ZIP、88成员通过，载荷为宿主合成夹具 |
-| CLI性能 | 20次status中位2.3055ms、RSS中位2224KiB；20次未到期tick中位1.2938ms、RSS中位1918KiB，状态字节不变；一次导出152.3926ms、18188字节 |
-| 监督空闲 | 同一固定kamfw的shell+sleep采样15秒/16次，RSS合计1832KiB、PSS中位483KiB；不含核心/周期CLI/Android，原测量SHA另记 |
-| 配方 | 0.3.12目录check、pack、归档check、完整提示词通过，8包58Markdown；源码以固定gitlink接入 |
-
-完整生产标签核心d850ff0已构建且version/pin/tags与config check通过；run被宿主`create netlink socket: operation not permitted`阻断。单次Google测试实际请求0，真实代理吞吐和核心空闲RSS未知；最终JSON为cli.acceptance=passed、local_acceptance=blocked。CLI峰值是wait4最大单进程（包含已等待后代），不是常驻或并发总量；诊断最大51076KiB含真实核心version/check子进程。
-
-保留一个未改动的TUN测试失败：宿主缺/sys/class/net/lo，既有测试硬编码lo应就绪。新增6个Playwright场景因Chromium所需socket被禁止未执行完成；生产Vue事件函数夹具不替代浏览器。NDK/cargo-ndk/cross/Android Rust目标/javac/d8/adb/sdkmanager缺失，本轮没有生成或验证新Android包/真机流量。报告、哈希、复现命令和边界见[完整验收记录](../../docs/connectivity-diagnostics-2026-11-06.md)，原始指标见[JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)。
 
 ## 2026-11-06 / 大陆教育域名分类与默认模板迁移
 

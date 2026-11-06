@@ -10,6 +10,10 @@ control 0.2.3 增加 C-SUB-008：公共 sub.status、私密 sub.inspect、canoni
 
 control 0.2.5 增加只读 `connectivity.status`，并在 `service.status` 内提供同一缓存。`support bundle` 提供完整脱敏报告；`support export` 是显式文件导出例外，机器写语义、并发/失败与字节/时间上限遵守 DIAGNOSTIC_CONTRACT.md。读取和采集不探测外网、不 reconcile、不自愈；自动恢复由 runtime 的单一 producer 负责。
 
+control 0.2.6 要求诊断保留后台监督启动超时与 connectivity watchdog 创建失败的日志。最多八个固定日志各有尾读限制；Android 上用真实 CLI 校验 export envelope、固定下载路径、回执/设备文件/拉取文件大小、必要章节和结束标记，不能只凭宿主替身成功推断设备导出可用。DIAG-A07还要求解析实际文件中的服务、透明代理与DNS机器状态，按字段脱敏且保留公共状态、数值、布尔/null及真实事务阶段；采集使用支持的纯只读入口，不能因私密URL吞掉整个JSON或因错误命令制造故障。
+
+同版本DIAG-A08要求独立的HTTPS执行器章节：仅用有界版本查询和固定来源文件记录工具版本、TLS/HTTPS/gzip能力及公开构建摘要。缺失、不可执行、损坏来源明确标记，未知字段和私密字符串仍脱敏；不得为证明能力而从诊断导出发起网络请求。探测工具不可用应保留本地原因，不能归因为上游断网。
+
 保留 CLI_REFERENCE.md 的命令族与参数。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
 Android 模块根必须由可信可执行路径/固定安装位置确定，不能由调用者 MODDIR 重定向特权代码。宿主夹具可显式使用独立 MODDIR；本地 API 仅允许 loopback HTTP 端口，拒绝远端/userinfo/路径混入。
 privileged 子进程不能执行任意拼接 shell；文件 payload 有界、私有、校验归属与路径。凭据不放 argv，不在输出预览泄露。

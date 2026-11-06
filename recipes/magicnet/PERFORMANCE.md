@@ -1,5 +1,24 @@
 # 性能与观察基线
 
+## 2026-11-06：联网控制成本与真实核心转发
+
+当前控制测量按冻结文件摘要绑定源码2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5，Linux6.18.57/x86_64、9逻辑CPU，Rust1.87 release CLI SHA256为6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba。诊断执行器章节和环境隔离完成后重新测量；测时工作树为b5加已冻结修改，保留dirty事实，六个Rust文件与fa0/2bb提交逐字节相同；旧81a6010样本保留原身份，不改标为新提交。
+
+| 项目 | 样本 | 中位耗时 | P95 | 内存口径与结果 |
+| --- | ---: | ---: | ---: | --- |
+| 缓存联网状态 | 20 | 1.9237ms | 2.1997ms | wait4最大单进程RSS中位2192KiB，最大2512KiB |
+| 未到期tick | 20 | 1.0025ms | 1.3087ms | 同口径RSS中位1792KiB，最大2032KiB |
+| 完整诊断导出 | 1 | 130.4854ms（单次） | 不计算 | 最大77700KiB，含真实核心version/check后代 |
+| 固定kamfw真实60秒循环空闲 | 20秒/21点 | 不适用 | 不适用 | shell+sleep同期RSS1820KiB，PSS549KiB，结束0残留；实际测量81a身份保留 |
+
+20次tick后状态字节不变；诊断19917字节，与机器回执一致，CPU125.203ms。时间由原生fork/exec+wait4测量，排除Python驱动继承高水位；单进程峰值不等于并发总量或常驻。单次导出不报告P95或稳定优化比例。watchdog只测首次sleep、空回调；此段框架及模块运行路径在81a到b5fa1cd之间未变，不含核心和周期CLI，不推导电池开销。
+
+完整生产标签核心d850ff0，Go1.26.7，Linux二进制SHA256为bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407。上一候选b5fa1cd的Linux CI对54个本地规则集测得两轮稳定段RSS中位74062/74988KiB（约72.33/73.23MiB）；每轮8点取末4点，无TUN、活动连接或Android射频。简单mixed配置20秒/21点RSS59452KiB、PSS59444KiB，最多9线程。
+
+四次独立CI回环转发运行使用同一核心和脚本，各30组成对26字节请求与8组成对4MiB传输，响应逐字节核对：027e91f代理/直连中位耗时差0.3233ms、代理吞吐中位8.2140Gbit/s；81a6010分别为0.4680ms、5.5847Gbit/s；d22b122分别为0.4690ms、5.6049Gbit/s；b5fa1cd为0.3024ms、6.5838Gbit/s。共享runner负载不同，这不是源码A/B，不将差异归因于优化；回环吞吐也不等于互联网带宽或手机TUN性能。均为0公网请求。具体样本、环境、CPU粒度、规则清单和二进制哈希见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)和[CI JSON](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
+
+本机核心run受netlink权限阻断，保留local_acceptance=blocked、cli.acceptance=passed；实际转发来自具备权限的CI。新增控制开销已有测量，物理手机内存、持续负载、真实代理出口、Google实网和电池仍未得到证据；不声称全模块性能最优。
+
 ## 2026-11-06：跨层重写的宿主 A/B
 
 对照原版 `magicnet-android@aefcbfb` 与生产实现 `d58dbdc`，框架由 `bb0dc758` 更新至 `ea8758bf`。以下为相同输入的中位数，所有输入均为合成夹具；测量对象、样本和保留统计见[重写报告](https://github.com/LIghtJUNction/magicnet-android/blob/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea/docs/rewrite-verification-2026-11-06.md)及随附 JSON，不引用历史设备测量作为本轮结果。
@@ -17,21 +36,6 @@ CLI 交替运行 25 对，打包交替运行 3 组；kamfw 预热后按原版→
 
 kamfw 的 39 个运行时文件从 6,614 行 / 202,859 字节降至 3,349 行 / 123,852 字节，分别减少 49.4% / 38.9%，排除测试；不能换算为同比内存改善。CLI 宿主 release 二进制缩小 16 KiB。普通查询变化约零点几毫秒，未宣称普遍提速；Android 核心 RSS、吞吐、续航与长时稳定性仍未测量。
 
-## 2026-11-06：联网与诊断新增控制侧成本
-
-最终源码aefcbfbab80fe14008e4467eb0292251f7ce8f89，Linux6.18.57/x86_64，release CLI SHA256为1a25a998ef7c1a078597172a8a960350672c8a37369bfb40d0c6fdde64e00e8b。在隔离合成模块中测正常缓存/未来截止时间，不把网络替身当成实际代理性能。
-
-| 项目 | 样本 | 中位耗时 | P95 | 峰值RSS中位 |
-| --- | ---: | ---: | ---: | ---: |
-| 状态查询 | 20 | 2.3055ms | 2.9307ms | 2224KiB |
-| 未到期tick | 20 | 1.2938ms | 1.6770ms | 1918KiB |
-| 完整导出 | 1 | 152.3926ms（单次） | 不计算 | 不计算；单次最大51076KiB |
-
-导出18188字节，包含真实核心version/check成本；20次节流tick后状态字节不变。测量由原生小驱动fork/exec+wait4，排除Python驱动继承峰值；RSS是包含已等待后代的最大单进程值，不是并发总RSS或常驻。固定kamfw shell+sleep空闲15秒的PSS中位483KiB、同期RSS1832KiB，只代表该监督夹具且原始SHA单独记录。
-
-完整生产标签核心d850ff0编译、版本/来源/tags与config check通过；真实run被netlink socket权限阻断，所以核心空闲内存、吞吐、公网和Android预算仍未知。不能将小型控制侧开销称为全模块“内存/性能最优”。[报告与复现](../../docs/connectivity-diagnostics-2026-11-06.md)、[原始指标](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)保留样本、单位、哈希和未覆盖范围。无需新增运行依赖或放宽生产内核功能来取得数字。
-
-本文件保留各次测量的具体对象和时间口径。以下继续保留 2026-10-30 的 sing-tun 连接表生命周期 A/B、日志路径局部 A/B 和历史基线。各条记录绑定自身源码、输入与环境；Android 代理吞吐、冷启动和整模块内存预算单独测量。
 
 ## 2026-10-30：sing-tun 连接表生命周期 A/B
 

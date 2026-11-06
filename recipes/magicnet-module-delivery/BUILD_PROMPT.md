@@ -6,7 +6,7 @@
 
 ## 模块布局与安装
 
-bin/ 保存运行程序，cli -> bin/magicnet-cli 是兼容入口；默认完整包包含 sing-box、受控默认配置和真实规则。service.sh/boot-completed.sh 进入真实生命周期；不加无作用 post-fs-data.sh/uninstall.sh 占位。卸载有真实清理时调用受控框架钩子。
+bin/ 保存运行程序，cli -> bin/magicnet-cli 是兼容入口；默认完整包包含 sing-box、受控默认配置、真实规则及受管bin/curl。curl由固定源码构建，连同TLS/压缩支持、嵌入CA、许可和构建证明进入正常组件链；不依赖设备恰有系统curl。生产ARM64与AVD x86_64共用构建器，分别核对ABI和实际运行证据。service.sh/boot-completed.sh 进入真实生命周期；不加无作用 post-fs-data.sh/uninstall.sh 占位。卸载有真实清理时调用受控框架钩子。
 安装引导和卸载告别页共用 `kamfw` 的浏览器启动器。现行 Shell 实现直接维护 `MemDeco-WG/kamfw` 的 `launcher.sh`，由固定子模块 `lib/kamfw/` 提供；移除 `lib/kamfw-web/`。安装入口通过 `import launcher` 调用，卸载临时会话从同一文件复制，依赖初始化、构建和测试均覆盖此来源。启动接口及失败语义见 [RELEASE_CONTRACT.md](RELEASE_CONTRACT.md)。
 首次/升级先校验组件，再迁移配置/权限/订阅引导；用户配置和有效订阅保留，不能先卸载再“升级”。历史缓存清理是有界一次迁移，不做开机全盘扫描。
 备份与恢复由同一迁移清单派生，新增状态路径不需要维护两份列表。旧完整 config 只作节点恢复及私密回滚材料，活动配置由新模板重建并独立验证；此类备份专用项必须显式声明。复制/权限/恢复错误非零退出并保留恢复证据，不得静默成功。

@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.5"
+version = "0.2.6"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.6 将可信curl作为正式运行组件，生产ARM64与模拟器x86_64使用相同锁源及TLS/压缩/CA构建流程，携带许可与构建证明，并进入既有manifest、摘要、安装与复用事务。实际无系统curl环境验证执行器和证书边界；测试专用注入不作为生产供应证据。
 
 0.2.5 要求所有最终模块和组件 ZIP 递归排除测试、fixture、快照、基准、覆盖率及 node_modules 目录；源码测试和运行同名文件保留。清理、拆包与发布内容验证形成独立门禁，实际归档证据见 ACCEPTANCE.md。
 

@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.2.5"
+version = "0.2.6"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"
@@ -15,6 +15,8 @@ source = "../magicnet-network-runtime"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.2.6 将后台监督器和connectivity watchdog的启动日志及HTTPS执行器能力、固定构建来源纳入诊断，避免遗漏启动失败或工具缺失。固定日志清单上限为八个，单日志尾读、全文件大小、命令期限与脱敏合同保持；Android验收实际核对导出文件、机器回执和拉取文件的字节、完整性及状态内容语义。机器状态按字段脱敏，保留可解析结构和真实事务阶段；只调用已支持的只读采集入口，工具版本查询不发网络请求。DIAG-A07–A08分别验收结构保真和HTTPS执行器证据。
 
 0.2.5 增加缓存只读 connectivity.status、service.status 的 connectivity 字段和显式 support.export 机器写例外。DIAGNOSTIC_CONTRACT.md 规定内容、资源上限、脱敏和单文件原子发布；MCP 增加只读缓存资源，不把诊断变为自动修复。
 

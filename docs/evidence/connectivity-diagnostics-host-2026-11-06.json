@@ -1,12 +1,12 @@
 {
-  "schema": 1,
-  "final_source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
-  "scope": "Linux synthetic-module validation; original measurements retain their exact source and binary identity",
+  "schema": 3,
+  "scope": "Exact-commit Linux host measurements; initial feature and final candidate identities kept separate; Android and public internet are not inferred",
+  "final_source_commit": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
   "final_host": {
     "schema": 1,
-    "captured_at_utc": "2026-11-06T02:46:56.450982+00:00",
+    "captured_at_utc": "2026-11-06T05:26:54.470928+00:00",
     "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
-    "source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
+    "source_commit": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
     "environment": {
       "os": "Linux",
       "release": "6.18.57",
@@ -14,9 +14,9 @@
       "cpus": 9,
       "python": "3.12.14",
       "load_average": [
-        1.22412109375,
-        0.95849609375,
-        0.8720703125
+        1.1181640625,
+        0.68896484375,
+        0.44189453125
       ],
       "cpu_tick_hz": 100
     },
@@ -41,74 +41,793 @@
       "errno": null
     },
     "cli": {
-      "binary_sha256": "1a25a998ef7c1a078597172a8a960350672c8a37369bfb40d0c6fdde64e00e8b",
+      "binary_sha256": "6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba",
       "fixture": "isolated_host_module_future_probe_deadline",
       "measurement": "native fork/exec wall time and wait4 CPU; excludes Python driver",
       "peak_rss_scope": "maximum individual process including waited descendants; not concurrent tree total or persistent memory",
       "status": {
         "elapsed_ms": {
           "samples": 20,
-          "min": 1.8017,
-          "median": 2.3055,
-          "p95_nearest_rank": 2.9307,
-          "max": 3.2263
+          "min": 1.7452,
+          "median": 1.9237,
+          "p95_nearest_rank": 2.1997,
+          "max": 2.2442
         },
         "peak_process_rss_kib": {
           "samples": 20,
-          "min": 2096,
-          "median": 2224.0,
-          "p95_nearest_rank": 2348,
-          "max": 2348
+          "min": 1996,
+          "median": 2192.0,
+          "p95_nearest_rank": 2512,
+          "max": 2512
         },
         "cpu_ms": {
           "samples": 20,
-          "min": 1.788,
-          "median": 2.2695,
-          "p95_nearest_rank": 2.916,
-          "max": 2.919
+          "min": 1.716,
+          "median": 1.8795,
+          "p95_nearest_rank": 2.162,
+          "max": 2.168
         }
       },
       "tick_not_due": {
         "elapsed_ms": {
           "samples": 20,
-          "min": 0.9195,
-          "median": 1.2938,
-          "p95_nearest_rank": 1.677,
-          "max": 1.8036
+          "min": 0.8685,
+          "median": 1.0025,
+          "p95_nearest_rank": 1.3087,
+          "max": 1.336
         },
         "peak_process_rss_kib": {
           "samples": 20,
-          "min": 1772,
-          "median": 1918.0,
-          "p95_nearest_rank": 1956,
-          "max": 1964
+          "min": 1640,
+          "median": 1792.0,
+          "p95_nearest_rank": 2032,
+          "max": 2032
         },
         "cpu_ms": {
           "samples": 20,
-          "min": 0.859,
-          "median": 1.146,
-          "p95_nearest_rank": 1.544,
-          "max": 1.718
+          "min": 0.81,
+          "median": 0.9275,
+          "p95_nearest_rank": 1.242,
+          "max": 1.253
         }
       },
       "no_op_preserved_probe_state": true,
       "export": {
-        "elapsed_ms": 152.392554,
-        "peak_process_rss_kib": 51076,
-        "cpu_ms": 144.788,
-        "file_bytes": 18188,
-        "reported_bytes": 18188,
+        "elapsed_ms": 130.485394,
+        "peak_process_rss_kib": 77700,
+        "cpu_ms": 125.203,
+        "file_bytes": 19917,
+        "reported_bytes": 19917,
         "samples": 1
       },
       "acceptance": "passed"
     },
-    "local_acceptance": "blocked"
+    "local_acceptance": "blocked",
+    "tested_source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+    "source_binding_file": "/workspace/scratch/5fe57994f333/simulation/evidence/host-final-production-curl-source-binding.json",
+    "measurement_worktree_was_dirty": true,
+    "prior_bound_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69"
   },
-  "core_google_attempt": {
+  "watchdog_idle": {
+    "schema_version": 1,
+    "status": "passed",
+    "recorded_at": "2026-11-06T03:36:57.047578+00:00",
+    "source_commit": "81a60108477d31ca6131f930f955580ad4fa8ba1",
+    "kamfw_commit": "a7788737b938a9ed930645befe2526b626999a22",
+    "cli_for_proc_identity_sha256": "f22c35f5e47bcd28f801b975b6954eba5a766f0443a7c8d56a7b9a9cf88fc970",
+    "watchdog_source_sha256": "f96cd7122c3ca8384574b189b6a15d0b9f636319fb98b5c9bc27c8a7cecb678d",
+    "framework_rc_sha256": "4b018cead35ed2ab2125921cf8cab82490925ee2637872db2c67a47e66d55b61",
+    "module_envrc_sha256": "3cbce6b1ca610d33b036e4341fb6bcac3075672e50bb6fdac3b12c404f769ea8",
+    "measurement_driver_sha256": "541f81c48ab19c8eb3757dc2f4707a62e44af9888db9a7d580ed475eb6cd9870",
+    "host": {
+      "system": "Linux",
+      "machine": "x86_64",
+      "kernel": "6.18.57",
+      "shell": "/usr/bin/dash"
+    },
+    "scope": "real pinned kamfw .kamfwrc and watchdog.sh with module .envrc; 60-second generated loop; Linux shell and sleep only, during initial sleep; no-op callback; Python/bootstrap excluded; no core or Android routing",
+    "callback": ":",
+    "network_requests": 0,
+    "network_probe_commands_invoked": false,
+    "sampling_interval_seconds": 1,
+    "clock_ticks_per_second": 100,
+    "memory_note": "RSS sums shell and sleep within each sample and double-counts shared pages; PSS apportions shared pages. Neither includes the driver, core, periodic CLI work, or Android manager overhead.",
+    "cpu_note": "Zero ticks means below the /proc CPU accounting resolution in this idle window; it does not establish zero permanent CPU cost.",
+    "samples": 21,
+    "process_count": 2,
+    "observed_seconds": 20.000037,
+    "max_collection_span_ms": 1.303,
+    "sample_rows": [
+      {
+        "elapsed_seconds": 8.2e-05,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.61
+      },
+      {
+        "elapsed_seconds": 1.000099,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.646
+      },
+      {
+        "elapsed_seconds": 2.000106,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.639
+      },
+      {
+        "elapsed_seconds": 3.000109,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.668
+      },
+      {
+        "elapsed_seconds": 4.00011,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.774
+      },
+      {
+        "elapsed_seconds": 5.000328,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.684
+      },
+      {
+        "elapsed_seconds": 6.000116,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.631
+      },
+      {
+        "elapsed_seconds": 7.000116,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.674
+      },
+      {
+        "elapsed_seconds": 8.000118,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.856
+      },
+      {
+        "elapsed_seconds": 9.000104,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.644
+      },
+      {
+        "elapsed_seconds": 10.00013,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.694
+      },
+      {
+        "elapsed_seconds": 11.000118,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.758
+      },
+      {
+        "elapsed_seconds": 12.000126,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.67
+      },
+      {
+        "elapsed_seconds": 13.000116,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.863
+      },
+      {
+        "elapsed_seconds": 14.000102,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.942
+      },
+      {
+        "elapsed_seconds": 15.000115,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.693
+      },
+      {
+        "elapsed_seconds": 16.000129,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 1.303
+      },
+      {
+        "elapsed_seconds": 17.000098,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.79
+      },
+      {
+        "elapsed_seconds": 18.000119,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.732
+      },
+      {
+        "elapsed_seconds": 19.000124,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.657
+      },
+      {
+        "elapsed_seconds": 20.000119,
+        "processes": {
+          "watchdog_shell": {
+            "rss_kib": 944,
+            "pss_kib": 370,
+            "cpu_ticks": 0
+          },
+          "sleep": {
+            "rss_kib": 876,
+            "pss_kib": 179,
+            "cpu_ticks": 0
+          }
+        },
+        "rss_kib": 1820,
+        "pss_kib": 549,
+        "collection_span_ms": 0.67
+      }
+    ],
+    "generated_loop_sha256": "debc17d61c705009c5d65e539fbc6ed7f12b885540d6ed26108886cb471f646f",
+    "processes": [
+      {
+        "role": "watchdog_shell",
+        "rss_kib": {
+          "samples": 21,
+          "min": 944,
+          "median": 944,
+          "p95_nearest_rank": 944,
+          "max": 944
+        },
+        "pss_kib": {
+          "samples": 21,
+          "min": 370,
+          "median": 370,
+          "p95_nearest_rank": 370,
+          "max": 370
+        },
+        "cpu_ticks_delta": 0
+      },
+      {
+        "role": "sleep",
+        "rss_kib": {
+          "samples": 21,
+          "min": 876,
+          "median": 876,
+          "p95_nearest_rank": 876,
+          "max": 876
+        },
+        "pss_kib": {
+          "samples": 21,
+          "min": 179,
+          "median": 179,
+          "p95_nearest_rank": 179,
+          "max": 179
+        },
+        "cpu_ticks_delta": 0
+      }
+    ],
+    "simultaneous_tree_rss_kib": {
+      "samples": 21,
+      "min": 1820,
+      "median": 1820,
+      "p95_nearest_rank": 1820,
+      "max": 1820
+    },
+    "simultaneous_tree_pss_kib": {
+      "samples": 21,
+      "min": 549,
+      "median": 549,
+      "p95_nearest_rank": 549,
+      "max": 549
+    },
+    "cpu_ticks_delta": 0,
+    "cleanup_remaining_processes": 0,
+    "temporary_fixture_removed": true,
+    "host_cpu_context": {
+      "recorded_start_utc": "2026-11-06T03:36:56.977685+00:00",
+      "recorded_end_utc": "2026-11-06T03:37:17.987189+00:00",
+      "scope": "one-second whole-host /proc/stat samples spanning driver startup, the 20-second target window, and cleanup; observer and driver excluded from target process RSS/PSS/ticks",
+      "project_performance_work_finished_utc": "2026-11-06T03:36:00Z",
+      "online_cpu_count": 9,
+      "observed_seconds": 21.009233,
+      "interval_samples": 21,
+      "non_idle_non_iowait_cpu_percent": {
+        "min": 0.1111,
+        "max": 4.7566,
+        "whole_window_average": 1.1471
+      },
+      "loadavg_start_1_5_15": [
+        0.58,
+        1.52,
+        1.76
+      ],
+      "loadavg_end_1_5_15": [
+        0.41,
+        1.42,
+        1.72
+      ],
+      "method": "first eight /proc/stat aggregate CPU counters; total minus idle and iowait divided by total; includes steal, excludes duplicate guest counters"
+    }
+  },
+  "initial_feature_measurements": {
     "schema": 1,
-    "captured_at_utc": "2026-11-06T02:32:40.211023+00:00",
+    "final_source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
+    "scope": "Linux synthetic-module validation; original measurements retain their exact source and binary identity",
+    "final_host": {
+      "schema": 1,
+      "captured_at_utc": "2026-11-06T02:46:56.450982+00:00",
+      "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+      "source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
+      "environment": {
+        "os": "Linux",
+        "release": "6.18.57",
+        "architecture": "x86_64",
+        "cpus": 9,
+        "python": "3.12.14",
+        "load_average": [
+          1.22412109375,
+          0.95849609375,
+          0.8720703125
+        ],
+        "cpu_tick_hz": 100
+      },
+      "google_once": {
+        "status": "not_requested",
+        "requests": 0
+      },
+      "core": {
+        "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+        "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+        "binary_bytes": 86507646,
+        "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+        "config": "mixed_loopback_only_no_tun_no_ebpf",
+        "log_level": "warn",
+        "production_build_tags_verified": true,
+        "configuration_check": "passed"
+      },
+      "loopback": {
+        "status": "blocked",
+        "type": "RuntimeError",
+        "reason": "host_netlink_socket_denied",
+        "errno": null
+      },
+      "cli": {
+        "binary_sha256": "1a25a998ef7c1a078597172a8a960350672c8a37369bfb40d0c6fdde64e00e8b",
+        "fixture": "isolated_host_module_future_probe_deadline",
+        "measurement": "native fork/exec wall time and wait4 CPU; excludes Python driver",
+        "peak_rss_scope": "maximum individual process including waited descendants; not concurrent tree total or persistent memory",
+        "status": {
+          "elapsed_ms": {
+            "samples": 20,
+            "min": 1.8017,
+            "median": 2.3055,
+            "p95_nearest_rank": 2.9307,
+            "max": 3.2263
+          },
+          "peak_process_rss_kib": {
+            "samples": 20,
+            "min": 2096,
+            "median": 2224.0,
+            "p95_nearest_rank": 2348,
+            "max": 2348
+          },
+          "cpu_ms": {
+            "samples": 20,
+            "min": 1.788,
+            "median": 2.2695,
+            "p95_nearest_rank": 2.916,
+            "max": 2.919
+          }
+        },
+        "tick_not_due": {
+          "elapsed_ms": {
+            "samples": 20,
+            "min": 0.9195,
+            "median": 1.2938,
+            "p95_nearest_rank": 1.677,
+            "max": 1.8036
+          },
+          "peak_process_rss_kib": {
+            "samples": 20,
+            "min": 1772,
+            "median": 1918.0,
+            "p95_nearest_rank": 1956,
+            "max": 1964
+          },
+          "cpu_ms": {
+            "samples": 20,
+            "min": 0.859,
+            "median": 1.146,
+            "p95_nearest_rank": 1.544,
+            "max": 1.718
+          }
+        },
+        "no_op_preserved_probe_state": true,
+        "export": {
+          "elapsed_ms": 152.392554,
+          "peak_process_rss_kib": 51076,
+          "cpu_ms": 144.788,
+          "file_bytes": 18188,
+          "reported_bytes": 18188,
+          "samples": 1
+        },
+        "acceptance": "passed"
+      },
+      "local_acceptance": "blocked"
+    },
+    "core_google_attempt": {
+      "schema": 1,
+      "captured_at_utc": "2026-11-06T02:32:40.211023+00:00",
+      "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+      "source_commit": "cb7f63bc8eb426c8633de70ef03c9f8af0034ef6",
+      "environment": {
+        "os": "Linux",
+        "release": "6.18.57",
+        "architecture": "x86_64",
+        "cpus": 9,
+        "python": "3.12.14",
+        "load_average": [
+          1.77734375,
+          1.05615234375,
+          1.0615234375
+        ],
+        "cpu_tick_hz": 100
+      },
+      "google_once": {
+        "status": "unavailable",
+        "requests": 0,
+        "reason": "host_netlink_socket_denied"
+      },
+      "core": {
+        "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+        "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+        "binary_bytes": 86507646,
+        "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+        "config": "mixed_loopback_only_no_tun_no_ebpf",
+        "log_level": "warn",
+        "production_build_tags_verified": true,
+        "configuration_check": "passed"
+      },
+      "loopback": {
+        "status": "blocked",
+        "type": "RuntimeError",
+        "reason": "host_netlink_socket_denied",
+        "errno": null
+      },
+      "local_acceptance": "blocked"
+    },
+    "watchdog_idle": {
+      "schema_version": 1,
+      "recorded_at": "2026-11-06T02:42:25.380383+00:00",
+      "source_commit": "9d545e100080ef454f7bc7c11fb9c2508b639e4e",
+      "kamfw_commit": "bb0dc7582ee2c27e31e49d2d3b714b97528defef",
+      "cli_for_proc_identity_sha256": "92da309846a14fd3386235135ffc3abdc41cb527fc8aea698116f744768c4445",
+      "host": {
+        "system": "Linux",
+        "machine": "x86_64",
+        "kernel": "6.18.57",
+        "shell": "/usr/bin/dash"
+      },
+      "scope": "real pinned kamfw .kamfwrc and watchdog.sh; 60-second generated loop; Linux shell and sleep only, during initial sleep; no-op callback; Python/bootstrap excluded; no core or Android routing",
+      "network_requests": 0,
+      "sampling_interval_seconds": 1,
+      "clock_ticks_per_second": 100,
+      "samples": 16,
+      "process_count": 2,
+      "observed_seconds": 15.0124,
+      "processes": [
+        {
+          "role": "watchdog_shell",
+          "rss_kib": {
+            "samples": 16,
+            "min": 956,
+            "median": 956.0,
+            "p95_nearest_rank": 956,
+            "max": 956
+          },
+          "pss_kib": {
+            "samples": 16,
+            "min": 309,
+            "median": 310.0,
+            "p95_nearest_rank": 311,
+            "max": 311
+          },
+          "cpu_ticks_delta": 0
+        },
+        {
+          "role": "sleep",
+          "rss_kib": {
+            "samples": 16,
+            "min": 876,
+            "median": 876.0,
+            "p95_nearest_rank": 876,
+            "max": 876
+          },
+          "pss_kib": {
+            "samples": 16,
+            "min": 169,
+            "median": 173.0,
+            "p95_nearest_rank": 175,
+            "max": 175
+          },
+          "cpu_ticks_delta": 0
+        }
+      ],
+      "simultaneous_tree_rss_kib": {
+        "samples": 16,
+        "min": 1832,
+        "median": 1832.0,
+        "p95_nearest_rank": 1832,
+        "max": 1832
+      },
+      "simultaneous_tree_pss_kib": {
+        "samples": 16,
+        "min": 478,
+        "median": 483.0,
+        "p95_nearest_rank": 486,
+        "max": 486
+      },
+      "cpu_ticks_delta": 0,
+      "memory_note": "RSS is the simultaneous sum of shell and sleep and double-counts shared pages; PSS apportions shared pages. Neither includes the measurement driver, core, periodic CLI work, or Android manager overhead.",
+      "cpu_note": "0 ticks means below the /proc CPU accounting resolution in this idle window, not an assertion of zero permanent CPU cost.",
+      "status": "passed"
+    }
+  },
+  "previous_runtime_candidate_host": {
+    "schema": 1,
+    "captured_at_utc": "2026-11-06T03:36:00.761219+00:00",
     "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
-    "source_commit": "cb7f63bc8eb426c8633de70ef03c9f8af0034ef6",
+    "source_commit": "81a60108477d31ca6131f930f955580ad4fa8ba1",
     "environment": {
       "os": "Linux",
       "release": "6.18.57",
@@ -116,16 +835,15 @@
       "cpus": 9,
       "python": "3.12.14",
       "load_average": [
-        1.77734375,
-        1.05615234375,
-        1.0615234375
+        1.4638671875,
+        1.84814453125,
+        1.875
       ],
       "cpu_tick_hz": 100
     },
     "google_once": {
-      "status": "unavailable",
-      "requests": 0,
-      "reason": "host_netlink_socket_denied"
+      "status": "not_requested",
+      "requests": 0
     },
     "core": {
       "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
@@ -143,82 +861,232 @@
       "reason": "host_netlink_socket_denied",
       "errno": null
     },
+    "cli": {
+      "binary_sha256": "f22c35f5e47bcd28f801b975b6954eba5a766f0443a7c8d56a7b9a9cf88fc970",
+      "fixture": "isolated_host_module_future_probe_deadline",
+      "measurement": "native fork/exec wall time and wait4 CPU; excludes Python driver",
+      "peak_rss_scope": "maximum individual process including waited descendants; not concurrent tree total or persistent memory",
+      "status": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 1.8868,
+          "median": 2.2268,
+          "p95_nearest_rank": 2.5516,
+          "max": 2.5602
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 2076,
+          "median": 2178.0,
+          "p95_nearest_rank": 2228,
+          "max": 2228
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 1.843,
+          "median": 2.1245,
+          "p95_nearest_rank": 2.442,
+          "max": 2.489
+        }
+      },
+      "tick_not_due": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 0.8875,
+          "median": 1.0288,
+          "p95_nearest_rank": 1.5514,
+          "max": 3.5917
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 1676,
+          "median": 1840.0,
+          "p95_nearest_rank": 1860,
+          "max": 1860
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 0.823,
+          "median": 0.949,
+          "p95_nearest_rank": 1.372,
+          "max": 3.449
+        }
+      },
+      "no_op_preserved_probe_state": true,
+      "export": {
+        "elapsed_ms": 135.17703,
+        "peak_process_rss_kib": 50564,
+        "cpu_ms": 128.443,
+        "file_bytes": 18356,
+        "reported_bytes": 18356,
+        "samples": 1
+      },
+      "acceptance": "passed"
+    },
     "local_acceptance": "blocked"
   },
-  "watchdog_idle": {
-    "schema_version": 1,
-    "recorded_at": "2026-11-06T02:42:25.380383+00:00",
-    "source_commit": "9d545e100080ef454f7bc7c11fb9c2508b639e4e",
-    "kamfw_commit": "bb0dc7582ee2c27e31e49d2d3b714b97528defef",
-    "cli_for_proc_identity_sha256": "92da309846a14fd3386235135ffc3abdc41cb527fc8aea698116f744768c4445",
-    "host": {
-      "system": "Linux",
-      "machine": "x86_64",
-      "kernel": "6.18.57",
-      "shell": "/usr/bin/dash"
+  "watchdog_identity_note": "Watchdog and framework runtime are unchanged between 81a6010 and b5fa1cd. This record retains the actual 81a source and earlier CLI helper identity; it is not a new measurement of the final collector.",
+  "pre_production_curl_host": {
+    "schema": 1,
+    "captured_at_utc": "2026-11-06T04:27:27.409447+00:00",
+    "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+    "source_commit": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
+    "environment": {
+      "os": "Linux",
+      "release": "6.18.57",
+      "architecture": "x86_64",
+      "cpus": 9,
+      "python": "3.12.14",
+      "load_average": [
+        0.087890625,
+        0.25048828125,
+        0.40771484375
+      ],
+      "cpu_tick_hz": 100
     },
-    "scope": "real pinned kamfw .kamfwrc and watchdog.sh; 60-second generated loop; Linux shell and sleep only, during initial sleep; no-op callback; Python/bootstrap excluded; no core or Android routing",
-    "network_requests": 0,
-    "sampling_interval_seconds": 1,
-    "clock_ticks_per_second": 100,
-    "samples": 16,
-    "process_count": 2,
-    "observed_seconds": 15.0124,
-    "processes": [
+    "google_once": {
+      "status": "not_requested",
+      "requests": 0
+    },
+    "core": {
+      "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+      "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+      "binary_bytes": 86507646,
+      "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+      "config": "mixed_loopback_only_no_tun_no_ebpf",
+      "log_level": "warn",
+      "production_build_tags_verified": true,
+      "configuration_check": "passed"
+    },
+    "loopback": {
+      "status": "blocked",
+      "type": "RuntimeError",
+      "reason": "host_netlink_socket_denied",
+      "errno": null
+    },
+    "cli": {
+      "binary_sha256": "3c0025397c58bd9970ea7d72ff0cbcca393dc3d19eee61e613f68f51abace8bd",
+      "fixture": "isolated_host_module_future_probe_deadline",
+      "measurement": "native fork/exec wall time and wait4 CPU; excludes Python driver",
+      "peak_rss_scope": "maximum individual process including waited descendants; not concurrent tree total or persistent memory",
+      "status": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 1.8576,
+          "median": 2.1547,
+          "p95_nearest_rank": 2.7737,
+          "max": 3.039
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 2028,
+          "median": 2224.0,
+          "p95_nearest_rank": 2396,
+          "max": 2396
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 1.832,
+          "median": 2.076,
+          "p95_nearest_rank": 2.732,
+          "max": 2.995
+        }
+      },
+      "tick_not_due": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 0.9156,
+          "median": 0.9993,
+          "p95_nearest_rank": 1.5895,
+          "max": 2.0048
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 1628,
+          "median": 1824.0,
+          "p95_nearest_rank": 1920,
+          "max": 1940
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 0.853,
+          "median": 0.937,
+          "p95_nearest_rank": 1.514,
+          "max": 1.828
+        }
+      },
+      "no_op_preserved_probe_state": true,
+      "export": {
+        "elapsed_ms": 138.883012,
+        "peak_process_rss_kib": 53252,
+        "cpu_ms": 133.359,
+        "file_bytes": 19432,
+        "reported_bytes": 19432,
+        "samples": 1
+      },
+      "acceptance": "passed"
+    },
+    "local_acceptance": "blocked"
+  },
+  "final_host_source_binding": {
+    "schema": 1,
+    "bound_at_utc": "2026-11-06T05:31:39.299799+00:00",
+    "tested_source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+    "tested_source_tree": "73a97009348c6e487a62c2aa1d8b2c7647962259",
+    "measured_base_sha": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
+    "measurement_worktree_was_dirty": true,
+    "cli_sha256": "6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba",
+    "frozen_rust_files": [
       {
-        "role": "watchdog_shell",
-        "rss_kib": {
-          "samples": 16,
-          "min": 956,
-          "median": 956.0,
-          "p95_nearest_rank": 956,
-          "max": 956
-        },
-        "pss_kib": {
-          "samples": 16,
-          "min": 309,
-          "median": 310.0,
-          "p95_nearest_rank": 311,
-          "max": 311
-        },
-        "cpu_ticks_delta": 0
+        "path": "crates/magicnet-cli/src/connectivity.rs",
+        "sha256": "adc0be02767d1dd02d9716a793e464530c23b0006c4bcf4716b7264043ce4ba6",
+        "matches_frozen": true,
+        "matches_worktree": true
       },
       {
-        "role": "sleep",
-        "rss_kib": {
-          "samples": 16,
-          "min": 876,
-          "median": 876.0,
-          "p95_nearest_rank": 876,
-          "max": 876
-        },
-        "pss_kib": {
-          "samples": 16,
-          "min": 169,
-          "median": 173.0,
-          "p95_nearest_rank": 175,
-          "max": 175
-        },
-        "cpu_ticks_delta": 0
+        "path": "crates/magicnet-cli/src/process.rs",
+        "sha256": "1ff63140720b9f8dba98ef60416ad5afb1e5ced2a24448b714484823762bb153",
+        "matches_frozen": true,
+        "matches_worktree": true
+      },
+      {
+        "path": "crates/magicnet-cli/src/diagnostics_export.rs",
+        "sha256": "afabb47dacfc153d74cbda13f143bcf55b89b87c364636b45c81cbddd0dce5cb",
+        "matches_frozen": true,
+        "matches_worktree": true
+      },
+      {
+        "path": "crates/magicnet-cli/tests/internal/connectivity.rs",
+        "sha256": "152b4fcd22f0788fb95fed35a6b9cf4cf39cc60457253b60f135d40c248c4353",
+        "matches_frozen": true,
+        "matches_worktree": true
+      },
+      {
+        "path": "crates/magicnet-cli/tests/internal/diagnostic_export.rs",
+        "sha256": "dfcb4247f8eb097f8340978ec343707f64f6b27943ffa08a8a6c1e152a1df431",
+        "matches_frozen": true,
+        "matches_worktree": true
+      },
+      {
+        "path": "crates/magicnet-cli/tests/diagnostic_export.rs",
+        "sha256": "116c6d84e51b65e88b4b6f4873f556d82a5534cf419cdae75e94b198196314c9",
+        "matches_frozen": true,
+        "matches_worktree": true
       }
     ],
-    "simultaneous_tree_rss_kib": {
-      "samples": 16,
-      "min": 1832,
-      "median": 1832.0,
-      "p95_nearest_rank": 1832,
-      "max": 1832
-    },
-    "simultaneous_tree_pss_kib": {
-      "samples": 16,
-      "min": 478,
-      "median": 483.0,
-      "p95_nearest_rank": 486,
-      "max": 486
-    },
-    "cpu_ticks_delta": 0,
-    "memory_note": "RSS is the simultaneous sum of shell and sleep and double-counts shared pages; PSS apportions shared pages. Neither includes the measurement driver, core, periodic CLI work, or Android manager overhead.",
-    "cpu_note": "0 ticks means below the /proc CPU accounting resolution in this idle window, not an assertion of zero permanent CPU cost.",
-    "status": "passed"
+    "all_changed_rust_files_are_frozen_verified": true,
+    "note": "Bound after measurement by exact file SHA256 equality. Original measurement base SHA and dirty=true are retained; this is not a claim the worktree was clean at measurement time.",
+    "first_bound_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+    "final_binding": {
+      "bound_at_utc": "2026-11-06T05:34:43.796008+00:00",
+      "previous_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+      "source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+      "changed_files": [
+        "scripts/android-public-curl-proof.py",
+        "scripts/test-android-public-curl-proof.py"
+      ],
+      "rust_production_files_and_host_performance_script_unchanged": true,
+      "frozen_rust_file_count": 6
+    }
   }
 }

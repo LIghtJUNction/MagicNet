@@ -13,17 +13,17 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.13 闭包与具体接口
+## 0.3.14 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.13 | 全产品保留范围、M01–M59、跨层重写对照和真实验证 |
-| magicnet-control-plane | 0.2.5 | C-SUB-001–008、缓存联网状态、DIAG-001–003单文件导出及私密边界 |
-| magicnet-network-runtime | 0.1.6 | SUB-001–015，LIFE-001–005，CON-001–003低频探测与恢复 |
+| magicnet | 0.3.14 | 全产品保留范围、M01–M59、重写对照及联网诊断的实际交付验证 |
+| magicnet-control-plane | 0.2.6 | C-SUB-001–008、缓存联网状态、DIAG-001–003单文件导出、监督故障日志、状态结构保真和HTTPS执行器来源（DIAG-A07–A08） |
+| magicnet-network-runtime | 0.1.7 | SUB-001–015，LIFE-001–006，CON-001–004低频探测、恢复与实际HTTPS执行器 |
 | magicnet-web-console | 0.2.4 | UI-SUB-001–012、UI-CON-01–04警告与单次诊断导出 |
 | magicnet-packet-engine | 0.2.3 | VE-001–006、CORE-001–005，原生 TUN 与可选接口监控 |
 | magicnet-routing-policy | 0.2.4 | 增量分流、指定目标拒绝、Voice规则清理与教育分类，POLICY-A01–20 |
-| magicnet-module-delivery | 0.2.5 | 安装更新、共用启动器、目录合并与最终模块/组件排除测试目录 |
+| magicnet-module-delivery | 0.2.6 | 安装更新、共用启动器、目录合并、正式curl/TLS/证书组件与最终模块/组件排除测试目录 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
 
 本地相对配方依赖在pack时递归进入归档并由LOCK记录摘要，不能仅交付上表链接。新订阅状态字段以control为唯一authority，URL/节点身份以runtime为唯一authority，UI只投递意图和显示已协商结果；不创建新常驻服务或复制第二套订阅状态机。
@@ -50,9 +50,11 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 ## 实现与观察材料
 
-0.3.12 保留八包闭包；探测复用现有 curl、监督循环、生命周期锁与 Rust std/libc，导出复用现有有界子进程和脱敏结构投影，WebUI复用Vue/原生桥，不增加运行依赖。CONNECTIVITY_CONTRACT 由 runtime维护；DIAGNOSTIC_CONTRACT和机器能力由control维护；delivery负责对所有最终ZIP独立拒绝测试/开发目录。测量脚本及其临时C测量器只供宿主验收，不进入模块。
+0.3.12 保留八包闭包；探测复用监督循环、生命周期锁与 Rust std/libc，导出复用现有有界子进程和脱敏结构投影，WebUI复用Vue/原生桥。当时假定可用的curl并未进入正式包；后续实际归档和无系统curl的Android验证否定了这一前提。0.3.14通过delivery 0.2.6补入正式`bin-curl`组件：固定curl/OpenSSL/zlib源码与内嵌CA，同组件携带许可证和构建来源，安装与更新均校验。八包配方闭包保持，但运行负载新增了这个HTTPS执行器及其静态库，不能宣称没有新增运行依赖。CONNECTIVITY_CONTRACT由runtime维护，DIAGNOSTIC_CONTRACT和机器能力由control维护；delivery对所有最终ZIP独立拒绝测试/开发目录。测量脚本及其临时C测量器只供宿主验收，不进入模块。
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，本轮为 `f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea`，软件版本仍为 `v1.8.5 / 10613`。本轮以 `aefcbfbab80fe14008e4467eb0292251f7ce8f89` 为比较原版，重写各层共享实现与 kamfw 运行时；保留原有低频联网恢复、单文件诊断、教育模板与精确默认 pin 迁移、Voice 规则清理、原生 TUN、目录及锁修正。完整差分、回归和性能对象为 `d58dbdc`；随后合入同期 `81a601` 的监督器锁分离、诊断日志及 Android 验收脚本修正，并做受影响路径复验。内核继续固定 `d850ff0ff68e11a71aa8207627e0a826cb52808f`，模板固定 `6b5f68a261818a4ffda6eb9a11b21eef9b755650`。框架最终固定到公开的 `MemDeco-WG/kamfw@a7788737b938a9ed930645befe2526b626999a22`，相对已测 `ea8758bf` 仅增加测试；核心生命周期使用该共享框架，删除 MagicNet 重复 overlay。此前的 launcher 维护继续保留，`lib/kamfw-web/` 已移除。本轮没有生成正式发行包或完成 Android 真机验收；实际结果见 VERIFICATION.md。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，本轮为 `2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5`，软件版本仍为 `v1.8.5 / 10613`。本轮以 `aefcbfbab80fe14008e4467eb0292251f7ce8f89` 为比较原版，重写各层共享实现与 kamfw 运行时；保留原有低频联网恢复、单文件诊断、教育模板与精确默认 pin 迁移、Voice 规则清理、原生 TUN、目录及锁修正。完整差分、回归和性能对象为 `d58dbdc`；随后合入同期 `81a601` 的监督器锁分离、诊断日志及 Android 验收脚本修正，并做受影响路径复验。内核继续固定 `d850ff0ff68e11a71aa8207627e0a826cb52808f`，模板固定 `6b5f68a261818a4ffda6eb9a11b21eef9b755650`。框架最终固定到公开的 `MemDeco-WG/kamfw@a7788737b938a9ed930645befe2526b626999a22`，相对已测 `ea8758bf` 仅增加测试；核心生命周期使用该共享框架，删除 MagicNet 重复 overlay。此前的 launcher 维护继续保留，`lib/kamfw-web/` 已移除。随后d22b122修复安装测试夹具的清理次序，并以实际包内框架行为替代旧变量名断言。随后b5fa1cd按字段脱敏服务/TUN/DNS机器状态并使用有效MCP只读入口，Android验收同时验证导出内容语义，保留全部真实透明事务阶段。实际CI构建、归档与Android模拟器结果见VERIFICATION.md；没有新建正式Release或完成物理手机验收。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+
+0.3.14的LIFE-006要求MagicNet外层controller锁与框架内层lifecycle锁分离，固定加锁顺序并用真实固定框架验证，避免同一进程链上的重复flock自锁。control 0.2.6将detached supervisor和connectivity-watchdog故障日志纳入单文件诊断；锁与日志修复本身不新增库。正式curl组件另按CON-004、CON-A07和DIAG-A08验证真实执行、证书校验及诊断来源。包内框架验证运行真实loader和watchdog/fswatch，测试夹具按真实sanitize→split次序准备，保留对开发目录的严格拒绝。
 
 ## 外部前提，未打包为依赖
 

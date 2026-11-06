@@ -1,24 +1,31 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / 联网诊断、真实框架集成与交付验证
+
+输入为用户要求：最终模块不打包测试目录；在本机模拟并测内存/性能；连接后低频Google检查，失败明确警告、指数退避并尝试订阅等恢复；一键导出覆盖路由、核心、订阅及相关信息的单文件诊断。
+
+增量推送源码e8aad9e（打包）、9d545e1（WebUI）、aefcbfb（联网/导出）、027e91f（CI依赖与核心转发测量）、81a6010（真实监督器锁分离/诊断日志/Android导出验收）、d22b122（安装夹具清理和实包worker行为）及b5fa1cd（实际机器状态结构保真和有效MCP观察入口）。框架a7788737只新增字面路径回归，生产修复来自上游ea8758bf。该阶段候选源码b5fa1cd64788bdc5d1dbbd6b88d799c25f895944，tree fe78eb29a1dd8ab06292606b4ccf84b27e13cb88；核心d850ff0、模板6b5f68a保持。
+
+随后实际Android和归档审计发现b5缺少curl，fa0e1ad补入正式共享构建的HTTPS组件及诊断证据；原生init已成功后重复late-load触发ETXTBSY的问题通过只读核验原生启动修正。2bbbf2a修复宿主版本解析兼容，当前候选为`2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5`，tree `73a97009348c6e487a62c2aa1d8b2c7647962259`。两次b5生命周期失败和fa0前置失败保留，新精确CI尚未完成。固定输入、许可证和摘要见delivery/EXTERNAL_ASSETS.md。
+
+同期f7188cc的报告、PID边界和实际sleep观察，以及主项目407f5fa的重写合同和M59通过快进与三路整合保留。根配方0.3.14扩展真实框架LIFE-006和诊断证据范围；control0.2.6、runtime0.1.7、delivery0.2.6，仍为八包配方闭包；正式负载新增curl及静态TLS/压缩依赖。DIAG-A07要求对真实安装后的导出验证机器状态结构、公共语义与隐私；含URL的JSON不能被整段抹去，采集只使用支持的只读入口。GitHub更新使用预期SHA检查，没有覆盖并行工作。
+
+真实CI失败促成两层锁分离、旧测试夹具兼容修正以及对真实诊断内容的二次审查。d22虽然原门禁全绿，独立文件审计发现内容缺陷后仍停止交付；修改前CLI复现失败，最终15项导出unit、3项CLI集成和独立实际文件解析通过，再运行精确提交CI。初轮失败、宿主权限阻断和未覆盖范围保留，不能把fixture或编译通过当作手机数据面通过。
+
+新CLI重新测量并按六个冻结Rust文件与提交的逐字节一致性绑定2bbbf2a及6e989c28二进制；保留测时b5工作树dirty的原始状态，不将其改写为clean。watchdog测量保留81a原身份；该框架与运行路径未变。四轮核心CI分别保存样本、二进制摘要和环境，使用相同固定核心不等于共享runner上的受控版本A/B。具体门禁、归档身份和Android原生导出结果见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION；本轮不新建Release或部署用户设备。
+
 ## 2026-11-06 / 跨层重写与原版行为对照
 
 输入为用户要求先观察已有功能，再替换内部实现，覆盖 kamfw 并与原版比较，尽量精简。比较原版固定为 `magicnet-android@aefcbfbab80fe14008e4467eb0292251f7ce8f89` 和 `kamfw@bb0dc7582ee2c27e31e49d2d3b714b97528defef`；这两个基线含同期联网恢复、诊断及安装包清理。后续上游 CI/测试修正 `027e91f19330404d5a52120c1ed171f203d90175` 通过主线整合保留。
 
-完整回归使用的生产实现为 [d58dbdc5ed8a43bc1fee5050187b529a0f7136b7](https://github.com/LIghtJUNction/magicnet-android/commit/d58dbdc5ed8a43bc1fee5050187b529a0f7136b7)，框架固定 [kamfw@a7788737b938a9ed930645befe2526b626999a22](https://github.com/MemDeco-WG/kamfw/commit/a7788737b938a9ed930645befe2526b626999a22)。该同期后续提交只增加测试，相对已测 ea8758bf 的生产文件逐字节相同；新增 fswatch 方法在四 Shell × 两种 find 后端的 8 个组合中通过。WebUI、Rust、Shell、安装器、打包和框架分别完成分批提交，再提交交叉审查发现的 ZIP 长度与 fswatch 排除兼容修正。完整回归后保留同期主线 `81a60108477d31ca6131f930f955580ad4fa8ba1` 的监督器锁分离、诊断日志与 Android 验收脚本修正，并对受影响路径单独复验。主仓库 gitlink 还包含最终验收文档及行为测试夹具修正；固定 sing-box、模板、规则及其许可继续复用。
+该重写阶段的完整回归使用生产实现 [d58dbdc5ed8a43bc1fee5050187b529a0f7136b7](https://github.com/LIghtJUNction/magicnet-android/commit/d58dbdc5ed8a43bc1fee5050187b529a0f7136b7) 及其当时的框架pin `ea8758bf7f9c831931a99dfaa454356c81ed191a`；最终依赖随后固定到 [kamfw@a7788737b938a9ed930645befe2526b626999a22](https://github.com/MemDeco-WG/kamfw/commit/a7788737b938a9ed930645befe2526b626999a22)。后一个提交只增加测试，相对已测 ea8758bf 的生产文件逐字节相同；新增 fswatch 方法在四 Shell × 两种 find 后端的 8 个组合中通过。WebUI、Rust、Shell、安装器、打包和框架分别完成分批提交，再提交交叉审查发现的 ZIP 长度与 fswatch 排除兼容修正。完整回归后保留同期主线 `81a60108477d31ca6131f930f955580ad4fa8ba1` 的监督器锁分离、诊断日志与 Android 验收脚本修正，并对受影响路径单独复验。主仓库 gitlink 还包含最终验收文档及行为测试夹具修正；固定 sing-box、模板、规则及其许可继续复用。
 
-最终源码交付提交为 [f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea](https://github.com/LIghtJUNction/magicnet-android/commit/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea)，包含完整验收证据、connectivity 行为夹具和 Android 验收脚本 PID 上限修正，主仓库以 gitlink 固定。
+该重写阶段当时的源码交付提交为 [f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea](https://github.com/LIghtJUNction/magicnet-android/commit/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea)，包含完整验收证据、connectivity 行为夹具和 Android 验收脚本 PID 上限修正，主仓库以 gitlink 固定。
 
 本轮替换各层共享实现及 kamfw 运行时，保留部分稳定协议、事务算法、声明和页面模板，不宣称每个历史文件逐行重写。框架运行时代码由 6,614 降为 3,349 行；删去 MagicNet 重复的核心生命周期 overlay，使用共享框架。故障修正与严格等价场景分开记录，完整矩阵、原始 JSON、复现命令和测量口径见[重写验收报告](https://github.com/LIghtJUNction/magicnet-android/blob/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea/docs/rewrite-verification-2026-11-06.md)。
 
 根配方更新为 0.3.13，新增 REWRITE_CONTRACT.md 与 M59；八包闭包、同期 M56–M58 和子包版本保留。本轮是用户明确授权读取原版后进行的跨层重写，不是无旧源码独立重建。宿主结果不推导 Android 或实际网络已通过；浏览器被宿主 socket 权限阻断，自动审批拒绝扩大权限。未创建新 Release 或部署设备。
 
-## 2026-11-06 / 低频联网恢复与单文件诊断
-
-输入为用户要求：最终模块不打包测试文件夹；本机模拟并测内存/性能；连接后低频测试Google，失败警告、指数退避和尝试订阅等恢复；一键导出集中路由、内核、订阅及相关信息的单文件诊断。
-
-逐步推送源码 [e8aad9e](https://github.com/LIghtJUNction/magicnet-android/commit/e8aad9e4b97c2601d029dcfa1f2b56ac90abd106)（打包）、[9d545e1](https://github.com/LIghtJUNction/magicnet-android/commit/9d545e100080ef454f7bc7c11fb9c2508b639e4e)（界面）和最终 [aefcbfbab80fe14008e4467eb0292251f7ce8f89](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)（运行时/诊断）；最终tree为772988407d975d6116614a6e8b4c2a8c0b4e76f2。期间同步到达的Voice清理、目录/锁/原生TUN、共用launcher和教育分流通过三路合并保留，未强推。
-
-根配方0.3.12，control0.2.5、runtime0.1.6、webui0.2.4、delivery0.2.5；新增M56–M58、CONNECTIVITY_CONTRACT与DIAGNOSTIC_CONTRACT。固定sing-box d850ff0、模板6b5f68a、kamfw bb0dc758保持。真实CLI和归档转换、确定性故障模拟、核心配置check各有本轮证据；宿主netlink和浏览器socket限制、缺Android工具链未被标为通过。既有实现维护，不是独立重建或新Android发行。完整说明见[验收报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION.md。
 
 ## 2026-11-06 / 大陆教育域名分类与默认模板迁移
 

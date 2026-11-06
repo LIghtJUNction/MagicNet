@@ -1,123 +1,188 @@
-# MagicNet 联网恢复、诊断导出与打包验收
+# MagicNet 联网恢复、诊断导出与模块验收
 
-日期：2026-11-06（UTC）。最终实现：[magicnet-android@aefcbfb](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)，tree `772988407d975d6116614a6e8b4c2a8c0b4e76f2`。软件元数据仍为 v1.8.5 / 10613；这是源码功能更新与宿主模拟验收，没有新建正式 Android 发行版。
+日期：2026-11-06（UTC）。当前验收候选为 [magicnet-android@2bbbf2a](https://github.com/LIghtJUNction/magicnet-android/commit/2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5)，完整提交 `2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5`，tree `73a97009348c6e487a62c2aa1d8b2c7647962259`。软件元数据仍为 **v1.8.5 / 10613**；本轮没有新建正式Release或部署用户设备。
 
-本轮实现了三项需求：所有最终安装归档排除测试/开发目录；服务启动后低频检查 Google 并按证据自愈；一键生成单个完整脱敏诊断文件。真实 release CLI 的状态读取、节流检查和导出已测量，完整生产标签的 sing-box 已构建并通过配置检查。宿主禁止创建 netlink socket，因此真实代理转发、Google 成功访问和 Android 运行内存没有取得证据。
+本轮实现最终模块排除测试目录、连接后的低频Google探测与有条件自愈，以及一键导出单个综合诊断文件。真实Linux核心已取得空闲内存与回环转发数据，新release CLI已重新测量。独立审计先后发现并修复了诊断状态过度脱敏、错误MCP入口和正式包缺少curl；旧d22/b5候选没有交付。当前版本新增正式curl/TLS/内嵌CA组件和无系统curl的Android执行验证。
 
-## 1. 最终模块不携带测试目录
+> 当前状态：2bbbf2a精确提交的实际构建、质量、Android与网络证据仍运行中。正式HTTPS组件源码和宿主门禁已完成，但不能把待完成的NDK编译、设备TLS/Google或生命周期验收写成通过。以下b5与更早测量明确保留原始身份。
 
-源码测试继续保留，供开发和 CI 使用。打包清理覆盖配置子模块、框架依赖和所有嵌套目录，排除 `test/tests/__tests__`、fixture、快照、benchmark、coverage、htmlcov 与 node_modules。规则按目录段判断，`bin/test`、`rules/test.srs`、`test-support.sh` 等运行文件保留。
 
-清理发生在组件拆分、manifest 与摘要生成之前；组件打包器和发布验证器再次检查最终归档。未清理的核心包、完整包或组件会明确失败，不能仅凭正确 SHA256 放行。
+## 1. 交付归档排除测试目录
 
-本机用合成载荷实际运行 KAM 清理与组件拆分，生成 **9 个 ZIP、88 个成员**：核心、完整、两个别名和五个组件。逐包检查 CRC、目录边界、组件清单和保留文件字节，通过。该结果证明打包转换和内容门禁；载荷不是可安装的 Android 生产二进制，不将它写成手机安装成功。
+源码测试保留，供开发和 CI 使用。安装归档在组件拆分、manifest 和 SHA256 生成前递归清理测试与开发目录，覆盖配置子模块、框架和嵌套依赖。目录段包括 `test/tests/__tests__`、`fixture/fixtures/__fixtures__`、`__snapshots__`、`bench/benches/benchmark/benchmarks`、`coverage/htmlcov/node_modules`。按目录段判断，正常运行文件 `bin/test`、`rules/test.srs`、`test-support.sh` 保留。
 
-## 2. Google 检查与恢复
+组件打包器与独立发布验证器检查最终 ZIP：含禁止目录就失败，摘要正确也不能放行。新增curl后的宿主合成载荷实际清理并拆出 **10个ZIP、100个成员**，已核对 CRC、目录边界、manifest 与保留文件内容；这只证明转换和门禁。真实 Android 包的结果另列如下，合成载荷不代替安装物。
 
-主目标为 `https://www.google.com/generate_204`，经当前 sing-box 的本机 mixed 入口访问。TLS 验证通过且 HTTP 204 才表示 Google 在线；核心 PID、配置 check 或本地 API 可用不代替这个结果。
+上一候选b5fa1cd的归档结构审计通过（因缺curl仍不交付）：13个ZIP（9组件、core/full/两个core别名），1092个成员CRC、安全路径及开发目录检查全部通过，测试/开发目录0匹配；16个清单资产摘要和162个组件文件的摘要/大小/权限核对通过。12条递归依赖pin、8个Android AArch64 ELF及4份内嵌manifest一致；ARM64 CLI摘要已确认区别于旧collector。完整离线包 **65,552,655字节（约62.52MiB）**，SHA256 `5ce7eeb60dfcb2dd6e6ac999c00ac35ebc192ac2886c90868a24163f9d47eec1`。此前d22归档审计虽通过，但其诊断内容缺陷另行保留为历史基线，未交付。
 
-正常检查间隔 **300 秒**；失败后为 **60、120、240、480、960、1800 秒**，之后封顶 30 分钟。预算使用包含休眠的单调时钟并原子保存，重启监控进程或调整系统时间不会清空同次开机的退避。既有 watchdog 每60秒启动短命令，到期才访问网络；没有额外常驻 Rust 服务。状态读取、页面刷新、health 和诊断导出不新增公网探测。
+## 2. 连接后的 Google 检查
 
-| 观察 | 处理 |
+正式模块由`bin-curl`组件提供curl 8.22.0、静态OpenSSL 3.5.8/zlib 1.3.2与固定内嵌CA（121张），同组件携带构建来源和四份许可记录。生产ARM64与模拟器x86_64共用源码锁和API21构建器；安装器逐文件验证摘要/大小/权限。缺失或坏执行器明确显示本地原因，不冒充上游断网，也不据此更新订阅或重启。调用忽略外部curl配置及继承的代理、CA/TLS覆盖。
+
+主目标为 `https://www.google.com/generate_204`，经当前受控 sing-box 的本机 mixed 入口访问。只有 TLS 验证通过并返回 HTTP 204，才记录 Google 在线。核心 PID 存在、配置校验成功或本地 API 可用，各自只证明对应环节。
+
+正常检查间隔 **300 秒**；失败后的间隔为 **60、120、240、480、960、1800 秒**，之后封顶 30 分钟。截止时间使用包含休眠的单调时钟并原子保存，重启监控进程或调整系统时间不会清空同次开机的退避。复用既有 watchdog 的60秒循环，短命 CLI 到期才发请求；没有新增常驻 Rust 服务。页面刷新、状态读取、health 和诊断导出不增加公网探测。
+
+| 探测证据 | 提示和处理 |
 | --- | --- |
-| Google 成功 | 记录在线和延迟，恢复300秒周期 |
-| Google 失败、独立代理目标成功 | 显示⚠️目标特定失败，继续退避，不无依据重启 |
+| Google 返回204 | 显示在线和延迟，恢复300秒周期 |
+| Google失败、独立代理目标成功 | 显示⚠️目标特定失败，继续退避，不盲目重启 |
 | 两个代理目标失败、直连成功 | 连续失败及冷却条件满足后，逐级尝试自有路由/DNS修复、事务性订阅更新、当前核心重启 |
-| 全部失败、确认缺默认路由 | 显示出口/上游问题，继续有界探测，不持续刷新订阅或重启 |
-| 服务停止、模块禁用、进程归属未知 | 暂停，不自动复活核心 |
+| 全部目标失败或已确认缺少默认路由 | 明确显示出口/上游或路由问题，继续有界探测 |
+| 服务停止、模块禁用、进程归属未知 | 暂停恢复，不自动启动核心 |
 
-独立代理目标为 `https://cp.cloudflare.com/generate_204`；仅两项代理探测都失败后，才用 `https://www.baidu.com/` 作直连对照。正常周期一个请求，故障周期最多三个。请求使用 HEAD、不开内部重试、不跟随重定向，连接最多4秒、请求最多8秒、父预算9秒、输出最多1KiB。
+独立代理目标为 `https://cp.cloudflare.com/generate_204`；仅在两个代理目标均失败后，才请求 `https://www.baidu.com/` 作直连对照。正常周期一个请求，故障周期最多三个。HEAD请求不内部重试、不跟随重定向；连接最多4秒、单请求最多8秒、父进程预算9秒，输出最多1KiB。辅助目标成功不冒充 Google 成功。
 
-恢复动作至少间隔 **300秒**；自动订阅更新另有 **3600秒**冷却和300秒动作预算。订阅沿用现有候选校验、整批事务与失败恢复。动作返回成功仅表示修复已执行，必须下一次 Google 检查成功才清除联网警告。用户模式、节点选择、应用策略和停止意图保留。
+### 自愈条件和停止优先级
 
-### 停止操作优先
+至少连续两次失败，并满足代理双失败、直连成功、无已知缺路由问题等证据，才进入恢复。动作至少间隔 **300秒**；自动订阅更新另有 **3600秒**冷却和300秒动作预算。订阅使用已有候选校验、整批事务与失败回滚。动作返回成功只表示已执行，下一次 Google 检查成功后才清除联网警告。用户模式、节点选择、应用策略和停止意图保留。
 
-交叉审查发现，若自动订阅刷新持有生命周期锁，原停止操作可能在10秒后报 busy。本轮已修正：显式停止/重启先停止 producer，只取消经完整 argv 和进程身份确认的本模块维护 worker。子任务最多获得15秒处理原有 TERM/回滚；回滚和子组清理完成前不释放生命周期锁。此取消场景最多等锁20秒；失败仍明确报错。取消后不恢复监控、不重放选择、不再启动核心。
+显式停止/重启会先停止监控，只取消经完整参数与进程身份确认的本模块维护 worker。既有更新任务最多获得15秒完成 TERM/回滚；回滚和子进程组清理结束前，生命周期锁保持占用。此取消场景最多等锁20秒，其余维持原预算，失败明确报错。取消后不恢复监控、不重放选择、不再启动核心。真实 CLI 并发测试验证了慢刷新取消、回滚顺序、锁持有、无关进程保留和最终停止。
 
-真实 CLI 并发夹具验证了慢刷新取消、回滚顺序、锁持续持有、无关 PID 保留和最终停止；另一个夹具验证订阅激活停止自己的父 watchdog 后，恢复 worker能完成回执且只恢复一个循环，没有锁FD继承。
+## 3. 一键导出一个诊断文件
 
-## 3. 一个诊断文件
-
-在 WebUI 诊断页点击 **一键导出诊断包**。Android 输出固定为：
+在 WebUI 诊断页点击 **一键导出诊断包**。Android 固定输出：
 
 ```text
 /sdcard/Download/MagicNet/MagicNet-diagnostics.txt
 ```
 
-也可运行：
+命令行等价入口：
 
 ```sh
 su -c '/data/adb/modules/MagicNet/cli support export'
 su -c '/data/adb/modules/MagicNet/cli --json support export'
 ```
 
-`support bundle` 输出同一完整脱敏文本，保留终端/MCP 使用。文件包含模块/CLI/核心版本、系统与核心资源、启动/事务/监督状态、Google探测与恢复历史、路由规则及顺序、DNS、配置结构和稳定匿名引用、核心version/check、IPv4/IPv6路由与策略规则、自有防火墙、TUN/eBPF与本地API、订阅/缓存/转换/回滚证据及相关日志。
+`support bundle` 输出相同的完整脱敏文本，适合终端或 MCP 使用。导出内容按关联故障组织：
 
-采集不会主动修复、更新订阅、重启、抓取用户流量或发新公网请求。缺少工具、权限不足、坏配置、命令失败/超时和截断都在相应节明确标记；没有取得的证据不能推断成正常。
-
-凭据、订阅URL、节点名、SSID/BSSID、原始UID、设备标识及流量目标遮蔽；配置顺序、计数和匿名引用关系保留。外部命令共用25秒预算，每流32KiB、每节48KiB、全文件512KiB；配置读取4MiB，最多六个日志尾部，每个32KiB/120行。
-
-报告先写同目录独占临时文件并同步，再原子替换固定文件。失败保留旧完整报告；并发导出按最后成功完成者生效，不留下半文件。支持Unix权限的文件系统使用0600，Android共享存储按系统规则控制访问。界面先协商能力，只有成功退出并校验完整JSON后才显示路径；快速双击去重，失败清除旧成功提示，底层私密错误不进入共享输出。
-
-单个快照能集中大部分相关证据，仍不能保证还原没有记录的历史瞬间或替代真实应用流量测试。
-
-## 4. 本机测量
-
-环境：Linux 6.18.57、x86_64、9个逻辑CPU；Rust 1.87 release CLI；Go1.26.7构建完整生产标签核心。CLI在隔离合成模块中运行，探测截止时间设在未来以测量常见的只读/未到期路径。计时包含原生fork/exec至退出，排除Python驱动。没有把模拟核心/网络响应当作真实代理性能。
-
-| 项目 | 样本 | 耗时中位 | P95耗时 | 单进程峰值RSS中位 | 最大RSS |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| connectivity status | 20 | 2.3055ms | 2.9307ms | 2224KiB | 2348KiB |
-| 未到期 connectivity tick | 20 | 1.2938ms | 1.6770ms | 1918KiB | 1964KiB |
-| 完整诊断导出 | 1 | 152.3926ms（单次） | 不计算 | 不计算 | 51076KiB |
-
-20次未到期tick后，探测状态文件字节不变。导出文件为 **18188字节**，与机器接口回报一致，CPU时间144.788ms。峰值RSS采用原生wait4口径：包括已等待后代的最大单进程高水位，不是并发进程树总量或后台常驻内存。导出会运行真实核心version/check，约50MiB的单进程峰值包含这些子进程成本。
-
-另对固定kamfw的真实60秒循环，以空操作回调在首次sleep阶段采样15.0124秒、16次。shell+sleep同期RSS合计1832KiB；按共享比例分摊的PSS中位483KiB，范围478–486KiB。CPU增量0ticks，粒度10ms，只表示该空闲窗口低于计数分辨率。此项不含核心、周期CLI工作或Android管理器；采样绑定同一kamfw `bb0dc758`，当时源码HEAD为`9d545e1`，PID校验使用当时的CLI，不能挪称最终CLI或全模块常驻数据。
-
-数据支持“新增控制侧开销较小”，尚不支持“整机内存与代理吞吐均已最优”的结论。原始数据、测量范围、样本和哈希见 [host evidence](evidence/connectivity-diagnostics-host-2026-11-06.json)。
-
-## 5. 验证结果
-
-| 范围 | 结果 |
+| 范围 | 报告中的证据 |
 | --- | --- |
-| Connectivity | 12单元+8真实CLI集成通过；含2小时故障时钟模拟、共8轮探测 |
-| 诊断 | 50单元/回归+3真实CLI集成通过；含脱敏、截断、预算、失败发布、完整JSON、只读状态 |
-| 机器/状态 | machine dispatcher17、observation_state6通过 |
-| 生命周期 | service27通过，1个原有Android专用测试ignored；process_lifecycle5通过 |
-| 模块更新回归 | 29通过；保留跨平台libc数值转换语义 |
-| Shell | watchdog、supervisor-start-policy、subscription-lifecycle通过；新基线config-lock-ownership和fswatch-lifecycle在bash/sh/mksh/BusyBox通过 |
-| Rust静态检查 | fmt以及workspace/all-targets/all-features的严格Clippy通过 |
-| WebUI | 346测试、vue-tsc、Vite生产构建通过；包含实际Vue导出函数的能力协商/双击/失败/坏响应夹具 |
-| 打包 | 53个unittest方法通过；另外实际9ZIP/88成员清理拆包检查通过 |
-| 配方 | 根0.3.12，check/pack/归档check/完整提示词通过，8包58个Markdown，无源码或测试产物进入配方归档 |
+| 运行环境 | 模块、CLI、核心与系统版本；内存、FD、线程、I/O等可取得的资源信息 |
+| 生命周期 | 启动、事务、监督状态、受控进程身份、停止/恢复结果 |
+| 联网 | Google主结果、差异探测、时间戳、退避、下次检查和最近恢复动作 |
+| 配置与核心 | 配置结构、规则顺序、稳定匿名引用、核心version/check及失败原因 |
+| 网络路径 | IPv4/IPv6路由与策略规则、自有防火墙、DNS、TUN/eBPF和本地API |
+| 订阅 | 来源状态、缓存、转换、候选激活、事务与回滚证据 |
+| 日志 | 最多8个固定日志尾部，包含supervisors和connectivity-watchdog，保留脱离终端后的启动失败 |
 
-### 保留的失败和未覆盖范围
+新增`[curl executor]`节提供有界版本查询、HTTPS/TLS/gzip能力、ABI/API、CA和公开构建来源摘要，标明构建记录和实际执行观察各自的范围；诊断本身不做网络请求，也不将未执行的二进制哈希校验写成成功。
 
-完整生产标签的sing-box `d850ff0ff68e11a71aa8207627e0a826cb52808f` 已构建，版本/pin/tags核对和配置check通过。实际启动时报：
+缺少工具、权限不足、坏配置、命令失败/超时或截断，均在对应节明确标记。采集只观察，不自动修复、更新订阅、重启、抓取用户流量或新发公网请求。各节依次采集，不能当作同一瞬间的全系统原子快照。
 
-```text
-start service: initialize network: create netlink socket: operation not permitted
-```
+凭据、订阅URL、节点名、SSID/BSSID、原始UID、设备标识与流量目标被遮蔽；配置顺序、计数和匿名引用关系保留。外部命令共用25秒预算，每流32KiB、每节48KiB、全文件512KiB；配置读取上限4MiB，每个日志最多32KiB/120行。完整指相关证据范围完整，超大数据会明确截断，不无界复制隐私或耗尽内存。
 
-因此回环代理吞吐、核心空闲RSS和Google实网成功均未取得。专门的单次Google测试记录请求数 **0**；最终CLI测量没有另发公网请求。综合测试脚本保留 `local_acceptance=blocked`，同时 `cli.acceptance=passed`，没有吞掉失败退出码。
+服务、TUN/eBPF与DNS机器状态按字段脱敏，保留可解析的JSON、规范状态、数值、布尔及null。私密URL只遮蔽对应叶值，不再吞掉整段状态；固定公共Google目标与11个真实透明事务阶段保留。私密动态键、UID和设备/认证子树同样受保护。MCP使用已有纯只读状态命令，未启用如实显示disabled/stopped。坏、截断、超深和超限机器输出以明确省略原因结束，不回退输出原始秘密。
 
-宿主缺少`/sys/class/net/lo`，使既有`tun_never_reports_ebpf_plane_readiness`主机假设测试失败；没有修改生产就绪逻辑使它假通过。Chromium无法创建所需socket，新增6个Playwright浏览器场景未执行完成；界面函数模拟、类型检查和构建不能替代浏览器/WebView视觉结果。Vite保留现有大于500kB主chunk提示，未将它隐藏。
+报告先写同目录独占临时文件，同步后原子替换固定文件。失败保留旧完整文件；并发导出以最后成功完成者为准，不发布半文件。支持Unix权限的文件系统使用0600，Android共享存储访问遵循系统规则。WebUI先协商能力，仅在成功退出且完整JSON、路径和大小合法后显示结果；快速双击只导出一次，失败清除旧成功提示。
 
-当前环境缺少Android NDK、cargo-ndk/cross、Android Rust目标、javac/d8、adb/sdkmanager。没有在本轮生成可验证的新Android安装包、安装真机或运行真实应用/TUN/eBPF流量。GitHub插件完成源码提交；本地gh未登录且当前插件无workflow dispatch入口，没有把既有其他提交的远程CI结果移用到本轮。
+一个文件能够集中排查大多数路由、核心和订阅问题。未记录的历史瞬间、特定应用UID或OEM网络栈的实际行为，仍可能需要现场补充证据。
 
-## 6. 固定版本与复现
+## 4. 实际测量：控制侧开销与核心转发
+
+### 最终 release CLI
+
+测量环境为Linux6.18.57、x86_64、9逻辑CPU、Rust1.87 release；二进制SHA256为`6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba`，大小2679640字节。测时为b5工作树加已冻结修改，原始dirty状态保留；六个Rust文件已逐字节匹配fa0与2bb提交，以此绑定当前候选。隔离模块使用真实CLI，设置未来探测截止时间，衡量正常缓存读取及无需探测的路径。原生fork/exec和wait4计时排除Python驱动继承的内存峰值。旧b5和81a样本保留各自身份。
+
+| 项目 | 样本数 | 耗时中位 | P95耗时 | 单进程峰值RSS中位 | 最大RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| connectivity status | 20 | 1.9237ms | 2.1997ms | 2192KiB | 2512KiB |
+| 未到期connectivity tick | 20 | 1.0025ms | 1.3087ms | 1792KiB | 2032KiB |
+| 完整诊断导出 | 1 | 130.4854ms（单次） | 不计算 | 不计算 | 77700KiB |
+
+20次未到期tick没有改变状态文件字节。导出 **19917字节**，机器回执与文件一致，CPU时间125.203ms。RSS口径是单进程及已等待后代中的最大高水位，不是并发进程树总RSS，也不是常驻内存。导出运行真实核心version/check，约75.9MiB峰值包含这些子进程成本。单次导出样本没有P95，也不用于推导稳定的版本提速比例。
+
+固定kamfw `a7788737` 的真实60秒循环以空操作回调在首次sleep阶段采样20.000037秒、21次。shell与sleep同轮RSS合计 **1820KiB（约1.78MiB）**，PSS **549KiB**；CPU增量0ticks，100Hz粒度。此记录保留实际81a6010源码及`f22c35f5…`身份辅助CLI，随后watchdog/框架生产路径未变；结束后剩余进程0、临时目录已清理。窗口内9CPU宿主平均忙碌1.1471%，没有与CLI性能工作重叠。RSS合计会重复计入共享页，PSS按共享比例分摊；两者均不含核心、周期CLI或Android管理器，不能当作整模块或手机电池开销。
+
+### 真实生产核心的 Linux 测量
+
+核心固定为 `d850ff0ff68e11a71aa8207627e0a826cb52808f`，Go1.26.7、全部23个生产标签。CI核心二进制与本机相同，SHA256为 `bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407`。下列结果来自精确记录的CI提交及运行环境，不是手机实测：
+
+| 测量 | 实际结果 | 范围 |
+| --- | --- | --- |
+| 54个本地规则集的核心空闲RSS | 两轮各取稳定段中位74062/74988KiB，约72.33/73.23MiB | b5fa1cd的Linux CI；每轮8点、取末4点；无TUN和活动连接 |
+| 简单mixed核心空闲 | RSS59452KiB、PSS59444KiB、最多9线程 | b5fa1cd的Linux CI；20.0256秒、21点 |
+| 26字节请求的代理/直连中位耗时差 | **0.3024ms** | 30组成对直连/代理、每次新连接；直连0.4782ms、代理0.7806ms |
+| 4MiB响应经代理吞吐中位 | **6583.8015Mbit/s，约6.58Gbit/s** | 8组成对完整字节校验的IPv4回环传输；代理耗时中位5.0977ms |
+
+回环测试主机为Linux7.0.0-1017-azure、x86_64、4CPU。成对顺序交替，所有响应验证实际内容；包括预热共77请求，**全部在本机回环，公网请求0**。直连吞吐中位20008.2038Mbit/s，代理/直连比0.3291。此前027e91f、81a6010与d22b122对同一二进制的结果分别为代理8.2140/5.5847/5.6049Gbit/s、中位耗时差0.3233/0.4680/0.4690ms，所有运行保留原始数据；共享CI主机上的独立运行没有受控A/B条件，不将差异归因于本轮源码修复。这是短时用户态转发能力，不是互联网带宽、远端代理速度或Android TUN/eBPF性能。
+
+20秒空闲CPU增量0ticks，计数粒度10ms，只能说低于该窗口分辨率。短突发核心CPU累计0.07秒、墙钟0.1032秒，窗口太短，不能外推持续CPU或电池功耗。64MiB软内存限制试验的RSS仍可高于64MiB；它不是硬RSS上限，本轮不据此更改产品默认值。
+
+现有证据支持新增控制开销较小、固定核心可真实转发。没有受控旧/新版本全路径A/B、真机和持续负载证据，因此不声称所有设备上内存与性能已达到最优。原始数据见[宿主指标](evidence/connectivity-diagnostics-host-2026-11-06.json)与[CI指标和审计](evidence/connectivity-diagnostics-ci-2026-11-06.json)。
+
+## 5. 验证门禁与本轮发现的真实问题
+
+### 当前提交门禁
+
+| 门禁 | 精确运行 | 当前结论 |
+| --- | --- | --- |
+| Code Quality | [42169118423](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118423) | 待完成 |
+| Build Kam Module | [42169118393](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118393) | 待完成；必须实际核验新curl组件 |
+| Android KernelSU Acceptance | [42169118312](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118312) | 待完成；实际TLS/产品tick/原生init/单文件导出 |
+| Network Regression Evidence | [42169118327](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118327) | 待完成 |
+
+fa0首次真实ARM64/API21 curl编译、静态ELF及来源核验已通过，正式hook安装成功；后续KAM导出归档中的`licenses/curl/build-provenance.json`权限不符合0644，严格打包门禁拒绝。正在修正组件拆分与摘要生成之前的固定路径权限规范化，最终模式校验不放宽；该次构建未产生可交付模块。
+
+### b5历史门禁（非交付）
+
+| 门禁 | 精确运行 | 当前结论 |
+| --- | --- | --- |
+| Code Quality | [42162571569](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571569) | 通过，7/7 jobs；123个包装检查均RUN/PASS、0 HIT |
+| Build Kam Module | [42162571259](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571259) | 通过；实际13 ZIP完整独立审计通过 |
+| Android KernelSU Acceptance | [42162571341](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571341) | attempt1在disable-reboot失败；attempt2在upgrade-preservation失败，已定位重复安装ksud的ETXTBSY；均保留失败 |
+| Network regression（81a；联网与转发路径未变） | [42157478272](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42157478272) | 通过 |
+| Network Regression Evidence | [42162571269](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42162571269) | attempt2通过；核心/AVD原执行保留，截图单job重试300项通过 |
+
+上一候选b5fa1cd质量流程7/7 jobs成功：Rust fmt/严格Clippy/workspace测试分别实际RUN1.17/4.27/41.77秒，components10项和shell108项均RUN/PASS。WebUI检查18.99秒、完整不筛选浏览器套件632.32秒通过；全部包装检查123 RUN/PASS、0 HIT。浏览器passed/skipped细分因包装器隐藏成功stdout而保留未知，不用收集数替代通过数。Android的88/32前置测试另属设备流程，均在同一最终SHA实际执行。
+
+d22的shell 108/108 host manifest检查全部实际RUN；components10项全部RUN。WebUI检查与完整浏览器套件分别实际RUN12.25/460.03秒；源码收集到786项，但成功子进程输出被缓存驱动隐藏，不能将收集数直接称为passed数。新增3场景×6项目的18个导出组合纳入完整成功运行。Rust fmt/Clippy/test在这轮为精确指纹HIT，前一轮81a实际执行成功。本地分段完成107个host检查，1个因JRE缺少ct.sym、无法执行javac --release8而阻塞；最终CI用完整JDK实际通过该项，没有降低目标版本。
+
+最终源码之外的已有证据各自保留身份：027e91f的[Code Quality 42154178842](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42154178842)完整通过；aefcbfb的WebUI质量job实际运行完整浏览器用例，新增导出3场景×6视口的18种组合已纳入，不把本地Chromium无法启动写成浏览器成功。
+
+初轮本地通过联网12单元+8真实CLI集成、诊断50单元/回归+3真实CLI集成、机器17、观察状态6、service27（另1个原有Android专用ignored）、process5、module_update29；严格fmt/Clippy及WebUI346测试、类型检查和生产构建通过。最终诊断内容补丁通过15项导出单元测试（比原10项新增5项）及3项增强的真实CLI集成测试、严格fmt/Clippy；Android harness88项与acceptance contract32项通过。修改前真实CLI回归确实失败，修改后成功；独立审查用最终release真实报告联调设备解析器，通过当前三个schema及11个事务阶段的完整性检查。这些是不同阶段的子集，不累加成一个虚构的测试总数。
+
+### 从失败中修复，而非跳过门禁
+
+1. **监督进程启动自锁。** 两轮真实模块构建均在启动supervisor时超时。MagicNet外层检查/启动互斥和kamfw内层flock原来使用同一个文件；父进程持锁等子进程，子进程又等待该锁。外层改为`magicnet-config.controller.lock`，框架继续使用独立`lifecycle.lock`，固定顺序为controller→lifecycle。真实kamfw测试覆盖bash/sh/mksh/BusyBox与两种flock后端的8组合、重复启动、四路并发、stop等待、忙锁超时和FD不继承。没有通过延长180秒超时掩盖死锁。
+2. **生成配置触发监控反馈。** 上游批量扫描优化曾不再正确排除`sing-box/config.json`等相对路径。整合上游`ea8758bf`生产修复，另提交`a7788737`测试固定GNU/BusyBox find的字面路径语义，保留扫描优化。默认配置生成文件被排除；不同父目录的同名文件仍可观察。
+3. **CI夹具遗漏依赖。** 首轮Rust集成缺kamfw/template初始化，另有升级脚本边界断言过时。027e91f修复依赖初始化、缓存身份和夹具边界；该提交质量门禁实际通过。没有删除失败场景。
+4. **Android重启命令超时。** aefcbfb首次Android跑过前10/12阶段，enable-reboot时ADB命令30秒超时，之后设备offline，未取得新内核启动证据；该次保持失败。最终harness仅把ADB的124退出当作结果未知，继续独立核对新boot ID、boot_completed、root、SELinux Enforcing和KernelSU原生初始化；初次bootstrap才late-load，不重复发送reboot，其他退出仍失败，没有新启动证据仍失败。
+
+81a的下一轮CI还暴露了旧测试夹具与重写框架的集成差异：KernelSU夹具将完整框架直接交给split，被严格开发目录门禁正确拒绝；package smoke仍匹配旧私有变量名。d22b122让夹具先运行真实sanitizer再split，增加测试目录canary和全部输出归档/运行文件字节断言；包内检查改为真实执行提取的框架，验证后台回调、HUP、导入缓存重置、PID/锁/临时目录清理。旧源码字面断言已由同期f7188cc改为观察真实sleep60子进程，严格ShellCheck保持开启。KernelSU 11项、archive-safety13项、完整shell lint及对81a实包运行的新worker检查均通过；没有放宽生产拒绝规则。
+
+d22真实Android导出为61,115字节、47节，采集阶段227ms，0截断；18个必需节存在。但service.status的紧凑JSON含URL，被按文本token脱敏整段替换为`<redacted-url>`；`--json mcp status`也不是已注册接口，造成唯一incomplete_command。b5fa1cd已用专用有界结构投影保留机器状态字段、真实阶段及数值/布尔/null，按字段隐藏私密值，并使用有效纯只读MCP入口。设备检查增加结构与内容验证，不再只验证标题。d22候选未作为最终包交付。其联网实际快照为unknown/not_checked、HTTP/checked_at=null、probe_count=0，没有Google204证据；历史失败和实际文件审计保留。
+
+b5fa1cd首次Android运行的前9阶段通过，但disable-reboot在330.077秒内未取得新启动，后两阶段未运行，整轮保留failure。日志确认reboot到达guest init并进入shutdown，之后没有新Linux banner；ADB诊断显示设备不存在，没有可归因的panic/Oops/BUG证据，因此不能直接断言由模块、内核或传输哪一层造成。同一提交、同一时限仅用新runner复测一次，不修改脚本判定。该首次运行中的原生诊断已通过：61911字节、47节、采集305ms、incomplete_commands=0、truncated_sections=0；服务/TUN/DNS JSON及MCP内容完整，Google仍unknown/not_checked。
+
+b5fa1cd同SHA的唯一一次复测在upgrade-preservation失败，前8阶段通过。第二次重启已经核对新boot、root和SELinux Enforcing；serial日志证明原生init执行post-fs-data/services/boot-completed均退出0。随后验收脚本再次late-load，固定KernelSU的install直接复制覆盖已有ksud，logcat明确记录“Text file busy (os error 26)”。修正后仅初次bootstrap执行late-load，后续重启只读核验当前boot的三个原生阶段、内核接口、真实su域和BusyBox，不重放生命周期、不延长重启截止时间。新的实际Android验收仍须通过；旧失败不改写。
+
+网络证据workflow首次在浏览器依赖安装阶段卡于APT字体下载，15分钟到期取消，Playwright未启动。只重跑visual job后，同SHA和原预算下300项通过（2.8分钟），整个attempt2成功；核心及AVD storage复用原成功执行，原始测量与首次取消日志保留。
+
+最终Android harness在既有cold-boot阶段使用安装后的原生CLI：启动supervisor、验证受控fswatch PID、读取完整联网状态，再执行一次`support export`。联网未知状态允许如实报告；online必须有204、时间戳和延迟。导出检查固定路径、非符号链接、文件大小与回执一致、上限512KiB及18个必要节/隐私/只读/结束标记。设备文件被实际拉回，保存为`diagnostic-export.txt`和`installed-controls.json`，不会调用tick或触发订阅更新来凑结果。
+
+fa0e1ad首次新curl流程在宿主TLS proof前置失败，Android job未启动。版本解析仅接受三段数字，合法的zlib/1.3会被拒绝；用旧代码同输入复现后，2bbbf2a改为2–4段数字，模块实际版本仍与固定lock精确匹配。宿主proof23项通过、原有可选CA样本1项跳过，完整harness100项通过；未跳过TLS控制或冒充Android执行。fa0的完整Rust workspace测试实际通过，后续新提交生产代码不变。
+
+## 6. 尚未证明的范围
+
+本地沙箱禁止netlink socket，生产核心run明确返回`operation not permitted`。本地综合性能脚本因此保留`local_acceptance=blocked`，同时最终CLI的`cli.acceptance=passed`；真实转发证据来自具备权限的Linux CI。专门Google尝试实际请求0，回环测试没有公网请求，因此本轮尚未取得Google实网成功、用户真实订阅出口成功的证据。
+
+初始基线曾因宿主缺少`/sys/class/net/lo`而使TUN就绪测试失败。同期主线将该测试改为受控接口探针，同时验证存在与缺失分支，生产仍读取真实接口证据；该修正随主线保留。Chromium本地socket权限不足的失败也保留，远程质量门禁及实际浏览器执行另行记录。
+
+Android模拟器能够验证安装、启动、生命周期、机器接口和文件导出，不能替代物理ARM64手机的OEM行为、真实应用UID、热点、IPv6、TUN/eBPF实际流量、移动网络切换、持续吞吐或电池消耗。完整诊断文件会把无法取得的信息标为缺失，不以空值推断正常。
+
+## 7. 固定身份、复现与同步
 
 | 对象 | 固定身份 |
 | --- | --- |
-| 最终源码 | aefcbfbab80fe14008e4467eb0292251f7ce8f89 |
-| CLI二进制SHA256 | 1a25a998ef7c1a078597172a8a960350672c8a37369bfb40d0c6fdde64e00e8b |
+| 当前验收源码 | 2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5 |
+| 当前Linux CLI SHA256 | 6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba |
 | 核心源码 | d850ff0ff68e11a71aa8207627e0a826cb52808f |
-| 核心二进制SHA256 | bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407 |
+| Linux核心SHA256 | bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407 |
 | 模板 | MagicSingBox@6b5f68a261818a4ffda6eb9a11b21eef9b755650 |
-| 框架 | kamfw@bb0dc7582ee2c27e31e49d2d3b714b97528defef |
+| 框架 | kamfw@a7788737b938a9ed930645befe2526b626999a22，生产代码来自ea8758bf |
 
-在固定源码和具备相应权限的Linux环境中：
+在固定源码和具备相应权限的Linux环境中复现：
 
 ```sh
 cargo build --release --locked -p magicnet-cli
@@ -126,8 +191,14 @@ python3 scripts/test-host-connectivity-performance.py \
   --core /absolute/output/sing-box \
   --cli "$PWD/target/release/magicnet-cli" \
   --output /absolute/output/host-evidence.json
+bash scripts/test-fswatch-lifecycle.sh
+python3 scripts/test-android-device-simulation.py  # 仅宿主harness单元测试
 ```
 
-默认不请求公网；只有显式增加`--google-once`才最多请求一次Google，不内部重试。网络/内核权限不足保留阻断，不通过修改生产tags或权限配置掩盖。
+真实Android验收需按[固定提交的KernelSU工作流](https://github.com/LIghtJUNction/magicnet-android/blob/2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5/.github/workflows/android-kernelsu-acceptance.yml)准备SDK、AVD、固定KernelSU内核、当前模块与x86_64运行载荷，再调用`android-device-simulation.py`执行12阶段。上面的`test-android-device-simulation.py`只复现宿主单元测试，不能代替这套设备流程。
 
-本轮增量提交为：[打包排除 e8aad9e](https://github.com/LIghtJUNction/magicnet-android/commit/e8aad9e4b97c2601d029dcfa1f2b56ac90abd106)、[界面 9d545e1](https://github.com/LIghtJUNction/magicnet-android/commit/9d545e100080ef454f7bc7c11fb9c2508b639e4e)、[运行时与诊断 aefcbfb](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)。期间到达的Voice清理、目录/锁/原生TUN、共用launcher和教育分流修改均通过三路合并保留；最终源树干净。
+主机性能脚本默认不请求公网；显式增加`--google-once`才最多请求一次Google，不内部重试。测试代码保留在源码，最终模块不携带这些目录。配方使用根0.3.14、control0.2.6、runtime0.1.7、delivery0.2.6，配方闭包保持8包；正式负载新增curl及静态TLS/压缩库，不增加常驻服务。目录检查、打包、归档检查与完整提示词生成均通过，闭包为8包59份Markdown。
+
+增量推送依次为：[打包e8aad9e](https://github.com/LIghtJUNction/magicnet-android/commit/e8aad9e4b97c2601d029dcfa1f2b56ac90abd106)、[WebUI 9d545e1](https://github.com/LIghtJUNction/magicnet-android/commit/9d545e100080ef454f7bc7c11fb9c2508b639e4e)、[联网和导出aefcbfb](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)、[CI和转发测量027e91f](https://github.com/LIghtJUNction/magicnet-android/commit/027e91f19330404d5a52120c1ed171f203d90175)、[框架路径回归a7788737](https://github.com/MemDeco-WG/kamfw/commit/a7788737b938a9ed930645befe2526b626999a22)、[监督修复与原生导出验收81a6010](https://github.com/LIghtJUNction/magicnet-android/commit/81a60108477d31ca6131f930f955580ad4fa8ba1)。另有[测试和包内行为门禁d22b122](https://github.com/LIghtJUNction/magicnet-android/commit/d22b122624f30757bd9df182656eaed6883a0365)，保留同期f7188cc的PID边界和重写报告。最终再推送[结构化诊断与设备内容验收b5fa1cd](https://github.com/LIghtJUNction/magicnet-android/commit/b5fa1cd64788bdc5d1dbbd6b88d799c25f895944)。随后推送[正式HTTPS执行器与原生验收fa0e1ad](https://github.com/LIghtJUNction/magicnet-android/commit/fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69)和[宿主版本解析兼容2bbbf2a](https://github.com/LIghtJUNction/magicnet-android/commit/2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5)。期间主线的生命周期、扫描/打包优化、模板与框架更新均保留，推送采用预期SHA检查，没有覆盖并行工作。
+
+报告同步位置：[Google Drive报告](https://drive.google.com/file/d/1BgTpaxwSDhH1FAeOp-rpX_fzntbBmWK8/view?usp=drivesdk)，[MagicNet文件夹](https://drive.google.com/drive/folders/1l506lcpZnJS-42-bpKHdk4W8yiAZenrc)。最终安装包的文件名、大小、SHA256和下载位置在门禁完成后补齐。

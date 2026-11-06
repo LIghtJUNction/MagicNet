@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tomllib
 import zipfile
@@ -14,6 +15,11 @@ import zipfile
 REPOSITORY = "LIghtJUNction/MagicNet"
 SOURCE_REPOSITORY = "LIghtJUNction/magicnet-android"
 SOURCE = "generated/magicnet-android"
+CURL_FILES = {
+    "bin/curl", "licenses/curl/build-provenance.json", "licenses/curl/curl-COPYING.txt",
+    "licenses/curl/OpenSSL-LICENSE.txt", "licenses/curl/zlib-README.txt",
+    "licenses/curl/Mozilla-CA-NOTICE.txt",
+}
 DEVELOPMENT_DIRECTORY = re.compile(
     r"(^|/)(tests?|__tests__|fixtures?|__fixtures__|__snapshots__|"
     r"bench|benches|benchmarks?|coverage|htmlcov|node_modules)/"
@@ -90,6 +96,41 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def verify_curl_payload(directory, component):
+    files = component.get("files")
+    require(isinstance(files, list) and len(files) == len(CURL_FILES)
+            and all(isinstance(item, dict) for item in files)
+            and {item.get("path") for item in files} == CURL_FILES,
+            "curl component must contain exactly the executable, provenance and four license files")
+    with zipfile.ZipFile(directory / component["asset"]) as payload, \
+            zipfile.ZipFile(directory / "MagicNet-full.zip") as full:
+        require(len(payload.namelist()) == len(CURL_FILES) and set(payload.namelist()) == CURL_FILES,
+                "curl component ZIP contains missing or unexpected files")
+        related = {name for name in full.namelist() if name == "bin/curl" or name.startswith("bin/curl/")
+                   or name == "licenses/curl" or name.startswith("licenses/curl/")}
+        require(related == CURL_FILES, "full ZIP contains missing or unexpected curl files")
+        for archive in (payload, full):
+            for item in files:
+                name = item["path"]
+                require(archive.namelist().count(name) == 1, "Duplicate curl ZIP member")
+                info = archive.getinfo(name)
+                expected_mode = 0o755 if name == "bin/curl" else 0o644
+                require(type(item.get("mode")) is int and item["mode"] == expected_mode
+                        and stat.S_ISREG(info.external_attr >> 16)
+                        and stat.S_IMODE(info.external_attr >> 16) == expected_mode,
+                        "curl payload mode/type differs")
+                require(type(item.get("size")) is int and item["size"] == info.file_size
+                        and 0 < info.file_size <= (32 * 1024 * 1024 if name == "bin/curl" else 256 * 1024),
+                        "curl payload size differs")
+                require(isinstance(item.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", item["sha256"]),
+                        "Invalid curl payload digest")
+                # Streaming reads verify each actual member's CRC and compare
+                # both archives to the same manifest bytes/size/mode contract.
+                with archive.open(info) as stream:
+                    require(hashlib.file_digest(stream, "sha256").hexdigest() == item["sha256"],
+                            "curl payload digest differs between manifest/component/full ZIP")
+
+
 def verify(root, directory):
     expected = metadata(root)
     entries = {}
@@ -118,6 +159,8 @@ def verify(root, directory):
     assets = {"MagicNet.zip", "MagicNet-core.zip", "magicnet_installer.zip", "MagicNet-full.zip",
               "components.json", "package-sizes.json", "build-source.json", "build-submodules.txt", "update.json"}
     require(manifest["components"], "Missing components")
+    curl_components = [component for component in manifest["components"] if component["id"] == "bin-curl"]
+    require(len(curl_components) == 1, "Release requires exactly one bin-curl component")
     for component in manifest["components"]:
         asset = component["asset"]
         require(asset == f"MagicNet-component-{component['id']}-{component['sha256']}.zip"
@@ -141,6 +184,7 @@ def verify(root, directory):
             require(prop["id"] == "MagicNet" and prop["version"] == expected["version"]
                     and prop["versionCode"] == expected["version_code"], "ZIP module metadata differs")
             require(json.loads(archive.read("components.json")) == manifest, "Embedded manifest differs")
+    verify_curl_payload(directory, curl_components[0])
     submodules = (directory / "build-submodules.txt").read_text().splitlines()
     require(submodules and all(re.match(r"^ [0-9a-f]{40} ", line) for line in submodules),
             "Incomplete or changed submodule snapshot")

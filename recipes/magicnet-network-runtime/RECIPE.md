@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.6"
+version = "0.1.7"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.7 增加LIFE-006与LIFE-A11：模块控制锁和框架锁使用不同私有对象与固定获取顺序，防止父子调用重复锁定同一文件而自等待。监督器验收必须使用真实固定kamfw，包括重复/并发启动、停止、忙锁预算和锁描述符继承。同版本CON-004与CON-A07要求正式包提供实际可用的HTTPS执行器及CA，在无系统curl的Android上核验版本、TLS正反控制和遵守冷却的真实产品探测；执行器缺失保留本地原因，不增加常驻服务。
 
 0.1.6 增加 CONNECTIVITY_CONTRACT.md：主目标经 mixed 代理每 300 秒检查，失败指数退避到 1800 秒；差异探测、有条件恢复、订阅冷却、停止意图及监督交接均有独立验收。复用既有监督与生命周期锁，没有新增常驻运行库或服务。
 

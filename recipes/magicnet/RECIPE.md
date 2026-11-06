@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.13"
+version = "0.3.14"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -24,6 +24,8 @@ source = "../software-quality"
 ~~~
 
 配方版本与被观察软件版本分开管理；初始来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，后续 v1.8.0 迭代与证据见 PROVENANCE.md 和 VERIFICATION.md。0.2.1 修正源码子模块布局与获取方法，没有改变 Android 软件版本。实现源码不属于本包。
+
+0.3.14 补齐真实框架集成暴露的监督器双层锁与生成文件排除问题：runtime 0.1.7要求两层锁分离、精确保留相对路径排除，实际加载固定kamfw验证生命周期。正式包检查还暴露了HTTPS执行器缺失，delivery 0.2.6补入固定curl/OpenSSL/zlib、内嵌CA及许可证/来源，runtime CON-004要求实际可执行与证书验证。control 0.2.6补充后台监督启动故障日志、HTTPS工具能力和真实Android导出检查，按字段脱敏并验证机器状态结构及真实阶段。CI初始化与缓存指纹覆盖测试依赖；宿主核心内存/回环转发、生产归档与Android模拟器结果分别绑定各自提交和产物，不将中途失败或待完成门禁写成成功。
 
 0.3.12 增加连接后低频 Google 检查、指数退避与有条件自愈、单文件脱敏诊断导出，以及最终全部模块/组件 ZIP 排除测试和开发目录的合同。新增 M56–M58；control 0.2.5、runtime 0.1.6、webui 0.2.4、delivery 0.2.5，八包依赖图保持不变。模拟、实际 CLI 资源测量、完整核心运行和真机的验证范围分别记录，不自动宣称新 Android 版本已发行。
 

@@ -2,10 +2,12 @@
 """Exercise release validation using isolated Git repositories and synthetic ZIPs."""
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -144,7 +146,7 @@ class ReleaseTest(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             RELEASE.plan(self.root, "publish")
 
-    def assets(self, extra_archive=None, extra_path=None):
+    def assets(self, extra_archive=None, extra_path=None, *, curl_enabled=True, curl_missing=None, curl_extra=None):
         # Rebuilding after a negative assertion must not leave a component from
         # an earlier ZIP timestamp under its former content-addressed filename.
         for previous in self.directory.iterdir():
@@ -161,11 +163,36 @@ class ReleaseTest(unittest.TestCase):
                          "architecture": "arm64", "version": "v1.2.3", "components": [
                              {"id": "test", "asset": name, "sha256": checksum,
                               "size": (self.directory / name).stat().st_size}]}
+        curl_payload = {name: b"synthetic curl payload; never executed\n" for name in RELEASE.CURL_FILES
+                        if name != curl_missing} if curl_enabled else {}
+        if curl_extra is not None:
+            curl_payload[curl_extra] = b"unexpected curl member\n"
+        if curl_enabled:
+            component = self.directory / "curl-component.zip"
+            files = []
+            with zipfile.ZipFile(component, "w") as archive:
+                for path, content in sorted(curl_payload.items()):
+                    mode = 0o755 if path == "bin/curl" else 0o644
+                    info = zipfile.ZipInfo(path)
+                    info.external_attr = (stat.S_IFREG | mode) << 16
+                    archive.writestr(info, content)
+                    files.append({"path": path, "sha256": hashlib.sha256(content).hexdigest(),
+                                  "size": len(content), "mode": mode})
+            checksum = RELEASE.digest(component)
+            name = f"MagicNet-component-bin-curl-{checksum}.zip"
+            component.rename(self.directory / name)
+            self.manifest["components"].append({"id": "bin-curl", "asset": name, "sha256": checksum,
+                "size": (self.directory / name).stat().st_size, "files": files})
         self.write(self.directory / "components.json", json.dumps(self.manifest))
         for name in ("MagicNet-core.zip", "MagicNet-full.zip"):
             with zipfile.ZipFile(self.directory / name, "w") as archive:
                 archive.writestr("module.prop", self.prop)
                 archive.writestr("components.json", json.dumps(self.manifest))
+                if name == "MagicNet-full.zip":
+                    for path, content in sorted(curl_payload.items()):
+                        info = zipfile.ZipInfo(path)
+                        info.external_attr = (stat.S_IFREG | (0o755 if path == "bin/curl" else 0o644)) << 16
+                        archive.writestr(info, content)
                 if extra_archive == name:
                     archive.writestr(extra_path, b"synthetic extra entry")
         for alias in ("MagicNet.zip", "magicnet_installer.zip"):
@@ -185,6 +212,41 @@ class ReleaseTest(unittest.TestCase):
     def test_valid_assets_are_accepted(self):
         self.assets()
         self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
+
+    def test_curl_component_missing_or_mixed_files_are_rejected(self):
+        self.assets(curl_enabled=False)
+        with self.assertRaisesRegex(ValueError, "bin-curl"):
+            RELEASE.verify(self.root, self.directory)
+        for name in sorted(RELEASE.CURL_FILES):
+            with self.subTest(missing=name):
+                self.assets(curl_missing=name)
+                with self.assertRaisesRegex(ValueError, "curl component"):
+                    RELEASE.verify(self.root, self.directory)
+        for name in ("licenses/curl/unexpected.txt", "bin/another-tool"):
+            with self.subTest(extra=name):
+                self.assets(curl_extra=name)
+                with self.assertRaisesRegex(ValueError, "curl component"):
+                    RELEASE.verify(self.root, self.directory)
+
+    def test_full_curl_bytes_and_executable_mode_are_verified(self):
+        for name, wrong_mode in (("bin/curl", False), ("licenses/curl/build-provenance.json", False),
+                                 ("bin/curl", True)):
+            with self.subTest(name=name, wrong_mode=wrong_mode):
+                self.assets()
+                path = self.directory / "MagicNet-full.zip"
+                with zipfile.ZipFile(path) as archive:
+                    members = [(copy.copy(info), archive.read(info)) for info in archive.infolist()]
+                with zipfile.ZipFile(path, "w") as archive:
+                    for info, data in members:
+                        if info.filename == name:
+                            if wrong_mode:
+                                info.external_attr = (stat.S_IFREG | 0o644) << 16
+                            else:
+                                data = b"X" * len(data)
+                        archive.writestr(info, data)
+                self.checksums()
+                with self.assertRaisesRegex(ValueError, "curl payload"):
+                    RELEASE.verify(self.root, self.directory)
 
     def test_every_module_and_component_rejects_development_directories(self):
         for name in ("MagicNet-core.zip", "MagicNet-full.zip", "component"):
