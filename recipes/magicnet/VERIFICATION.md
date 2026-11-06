@@ -1,5 +1,22 @@
 # 实现与发行验证
 
+## 2026-11-06 / 清理专用 ChatGPT Voice 规则
+
+Android 源码已推送至 [`76a0e69e2fe473b2e3f14ea035baa3eab2f1009f`](https://github.com/LIghtJUNction/magicnet-android/commit/76a0e69e2fe473b2e3f14ea035baa3eab2f1009f)，模板已推送至 [`dacc776dad4bd2519d5dd0dfbf3839713f9e438c`](https://github.com/LIghtJUNction/MagicSingBox/commit/dacc776dad4bd2519d5dd0dfbf3839713f9e438c)。删除 hook 5460、专用 Voice JSON 分类、两条 IP/端口路由、CI 调用及相应测试与诊断特例；同步 CLI、安装器、WebUI 和配置文件的模板提交及 SHA-256。普通 `meta-openai` 域名分类、ChatGPT 应用包名及 `ai-chatgpt` 保留；仅曾命中 Voice IP 的连接改按其余现有规则处理。
+
+增量构建的归档清理会删除旧 Voice JSON 和构建状态，并保留自定义 JSON 及 OpenAI SRS。规则提取使用单个 `rules/*` 模式，避免默认规则全部为 SRS 后因缺少 JSON 匹配而中断。模板保留其已有父提交 `b1fa62b` 的原生 TUN 默认值，打包校验同步拒绝已弃用的 `stack` 字段。
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| 模板 | `python3 generate.py --check`、27 项 unittest、`git diff --check` 通过；[Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42147878492) 成功 |
+| Rust 定向回归 | `cargo test -p magicnet-cli diagnostics_routing --offline`：88 项通过；`cargo test -p magicnet-cli --bin magicnet-cli config_editor --offline`：24 项通过；`cargo fmt --all -- --check` 通过 |
+| 路由和引用 | maintained 结构合同、action-routing、默认模板 pin、配置仓库迁移通过；routing-template 4 项、routing-modern 18 项、routing-entrypoints 6 项、routing-optimizer 11 项通过 |
+| 归档 | `test-artifact-cleanup.sh` 的真实 ZIP 删除、保留字节、幂等及失败传播通过；实际提取命令在仅 SRS 与仅自定义 JSON 的 ZIP 上均成功 |
+| 配方材料 | 固定 Recipkg CLI 0.1.1 / `f6f5983` 完成目录检查、pack、归档检查、完整中文 build 提示词与内容检查；8 个包、56 个 Markdown 文件 |
+| 已完成的源码 CI | [Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42148315485)、[Rules Release Integration](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42148315581) 成功；其他运行在记录时尚未完成 |
+
+本地结果限于宿主配置、定向回归与归档夹具；本地未运行完整 Android 安装包构建、真实上游资产 matcher 或真机语音验收。软件版本元数据未因这次清理变更，未发布新版本。
+
 ## 2026-11-05 / 指定目标拒绝与 v1.8.5 准备
 
 源码已推送至 [`c75583b00527acf96310e96c124805db010d939a`](https://github.com/LIghtJUNction/magicnet-android/commit/c75583b00527acf96310e96c124805db010d939a)，模板已推送至 [`6da399473a1ab3f99661556886e0b6701581af24`](https://github.com/LIghtJUNction/MagicSingBox/commit/6da399473a1ab3f99661556886e0b6701581af24)。源码版本元数据为 `v1.8.5 / 10613`。四个完整域名采用原生拒绝，`dm.wo.com.cn` 同时限定目标端口 18080；前置 DNS/协议处理及其他域名、端口保持原有行为。安装和正常升级使用包内模板，普通应用分流不会把拒绝规则挪到业务规则之后。

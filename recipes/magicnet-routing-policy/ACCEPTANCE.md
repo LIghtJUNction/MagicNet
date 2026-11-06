@@ -1,7 +1,7 @@
 # 策略验收
 
 - 缺任意引用分类、损坏摘要、错误 tag/selector、保留名字碰撞、空 AI 候选分别失败；无可用节点不得默认 direct。
-- 逐例执行实际 engine matcher 的 first-match：显式 rule/global/direct、LAN、广告、ChatGPT/Gemini/Grok/Claude、Voice TCP/UDP、iCloud/Apple、Bing/Microsoft、游戏下载/游戏、Telegram、外国域+CN IP 重叠。
+- 逐例执行实际 engine matcher 的 first-match：显式 rule/global/direct、LAN、广告、ChatGPT/Gemini/Grok/Claude、iCloud/Apple、Bing/Microsoft、游戏下载/游戏、Telegram、外国域+CN IP 重叠。
 - 只含 analytics/tracker/github/captive 子串的无关域不被旧关键词策略误分流。
 - 业务 DNS/route 域分类一一对应，IP/protocol-only 不成为 DNS 错规则；指定域名拒绝保留既有 DNS 配置，Direct/Proxy 的解析器归属正确。
 - 导入合法节点后，各 named selector 含合法候选，用户选择恢复；删除节点后的选择仍有效。
@@ -37,3 +37,11 @@
 | POLICY-A10 | 五个域名的父域名、子域名、相近拼写、无关域名与无域名信息的纯 IP 连接 | 不命中新规则，沿用原有分流；不使用 domain_suffix、关键词或共享 IP 扩大匹配 |
 | POLICY-A11 | 相同目标的 53 端口流量和已识别 DNS 协议、ICMP、`0.0.0.0`；比较变更前后的 DNS 配置 | 基础入口规则保持优先；DNS 捕获和解析配置不变，指定域名拒绝不增加 DNS 拒绝规则 |
 | POLICY-A12 | 从固定模板生成新安装和升级配置，再做普通订阅刷新；检查发布包中的模板与固定来源 | 两条拒绝规则及次序保留，来源与摘要可追溯；无需额外社区模板更新；用锁定核心校验生成配置，设备结果另记 |
+
+## 0.2.3 专用 ChatGPT Voice 规则清理验收
+
+| ID | 输入/操作 | 预期 |
+| --- | --- | --- |
+| POLICY-A13 | 检查维护入口、构建调用、默认模板、规则清单与最终安装包 | 不含 `update_chatgpt_voice_rules.sh`、`sukka-chatgpt-voice` JSON 或专用路由引用；其余分类的引用与摘要校验继续有效 |
+| POLICY-A14 | ChatGPT 域名分类和应用包名的 TCP/UDP 请求，选择与恢复 `ai-chatgpt` | `meta-openai`、应用包名规则及对应 DNS 保留；`ai-chatgpt` 候选与用户选择保持原义，无合格节点仍为 block |
+| POLICY-A15 | 从含历史 Voice 数据的规则来源构建、Voice 上游不可用，再执行普通订阅刷新 | 不请求该上游，不重新生成或打包该分类；仅曾命中 Voice IP 的连接按其余现有规则处理 |

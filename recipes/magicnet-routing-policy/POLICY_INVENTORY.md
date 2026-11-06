@@ -71,7 +71,6 @@ DNS server tags：bootstrap-local-dns, doh-google, doh-cloudflare.
 - service-wechat-dns：local / binary
 - karing-acl4ssr-china-domain：local / binary
 - karing-acl4ssr-china-ip：local / binary
-- sukka-chatgpt-voice：local / source
 - meta-tencent：local / binary
 - meta-category-doh：local / binary
 - meta-category-ip-geo-detect：local / binary
@@ -114,5 +113,7 @@ DNS server tags：bootstrap-local-dns, doh-google, doh-cloudflare.
 - meta-spotify：local / binary
 - meta-netflix：local / binary
 - meta-youtube：local / binary
+
+ChatGPT 继续通过 `meta-openai` 域名分类和应用包名规则选择 `ai-chatgpt`，DNS 与路由条件保持对应。`sukka-chatgpt-voice` 及其专用 IP/端口规则已移出默认库存，旧来源中的同名 JSON 不再下载或打包。
 
 这一库存不保证分类文件可获取；必须获取经固定 revision/摘要验证的真实数据并测试 first-match，而不是用标签存在代替内容有效。
