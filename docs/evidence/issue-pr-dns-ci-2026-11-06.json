@@ -1,0 +1,157 @@
+{
+  "repository": "LIghtJUNction/magicnet-android",
+  "run": {
+    "id": 42218749968,
+    "attempt": 1,
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "8ff1242817038dfe220a68b75934d6b127bea4b1",
+    "tree": "a23ade9034a47be945dc526f7fe5b00751267911",
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968"
+  },
+  "job": {
+    "id": 127895219885,
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968/job/127895219885",
+    "started_at": "2026-11-06T12:34:51Z",
+    "completed_at": "2026-11-06T12:41:00Z",
+    "dns_step": {
+      "name": "Verify DNS proxy egress and closed failure with the production core",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-06T12:37:42Z",
+      "completed_at": "2026-11-06T12:37:48Z"
+    }
+  },
+  "tested_merge": {
+    "sha": "d22db107e3b3f572b6353615492c60b6859bde64",
+    "tree": "a23ade9034a47be945dc526f7fe5b00751267911"
+  },
+  "relevant_log_lines": [
+    {
+      "line": 130,
+      "text": "2026-11-06T12:34:55.9452039Z HEAD is now at d22db10 Merge 8ff1242817038dfe220a68b75934d6b127bea4b1 into faa7d956324a20889cb921ff35c9f13b66dc0c1a"
+    },
+    {
+      "line": 132,
+      "text": "2026-11-06T12:34:55.9490947Z [command]/usr/bin/git log -1 --format=%H"
+    },
+    {
+      "line": 133,
+      "text": "2026-11-06T12:34:55.9518549Z d22db107e3b3f572b6353615492c60b6859bde64"
+    },
+    {
+      "line": 175,
+      "text": "2026-11-06T12:34:58.6886932Z Submodule path 'sing-box': checked out 'd850ff0ff68e11a71aa8207627e0a826cb52808f'"
+    },
+    {
+      "line": 177,
+      "text": "2026-11-06T12:34:59.4183850Z  * branch            ba5793b41fd06704102116fe2536eef5988f2905 -> FETCH_HEAD"
+    },
+    {
+      "line": 178,
+      "text": "2026-11-06T12:34:59.4246722Z Submodule path 'src/MagicNet/.config/sing-box': checked out 'ba5793b41fd06704102116fe2536eef5988f2905'"
+    },
+    {
+      "line": 269,
+      "text": "2026-11-06T12:35:08.2374000Z sing-box build: LIghtJUNction/sing-box @ d850ff0ff68e11a71aa8207627e0a826cb52808f for linux/amd64 (CGO=0)"
+    },
+    {
+      "line": 406,
+      "text": "2026-11-06T12:37:42.1554201Z LIghtJUNction/sing-box@d850ff0ff68e11a71aa8207627e0a826cb52808f"
+    },
+    {
+      "line": 407,
+      "text": "2026-11-06T12:37:42.1607758Z ##[group]Run python3 scripts/test-dns-proxy-egress.py --core \"$RUNNER_TEMP/core/sing-box\" --require"
+    },
+    {
+      "line": 408,
+      "text": "2026-11-06T12:37:42.1608537Z \u001b[36;1mpython3 scripts/test-dns-proxy-egress.py --core \"$RUNNER_TEMP/core/sing-box\" --require\u001b[0m"
+    },
+    {
+      "line": 413,
+      "text": "2026-11-06T12:37:42.4811217Z PASS production DNS materialization: proxy fallback, direct bootstrap, explicit rule, idempotence"
+    },
+    {
+      "line": 414,
+      "text": "2026-11-06T12:37:42.4812961Z PASS real core configuration check for localized production DNS"
+    },
+    {
+      "line": 415,
+      "text": "2026-11-06T12:37:48.6452317Z PASS real core: unclassified A/AAAA over UDP/TCP use proxy; node bootstrap stays direct"
+    },
+    {
+      "line": 416,
+      "text": "2026-11-06T12:37:48.6453188Z PASS real core: explicit direct domain still resolves locally"
+    },
+    {
+      "line": 417,
+      "text": "2026-11-06T12:37:48.6453989Z PASS real core: proxy refusal fails closed for A/AAAA with zero direct fallback queries"
+    },
+    {
+      "line": 418,
+      "text": "2026-11-06T12:37:48.6455028Z PASS DNS proxy-egress fixture; public requests=0; Android interception is outside this fixture"
+    }
+  ],
+  "evidence_scope": {
+    "platform": "linux/amd64",
+    "endpoints": "loopback TLS DoH and HTTP CONNECT fixtures",
+    "public_requests": 0,
+    "positive_proxy_transports": [
+      "A/UDP",
+      "AAAA/UDP",
+      "A/TCP",
+      "AAAA/TCP"
+    ],
+    "proxy_refusal_transports": [
+      "A/UDP",
+      "AAAA/UDP"
+    ],
+    "explicit_direct_control": "A/UDP",
+    "not_verified": [
+      "Android DNS interception",
+      "physical-device traffic",
+      "public proxy or resolver connectivity",
+      "TCP proxy-refusal case"
+    ]
+  },
+  "related_core_artifact": {
+    "id": 13501809178,
+    "name": "core-memory-evidence",
+    "size_in_bytes": 6525,
+    "url": "https://api.github.com/repos/LIghtJUNction/magicnet-android/actions/artifacts/13501809178",
+    "archive_download_url": "https://api.github.com/repos/LIghtJUNction/magicnet-android/actions/artifacts/13501809178/zip",
+    "expired": false,
+    "created_at": "2026-11-06T12:40:56Z",
+    "expires_at": "2027-02-04T12:34:48Z",
+    "updated_at": "2026-11-06T12:40:56Z",
+    "digest": "sha256:9a119df43e608b9eb4185664b9412697ef475f69b92f2e40b4cc325beccfa16c",
+    "workflow_run": {
+      "id": 42218749968,
+      "repository_id": 1437565742,
+      "head_repository_id": 1437565742,
+      "head_branch": "fix/issue-triage-20261106",
+      "head_sha": "8ff1242817038dfe220a68b75934d6b127bea4b1"
+    },
+    "verification": {
+      "download_size": 6525,
+      "sha256": "9a119df43e608b9eb4185664b9412697ef475f69b92f2e40b4cc325beccfa16c",
+      "crc": "passed",
+      "files": [
+        "core-memory.json",
+        "host-forwarding.json"
+      ],
+      "contains_dns_case_json": false
+    },
+    "web_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968/artifacts/13501809178"
+  },
+  "artifact_scope": "Downloaded and digest/CRC checked; this artifact contains memory/forwarding records, not a DNS case report. DNS assertions are supported by the cited job logs and fixed test script.",
+  "test_script": {
+    "commit": "8ff1242817038dfe220a68b75934d6b127bea4b1",
+    "path": "scripts/test-dns-proxy-egress.py",
+    "blob_sha": "4f25b23534908f82e45bf4546f91019b69bd25b8",
+    "url": "https://github.com/LIghtJUNction/magicnet-android/blob/8ff1242817038dfe220a68b75934d6b127bea4b1/scripts/test-dns-proxy-egress.py"
+  }
+}
