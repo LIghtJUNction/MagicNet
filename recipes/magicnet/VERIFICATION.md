@@ -728,3 +728,7 @@ Android arm64 完整 sing-box 核心编译通过。发现并删除 target 指向
 完整模块本地构建通过；最终增量安装器验收 21 项通过，归档安全 10 项及核心体积 5 项通过。构建时对 update.json 和配置模板的副作用已恢复，未修改正式 v1.8.3 Release。
 
 完整 Android 包的宿主安装尝试在组件启动时受阻：Linux 环境缺少 `/system/bin/linker64`，不能记为 Android 安装成功。宿主原生组件测试与模拟生命周期已通过。最终只保留 dist/MagicNet-full.zip 和 build-source.json（标明 local-validation-build-not-a-new-release）；清除重复包、组件 ZIP、临时核心与本轮 Rust target。既有正式 v1.8.3 不替换。
+
+## 2026-11-06 Issue/PR 修复集成
+
+配方 0.3.16 接入 control 0.2.7、runtime 0.1.8、delivery 0.2.7，保持八包闭包及源码软件版本 1.8.5。当前固定源码、旧失败、新候选门禁和各 Issue 处置集中记录在 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。安装器、监督恢复、TLS 与 TUN 检查具有本地反例和回归；main Android 旧失败保留，新 PR 结果独立记录。配方 check/pack/完整提示词验证为 8 包、61 Markdown，发布边界 21 项通过；这些结果不等同于物理设备安装或已创建正式发行。

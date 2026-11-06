@@ -71,3 +71,9 @@ SUB-A04 另覆盖分享链接形式的 VLESS WebSocket：A/B 各一个名为 `HK
 0.1.6 增加 CONNECTIVITY_CONTRACT.md 的 CON-A01–A06。用可控时钟和真实 CLI 子进程分别验证2小时故障退避、同次开机预算保留、辅助探测顺序、锁竞争、停止优先级与监督重建。真实进程测试的网络/核心 helper若是替身必须明确；生产核心 check、代理请求、Google实发次数与 Android 数据面独立记录。既有订阅事务与生命周期验收继续适用。
 
 0.1.7 执行 LIFE-A11：真实固定框架的锁、launch、PID发布与停止均进入夹具。旧同文件双层锁应在有界观察内被识别为阻塞；修复后首次/重复/并发启动和停止完成，健康 PID 保持、watcher 唯一、忙锁有界且长期进程不继承控制锁。真实模块安装冒烟仍作为独立集成门禁。
+
+## 0.1.8 监督恢复验收
+
+SUB-A22 / SUB-011–013、LIFE-007：fswatch on/off 各执行三次受控订阅更新，核对 connectivity、refresh、wifi-policy、hotspot 和原先活动的 fswatch 在 config unlock 后恢复；update owner 在恢复期间仍有效，内部标记收尾清除。初始 journal reconcile、失败 rollback 与 TERM 同样验证锁序和原 fswatch 意图。生产 wrapper 加替身更新体只证明锁序，不能记为六次 Android 端到端订阅。
+
+同时执行 LIFE-A12、既有信号/事务/owner 回归和实际固定 kamfw 的宿主进程生命周期检查。精确记录可用 shell；本机 sh/bash 结果不能代替 mksh/BusyBox 或设备结果。维护集合恢复与现场特定 rc=2 的原因归属分别报告。

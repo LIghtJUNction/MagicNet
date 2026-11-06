@@ -55,3 +55,9 @@ repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确�
 ## 0.1.5 目录与锁所有权
 
 状态只写 `.state`，临时文件与缓存只写私密 `.cache`；旧目录在安装或运行入口按固定映射幂等迁移。迁移复用现有配置锁，不能在未持锁时移动其他写者的数据。配置锁按 LIFE-005 绑定实际执行临界区的进程。TUN 生成器从受管入站及恢复快照移除 `stack`，不改变模式、MTU、UDP 超时和应用分流。
+
+## 0.1.8 订阅重启后的监督恢复
+
+按 SUB-011、SUB-012 与 LIFE-007 恢复完整的已配置维护集合：connectivity、计划 refresh、wifi-policy、hotspot watchdog 与原先活动的 fswatch。初始 journal 恢复、激活、回滚和信号清理在配置锁内仅记录恢复意图，锁释放后再启动 worker；订阅更新 wrapper 保留其 update owner 直至恢复结束。独立 common 入口不获取 update owner，继承外层锁/恢复上下文时按 LIFE-007 返回 2 并保留原状态。fswatch 关闭不能跳过其余维护，stopped/unknown 核心不能据此派生 worker。
+
+订阅重启把 worker 停止与热点路由清理分开。仅热点路由清理未完成时保留归属证据并明确警告，交由既有 post-start 和 watcher 重试；热点是否就绪继续单独判断。真正 worker 停止失败、未知身份和 DNS 清理失败继续阻断启动。orphan 先筛对应 loop/worker 命令，再按精确 PID/argv 身份授权；不把无关 CLI 的不可读身份当成该目标未知，也不把真实目标未知当成已停止。

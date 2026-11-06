@@ -119,3 +119,7 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 按用户本轮要求采用 sing-box 1.15 的原生 sing-tun 栈，生成器、内置模板、旧快照恢复与健康检查同步省略已弃用的 `stack`。此要求更新 M29 的默认栈选择；设备 A/B 性能结果仍须另行记录。模板固定到 `MagicSingBox@dacc776dad4bd2519d5dd0dfbf3839713f9e438c`，`config.json` SHA-256 为 `08996a10e24adc6ffb6a75f96d436a543264734d95f50f9952a7a265bb58213e`；既有指定域名拒绝与路由顺序保留。
 
 Android CLI 明确使用系统路由、没有显式网卡或网络策略绑定时，默认接口探测为空不能把整个网络工作器永久暂停。保留实际拨号错误及各层 readiness，不伪造网卡或联网状态；依赖真实接口的配置继续等待。失网取消过期异步更新，恢复后按新接口重置。根验收 M51–M53 分别绑定目录、锁和网络监控；control 的 `native_tun_stack` 能力说明 `effective.stack=default` 的配置含义。
+
+## 0.3.16 Issue 与 PR 修复集成
+
+保持默认 DNS 经代理的既有修复，接入 runtime 0.1.8 的整组维护恢复、control 0.2.7 的实时 TUN 路由证据和 delivery 0.2.7 的安装缺省文件、历史迁移与 TLS 验收诊断。八包闭包、schema-1、tun|ebpf、停止意图和私密状态边界保持；新增验收 M61–M64。实际代码、通过与失败、Issue 处置及尚需真机证据的部分写入 ISSUE_TRIAGE_2026-11-06.md，源码按 DEPENDENCIES.md 的固定提交构建。修复已证明的行为缺口，不把健康检测改进等同于已查明设备路由丢失原因。

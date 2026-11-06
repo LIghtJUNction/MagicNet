@@ -5,7 +5,7 @@
   <p>Subscriptions · app and domain routing · DNS · TUN/eBPF · sing-box-compatible runtime · web console</p>
 
   [![Android release](https://img.shields.io/badge/Android-v1.8.1%20%2F%2010609-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)
-  [![Recipe](https://img.shields.io/badge/recipe-0.3.15-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
+  [![Recipe](https://img.shields.io/badge/recipe-0.3.16-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
   [![Last commit](https://img.shields.io/github/last-commit/LIghtJUNction/MagicNet?style=flat-square)](https://github.com/LIghtJUNction/MagicNet/commits/main)
 
@@ -42,12 +42,14 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | Layer | Current state |
 | --- | --- |
 | Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
-| Recipe | `0.3.15` |
-| Fixed implementation commit | `38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c` |
+| Recipe | `0.3.16` |
+| Fixed implementation commit | `39ba7487f187d44febaf573c3ba1faf3992e0797` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
 | Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
+
+Recipe `0.3.16` adds subscription supervisor recovery, upgrade defaults/history preservation, live TUN routing evidence and bounded Android TLS test diagnostics. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work.
 
 Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`. The fixed core passed host tests, Linux amd64 and Android arm64 builds and final Linux configuration/DNS checks. Measured memory results apply to the specific sing-tun lifecycle experiment; Android RSS and device traffic remain unverified. Source identities, exclusions and original evidence are tracked in the verification record.
 
@@ -84,9 +86,9 @@ recipe_tmp="$(mktemp -d)"
 trap 'rm -rf "$recipe_tmp"' EXIT
 
 recipkg pack recipes/magicnet \
-  -o "$recipe_tmp/magicnet-0.3.3.recipe.tar.gz"
-recipkg check "$recipe_tmp/magicnet-0.3.3.recipe.tar.gz"
-recipkg build "$recipe_tmp/magicnet-0.3.3.recipe.tar.gz" --lang zh-CN
+  -o "$recipe_tmp/magicnet-0.3.16.recipe.tar.gz"
+recipkg check "$recipe_tmp/magicnet-0.3.16.recipe.tar.gz"
+recipkg build "$recipe_tmp/magicnet-0.3.16.recipe.tar.gz" --lang zh-CN
 ```
 
 `recipkg build` produces a complete implementation prompt. It does not call a model or build the software itself. Give the full generated prompt to the implementation agent, then require it to execute every item in [`ACCEPTANCE.md`](recipes/magicnet/ACCEPTANCE.md) and record real results in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).

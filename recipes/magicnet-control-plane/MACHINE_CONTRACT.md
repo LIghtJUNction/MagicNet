@@ -3,7 +3,7 @@
 成功：schema=1、ok=true、command 为规范化命令名、data 为对象。失败：schema=1、ok=false、command、error.code、error.message；退出非零。输出前后不得有 banner、进度或第二个 JSON。重复 --json、未知命令/尾随参数必须是结构化失败。
 
 service.status 分开报告受控进程 running/stopped/unknown、API.ready、readiness.dataplane 和 readiness.overall；仅两者已证实正常才整体 ready。生命周期包括 stopped/unknown/reconfiguring/ready/not_ready/running_unknown。前端不得自行按 PID 推断绿色状态。
-tun 看 sysfs magicnet0；ebpf 刷新活动程序并检查当前进程的 cgroup/TC attachment，不拿能力探测冒充实际挂载。
+tun 核对 sysfs magicnet0，并在 auto_route 启用时按有效配置读取必要 RPDB/FIB 证据，未知不当 ready；ebpf 刷新活动程序并检查当前进程的 cgroup/TC attachment，不拿能力探测冒充实际挂载。
 hybrid 无下游时 local 可 ready，shared_tc=pending、shared_ready=false；配置了下游则必须全部验证。shared-only 缺下游不能 ready。local/shared 信号未知用 null，旧版本能力未协商不猜测。
 
 ## 0.2.5 增量：联网与诊断
@@ -130,3 +130,7 @@ capabilities 的 commands/private_commands 包含 `app.inspect`；features 增�
 ## 原生 TUN 栈
 
 `machine.capabilities.data.features` 增加 `native_tun_stack`。`network.status.data.effective.stack=default` 表示 TUN 配置省略已弃用的 `stack` 字段，由 sing-box 1.15 使用原生 sing-tun 栈；显式旧值仍如实报告，缺少 TUN 为 unavailable，非法字段为 unknown。该值来自有效配置，不代替进程/API/数据面的 readiness。WebUI 与 MCP 消费者接受新 token，不从 token 推断联网成功；schema-1 和命令集合不变。
+
+## TUN 实时路由证据（0.2.7）
+
+service.status.readiness.dataplane 与 transparent.status.dataplane_ready 在核心运行时复用 health 的 TUN 观测。接口存在且有效配置的 auto_route 必需 RPDB/FIB 证据完整才为 true；任一必要项已知缺失为 false（即使另项未知），无已知缺失而观测或配置不可确定时为 null，并由既有 overall/lifecycle 组合传播。无新增 schema 字段或公开原始路由标识。检查只读且有界；关闭 auto_route 时不要求自动生成的规则，eBPF 与 stopped/unknown 语义保持。该信号证明必要内核资源，不承诺公网或任意 App UID 的真实连接成功。

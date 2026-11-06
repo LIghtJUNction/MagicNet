@@ -281,3 +281,7 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 用户要求继续完善项目后，在独立源码仓库 `main` 提交并推送 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745`（tree `072233c5df4610d3b31f008b70a0b0a01c966bc1`），并将 MagicNet 的 `generated/magicnet-android/` gitlink 更新到该固定提交。改动覆盖订阅节点身份/计数、跨入口 URL 规范化及预检、缺少 metadata 的来源行、VLESS `encryption` 保真和安装恢复调用点。细节与未解决的来源归属、批次观测见 SOURCE_AUDIT.md。
 
 这是源码 `main` 的未发行修复；未创建 Android 包、签名或部署。没有读取/复制根 `.env`，没有设备操作。实际本地检查和未执行项列在 VERIFICATION.md；#426 的现场原因仍未知。
+
+## 2026-11-06 Issue 修复来源
+
+按用户直接合并并处理 Issue/PR 的授权，独立源码分支逐次推送五个修复提交及一份文档精度修订，最终 `39ba7487f187d44febaf573c3ba1faf3992e0797`（tree `4e16922735c22fc696c6dd73b6a44182e8635acb`），由 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) 审阅与验收。主仓库通过固定 gitlink 接入，不复制实现源码。报告 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md) 关联 #436–#440、两个已处理的 DNS 审查线程、实际测试和未完成能力。未读取生产订阅或设备私密身份，未部署物理手机。

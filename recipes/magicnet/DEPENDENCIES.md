@@ -13,17 +13,17 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.15 闭包与具体接口
+## 0.3.16 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.15 | 全产品保留范围、M01–M60、重写对照、联网诊断与默认 DNS 出口 |
-| magicnet-control-plane | 0.2.6 | C-SUB-001–008、缓存联网状态、DIAG-001–003单文件导出、监督故障日志、状态结构保真和HTTPS执行器来源（DIAG-A07–A08） |
-| magicnet-network-runtime | 0.1.7 | SUB-001–015，LIFE-001–006，CON-001–004低频探测、恢复与实际HTTPS执行器 |
+| magicnet | 0.3.16 | 全产品保留范围、M01–M64、重写对照、DNS 出口及 Issue 修复集成 |
+| magicnet-control-plane | 0.2.7 | C-SUB-001–008、缓存联网状态、DIAG-001–003单文件导出、监督故障日志、状态结构保真、HTTPS执行器来源（DIAG-A07–A08）与实时 TUN 路由证据 |
+| magicnet-network-runtime | 0.1.8 | SUB-001–015，LIFE-001–007，订阅完整监督恢复，CON-001–004低频探测、恢复与实际HTTPS执行器 |
 | magicnet-web-console | 0.2.4 | UI-SUB-001–012、UI-CON-01–04警告与单次诊断导出 |
 | magicnet-packet-engine | 0.2.3 | VE-001–006、CORE-001–005，原生 TUN 与可选接口监控 |
 | magicnet-routing-policy | 0.2.5 | 增量分流、指定目标拒绝、Voice规则清理、教育分类与默认 DNS 出口，POLICY-A01–25 |
-| magicnet-module-delivery | 0.2.6 | 安装更新、共用启动器、目录合并、正式curl/TLS/证书组件与最终模块/组件排除测试目录 |
+| magicnet-module-delivery | 0.2.7 | 安装更新、共用启动器、目录合并、正式curl/TLS/证书组件、缺失默认清单与历史迁移、验收失败证据及最终模块/组件排除测试目录 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
 
 本地相对配方依赖在pack时递归进入归档并由LOCK记录摘要，不能仅交付上表链接。新订阅状态字段以control为唯一authority，URL/节点身份以runtime为唯一authority，UI只投递意图和显示已协商结果；不创建新常驻服务或复制第二套订阅状态机。
@@ -77,3 +77,9 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 本轮接入 routing-policy 0.2.5，依赖闭包仍为八包，无新增运行时依赖。当前固定源码为 `LIghtJUNction/magicnet-android@38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c`，源码版本保持 1.8.5，本轮不新建发行。
 
 内置模板固定为 `LIghtJUNction/MagicSingBox@ba5793b41fd06704102116fe2536eef5988f2905`，`config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。该模板以经 `proxy` 的 `doh-cloudflare` 承接默认 DNS，并保留 `bootstrap-local-dns` 引导解析和显式直连规则；精确旧官方默认 pin 迁移，自定义 repo/ref/digest 保留。验收对应 M60 与 POLICY-A21–A25，实际验证范围见 [DNS_REPAIR_2026-11-06.md](DNS_REPAIR_2026-11-06.md) 和 [VERIFICATION.md](VERIFICATION.md)。
+
+## 0.3.16 Issue 修复集成
+
+当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，源码 PR [#3](https://github.com/LIghtJUNction/magicnet-android/pull/3)。软件仍为 1.8.5 / 10613。control 0.2.7、runtime 0.1.8、delivery 0.2.7 接入 M61–M64，八包闭包不变；内核、模板、kamfw 和规则来源继续使用上一轮固定值，不引入新运行时库或模式。
+
+此提交包含六次增量提交的安装历史、TLS 夹具、监督恢复与实时 TUN 证据修复。已知限制、旧失败、当前 CI 和 Issue 处置见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。受控本地测试不替代真机网络切换；未实现的可信 NAS 入口继续单独跟踪。

@@ -47,3 +47,9 @@ MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照�
 ## 0.2.4 目录与默认 TUN 栈
 
 遵守 STATE_CONTRACT.md 的 `.state`/`.cache` 布局及迁移私密边界，遵守 MACHINE_CONTRACT.md 的 `native_tun_stack` 能力和 `effective.stack=default` 语义。全部私密载荷入口与前端路径同时迁移，错误时不执行写动作；不增加新的机器写命令。
+
+## 0.2.7 TUN 实时路由证据
+
+TUN 健康与机器 readiness 共用一份解析和有界只读观测逻辑。接口存在只是前提；auto_route 启用时，按有效入站配置及固定核心的默认值推导表号、优先级、地址族与 redirect marks，核对必要策略路由组及目标表中 TUN 转发路由对必要静态范围的覆盖。每地址族按显式 route_address（缺省全族）减静态 route_exclude_address 推导，不要求固定 default 或两条 /1；默认模板的私网/ULA 排除仍可验证。route_address 与 route_exclude_address 各字段最多 1024 个前缀，超限保持 unknown；普通非 redirect 路径的动态地址集未观测时保持 unknown，不能把原生 auto_redirect 仅用于 netfilter 的动态集合误当成 FIB 输入。仅热点 iif 残留、fallback 或受限规则不能替代应用路径所需规则。保留 Android 的 per-network 路由表模型，不要求 main 表必有默认路由，不假定 UID 2000 代表所有应用。
+
+每轮 RPDB/FIB 子命令共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB；这不是整个 health/export 的总耗时或 CPU 解析硬截止。任一必要项已知缺失时机器字段为 false，即便另项未知；没有已知缺失而有读取失败、超时、截断或无法解释的证据时为 null。人类 health 显示 warning 及对应 detail。auto_route=false 不强行要求自动规则；eBPF 保持独立附着检查；机器快照对 stopped/unknown 核心保留原语义且不探测路由，人类 health 仍可能检查残留接口。检查不产生公网请求、规则写入、后台循环、自动重启或 canonical 发布，不返回原始地址/规则列表。必要内核资源存在仍不证明真实应用流量已成功。
