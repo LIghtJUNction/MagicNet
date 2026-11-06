@@ -1,6 +1,6 @@
 # MagicNet DNS 默认出口修复记录
 
-日期：2026-11-06（Asia/Taipei）。范围：受管默认配置中，未分类 DNS 查询的出口、引导解析、配置诊断及升级入口。
+日期：2026-11-06；本文 CI 时间均为 UTC。范围：受管默认配置中，未分类 DNS 查询的出口、引导解析、配置诊断及升级入口。
 
 ## 结论与交付
 
@@ -69,7 +69,7 @@ profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.con
 
 ### GitHub 实际核心数据包测试
 
-[中间候选 4709727 的 Network Regression Evidence](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638173)整套成功，包含步骤 `Verify DNS proxy egress and closed failure with the production core`。`core-evidence` job `127781965303` 于 08:03:29–08:03:35 UTC 执行该步骤，使用仓库固定核心，在本地 TLS DoH 服务与 HTTP CONNECT 代理之间发送真实数据包，保持生产物化结果中的 DNS 规则、final、detour 和节点解析器，仅替换端点地址、端口与证书信任。
+[最终候选 38c6eea 的 Network Regression Evidence](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346632)整套成功，包含步骤 `Verify DNS proxy egress and closed failure with the production core`。`core-evidence` job `127790723176` 于 08:25:41–08:25:47 UTC 执行该步骤，使用仓库固定核心，在本地 TLS DoH 服务与 HTTP CONNECT 代理之间发送真实数据包，保持生产物化结果中的 DNS 规则、final、detour 和节点解析器，仅替换端点地址、端口与证书信任。
 
 | 场景 | 实际验收 |
 | --- | --- |
@@ -80,7 +80,29 @@ profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.con
 
 测试不访问公共 DNS、不使用用户订阅、不修改主机路由或防火墙，也不关闭 TLS 证书验证。CI 使用 `--require`，缺核心或能力不足会失败。模板的 [Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42182106388) 与源码的 [Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836609)亦已通过。
 
-中间候选 `4709727` 的 [Code Quality 42184638079](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638079) 全部 7 个 job 成功，包括 Rust、Shell/host、WebUI、组件与 Android probe 合同。前一候选 `e2725d7` 的 [42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 也通过同一真实核心场景；每轮验证使用自己的运行记录，不将旧结果改写为新提交结果。最终 `38c6eea` 的远程门禁另行核对。
+最终候选 `38c6eea` 的 [Code Quality 42187346672](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672) 全部 7 个 job 成功，包括 Rust、Shell/host、WebUI、组件与 Android probe 合同。前一候选 `e2725d7` 的 [42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 也通过同一真实核心场景；每轮验证使用自己的运行记录，不将旧结果改写为新提交结果。最终 `38c6eea` 已重复通过该真实核心步骤及整套 Network Regression Evidence；其余远程门禁按最终运行记录单独核对。
+
+### 完整模块与 Android 验收
+
+最终候选的 [Build Kam Module 42187346674](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346674) 成功；build job `127790723609` 生成 artifact `13489440458`。构建使用 PR 合并提交 `635d4c34f43c8d6c69d890db30336c87986b6686`，其源码树与 `38c6eea` 均为 `1e83b5b00e2f8b3aa2018358717a81e228820a94`。
+
+| 完整离线模块 | 核验结果 |
+| --- | --- |
+| 文件 | `MagicNet-DNS-fix-38c6eea-full.zip`；ARM64，产品版本仍为 `v1.8.5` |
+| 大小 | 68,480,032 字节 |
+| SHA-256 | `1fdc0caa0c2d412562bc44058b8527210ebad6df75dbc0fcc17d1eba44bab234` |
+| ZIP | 360 个条目全部通过 CRC；无不安全路径、重复条目或符号链接 |
+| 离线组件 | 10 个组件、168 个文件的存在性、尺寸、摘要和权限符合内嵌清单 |
+| 生产内容 | DNS 脚本、安装配置脚本、模板仓库配置与固定源码逐字节一致；模板原始配置与固定模板一致 |
+| 排除内容 | 未发现测试/fixture、`node_modules`、Git 元数据及已检查的开发缓存目录 |
+
+该文件为 CI 构建的原始完整模块，只改了便于识别的下载文件名，没有重新打包。外层 artifact 的 142,231,785 字节及摘要也与 GitHub 元数据一致；外层摘要与上表完整模块摘要分别记录，避免混用。
+
+[Android KernelSU Acceptance 42187346630](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346630) 的首次执行失败，失败记录完整保留。前置 harness 套件 300 项中 1 项可选 CA 夹具跳过，其余通过；实际 Android 15 / KernelSU v3.2.0 / x86_64 TUN 流程的 environment、kernelsu-bootstrap、install-before-first-boot 通过，cold-boot 在 `curl_tls_positive_failed` 处失败，后续 8 个生命周期阶段未运行。已安装 curl 的摘要核验、核心运行、数据面就绪及该次重启的 root/SELinux Enforcing/原生 init 阶段均通过。
+
+失败发生于本地 HTTPS 正向控制：它用 `--resolve` 固定回环地址、显式关闭代理并经 ADB reverse 访问临时 TLS 服务，不使用 DNS 查询或代理出站。harness 未保留具体 curl 退出码或 TLS 错误细节，连接失败与测试服务请求计数不符会进入同一错误，因此不能认定唯一根因，也不能把整套 Android 验收写成成功。仅对同一提交的失败 jobs 启动一次复验；源码、TLS 信任、超时及断言均未修改。当前完整模块保留为候选，等待这次复验结论。
+
+原始运行身份、数据包断言、首次失败阶段与产物摘要见[机器可读证据](../../docs/evidence/dns-repair-ci-2026-11-06.json)。ARM64 完整模块的构建和文件审计，与 x86_64 模拟设备的执行验收分别记录。
 
 ### 配方与发布入口
 
