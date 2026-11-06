@@ -4,7 +4,7 @@
 
 支持 initialize 版本协商 2025-03-26 / 2025-06-18、ping、tools/list、tools/call、resources/list/read、prompts/list/get；通知 HTTP 202，不产生 JSON-RPC 回复，不执行工具。广告的 readOnly/destructive/idempotent/openWorld hints 不是授权。服务器独立校验类型、必填、枚举、数值界限、数组长度和未知属性。
 机器结果在 structuredContent 保持 schema-1，兼容 text；资源 URI 不是文件路径。
-资源固定为 magicnet://status/service、transparent、dns、network、subscription、wifi、overrides。未知资源失败；自动资源脱敏。
+资源固定为 magicnet://status/service、connectivity、transparent、dns、network、subscription、wifi、overrides。connectivity 只读已缓存的 Google 探测/退避结果；读取资源不发新探测或执行恢复。未知资源失败；自动资源脱敏。
 prompts 包含 diagnose-network 与 edit-config-overrides，不嵌入真实配置。
 
 generic magicnet_cli 是 argv 接口，不是 shell。拒绝 mcp secret、sub 私密 dump/user-agent/filter 默认值、人类 sub status 与 wifi 默认/status/list/check/watch、人类 hotspot 默认/status、人类 app 默认/list/packages/recommendations、人类 warp 默认/status、人类 node 默认/list/current、人类 route 默认/list、人类 block 默认/list、config-editor 私密 getter、backup 默认 export、override/wifi/network-access inspect、原始 service/mcp logs、diagnose（包括尾随参数）和 __ 开头的内部命令名。普通节点名/SSID 可以以 __ 开头，不能误伤参数。保留 --json hotspot status 与 named magicnet_hotspot_status 的脱敏 envelope。named magicnet_node_list / magicnet_node_current / magicnet_block_list 仍是显式路径。
@@ -12,6 +12,8 @@ file_list/read 拒绝 .config/sing-box、密钥及临时/备份别名、Wi-Fi �
 log_read 必须脱敏 URL/凭据，redact=false 不能绕过；service/mcp logs named tool 也走脱敏路径。
 私密配置、订阅、覆写检查、流量等保留明确 named tool，不在普通状态汇总自动调用。module-update 只有 named status；network-access 只有 named status/inspect，不暗加自动修复。
 抓包、测速、连接关闭、备份、配置变更都是明确操作，不能被状态读取触发。
+
+`magicnet_support_bundle` 显式返回 DIAGNOSTIC_CONTRACT.md 的有界、完整脱敏报告，包括路由、核心、订阅及缓存联网证据。它不运行 fresh 外网探测、不 reconcile、不更新订阅；不会因增强报告而降低 generic 工具的私密路径限制。
 
 ## 固定源码工具目录
 

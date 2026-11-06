@@ -144,7 +144,7 @@ class ReleaseTest(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             RELEASE.plan(self.root, "publish")
 
-    def assets(self):
+    def assets(self, extra_archive=None, extra_path=None):
         # Rebuilding after a negative assertion must not leave a component from
         # an earlier ZIP timestamp under its former content-addressed filename.
         for previous in self.directory.iterdir():
@@ -152,6 +152,8 @@ class ReleaseTest(unittest.TestCase):
         component = self.directory / "component.zip"
         with zipfile.ZipFile(component, "w") as archive:
             archive.writestr("bin/synthetic", b"synthetic payload")
+            if extra_archive == "component":
+                archive.writestr(extra_path, b"synthetic extra entry")
         checksum = RELEASE.digest(component)
         name = f"MagicNet-component-test-{checksum}.zip"
         component.rename(self.directory / name)
@@ -164,6 +166,8 @@ class ReleaseTest(unittest.TestCase):
             with zipfile.ZipFile(self.directory / name, "w") as archive:
                 archive.writestr("module.prop", self.prop)
                 archive.writestr("components.json", json.dumps(self.manifest))
+                if extra_archive == name:
+                    archive.writestr(extra_path, b"synthetic extra entry")
         for alias in ("MagicNet.zip", "magicnet_installer.zip"):
             (self.directory / alias).write_bytes((self.directory / "MagicNet-core.zip").read_bytes())
         self.write(self.directory / "build-source.json", json.dumps({"schema": 1,
@@ -181,6 +185,23 @@ class ReleaseTest(unittest.TestCase):
     def test_valid_assets_are_accepted(self):
         self.assets()
         self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
+
+    def test_every_module_and_component_rejects_development_directories(self):
+        for name in ("MagicNet-core.zip", "MagicNet-full.zip", "component"):
+            for entry in ("tests/test_module.py", ".config/sing-box/tests/test_rules.py",
+                          "lib/kamfw/fixtures/input.json", "webroot/__tests__/",
+                          "lib/benchmarks/runner", "webroot/node_modules/package/index.js"):
+                with self.subTest(archive=name, entry=entry):
+                    self.assets(extra_archive=name, extra_path=entry)
+                    with self.assertRaisesRegex(ValueError, "ZIP contains development files"):
+                        RELEASE.verify(self.root, self.directory)
+
+    def test_runtime_test_names_are_allowed(self):
+        for name, entry in (("MagicNet-full.zip", ".config/sing-box/rules/test.srs"),
+                            ("component", "bin/test")):
+            with self.subTest(archive=name, entry=entry):
+                self.assets(extra_archive=name, extra_path=entry)
+                self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
 
     def test_server_must_confirm_every_asset_before_draft_is_published(self):
         self.assets()

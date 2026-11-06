@@ -14,6 +14,10 @@ import zipfile
 REPOSITORY = "LIghtJUNction/MagicNet"
 SOURCE_REPOSITORY = "LIghtJUNction/magicnet-android"
 SOURCE = "generated/magicnet-android"
+DEVELOPMENT_DIRECTORY = re.compile(
+    r"(^|/)(tests?|__tests__|fixtures?|__fixtures__|__snapshots__|"
+    r"bench|benches|benchmarks?|coverage|htmlcov|node_modules)/"
+)
 
 
 def git(root, *args):
@@ -124,6 +128,11 @@ def verify(root, directory):
     require(set(entries) == assets, "Unexpected or missing release assets")
     aliases = ["MagicNet-core.zip", "MagicNet.zip", "magicnet_installer.zip"]
     require(len({entries[name] for name in aliases}) == 1, "Core aliases differ")
+    for name in entries:
+        if name.endswith(".zip"):
+            with zipfile.ZipFile(directory / name) as archive:
+                require(not any(DEVELOPMENT_DIRECTORY.search(member) for member in archive.namelist()),
+                        f"ZIP contains development files: {name}")
     for name in ("MagicNet-core.zip", "MagicNet-full.zip"):
         with zipfile.ZipFile(directory / name) as archive:
             require(archive.testzip() is None, "Corrupt module ZIP")

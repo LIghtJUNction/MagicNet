@@ -1,12 +1,14 @@
 # 特权控制面
 
-交付单一受控入口 /data/adb/modules/MagicNet/cli，供用户、模块脚本、WebUI 和 MCP 使用。内部语言可变，argv、JSON、数据隐私和退出状态稳定。阅读 CLI_REFERENCE.md、MACHINE_CONTRACT.md、SUBSCRIPTION_INTERFACE.md、MCP_CONTRACT.md、STATE_CONTRACT.md 和 ACCEPTANCE.md。
+交付单一受控入口 /data/adb/modules/MagicNet/cli，供用户、模块脚本、WebUI 和 MCP 使用。内部语言可变，argv、JSON、数据隐私和退出状态稳定。阅读 CLI_REFERENCE.md、MACHINE_CONTRACT.md、SUBSCRIPTION_INTERFACE.md、DIAGNOSTIC_CONTRACT.md、MCP_CONTRACT.md、STATE_CONTRACT.md 和 ACCEPTANCE.md。
 
 依赖 runtime 负责实际进程生命周期、订阅与网络策略；必须委托它的事务，不在 MCP 或 WebUI 再建一套特权逻辑。集成验收：人类 CLI、schema-1 和认证工具操作同一设备状态，同一失败不被包装成成功。
 
 control 0.2.3 增加 C-SUB-008：公共 sub.status、私密 sub.inspect、canonical producer 与支持包共用有界来源观测。URL 清单 64 KiB、本地正文 8 MiB；坏编码、NUL、链接、非普通文件和超限明确失败，缺失允许未配置。读取不创建任何目录或文件；canonical 与支持包的未知来源/数量不能伪报为零，service.status 保留独立服务事实。
 
 ## 人类入口
+
+control 0.2.5 增加只读 `connectivity.status`，并在 `service.status` 内提供同一缓存。`support bundle` 提供完整脱敏报告；`support export` 是显式文件导出例外，机器写语义、并发/失败与字节/时间上限遵守 DIAGNOSTIC_CONTRACT.md。读取和采集不探测外网、不 reconcile、不自愈；自动恢复由 runtime 的单一 producer 负责。
 
 保留 CLI_REFERENCE.md 的命令族与参数。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
 Android 模块根必须由可信可执行路径/固定安装位置确定，不能由调用者 MODDIR 重定向特权代码。宿主夹具可显式使用独立 MODDIR；本地 API 仅允许 loopback HTTP 端口，拒绝远端/userinfo/路径混入。

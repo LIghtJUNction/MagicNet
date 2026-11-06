@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.2.4"
+version = "0.2.5"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"
@@ -15,6 +15,8 @@ source = "../magicnet-network-runtime"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.2.5 增加缓存只读 connectivity.status、service.status 的 connectivity 字段和显式 support.export 机器写例外。DIAGNOSTIC_CONTRACT.md 规定内容、资源上限、脱敏和单文件原子发布；MCP 增加只读缓存资源，不把诊断变为自动修复。
 
 0.2.3 增加 C-SUB-008：公共状态与私密检查使用相同有界来源读取，区分缺失与坏数据，读取不创建目录，错误保持结构化和脱敏；canonical 读取失败标 unknown。现有 schema-1、命令目录与私密授权边界保持。
 

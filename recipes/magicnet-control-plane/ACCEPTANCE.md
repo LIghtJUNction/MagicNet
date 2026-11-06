@@ -2,6 +2,8 @@
 
 本文件定义重建与维护验收标准；各场景实际执行的源码提交、主机结果及 Android 设备结果见根 VERIFICATION.md。
 
+0.2.5 追加 DIAG-A01–A06（见 DIAGNOSTIC_CONTRACT.md），并验证 `connectivity.status` / `service.status.data.connectivity` 的同一缓存、capabilities 增量、未知/暂停/失败与新鲜度、纯状态读取零写入零公网请求。MCP 自动资源只读脱敏缓存；`--json connectivity tick` 和未设计的参数组合结构化拒绝。support.export 仅生成报告，不能借用 dispatcher 收尾 reconcile 改写 canonical。
+
 1. --json 放头/尾各调用 capabilities，解析 stdout 恰好一个 schema-1；重复 flag/未知命令/service stop --json 返回非零结构化错误，不执行写命令。
 2. 构造 PID 可见但 API 拒绝、API 正常但 TUN 缺失、PID 枚举失败、eBPF local attached 且 shared pending 的独立夹具；检查每层和 overall，不允许用一个 bool 覆盖未知。
 3. 并发读取/发布 15 域，逐个 rename 注入失败；读不到半条文件，失败恢复已替换域；跨域读取走机器命令且不宣称全 OS 原子性。

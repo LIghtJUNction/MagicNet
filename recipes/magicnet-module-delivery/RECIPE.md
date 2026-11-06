@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.4"
+version = "0.2.5"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.5 要求所有最终模块和组件 ZIP 递归排除测试、fixture、快照、基准、覆盖率及 node_modules 目录；源码测试和运行同名文件保留。清理、拆包与发布内容验证形成独立门禁，实际归档证据见 ACCEPTANCE.md。
 
 0.2.4 统一安装引导与卸载告别页的启动器来源：直接维护固定 `kamfw` 子模块，保留当前用户浏览器回退、失败传播和既有调用接口。
 

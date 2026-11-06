@@ -23,6 +23,16 @@
 
 源码子模块提交必须可获取；安装、卸载和浏览器回归工作流初始化同一个固定 `kamfw` 依赖后再执行。单独修改该 gitlink 也须触发对应检查。
 
+## 最终 ZIP 内容门禁
+
+归档清理在组件拆分、内嵌 manifest 与最终摘要生成之前完成。开发目录规则适用于 `MagicNet-core.zip`、`MagicNet.zip`、`magicnet_installer.zip`、`MagicNet-full.zip` 和每个 `MagicNet-component-*.zip`，覆盖模块源码、配置子模块和框架依赖的任意嵌套层级。
+
+禁止的完整目录段为 `test`、`tests`、`__tests__`、`fixture`、`fixtures`、`__fixtures__`、`__snapshots__`、`bench`、`benches`、`benchmark`、`benchmarks`、`coverage`、`htmlcov`、`node_modules`；空目录也必须删除。Git 元数据、开发缓存和本地私密数据继续遵守既有排除规则。源码仓库中的测试不删除；运行文件 `bin/test`、`rules/test.srs` 等同名或近似名称不触发目录排除，运行代码、配置和许可证保持原始内容。
+
+KAM 清理失败、组件打包器发现未清理目录，或发布验证器在任意最终 ZIP 中发现禁用目录时，均以非零结果阻断后续交付。清理后重新打包的核心别名、组件清单与 SHA256SUMS 必须与最终字节一致。归档检查需实际列出 ZIP 成员；清理脚本存在、目录清单正确或完整包单独通过均不能替代所有资产检查。
+
+主机门禁以合成载荷运行实际 KAM 清理钩子与组件打包器，检查核心包、完整包、两个别名和五个组件，共九个 ZIP；同时检查 CRC、88 个条目的目录边界、组件清单和保留文件字节。注入未清理核心包、完整包与组件的反例必须由最终发布验证器拒绝。该门禁验证归档转换与交付内容，安装执行、Android 设备和真实网络的结果分别记录。
+
 ## 权限与门槛
 
 构建和 Android 验收只有读取权限；只在主仓库 main 的显式 publish 请求中，独立发布 job 获得 contents:write。源码仓库不得创建官方软件 Release 或带发行请求的版本 PR。

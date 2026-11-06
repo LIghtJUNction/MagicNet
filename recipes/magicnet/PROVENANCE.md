@@ -1,5 +1,13 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / 低频联网恢复与单文件诊断
+
+输入为用户要求：最终模块不打包测试文件夹；本机模拟并测内存/性能；连接后低频测试Google，失败警告、指数退避和尝试订阅等恢复；一键导出集中路由、内核、订阅及相关信息的单文件诊断。
+
+逐步推送源码 [e8aad9e](https://github.com/LIghtJUNction/magicnet-android/commit/e8aad9e4b97c2601d029dcfa1f2b56ac90abd106)（打包）、[9d545e1](https://github.com/LIghtJUNction/magicnet-android/commit/9d545e100080ef454f7bc7c11fb9c2508b639e4e)（界面）和最终 [aefcbfbab80fe14008e4467eb0292251f7ce8f89](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)（运行时/诊断）；最终tree为772988407d975d6116614a6e8b4c2a8c0b4e76f2。期间同步到达的Voice清理、目录/锁/原生TUN、共用launcher和教育分流通过三路合并保留，未强推。
+
+根配方0.3.12，control0.2.5、runtime0.1.6、webui0.2.4、delivery0.2.5；新增M56–M58、CONNECTIVITY_CONTRACT与DIAGNOSTIC_CONTRACT。固定sing-box d850ff0、模板6b5f68a、kamfw bb0dc758保持。真实CLI和归档转换、确定性故障模拟、核心配置check各有本轮证据；宿主netlink和浏览器socket限制、缺Android工具链未被标为通过。既有实现维护，不是独立重建或新Android发行。完整说明见[验收报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION.md。
+
 ## 2026-11-06 / 大陆教育域名分类与默认模板迁移
 
 输入为用户要求补充大陆学校与教育网站直连。本轮依据官方主站、服务说明及 CERNIC 的域名管理职责，选择 16 个后缀：`edu.cn`、`moe.gov.cn`、`chsi.com.cn`、`smartedu.cn`、`neea.cn`、`ncss.cn`、`icourse163.org`、`icourses.cn`、`xuetangx.com`、`yuketang.cn`、`chaoxing.com`、`zhihuishu.com`、`eol.cn`、`cnki.net`、`wanfangdata.com.cn`、`cqvip.com`。逐项官方 URL 与用途见 [POLICY_INVENTORY.md](../magicnet-routing-policy/POLICY_INVENTORY.md)，查阅日期为 2026-11-06。后缀覆盖根域名与子域名；不扩展为全球 `.edu`、全部 `.cn` 或共享 CDN，也不据此断言每个子域名的服务器位置。

@@ -1,5 +1,25 @@
 # 实现与发行验证
 
+## 2026-11-06 / 联网恢复、诊断与打包（最终aefcbfb）
+
+实现固定 [aefcbfbab80fe14008e4467eb0292251f7ce8f89](https://github.com/LIghtJUNction/magicnet-android/commit/aefcbfbab80fe14008e4467eb0292251f7ce8f89)。本轮以下检查绑定其最终工作树；既有其他提交的远程CI不移用为本轮证据。
+
+| 范围 | 本轮实际结果 |
+| --- | --- |
+| 低频探测与恢复 | 12单元、8真实CLI集成通过，含2小时确定性故障仅8轮、并发去重、时钟/预算、恢复自身监督、探测中停止和恢复中取消回滚 |
+| 诊断 | 50单元/回归、3真实CLI集成通过，覆盖有界采集、脱敏、原子发布/失败保留、单JSON和零状态修改 |
+| 机器与生命周期 | machine17、observation6、service27（另1个原有Android专用ignored）、process_lifecycle5、module_update29通过 |
+| Shell | watchdog、supervisor-start-policy、subscription-lifecycle通过；config-lock-ownership与fswatch-lifecycle在bash/sh/mksh/BusyBox通过 |
+| 静态与前端 | Rust fmt和workspace/all-targets/all-features严格Clippy通过；WebUI346测试、typecheck和生产构建通过 |
+| 归档 | components17、archive-safety12、core-size5、release-validator19；另实际清理/拆分9ZIP、88成员通过，载荷为宿主合成夹具 |
+| CLI性能 | 20次status中位2.3055ms、RSS中位2224KiB；20次未到期tick中位1.2938ms、RSS中位1918KiB，状态字节不变；一次导出152.3926ms、18188字节 |
+| 监督空闲 | 同一固定kamfw的shell+sleep采样15秒/16次，RSS合计1832KiB、PSS中位483KiB；不含核心/周期CLI/Android，原测量SHA另记 |
+| 配方 | 0.3.12目录check、pack、归档check、完整提示词通过，8包58Markdown；源码以固定gitlink接入 |
+
+完整生产标签核心d850ff0已构建且version/pin/tags与config check通过；run被宿主`create netlink socket: operation not permitted`阻断。单次Google测试实际请求0，真实代理吞吐和核心空闲RSS未知；最终JSON为cli.acceptance=passed、local_acceptance=blocked。CLI峰值是wait4最大单进程（包含已等待后代），不是常驻或并发总量；诊断最大51076KiB含真实核心version/check子进程。
+
+保留一个未改动的TUN测试失败：宿主缺/sys/class/net/lo，既有测试硬编码lo应就绪。新增6个Playwright场景因Chromium所需socket被禁止未执行完成；生产Vue事件函数夹具不替代浏览器。NDK/cargo-ndk/cross/Android Rust目标/javac/d8/adb/sdkmanager缺失，本轮没有生成或验证新Android包/真机流量。报告、哈希、复现命令和边界见[完整验收记录](../../docs/connectivity-diagnostics-2026-11-06.md)，原始指标见[JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)。
+
 ## 2026-11-06 / 大陆教育域名分类与默认模板迁移
 
 本轮模板为 [`6b5f68a261818a4ffda6eb9a11b21eef9b755650`](https://github.com/LIghtJUNction/MagicSingBox/commit/6b5f68a261818a4ffda6eb9a11b21eef9b755650)，`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`；消费源码为 [`cb7f63bc8eb426c8633de70ef03c9f8af0034ef6`](https://github.com/LIghtJUNction/magicnet-android/commit/cb7f63bc8eb426c8633de70ef03c9f8af0034ef6)。16 个后缀及官方来源见 [POLICY_INVENTORY.md](../magicnet-routing-policy/POLICY_INVENTORY.md)。规则使用现有 `cn-direct` 和本地加密 DNS，保留前序保护、用户选择及五个指定拒绝目标；不代表所有教育网站或共享资源均被分类。

@@ -1,7 +1,9 @@
 # 文件即状态
 
 .config 持久化用户意图；.state/machines/<domain>.state 是每域唯一 public canonical；其他 journal/PID/owner/cache/probe 只作为恢复与观测输入；.log 是诊断历史。
-固定域：service、transparent、subscription、subscription-refresh、selectors、app-policy、supervisors、wifi、hotspot、dns、mcp、tailscale、transactions、overrides、module-update。每个文件 schema=1，有界 key=value token，字段分别表达 configured、observed、phase、ownership；不把所有事实挤进 running。
+固定域：service、transparent、subscription、subscription-refresh、selectors、app-policy、supervisors、wifi、hotspot、dns、mcp、tailscale、transactions、overrides、module-update，以及独立 producer 发布的 connectivity。每个文件 schema=1，有界 key=value token，字段分别表达 configured、observed、phase、ownership；不把所有事实挤进 running。
+
+connectivity 的单调截止时间、退避、失败次数、恢复级别和订阅冷却由监督 producer 原子保存。普通 reconcile 不覆盖此域，状态读取不创建文件或发网络请求。开机 token 只用于预算有效性判断，不进入 JSON/MCP/诊断文件。新鲜度未知或重启后旧观测保持 stale/pending；主目标成功才有 online。
 
 任何状态写入必须先 reconcile 外部事实：准确进程身份、接口、cgroup、TC、路由/防火墙。枚举失败 unknown，等待外部条件 pending，旧观测 stale。驻留 producer 内部状态变动后主动 publish，不能等退出才发布；普通生命周期写操作结束 reconcile。
 每文件 staged/synced 原子替换。跨域先完整计算、stage/sync，再逐个提交；后续替换失败回滚已替换文件。多个 rename 对无锁读者并不同时可见，需要跨域快照使用机器接口，其底层 OS 探测也不是全系统瞬时原子观察。

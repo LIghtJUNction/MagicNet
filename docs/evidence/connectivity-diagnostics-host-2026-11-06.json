@@ -1,0 +1,224 @@
+{
+  "schema": 1,
+  "final_source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
+  "scope": "Linux synthetic-module validation; original measurements retain their exact source and binary identity",
+  "final_host": {
+    "schema": 1,
+    "captured_at_utc": "2026-11-06T02:46:56.450982+00:00",
+    "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+    "source_commit": "aefcbfbab80fe14008e4467eb0292251f7ce8f89",
+    "environment": {
+      "os": "Linux",
+      "release": "6.18.57",
+      "architecture": "x86_64",
+      "cpus": 9,
+      "python": "3.12.14",
+      "load_average": [
+        1.22412109375,
+        0.95849609375,
+        0.8720703125
+      ],
+      "cpu_tick_hz": 100
+    },
+    "google_once": {
+      "status": "not_requested",
+      "requests": 0
+    },
+    "core": {
+      "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+      "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+      "binary_bytes": 86507646,
+      "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+      "config": "mixed_loopback_only_no_tun_no_ebpf",
+      "log_level": "warn",
+      "production_build_tags_verified": true,
+      "configuration_check": "passed"
+    },
+    "loopback": {
+      "status": "blocked",
+      "type": "RuntimeError",
+      "reason": "host_netlink_socket_denied",
+      "errno": null
+    },
+    "cli": {
+      "binary_sha256": "1a25a998ef7c1a078597172a8a960350672c8a37369bfb40d0c6fdde64e00e8b",
+      "fixture": "isolated_host_module_future_probe_deadline",
+      "measurement": "native fork/exec wall time and wait4 CPU; excludes Python driver",
+      "peak_rss_scope": "maximum individual process including waited descendants; not concurrent tree total or persistent memory",
+      "status": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 1.8017,
+          "median": 2.3055,
+          "p95_nearest_rank": 2.9307,
+          "max": 3.2263
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 2096,
+          "median": 2224.0,
+          "p95_nearest_rank": 2348,
+          "max": 2348
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 1.788,
+          "median": 2.2695,
+          "p95_nearest_rank": 2.916,
+          "max": 2.919
+        }
+      },
+      "tick_not_due": {
+        "elapsed_ms": {
+          "samples": 20,
+          "min": 0.9195,
+          "median": 1.2938,
+          "p95_nearest_rank": 1.677,
+          "max": 1.8036
+        },
+        "peak_process_rss_kib": {
+          "samples": 20,
+          "min": 1772,
+          "median": 1918.0,
+          "p95_nearest_rank": 1956,
+          "max": 1964
+        },
+        "cpu_ms": {
+          "samples": 20,
+          "min": 0.859,
+          "median": 1.146,
+          "p95_nearest_rank": 1.544,
+          "max": 1.718
+        }
+      },
+      "no_op_preserved_probe_state": true,
+      "export": {
+        "elapsed_ms": 152.392554,
+        "peak_process_rss_kib": 51076,
+        "cpu_ms": 144.788,
+        "file_bytes": 18188,
+        "reported_bytes": 18188,
+        "samples": 1
+      },
+      "acceptance": "passed"
+    },
+    "local_acceptance": "blocked"
+  },
+  "core_google_attempt": {
+    "schema": 1,
+    "captured_at_utc": "2026-11-06T02:32:40.211023+00:00",
+    "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+    "source_commit": "cb7f63bc8eb426c8633de70ef03c9f8af0034ef6",
+    "environment": {
+      "os": "Linux",
+      "release": "6.18.57",
+      "architecture": "x86_64",
+      "cpus": 9,
+      "python": "3.12.14",
+      "load_average": [
+        1.77734375,
+        1.05615234375,
+        1.0615234375
+      ],
+      "cpu_tick_hz": 100
+    },
+    "google_once": {
+      "status": "unavailable",
+      "requests": 0,
+      "reason": "host_netlink_socket_denied"
+    },
+    "core": {
+      "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+      "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+      "binary_bytes": 86507646,
+      "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+      "config": "mixed_loopback_only_no_tun_no_ebpf",
+      "log_level": "warn",
+      "production_build_tags_verified": true,
+      "configuration_check": "passed"
+    },
+    "loopback": {
+      "status": "blocked",
+      "type": "RuntimeError",
+      "reason": "host_netlink_socket_denied",
+      "errno": null
+    },
+    "local_acceptance": "blocked"
+  },
+  "watchdog_idle": {
+    "schema_version": 1,
+    "recorded_at": "2026-11-06T02:42:25.380383+00:00",
+    "source_commit": "9d545e100080ef454f7bc7c11fb9c2508b639e4e",
+    "kamfw_commit": "bb0dc7582ee2c27e31e49d2d3b714b97528defef",
+    "cli_for_proc_identity_sha256": "92da309846a14fd3386235135ffc3abdc41cb527fc8aea698116f744768c4445",
+    "host": {
+      "system": "Linux",
+      "machine": "x86_64",
+      "kernel": "6.18.57",
+      "shell": "/usr/bin/dash"
+    },
+    "scope": "real pinned kamfw .kamfwrc and watchdog.sh; 60-second generated loop; Linux shell and sleep only, during initial sleep; no-op callback; Python/bootstrap excluded; no core or Android routing",
+    "network_requests": 0,
+    "sampling_interval_seconds": 1,
+    "clock_ticks_per_second": 100,
+    "samples": 16,
+    "process_count": 2,
+    "observed_seconds": 15.0124,
+    "processes": [
+      {
+        "role": "watchdog_shell",
+        "rss_kib": {
+          "samples": 16,
+          "min": 956,
+          "median": 956.0,
+          "p95_nearest_rank": 956,
+          "max": 956
+        },
+        "pss_kib": {
+          "samples": 16,
+          "min": 309,
+          "median": 310.0,
+          "p95_nearest_rank": 311,
+          "max": 311
+        },
+        "cpu_ticks_delta": 0
+      },
+      {
+        "role": "sleep",
+        "rss_kib": {
+          "samples": 16,
+          "min": 876,
+          "median": 876.0,
+          "p95_nearest_rank": 876,
+          "max": 876
+        },
+        "pss_kib": {
+          "samples": 16,
+          "min": 169,
+          "median": 173.0,
+          "p95_nearest_rank": 175,
+          "max": 175
+        },
+        "cpu_ticks_delta": 0
+      }
+    ],
+    "simultaneous_tree_rss_kib": {
+      "samples": 16,
+      "min": 1832,
+      "median": 1832.0,
+      "p95_nearest_rank": 1832,
+      "max": 1832
+    },
+    "simultaneous_tree_pss_kib": {
+      "samples": 16,
+      "min": 478,
+      "median": 483.0,
+      "p95_nearest_rank": 486,
+      "max": 486
+    },
+    "cpu_ticks_delta": 0,
+    "memory_note": "RSS is the simultaneous sum of shell and sleep and double-counts shared pages; PSS apportions shared pages. Neither includes the measurement driver, core, periodic CLI work, or Android manager overhead.",
+    "cpu_note": "0 ticks means below the /proc CPU accounting resolution in this idle window, not an assertion of zero permanent CPU cost.",
+    "status": "passed"
+  }
+}

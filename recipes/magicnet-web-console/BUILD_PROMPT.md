@@ -24,6 +24,10 @@ Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字�
 
 ## 控制与并发
 
+概览和诊断页消费 `service.status.data.connectivity` 的缓存 Google 状态，区分内核/API readiness 与实际主目标结果。失败、过期和带旧失败的 pending 用明确 ⚠️、原因、预计重试和最近恢复动作；修复返回成功不能显示为联网成功。正常约 5 分钟检查，页面刷新不调用 tick、pingtest、订阅更新或自动修复。旧版缺字段显示 unknown。
+
+诊断页提供“一键导出诊断包”，按 control/DIAGNOSTIC_CONTRACT.md 先协商 support.export，再执行一次写入。展示固定文件路径与大小，可复制路径；快速双击只启动一项任务，导出失败清除旧成功，原始错误/报告不进入共享输出。无原生 bridge 时禁用设备导出，不能模拟已生成文件。使用现有组件、串行桥和三种语言，不增加 npm 或运行时依赖。
+
 通过管理器原生 bridge 执行受控 argv/私密 payload 文件，不把订阅/密码写 shell 字符串预览；无 native bridge 时明确只读预览，不模拟已连接设备。
 先协商 JSON 能力，校验 schema/ok/command/data 后更新；不解析人类文本来替代已有 JSON。未知、坏 JSON、多 JSON、非零退出显示失败；失败刷新清除过期 live 指示为 unknown；保存错误保留编辑。
 私密 sub/wifi/override inspector 安静读取，错误显示规范化代码，不捕获原始 payload。诊断使用脱敏 status。用户配置与实际 effective 分开展示。

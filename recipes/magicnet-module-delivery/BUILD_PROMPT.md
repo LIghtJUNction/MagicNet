@@ -16,6 +16,14 @@ MagicNet-core.zip、兼容 MagicNet.zip 与 magicnet_installer.zip、MagicNet-fu
 MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip 是完全相同核心包字节的三个发布名，SHA-256 相同，模块 ID 均为 MagicNet。管理器先于安装脚本选择 ID，不能创建另一个 magicnet_installer 模块再嵌套安装，也不能借别名重复下载核心包。
 components.json 固定架构、实际路径、模式、大小和 SHA-256。组件 identity 由规范化内容决定，版本号/时间戳/顺序不迫使不变 sing-box 重新下载。不可用随机“最新”资产替代锁定输入。
 
+## 模块包内容边界
+
+测试保留在源码仓库供开发和 CI 使用；构建时递归排除模块及各依赖内的测试目录。最终核心包、两个核心别名、完整包和每个组件 ZIP 均不得含有 `test/`、`tests/`、`__tests__/`、`fixture/`、`fixtures/`、`__fixtures__/`、`__snapshots__/`、`bench/`、`benches/`、`benchmark/`、`benchmarks/`、`coverage/`、`htmlcov/` 或 `node_modules/`。同时继续排除 Git 元数据和开发缓存。
+
+按完整目录段判断，包括空目录与任意深度的嵌套目录；不要按文件名包含 test、文件后缀或所有隐藏路径删除。`bin/test`、`.config/sing-box/rules/test.srs`、`lib/kamfw/test-support.sh`、运行配置、依赖运行代码与许可证必须保留原始字节。
+
+先清理原始 KAM ZIP，再校验并拆分组件，最后生成 manifest 和最终摘要。清理失败应中止；重复清理保持字节不变。组件打包器拒绝绕过清理的开发目录，发布验证器逐个检查所有最终 ZIP，不能只检查完整包。以真实 ZIP 转换和归档内容检查验证边界，不依赖排除配置文本存在；完整门禁见 RELEASE_CONTRACT.md 与 ACCEPTANCE.md。
+
 ## 组件事务
 
 信任本次模块 ZIP 内的 manifest，不信镜像给的清单。逐项实际校验；复用顺序为当前安装目录→上一版本→full 内载荷→用户明确的只读离线来源→网络。全复用/full 路径零网络。

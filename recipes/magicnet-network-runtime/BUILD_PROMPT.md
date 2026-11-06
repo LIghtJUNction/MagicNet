@@ -8,6 +8,8 @@
 
 ## 生命周期与所有权
 
+runtime 0.1.6 增加 [CONNECTIVITY_CONTRACT.md](CONNECTIVITY_CONTRACT.md)，须完整阅读并执行 CON-A01–A06。复用现有监督，在核心运行且归属明确时进行低频 Google 检查；持久化退避、差异探测、路由/DNS恢复、事务性订阅更新及重启都有有界条件。普通状态和诊断不触发探测，不改用户停止意图，不增加第二套订阅/生命周期状态机。
+
 启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
 config apply 对有效配置和规则指纹无变化时不重启；transparent apply 显式重建当前数据面。状态读取无写；写生命周期完成 publish/reconcile。
 周期 hotspot reconcile 使用非阻塞争锁，繁忙时无副作用跳过，不发布当前 owner 的状态；I/O/锁错误仍报告失败。实际尝试后，无论成功或失败都发布新的规范化观测。显式 service start|stop|restart 的锁获取有界等待，保留 startup/disabled/owner/事务恢复检查；参考实现只把服务操作锁预算从 2 秒扩为 10 秒，其他配置操作仍为 2 秒，该预算不代表完整操作耗时。

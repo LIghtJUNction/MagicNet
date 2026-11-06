@@ -6,6 +6,12 @@ service.status 分开报告受控进程 running/stopped/unknown、API.ready、re
 tun 看 sysfs magicnet0；ebpf 刷新活动程序并检查当前进程的 cgroup/TC attachment，不拿能力探测冒充实际挂载。
 hybrid 无下游时 local 可 ready，shared_tc=pending、shared_ready=false；配置了下游则必须全部验证。shared-only 缺下游不能 ready。local/shared 信号未知用 null，旧版本能力未协商不猜测。
 
+## 0.2.5 增量：联网与诊断
+
+`connectivity.status` 以及 `service.status.data.connectivity` 返回同一缓存观测，状态为 unknown/pending/online/degraded/offline/paused/stale；`target` 固定 Google HTTPS 204 端点，`path=mixed_proxy`。字段含 reason/primary_reason、warning、checked_at/next_check_at/retry_in_seconds、失败/探测计数、退避、HTTP/延迟、辅助结果和最近动作。未知数值为 null；用户停止后 paused，不借 PID 或辅助成功声称 Google 在线。读取零写入、零外网探测。
+
+`support.export` 无参数，成功 data 为 `{path,bytes}`，失败 `support.export_failed`。commands/mutation_commands 均显式列入，`support_export={requires_write:true,state_effect:"export-only",fresh_network_probe:false}`；导出只写报告，幂等/并发/失败语义见 DIAGNOSTIC_CONTRACT.md。capabilities 另增加 low_frequency_connectivity 特性。下文稳定快照保留历史证据，不代表新增接口已包含在旧版本。
+
 ## 私密边界
 
 sub.status 只返回来源类型、计数、事务/刷新状态、reason 是否存在与合计；wifi.status 只有匹配/连接事实和名单计数。

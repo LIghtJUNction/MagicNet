@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.5"
+version = "0.1.6"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.6 增加 CONNECTIVITY_CONTRACT.md：主目标经 mixed 代理每 300 秒检查，失败指数退避到 1800 秒；差异探测、有条件恢复、订阅冷却、停止意图及监督交接均有独立验收。复用既有监督与生命周期锁，没有新增常驻运行库或服务。
 
 0.1.4 增加 #434 的默认 UA 403 单次回退（SUB-003、SUB-A21），并保留 0.1.3 的 IPv4-mapped 地址钉选。
 
