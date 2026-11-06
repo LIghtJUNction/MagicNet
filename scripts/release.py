@@ -15,6 +15,8 @@ import zipfile
 REPOSITORY = "LIghtJUNction/MagicNet"
 SOURCE_REPOSITORY = "LIghtJUNction/magicnet-android"
 SOURCE = "generated/magicnet-android"
+PLAN_FILE = "release-plan.json"
+MAX_VERSION_CODE = 2147483647
 CURL_FILES = {
     "bin/curl", "licenses/curl/build-provenance.json", "licenses/curl/curl-COPYING.txt",
     "licenses/curl/OpenSSL-LICENSE.txt", "licenses/curl/zlib-README.txt",
@@ -35,11 +37,49 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def metadata(root):
+def version_tuple(version):
+    require(isinstance(version, str) and re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version),
+            "Expected a vMAJOR.MINOR.PATCH software version")
+    return tuple(map(int, version[1:].split(".")))
+
+
+def updater(version, code):
+    version_tuple(version)
+    require(type(code) is int and 1 <= code <= MAX_VERSION_CODE, "Invalid versionCode")
+    base = f"https://github.com/{REPOSITORY}"
+    return {"changelog": f"{base}/blob/main/docs/releases/{version}.md",
+            "version": version, "versionCode": code,
+            "zipUrl": f"{base}/releases/download/{version}/magicnet_installer.zip"}
+
+
+def validate_selection(selection):
+    require(selection.get("schema") == 1 and selection.get("repository") == REPOSITORY
+            and selection.get("source_repository") == SOURCE_REPOSITORY, "Invalid release plan identity")
+    for key in ("base_sha", "source_sha"):
+        require(isinstance(selection.get(key), str) and re.fullmatch(r"[0-9a-f]{40}", selection[key]),
+                f"Invalid release plan {key}")
+    version_tuple(selection.get("version"))
+    require(type(selection.get("version_code")) is int
+            and 1 <= selection["version_code"] <= MAX_VERSION_CODE, "Invalid release plan versionCode")
+    require(type(selection.get("prerelease")) is bool, "Invalid release plan prerelease")
+    require(isinstance(selection.get("run_id"), str) and re.fullmatch(r"[1-9][0-9]*", selection["run_id"]),
+            "Invalid release plan run ID")
+    return selection
+
+
+def metadata(root, selection=None):
     source = root / SOURCE
     entry = git(root, "ls-tree", "HEAD", "--", SOURCE).split()
     require(len(entry) == 4 and entry[:2] == ["160000", "commit"], "Missing source gitlink")
-    source_sha = entry[2]
+    snapshot = root / PLAN_FILE
+    if selection is None and snapshot.is_file():
+        selection = validate_selection(json.loads(snapshot.read_text()))
+        require(git(root, "rev-parse", "HEAD") != selection["base_sha"],
+                "Publishing requires a committed release snapshot")
+        require(selection["source_sha"] == entry[2], "Snapshot gitlink differs from release plan")
+    if selection is not None:
+        validate_selection(selection)
+    source_sha = selection["source_sha"] if selection else entry[2]
     require(git(source, "rev-parse", "HEAD") == source_sha, "Source checkout differs from gitlink")
     url = git(root, "config", "-f", ".gitmodules", "--get", f"submodule.{SOURCE}.url")
     require(url == f"https://github.com/{SOURCE_REPOSITORY}.git", "Unexpected source repository")
@@ -49,13 +89,14 @@ def metadata(root):
                   if "=" in line and not line.startswith("#"))
     update = json.loads((source / "update.json").read_text())
     version, code = prop["version"], prop["versionCode"]
-    require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version), "Invalid software version")
+    version_tuple(version)
     require(type(code) is int and 1 <= code <= 2147483647, "Invalid versionCode")
     require(prop["id"] == module["id"] == "MagicNet", "Invalid module identity")
     for other in (module, update):
         require(other["version"] == version and str(other["versionCode"]) == str(code),
                 "Source version metadata differs")
-    require(json.loads((root / "update.json").read_text()) == update, "Root/source update.json differs")
+    stable = json.loads((root / "update.json").read_text())
+    require(stable == updater(stable["version"], stable["versionCode"]), "Invalid stable versioned update.json")
     base = f"https://github.com/{REPOSITORY}"
     require(update["zipUrl"] == f"{base}/releases/download/{version}/magicnet_installer.zip",
             "Updater must use the official versioned installer")
@@ -65,6 +106,16 @@ def metadata(root):
     notes = f"docs/releases/{version}.md"
     require(repo.get("changelog_file") == notes, "KAM changelog_file differs from software version")
     require((source / notes).is_file(), "Missing source release notes")
+    if selection is not None:
+        version, code = selection["version"], selection["version_code"]
+        head = git(root, "rev-parse", "HEAD")
+        if head != selection["base_sha"]:
+            require(selection["source_sha"] == entry[2], "Snapshot gitlink differs from release plan")
+            require(json.loads(git(root, "show", f"HEAD:{PLAN_FILE}")) == selection,
+                    "Recipe snapshot differs from release plan")
+            require(git(root, "rev-parse", "HEAD^") == selection["base_sha"],
+                    "Release snapshot has an unexpected parent")
+            require(stable == updater(version, code), "Snapshot update.json differs from release plan")
     return {"source_sha": source_sha, "recipe_sha": git(root, "rev-parse", "HEAD"),
             "version": version, "version_code": str(code)}
 
@@ -131,8 +182,8 @@ def verify_curl_payload(directory, component):
                             "curl payload digest differs between manifest/component/full ZIP")
 
 
-def verify(root, directory):
-    expected = metadata(root)
+def verify(root, directory, selection=None):
+    expected = metadata(root, selection)
     entries = {}
     for line in (directory / "SHA256SUMS").read_text().splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)", line)
@@ -150,8 +201,9 @@ def verify(root, directory):
     provenance = json.loads((directory / "build-source.json").read_text())
     require(provenance == {"schema": 1, "repository": REPOSITORY, "source_repository": SOURCE_REPOSITORY,
                            **expected}, "Build provenance differs from selected commits")
-    require((directory / "update.json").read_bytes() == (root / "update.json").read_bytes(),
-            "Published updater differs from committed updater")
+    require(json.loads((directory / "update.json").read_text())
+            == updater(expected["version"], int(expected["version_code"])),
+            "Published updater differs from release plan")
     manifest = json.loads((directory / "components.json").read_text())
     require(manifest["schema"] == 1 and manifest["module"] == "MagicNet"
             and manifest["repository"] == REPOSITORY and manifest["architecture"] == "arm64"
@@ -191,9 +243,9 @@ def verify(root, directory):
     return expected
 
 
-def verify_uploaded(root, directory, response):
+def verify_uploaded(root, directory, response, *, draft=True):
     expected = verify(root, directory)
-    require(response["draft"] is True and response["tag_name"] == expected["version"]
+    require(response["draft"] is draft and response["tag_name"] == expected["version"]
             and response["target_commitish"] == expected["recipe_sha"], "Unexpected draft identity")
     assets = response["assets"]
     local = {path.name: path for path in directory.iterdir()}
@@ -212,13 +264,15 @@ def main():
     parser.add_argument("--mode", choices=("build", "publish"), default="build")
     parser.add_argument("--directory", type=Path, default=Path("dist"))
     parser.add_argument("--response", type=Path)
+    parser.add_argument("--plan", type=Path)
     args = parser.parse_args()
     root = Path.cwd()
     try:
         if args.command == "plan":
             result = plan(root, args.mode)
         elif args.command == "verify":
-            result = verify(root, args.directory)
+            selection = json.loads(args.plan.read_text()) if args.plan else None
+            result = verify(root, args.directory, selection)
         else:
             require(args.response is not None, "Missing release API response")
             result = verify_uploaded(root, args.directory, json.loads(args.response.read_text()))
