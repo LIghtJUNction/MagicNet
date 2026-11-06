@@ -1,5 +1,15 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / DNS 默认出口
+
+输入为用户要求“修复dns泄露问题”。从当前固定源码 `ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9` 与模板 `6b5f68a261818a4ffda6eb9a11b21eef9b755650` 追踪生产物化和默认解析规则，确认未分类查询实际落到无代理 detour 的 bootstrap，而原健康检查只确认存在已知厂商的代理 DNS，可能漏报未使用该解析器的情况。没有把旧设备诊断样本或历史 CI 作为本次修复后的结果。
+
+增量推送模板 `ba5793b41fd06704102116fe2536eef5988f2905`、源码 `e2725d7f74f890c349024f8ae164935458f9340e`；对应 [模板 PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21) 与 [源码 PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2)。源码统一固定模板 revision/digest，精确迁移旧官方配对并保留用户自定义配置。没有升级核心或新增运行依赖。 独立审查随后发现默认类型元数据导致诊断跳过无条件直连规则，补正为 `47097272655e5bf9bb80dcc910d110e56667be05` 并作为最终源码 pin。该增量只有 DNS 诊断及其回归，先确认旧反例失败，再通过 26 项定向与完整 Rust gate；原生产 DNS 数据包证据仍绑定 `e2725d7`，不改变其提交身份。
+
+证据包含旧代码反例、生产 materializer 测试、合法 standalone/直连/bootstrap 对照及精确核心数据包测试。真实核心在本地受 AF_NETLINK 限制，转由 [GitHub 42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 的必需步骤运行并成功；测试仅将生产图的网络端点及 TLS 信任替换为本地夹具，观察代理连接、上游收到的查询和失败结果。没有关闭 TLS 校验或借用用户私密订阅。
+
+本轮记录按 Research-Paper-Writing-Skills 的证据、自审和边界要求组织。配置级健康检查不等于完整动态出口证明，真实核心回环证据也不等于物理 Android 抓包。直连分类、用户显式 override/standalone、Private DNS 和应用自身加密解析的边界见 [DNS 修复记录](DNS_REPAIR_2026-11-06.md)；未经当前设备验收的范围不写成已修复或已部署。
+
 ## 2026-11-06 / 联网诊断、真实框架集成与交付验证
 
 输入为用户要求：最终模块不打包测试目录；在本机模拟并测内存/性能；连接后低频Google检查，失败明确警告、指数退避并尝试订阅等恢复；一键导出覆盖路由、核心、订阅及相关信息的单文件诊断。

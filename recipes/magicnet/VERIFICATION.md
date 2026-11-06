@@ -1,5 +1,19 @@
 # 实现与发行验证
 
+## 2026-11-06 / DNS 默认查询出口修复
+
+本轮源码固定 [`47097272655e5bf9bb80dcc910d110e56667be05`](https://github.com/LIghtJUNction/magicnet-android/commit/47097272655e5bf9bb80dcc910d110e56667be05)，tree `47fc30c1dc67663b1650b75548e3fa345a347304`；默认模板固定 [`ba5793b41fd06704102116fe2536eef5988f2905`](https://github.com/LIghtJUNction/MagicSingBox/commit/ba5793b41fd06704102116fe2536eef5988f2905)，生成配置 SHA-256 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。核心继续使用 `d850ff0ff68e11a71aa8207627e0a826cb52808f`。
+
+旧模板及生产物化函数对未分类域名选择直连 bootstrap；新增对照在旧代码上失败。修复将受管默认 final 与 evaluate 指向经 proxy 的 DoH，同时将节点域名的默认引导 resolver 保持为直连 bootstrap，避免代理启动递归。独立配置、显式直连、已有 resolver 和自定义模板 pin 保留。
+
+- 本地模板 33 项及生成一致性、DNS profile 安全、默认 DNS 物化、完整 Rust fmt/Clippy/tests、DNS 输出次序 15 项、捕获快速路径 6 项、超时保护、模板升级与自定义 pin 保留、WebUI DNS profile/typecheck、正式源码/Shell lint 均通过。安装模板 20 项通过、2 项因可选环境缺失跳过。
+- 前一候选 `e2725d7` 的 [Network Regression Evidence 42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 整套成功。`core-evidence` job `127776187925` 于 07:47:12–07:47:18 UTC 实际运行新增 `--require` 测试：未知域名 A/AAAA 经 UDP/TCP 进入核心后走代理；节点地址直连引导；显式直连有效；代理拒绝时查询失败，直连业务查询为零。测试复用生产物化函数及固定核心，使用本地 TLS DoH/CONNECT 端点，不请求公共 DNS。
+- [模板 Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42182106388)、[Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836609)、[Rules Release Integration](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836597) 与 [Install Onboarding](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836687) 成功。
+
+独立审查发现显式 `type: "default"` 规则的诊断漏报；最终 `4709727` 补正类型与空匹配的 invert 元数据，新增反例先失败后通过，26 项 DNS 诊断测试及完整 Rust gate 再次通过。相对 `e2725d7` 仅更改诊断文件，已验证的生产 DNS 脚本、模板、核心和数据包夹具相同。配方 check/pack/归档 check/build 完整提示词通过，八包 60 份 Markdown；发布入口 21 项测试通过。
+
+本地实际核心运行被容器的 AF_NETLINK 权限阻断，已明确记录，未把跳过记作通过；上述运行证据来自 GitHub runner。物理手机、移动网络切换、Android Private DNS、应用自带 DoH 与真实用户节点未在本轮执行。未创建正式 Release 或安装用户设备。完整原因、合法对照和证据边界见 [DNS 修复记录](DNS_REPAIR_2026-11-06.md)。
+
 ## 2026-11-06 / 正式HTTPS组件最终验收ceb7d54
 
 最终验收固定[源码ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9](https://github.com/LIghtJUNction/magicnet-android/commit/ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9)，tree `794e53afe208f03429748bdea554a71b792b5f3b`。该提交的四条CI全部成功，完整离线包与实际诊断样本已交付；Google实网HTTP 204仍未取得，失败告警与退避按实际结果记录。

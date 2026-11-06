@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.14）
+# 重建 MagicNet（配方 0.3.15）
 
 为 Android root 用户重建 MagicNet：从首次安装与订阅导入，到按应用、Wi-Fi、热点分流，再到节点、故障诊断和自动化控制。保留来源版本的完整用户行为，不能交付只有静态页面或包装命令的演示。
 
@@ -9,7 +9,7 @@
 - 保留操作流程，视觉沿用矿白、石墨与玉绿身份，增加留白、减少重复边框，用排版和背景层次组织内容；空间与控件规则见 webui 的 DESIGN.md。保留诊断、文件草稿、失败恢复和无障碍状态。
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
-- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进；当前实现保留同期教育模板与精确默认 pin 迁移、低频联网恢复、单文件诊断和全部模块归档排除测试目录；本轮替换各层共享实现及 kamfw 运行时，并保留最终锁分离和诊断日志修正，按 REWRITE_CONTRACT.md 分开记录完整回归、原版缺陷和最终定向复验。正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
+- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@47097272655e5bf9bb80dcc910d110e56667be05；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进；当前实现保留同期教育模板与精确默认 pin 迁移、低频联网恢复、单文件诊断和全部模块归档排除测试目录；本轮替换各层共享实现及 kamfw 运行时，并保留最终锁分离和诊断日志修正，按 REWRITE_CONTRACT.md 分开记录完整回归、原版缺陷和最终定向复验。正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
 - 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 保留原需求，M30–M39 新增多订阅、Encryption、可观测状态和重建交付验收。SOURCE_AUDIT.md 分开记录基线缺陷、当前源码修复和仍未知事项；配方合同或源码 main 更新都不等于 Android 版本已发布/部署或 #426 根因已确认。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
@@ -19,6 +19,8 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 完整阅读本文件、BEHAVIOR.md、ACCEPTANCE.md、FEEDBACK.md、SOURCE_AUDIT.md、PERFORMANCE.md、REWRITE_CONTRACT.md、PROVENANCE.md、DEPENDENCIES.md、LICENSE.md，以及四个依赖和所有递归依赖的全部 Markdown。归档内的依赖按 alias 展开，不能只读根入口。
 
 本轮增加的具体合同为 control/SUBSCRIPTION_INTERFACE.md、runtime/SUBSCRIPTION_CONTRACT.md、webui/SUBSCRIPTION_FLOW.md、engine/VLESS_ENCRYPTION.md；这里的前缀是依赖职责简称，包名及实际位置由 RECIPE/LOCK 决定。依赖完整闭包仍是八包，不因补充合同新增常驻服务。
+
+0.3.15 增加 routing-policy 0.2.5 的 POLICY-A21–A25 与根验收 M60：未命中分类的托管默认 DNS 使用 `doh-cloudflare`，通过 `detour: proxy` 查询；无可用节点时失败，不回退直连。缺失的 `route.default_domain_resolver` 使用 `bootstrap-local-dns`，已有显式 resolver、国内、Direct 和 LAN/Tailnet 规则及次序保留。托管默认只在缺失时补入规范远程解析器；显式 profile 选择与已验证独立配置的 DNS 图保留。诊断按实际默认解析器引用及 detour 判断，精确旧官方模板 pin 迁移、自定义 pin 保留。源码仍为 1.8.5，本轮不新建发行；固定模板及验证范围见 DEPENDENCIES.md、DNS_REPAIR_2026-11-06.md 和 VERIFICATION.md。
 
 0.3.3 增加 engine/CORE_LIFECYCLE.md：同步固定上游、保留 fork 协议和生产 tags；握手失败完成连接与回调清理，流绑定和关闭共享一致的并发状态。根验收 M48 对应 CORE-A01–A06，内存结果按实际测量路径记录。
 
