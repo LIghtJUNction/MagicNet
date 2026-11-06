@@ -2,19 +2,19 @@
 
 ## 范围与结论状态
 
-用户授权直接合并并处理 Issue/PR。本记录追踪三个项目仓库的当前事项；源码候选仍在最终整合与门禁阶段，以下本地结果不能替代尚未完成的 CI 或物理设备验收。
+用户授权直接合并并处理 Issue/PR。源码 PR #3 与主仓库 PR #442 已合并到各自 main；最终源码的七条工作流均在 attempt 1 成功。#437、#438、#439 已关闭，#436 与 #440 已记录完成部分并保持开放。以下分别记录本地、实际 Android 模拟器和物理设备的证据边界。
 
-此前 DNS 修复已经合并：[源码 PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2)、[模板 PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21)、[主仓库 PR #441](https://github.com/LIghtJUNction/MagicNet/pull/441)。本轮初始核对时三仓库均无待合并 PR；主仓库有五个开放 Issue。两个尚未解决的 DNS 审查线程已补充依据并标记解决：保留用户显式解析器属于兼容边界；当前固定核心按 transport tag 隔离 DNS 缓存，不能套用旧版独立缓存开关的结论。
+此前 DNS 修复已经合并：[源码 PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2)、[模板 PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21)、[主仓库 PR #441](https://github.com/LIghtJUNction/MagicNet/pull/441)。本轮初始核对时三仓库均无待合并 PR；主仓库有五个开放 Issue。两个此前未解决的 DNS 审查线程已补充依据并标记解决：保留用户显式解析器属于兼容边界；当前固定核心按 transport tag 隔离 DNS 缓存，不能套用旧版独立缓存开关的结论。
 
 ## Issue 处置与证据边界
 
-| Issue | 已确认缺口与修改 | 处置目标 |
+| Issue | 已确认缺口与修改 | 实际处置 |
 | --- | --- | --- |
-| [#438](https://github.com/LIghtJUNction/MagicNet/issues/438) | 整目录恢复会丢失新版网页探测目标清单；恢复后仅为缺失文件从当前 ZIP 补默认值，保留自定义字节并拒绝不安全路径 | 合并并通过门禁后关闭 |
-| [#437](https://github.com/LIghtJUNction/MagicNet/issues/437) | orphan 候选过宽使无关进程的未知身份误阻断；订阅重启区分真正 worker/DNS 失败与独立热点路由清理，后者保留警告和既有重试 | 合并并通过门禁后关闭；不宣称所有现场 rc=2 同源 |
-| [#439](https://github.com/LIghtJUNction/MagicNet/issues/439) | 订阅更新后未恢复完整维护集合；统一恢复 connectivity、refresh、Wi-Fi policy、hotspot 与原活动 fswatch，覆盖 journal、回滚和中断 | 合并并通过门禁后关闭 |
+| [#438](https://github.com/LIghtJUNction/MagicNet/issues/438) | 整目录恢复会丢失新版网页探测目标清单；恢复后仅为缺失文件从当前 ZIP 补默认值，保留自定义字节并拒绝不安全路径 | 已关闭，completed |
+| [#437](https://github.com/LIghtJUNction/MagicNet/issues/437) | orphan 候选过宽使无关进程的未知身份误阻断；订阅重启区分真正 worker/DNS 失败与独立热点路由清理，后者保留警告和既有重试 | 已关闭，completed；不宣称所有现场 rc=2 同源 |
+| [#439](https://github.com/LIghtJUNction/MagicNet/issues/439) | 订阅更新后未恢复完整维护集合；统一恢复 connectivity、refresh、Wi-Fi policy、hotspot 与原活动 fswatch，覆盖 journal、回滚和中断 | 已关闭，completed |
 | [#436](https://github.com/LIghtJUNction/MagicNet/issues/436) | health 与机器状态过去只看 TUN 接口，无法发现规则组丢失；增加配置派生的有界实时路由证据 | 保持开放，区分已修复的误报与未查明的真机规则丢失原因 |
-| [#440](https://github.com/LIghtJUNction/MagicNet/issues/440) | 升级遗漏订阅更新历史；仅将历史加入同一迁移清单，当前 .state 的更新锁不随历史恢复 | 历史部分完成后记进展；可信 NAS/私网订阅入口仍保持开放 |
+| [#440](https://github.com/LIghtJUNction/MagicNet/issues/440) | 升级遗漏订阅更新历史；仅将历史加入同一迁移清单，当前 .state 的更新锁不随历史恢复 | 已记录历史迁移修复；可信 NAS/私网订阅入口未实现，保持开放 |
 
 ## 修复机制
 
@@ -40,7 +40,7 @@ Android TLS 验收补入实际退出码、固定错误分类、GET 计数、主�
 
 原 main `faa7d956324a20889cb921ff35c9f13b66dc0c1a` 的 [Android run 42192735920](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42192735920) 保持失败记录：cold-boot 的 `curl_tls_positive_failed`，当时未保存 curl 详细原因。失败产物 SHA-256 为 `154930452efb433dba982bc77eb193690359b0a0f60aa5c1836227d0720f6028`。本轮修订后使用新提交运行完整门禁，不把旧失败改写成成功。
 
-候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。首次整合源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，当时主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。最新提交的最终门禁与合并结果将在完成后补齐。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
+候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。首次整合源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，当时主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。后续最终门禁、合并和 Issue 回读结果记录如下。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
 
 ### 中间候选 39ba7487 的实际整合结果
 
@@ -58,15 +58,15 @@ Android TLS 验收补入实际退出码、固定错误分类、GET 计数、主�
 
 Android 在 2026-11-06 12:01:23–12:04:43 UTC 执行生命周期步骤；cold-boot 等待约 130.465 秒后报 `core process/API/TUN did not become ready`。失败时核心进程为 running，API ready=true，但 `transparent.dataplane_ready` 和整体 readiness 均为 null，生命周期为 running_unknown；TUN 日志仍有接收连接。该产物没有路由快照或 health 详细理由，尚不能仅凭 null 判断具体命令、解析或预算故障。
 
-本轮尚未进入本地 TLS proof，因而没有 `module-curl-controls.json` 或 `local_tls_diagnostics`；不能把本次失败归因于证书或时钟，也不能宣称新增 TLS 诊断已经通过 Android 验收。[失败产物 13499539200](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473958/artifacts/13499539200) 为 169,342 字节，SHA-256 `fcb5f4e271493083809c7a23731cd0bb4baa35f1bd5bb220ce1adc157b9bf996`，下载校验与 GitHub digest 一致。修复后将使用新源码运行，不覆盖这次失败。
+该 39ba 运行尚未进入本地 TLS proof，因而没有 `module-curl-controls.json` 或 `local_tls_diagnostics`；不能把本次失败归因于证书或时钟，也不能宣称新增 TLS 诊断已经通过 Android 验收。[失败产物 13499539200](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473958/artifacts/13499539200) 为 169,342 字节，SHA-256 `fcb5f4e271493083809c7a23731cd0bb4baa35f1bd5bb220ce1adc157b9bf996`，下载校验与 GitHub digest 一致。后续 8ff 使用新源码验证，结果见下；这次失败记录保持。
 
-固定 [AOSP android-15.0.0_r1 的 ip/ip.c](https://android.googlesource.com/platform/external/iproute2/+/refs/tags/android-15.0.0_r1/ip/ip.c) 显示 `-numeric` 分支被编译条件禁用，未知选项在打开 netlink 前退出；39ba7487 候选的观察器无条件传入 `-N`，因此存在可由固定源码证明的 Android 参数不兼容。下载源码 SHA-256 为 `e9d7bacc4b0864b6f58a26fc547207157f250717d36cae9f0a73b758d18c0673`。这支持修正平台调用，不能从缺少详细命令证据的旧产物排除并存原因；新的实际 Android 结果另记。
+固定 [AOSP android-15.0.0_r1 的 ip/ip.c](https://android.googlesource.com/platform/external/iproute2/+/refs/tags/android-15.0.0_r1/ip/ip.c) 显示 `-numeric` 分支被编译条件禁用，未知选项在打开 netlink 前退出；39ba7487 候选的观察器无条件传入 `-N`，因此存在可由固定源码证明的 Android 参数不兼容。下载源码 SHA-256 为 `e9d7bacc4b0864b6f58a26fc547207157f250717d36cae9f0a73b758d18c0673`。这支持修正平台调用，不能从缺少详细命令证据的旧产物排除并存原因；新的实际 Android 结果见下文。
 
 预发布独立复核另发现数字外观表别名的误报：在固定 AOSP 解析器的合成映射 `4242 2022` 下，参数 `2022` 与输出名称都可指向真实表 4242，而不是配置的表 2022。原解析器的 15 组受控参数对照证明，单个 argv 的前导 ASCII 空格可排除 `%s` 读取的别名匹配，并保留数字解析；修复必须同时保护 RPDB 过滤与 FIB 目标，且不能因输出看似数字而跳过实际表身份核验。此反例属于宿主解析器与受控表映射验证，未修改系统或设备路由，也不等同于旧 Android run 的原始现场证据。
 
-自动审查服务的结果单独记录：源码 PR 的 Sourcery 审查因七天差分配额不足未完成，Codex Security Review 也因账户用量上限失败；当前没有可行动的 inline 审查线程，不能把这些服务状态写成审查通过。已有 DNS PR 的两个审查线程依据原代码与固定核心处理；本轮代码继续通过独立复核及固定源码 CI 验证，没有更改账户额度或付费设置。
+自动审查服务按提交分别记录：源码 PR 初期的 Sourcery 评论报告七天差分配额不足，最终 8ff 的 Sourcery check 因单 PR 超过 150,000 个差分字符而 skipped；Codex Security Review 的用量上限失败属于旧候选 189adb2，不能当作 8ff 的审查通过。主仓库 679bd7e3 的 Sourcery check 为 success、0 annotations，不能外推为源码 PR 的安全审查完成。合并前最后一次核对时，两 PR 均无可行动的 inline 线程或正式 review。已有 DNS PR 的两个审查线程依据原代码与固定核心处理；本轮源码另行独立复核并按固定提交验证，没有更改额度、付费设置或绕过审查限制。
 
-### 最终整合候选 8ff1242
+### 最终受测并已合并的实现 8ff1242
 
 当前源码为 `8ff1242817038dfe220a68b75934d6b127bea4b1`，tree `a23ade9034a47be945dc526f7fe5b00751267911`，主仓库 gitlink、README、依赖与来源记录均接入该固定点。三个增量提交分别为安装引导预算 `92b3fe62bc49902c540db2dfeb7ce9a6a16a493c`、就绪失败支持包 `7e497c3c978780f888572c2a4f5fbc16668da862`、Android 参数兼容与精确表 ID `8ff1242817038dfe220a68b75934d6b127bea4b1`。本地与远端 tree 已核对一致。
 
@@ -81,17 +81,52 @@ Android 固定调用 `/system/bin/ip` 并使用系统支持的参数。配置规
 | 失败支持包 | `693b2e4c029f0d714ac225f67089124d570dea7e`：simulation 109 项通过，包括 7 个新增失败采集反例；与最终候选对应 Python 文件相同 |
 | 整合静态检查 | 官方 source lint 823 个跟踪文本、Rust fmt、diff check 均通过；独立复核无剩余阻断；未重复声称本地有匹配 Clippy |
 
-新候选七条工作流均已启动，attempt 1。完成后的结果及实际合并、Issue 状态将在此处补齐；旧失败和新验证保留各自身份。
+最终候选的 [core-evidence job 127895219885](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968/job/127895219885) 在 12:37:42–12:37:48 UTC 实际完成 DNS 出口必需步骤。六条 PASS 日志覆盖生产物化/幂等、真实核心校验、未分类 A/AAAA × UDP/TCP 经代理、节点域名保持直连引导、显式 direct 的 A/UDP 控制，以及代理 HTTP 502 拒绝后的 A/AAAA UDP 查询零直连回退。拒绝负例未覆盖 TCP。端点是 Linux/amd64 上的回环 TLS DoH 与 HTTP CONNECT，公共请求为零，不是 Android 拦截或公网出口证据。受测 merge `d22db107e3b3f572b6353615492c60b6859bde64` 的 tree 与最终 head 完全相同；核心固定 d850ff0，模板固定 ba5793b4。精确步骤、日志和范围见 [DNS CI 证据](https://github.com/LIghtJUNction/MagicNet/blob/679bd7e39f0184c3f3daa2e0ac9065e6d48e520a/docs/evidence/issue-pr-dns-ci-2026-11-06.json)。
 
-| 最终候选工作流 | 当前结果 |
+最终受测源码的七条工作流全部 success，均为 attempt 1；旧失败和新验证保留各自身份。源码正式 merge 与受测 head 的 tree 一致，正式 merge SHA 单列如下，不与临时 PR merge 混用。
+
+| 最终受测源码工作流 | 最终结果 |
 | --- | --- |
-| [Code Quality 42218750003](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750003) | 运行中 |
-| [Build Kam Module 42218750064](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750064) | 运行中 |
+| [Code Quality 42218750003](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750003) | 成功，6 个前置 job 与最终质量 gate 全部通过 |
+| [Build Kam Module 42218750064](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750064) | 成功，模块构建、包内容、离线分包与增量安装器均通过；正式发行任务按 PR 条件跳过 |
 | [Network regression 42218749897](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749897) | 成功；DNS NAT 与 offline 测试通过，按条件未运行公网 runner 观察 |
 | [Rules Release Integration 42218750114](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750114) | 成功 |
-| [Network Regression Evidence 42218749968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968) | 运行中 |
-| [Install Onboarding 42218750011](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750011) | 运行中 |
-| [Android KernelSU Acceptance 42218750254](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750254) | 运行中 |
+| [Network Regression Evidence 42218749968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968) | 成功，visual/core/avd-storage 三个 job 全部通过 |
+| [Install Onboarding 42218750011](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750011) | 成功；47 个场景与 8 种布局设计通过，实际浏览器测试 38 秒；慢系统依赖下载在原定预算内完成 |
+| [Android KernelSU Acceptance 42218750254](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750254) | 成功；harness、实际 Android 与最终 Gate 全部通过，12/12 阶段、5/5 重启 |
+
+六条非 Android 工作流共 16 个实际执行 job 成功；另有 version-bump、release-android 和公网 runner 观察三个 job 按触发条件跳过，不计为发行或公网验收。DNS 内核回归在本地命名空间完成 248 次交换，覆盖 31 个测试主机、A/AAAA、UDP/TCP、IPv4/IPv6 和 UID 0；先复现竞争 DNAT 黑洞，再验证修复。该结果与上面的真实核心 DoH 出口测试属于不同夹具，不互相替代。
+
+### Android 实际验收与产物
+
+[Android run 42218750254 / attempt 1](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750254) 的三个必需 job 均 success，最终 Gate 在 2026-11-06 12:58:49 UTC 完成。实际受测 merge 为 `d22db107e3b3f572b6353615492c60b6859bde64`，与 8ff 的 tree 同为 `a23ade9034a47be945dc526f7fe5b00751267911`。生命周期步骤在 12:49:31–12:58:10 UTC 执行；simulation.json 与 JUnit 均为 12 passed、0 failed、0 not_run。
+
+十二阶段全部执行通过：environment、kernelsu-bootstrap、install-before-first-boot、cold-boot、app-uid-tun-controls、invalid-config-rollback、stop-cleanup、restart-idempotence、upgrade-preservation、disable-reboot、enable-reboot、uninstall-reboot。五次重启均 exit 0，观察到新 boot、root 和 SELinux Enforcing；KernelSU 的 post-fs-data、services、boot-completed 原生阶段均通过。四份应用 UID TUN 对照为 verified，positive/reject/positive_after/restored 全部 true，范围限定为 `emulator_test_uid_tcp`。
+
+| 本地 TLS 对照 | curl 退出码 | 固定错误分类 | 服务端 GET 增量 |
+| --- | --- | --- | --- |
+| 可信临时 CA | 0 | none | 1 |
+| 错误主机名 | 60 | hostname_mismatch | 0 |
+| 默认信任拒绝临时 CA | 60 | untrusted_certificate | 0 |
+
+TLS 安装后二进制摘要核验通过，local_tls_diagnostics 为 verified，cleanup=true。主机观测时间 2026-11-06 12:51:29–12:51:30 UTC，guest 为 12:51:29；证书有效期为 2026-11-06 12:46:30 至次日 12:51:30 UTC。该结果证明本次控制通过，不能反推历史 TLS 失败的唯一原因。
+
+**实际 Google 仍未取得 HTTPS 204。** 正常产品执行了一次 tick，观察为 `offline / upstream_unavailable / tls_failure`，HTTP 状态为 null，secondary/direct 均 failed，未把结果写成公网成功。DNS fixture 的零公网请求仅属于该 fixture，不代表整个 Android 流程没有产品联网观察。
+
+[最终 Android 产物 13504425735](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750254/artifacts/13504425735) 为 497,761 字节，下载校验 SHA-256 为 `44ffd01ea75ce0be8af43da7f14888a82ffe29e0252de04fc521d048e8b04ad9`，与 GitHub digest 一致。正常支持包导出成功，为 64,486 字节。新增就绪失败支持包分支在本次成功运行中没有触发，其覆盖仍归属前述 109 项宿主回归；不因最终成功而虚构设备故障注入。
+
+本轮实际设备环境是固定内核的 Android 15 / KernelSU v3.2.0 / x86_64 TUN 夹具。ARM64 真机、OEM 网络切换、IPv6 包转发、eBPF 数据面、公网代理质量和 Play/GMS 行为没有由此完成验收。可选公开基准步骤按条件跳过，与十二个实际执行阶段没有混计。
+
+## 实际合并与 Issue 回读
+
+| 仓库与 PR | 实际合并提交 | 时间（UTC） | 核对 |
+| --- | --- | --- | --- |
+| [magicnet-android #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) | `9664c2ba4a8503df0423b6de2271af8dca1a86dd` | 2026-11-06 13:01:31 | merged=true；tree 与受测 8ff 完全相同 |
+| [MagicNet #442](https://github.com/LIghtJUNction/MagicNet/pull/442) | `e8394e7cf9044c7f4c2e1f542c3d5a228b8716b4` | 2026-11-06 13:02:06 | merged=true；gitlink 固定 8ff，合并 tree 与受审 679bd7e3 相同 |
+
+主仓库合并前最后的 [Recipe checks 42220676435](https://github.com/LIghtJUNction/MagicNet/actions/runs/42220676435) 成功，配方仍为 0.3.16 / 8 包 / 61 Markdown。源码先合并并核对 tree，再合并主仓库；两次均使用精确预期 head，未解除规则或修改权限。软件版本保持 1.8.5 / 10613，正式公开更新索引和 Release 未在本轮变更，未部署物理设备。
+
+合并后逐项更新并回读：#437、#438、#439 为 closed/completed，#436、#440 为 open；五个 Issue 均保留原正文，并追加带日期的维护说明、固定源码、最终 CI 和剩余范围。本记录包含最终验收、合并回读及 Issue 实际状态。此前 DNS 源码/模板/主仓库 PR 的合并与两个审查线程处理结果仍保留在本记录开头。
 
 ## 剩余验收
 
@@ -106,5 +141,5 @@ Android 固定调用 `/system/bin/ip` 并使用系统支持的参数。配置规
 | 修改是否对应具体问题 | 每项关联原 Issue、实际代码路径及反例 |
 | 说明是否清楚 | 分开描述配置意图、运行证据、历史记录和完整流量 |
 | 实验是否支持结论 | 旧版失败与修复后通过逐项记录，主机替身不标为设备成功 |
-| 覆盖是否完整 | CI 未完成、物理设备和 NAS 能力明确保留待验证/待实现 |
+| 覆盖是否完整 | 最终 CI 已逐项记录；物理设备、真实公网和 NAS 能力保留各自待验证/待实现边界 |
 | 方法边界是否保持 | 未知归属继续保守，TLS 拒绝与隐私边界保持，无新增产品模式 |
