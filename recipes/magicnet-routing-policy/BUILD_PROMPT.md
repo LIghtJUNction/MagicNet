@@ -1,6 +1,6 @@
 # 默认路由、DNS 和规则数据
 
-交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision 6b5f68a261818a4ffda6eb9a11b21eef9b755650（MagicSingBox），`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
+交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision ba5793b41fd06704102116fe2536eef5988f2905（MagicSingBox），`config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
 复用上游规则数据需要其许可与可获取性；数据是外部前提，配方不含 .srs 或原配置源码。没有数据时应明确缺失，不用空文件替代真实分类。
 
 先读 POLICY_INVENTORY.md 的公开标签/默认值。默认 tun-in/magicnet0 和 loopback mixed-in，本地管理 API；runtime 在显式模式切换中物化 ebpf，不能在这里加 auto/TProxy/Redirect。
@@ -14,6 +14,14 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 大陆教育域名分类置于既有 DNS 防护之后、后续国外学术、AI、游戏、开发和媒体分类之前；具体插入点与范围见下节。其他既有规则保持相对次序。
 业务 DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。以下指定域名拒绝只作用于路由，保持 DNS 捕获和解析配置。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
 不能恢复泛 analytics/tracker/github/captive 子串匹配。国内连通性探针是显式例外，不等于任意 captive 域放行。
+
+### 默认 DNS 出口与引导解析
+
+规则模式下，未匹配显式 DNS 分类的查询使用 `doh-cloudflare`，其 HTTPS 连接必须经 `proxy`。模板的 `dns.final` 与 runtime 生成的默认 `evaluate/respond` 路径保持一致；新安装、升级、订阅刷新和重复应用 profile 都不得恢复直连 fallback。代理不可用或尚无节点时，默认查询失败，不自动交给本地解析器。
+
+`bootstrap-local-dns` 保留为代理节点地址的引导解析器；受管配置缺少 `route.default_domain_resolver` 时指向它，已有显式 resolver 保留，避免将合法用户引导图强制重写。默认图不在连接代理之前依赖同一代理解析节点域名。国内分类、LAN/Tailnet 与显式 Direct 模式的 DNS 规则继续使用原有本地加密解析器。独立导入配置在默认 profile 下保留自己经过验证的 DNS 图；显式 DNS profile 保持既有选择语义。
+
+诊断需要检查默认查询实际引用的 DNS server、detour 与配置的出站链，不能仅因服务器列表中存在某个公共 DNS 厂商或出站名为 proxy 就报告受保护。默认规则类型元数据、空匹配列表和其他中性值不能掩盖无条件直连。受管默认拒绝禁用 TLS 证书验证的远端；profile 应用失败恢复原持久化意图或原不存在状态，复用配置锁并诚实报告回滚失败。WebUI 初始默认值与机器响应一致。配置检查、锁定核心的隔离查询测试和 Android 实际流量结果分别记录；静态规则匹配不作为设备流量结论。
 
 ### 指定域名拒绝
 

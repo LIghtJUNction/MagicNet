@@ -1,0 +1,616 @@
+{
+  "schema": 1,
+  "date": "2026-11-06",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+    "tree_sha": "1e83b5b00e2f8b3aa2018358717a81e228820a94",
+    "ci_merge_sha": "635d4c34f43c8d6c69d890db30336c87986b6686",
+    "template_sha": "ba5793b41fd06704102116fe2536eef5988f2905",
+    "template_config_sha256": "e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0",
+    "merged_commit": "faa7d956324a20889cb921ff35c9f13b66dc0c1a",
+    "merged_tree": "1e83b5b00e2f8b3aa2018358717a81e228820a94"
+  },
+  "dns_packets": {
+    "run_id": 42187346632,
+    "job_id": 127790723176,
+    "conclusion": "success",
+    "messages": [
+      "2026-11-06T08:25:41.4860663Z PASS production DNS materialization: proxy fallback, direct bootstrap, explicit rule, idempotence",
+      "2026-11-06T08:25:41.4861261Z PASS real core configuration check for localized production DNS",
+      "2026-11-06T08:25:47.6253082Z PASS real core: unclassified A/AAAA over UDP/TCP use proxy; node bootstrap stays direct",
+      "2026-11-06T08:25:47.6253625Z PASS real core: explicit direct domain still resolves locally",
+      "2026-11-06T08:25:47.6336700Z PASS real core: proxy refusal fails closed for A/AAAA with zero direct fallback queries",
+      "2026-11-06T08:25:47.6337221Z PASS DNS proxy-egress fixture; public requests=0; Android interception is outside this fixture"
+    ]
+  },
+  "quality": {
+    "run_id": 42187346672,
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "CI infrastructure",
+        "conclusion": "success"
+      },
+      {
+        "name": "components",
+        "conclusion": "success"
+      },
+      {
+        "name": "webui",
+        "conclusion": "success"
+      },
+      {
+        "name": "rust",
+        "conclusion": "success"
+      },
+      {
+        "name": "shell",
+        "conclusion": "success"
+      },
+      {
+        "name": "Android probe contract",
+        "conclusion": "success"
+      },
+      {
+        "name": "CI Quality Gate",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "build": {
+    "run_id": 42187346674,
+    "conclusion": "success",
+    "job_id": 127790723609,
+    "artifact": {
+      "id": 13489440458,
+      "name": "kam-module-artifact",
+      "size_bytes": 142231785,
+      "sha256": "b1af7bf113a454ec163443fbf1ff95857f7453945c430c151303705ec42d95c4"
+    },
+    "module": {
+      "source_name": "MagicNet-full.zip",
+      "local_name": "MagicNet-DNS-fix-38c6eea-full.zip",
+      "size_bytes": 68480032,
+      "sha256": "1fdc0caa0c2d412562bc44058b8527210ebad6df75dbc0fcc17d1eba44bab234",
+      "version": "v1.8.5",
+      "architecture": "arm64"
+    },
+    "verification": {
+      "outer_artifact_sha256_matches_github": true,
+      "module_sha256_matches_ci_sha256sums": true,
+      "zip_paths_safe": true,
+      "zip_crc_all_members_pass": true,
+      "development_directories_absent": true,
+      "uncompressed_bytes": 169489489,
+      "entry_count": 360,
+      "symlink_count": 0,
+      "components_present_and_verified": 10,
+      "component_files_verified": 168,
+      "exact_candidate_files_sha256": {
+        "lib/magicnet/dns.sh": "b279ee675b7abe90c6f9b90524cebea88df8fce06e3dadee307eb4233a614093",
+        "lib/magicnet/install_config.sh": "fef18041ba3cb336a9742812b2097885e22abd2f51e36e5fc29164bce9ef75fb",
+        ".config/magicnet/singbox-config-repo.conf": "a48b5b885254e83e3416201ac617817a2c8937f3dc0dd5b3b9eb641ddbe6b4ee"
+      },
+      "source_template_byte_match": true,
+      "dns_final": "doh-cloudflare",
+      "dns_final_detour": "proxy",
+      "default_domain_resolver": "bootstrap-local-dns",
+      "top_level_submodules_match_source_tree": true
+    },
+    "verified_at_utc": "2026-11-06T08:46:25.343276+00:00"
+  },
+  "android": {
+    "run_id": 42187346630,
+    "attempts": [
+      {
+        "attempt": 1,
+        "job_id": 127791551531,
+        "conclusion": "failure",
+        "artifact_id": 13488459388,
+        "artifact_sha256": "a1e62d266c1885f0319a298b73beb8047e7d010eea7fd6582c2e6bc68726d954",
+        "scope": "Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture",
+        "not_tested": [
+          "stock-kernel KernelSU LKM injection",
+          "ARM64 execution",
+          "OEM kernels",
+          "Play/GMS login/download",
+          "public proxy quality",
+          "eBPF dataplane",
+          "IPv6 packet forwarding",
+          "eCapture execution",
+          "proxylink subscription parsing"
+        ],
+        "source_sha": "635d4c34f43c8d6c69d890db30336c87986b6686",
+        "cases": [
+          {
+            "name": "environment",
+            "status": "passed",
+            "seconds": 39.988
+          },
+          {
+            "name": "kernelsu-bootstrap",
+            "status": "passed",
+            "seconds": 3.384
+          },
+          {
+            "name": "install-before-first-boot",
+            "status": "passed",
+            "seconds": 18.67
+          },
+          {
+            "name": "cold-boot",
+            "status": "failed",
+            "reason": "RuntimeError: curl_tls_positive_failed",
+            "seconds": 47.221
+          },
+          {
+            "name": "app-uid-tun-controls",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "invalid-config-rollback",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "stop-cleanup",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "restart-idempotence",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "upgrade-preservation",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "disable-reboot",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "enable-reboot",
+            "status": "not_run",
+            "seconds": 0
+          },
+          {
+            "name": "uninstall-reboot",
+            "status": "not_run",
+            "seconds": 0
+          }
+        ],
+        "curl_controls": {
+          "status": "failed",
+          "stage": "local_tls_controls",
+          "installed_binary_verified": true,
+          "seconds": 1.483,
+          "versions": {
+            "curl": "8.22.0",
+            "openssl": "3.5.8",
+            "zlib": "1.3.2"
+          },
+          "curl_sha256": "3f49744aea2d375281bb5485f6c428b6606373326f9b262702bfa4ed5f24e062"
+        },
+        "reboot_checks": [
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          }
+        ],
+        "exact_tls_failure_cause": "unknown: return code and TLS detail were not retained by this harness"
+      },
+      {
+        "attempt": 2,
+        "job_id": 127798786927,
+        "gate_job_id": 127807907321,
+        "conclusion": "success",
+        "artifact_id": 13490268162,
+        "artifact_sha256": "c970fa57612434d5657069ddfc153a93f2a94dead0cfb53981aa0932f4b1de20",
+        "scope": "Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture",
+        "not_tested": [
+          "stock-kernel KernelSU LKM injection",
+          "ARM64 execution",
+          "OEM kernels",
+          "Play/GMS login/download",
+          "public proxy quality",
+          "eBPF dataplane",
+          "IPv6 packet forwarding",
+          "eCapture execution",
+          "proxylink subscription parsing"
+        ],
+        "source_sha": "635d4c34f43c8d6c69d890db30336c87986b6686",
+        "cases": [
+          {
+            "name": "environment",
+            "status": "passed",
+            "seconds": 39.191
+          },
+          {
+            "name": "kernelsu-bootstrap",
+            "status": "passed",
+            "seconds": 4.105
+          },
+          {
+            "name": "install-before-first-boot",
+            "status": "passed",
+            "seconds": 22.689
+          },
+          {
+            "name": "cold-boot",
+            "status": "passed",
+            "seconds": 62.393
+          },
+          {
+            "name": "app-uid-tun-controls",
+            "status": "passed",
+            "seconds": 36.474
+          },
+          {
+            "name": "invalid-config-rollback",
+            "status": "passed",
+            "seconds": 0.694
+          },
+          {
+            "name": "stop-cleanup",
+            "status": "passed",
+            "seconds": 2.618
+          },
+          {
+            "name": "restart-idempotence",
+            "status": "passed",
+            "seconds": 50.5
+          },
+          {
+            "name": "upgrade-preservation",
+            "status": "passed",
+            "seconds": 118.563
+          },
+          {
+            "name": "disable-reboot",
+            "status": "passed",
+            "seconds": 39.545
+          },
+          {
+            "name": "enable-reboot",
+            "status": "passed",
+            "seconds": 96.629
+          },
+          {
+            "name": "uninstall-reboot",
+            "status": "passed",
+            "seconds": 44.088
+          }
+        ],
+        "curl_controls": {
+          "status": "passed",
+          "stage": "complete",
+          "installed_binary_verified": true,
+          "seconds": 2.977,
+          "versions": {
+            "curl": "8.22.0",
+            "openssl": "3.5.8",
+            "zlib": "1.3.2"
+          },
+          "curl_sha256": "9150917b8986fa83002f6d8719955a63d14990505007d02490deb3a7163fa22f",
+          "local_tls": {
+            "schema": 1,
+            "status": "verified",
+            "https": true,
+            "ssl": true,
+            "resolve": true,
+            "gzip": true,
+            "tls_positive": true,
+            "hostname_reject": true,
+            "default_trust_reject": true,
+            "cleanup": true,
+            "embedded_ca_identity": true,
+            "embedded_ca_bytes": 188900,
+            "embedded_ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+            "embedded_ca_cert_count": 121,
+            "versions": {
+              "curl": "8.22.0",
+              "libcurl": "8.22.0",
+              "openssl": "3.5.8",
+              "zlib": "1.3.2"
+            },
+            "positive_gets": 1,
+            "hostname_reject_gets": 0,
+            "default_reject_gets": 0
+          },
+          "connectivity": {
+            "schema": 1,
+            "status": "observed",
+            "explicit_tick_count": 1,
+            "explicit_request_upper_bound": {
+              "google": 1,
+              "auxiliary": 2
+            },
+            "canonical_state_modified_by_harness": false,
+            "google_https_204_observed": false,
+            "status_reads": 2,
+            "before": {
+              "target": "https://www.google.com/generate_204",
+              "path": "mixed_proxy",
+              "status": "unknown",
+              "reason": "not_checked",
+              "primary_reason": "not_checked",
+              "warning": false,
+              "checked_at": null,
+              "next_check_at": null,
+              "retry_in_seconds": null,
+              "consecutive_failures": 0,
+              "probe_count": 0,
+              "backoff_seconds": 300,
+              "latency_ms": null,
+              "http_status": null,
+              "secondary_status": "not_run",
+              "direct_status": "not_run",
+              "last_action": "none",
+              "action_status": "none",
+              "last_action_at": null,
+              "last_refresh_at": null
+            },
+            "observation_source": "single_product_tick",
+            "tick_exit_code": 0,
+            "after": {
+              "target": "https://www.google.com/generate_204",
+              "path": "mixed_proxy",
+              "status": "offline",
+              "reason": "upstream_unavailable",
+              "primary_reason": "tls_failure",
+              "warning": true,
+              "checked_at": 1793955583,
+              "next_check_at": 1793955642,
+              "retry_in_seconds": 58,
+              "consecutive_failures": 1,
+              "probe_count": 1,
+              "backoff_seconds": 60,
+              "latency_ms": null,
+              "http_status": null,
+              "secondary_status": "failed",
+              "direct_status": "failed",
+              "last_action": "none",
+              "action_status": "none",
+              "last_action_at": null,
+              "last_refresh_at": null
+            }
+          }
+        },
+        "reboot_checks": [
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          },
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          },
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          },
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          },
+          {
+            "status": "passed",
+            "command_exit_code": 0,
+            "command_result": "completed",
+            "new_boot_observed": true,
+            "root_verified": true,
+            "selinux_enforcing": true,
+            "kernelsu_reactivation": "verified_native_init",
+            "kernelsu_native_boot": {
+              "mode": "pinned-kernel-native-init",
+              "stages": {
+                "post-fs-data": "passed",
+                "services": "passed",
+                "boot-completed": "passed"
+              },
+              "kernel_interface": true,
+              "domain_verified": true,
+              "selinux_enforcing": true,
+              "busybox_verified": true
+            }
+          }
+        ],
+        "rebuild_comparison": {
+          "differing_curl_build_metadata_fields": [
+            "curl_sha256"
+          ],
+          "first_curl_sha256": "3f49744aea2d375281bb5485f6c428b6606373326f9b262702bfa4ed5f24e062",
+          "retry_curl_sha256": "9150917b8986fa83002f6d8719955a63d14990505007d02490deb3a7163fa22f",
+          "same_binary_claimed": false
+        },
+        "first_failure_cause_remains_unknown": true
+      }
+    ],
+    "retry_policy": "One retry of failed jobs for the same immutable source and pinned dependencies; no source, trust, timeout or assertion changes. Test binaries were rebuilt, so byte-identical binary execution is not claimed.",
+    "current_attempt": 2,
+    "current_status": "completed",
+    "jobs": [
+      {
+        "id": 127798786927,
+        "name": "Android 15 / KernelSU / x86_64",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 127798787295,
+        "name": "Simulation harness contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 127807907321,
+        "name": "Android Simulation Gate",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "conclusion": "success",
+    "harness_note": "The already successful harness job was reused on attempt 2: 300 tests, one optional skip, zero failures. It is not a second test execution."
+  },
+  "delivery": {
+    "device_installed": false,
+    "formal_release_created": false,
+    "status": "verified_candidate_no_formal_release"
+  },
+  "workflows": [
+    {
+      "id": 42187346644,
+      "name": "Rules Release Integration",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346644"
+    },
+    {
+      "id": 42187346636,
+      "name": "Network regression",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346636"
+    },
+    {
+      "id": 42187346632,
+      "name": "Network Regression Evidence",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346632"
+    },
+    {
+      "id": 42187346672,
+      "name": "Code Quality",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346672"
+    },
+    {
+      "id": 42187346674,
+      "name": "Build Kam Module",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346674"
+    },
+    {
+      "id": 42187346677,
+      "name": "Install Onboarding",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346677"
+    },
+    {
+      "id": 42187346630,
+      "name": "Android KernelSU Acceptance",
+      "head_sha": "38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 2,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42187346630"
+    }
+  ]
+}

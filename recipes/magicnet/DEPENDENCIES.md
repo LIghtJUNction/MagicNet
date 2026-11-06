@@ -13,16 +13,16 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.14 闭包与具体接口
+## 0.3.15 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.14 | 全产品保留范围、M01–M59、重写对照及联网诊断的实际交付验证 |
+| magicnet | 0.3.15 | 全产品保留范围、M01–M60、重写对照、联网诊断与默认 DNS 出口 |
 | magicnet-control-plane | 0.2.6 | C-SUB-001–008、缓存联网状态、DIAG-001–003单文件导出、监督故障日志、状态结构保真和HTTPS执行器来源（DIAG-A07–A08） |
 | magicnet-network-runtime | 0.1.7 | SUB-001–015，LIFE-001–006，CON-001–004低频探测、恢复与实际HTTPS执行器 |
 | magicnet-web-console | 0.2.4 | UI-SUB-001–012、UI-CON-01–04警告与单次诊断导出 |
 | magicnet-packet-engine | 0.2.3 | VE-001–006、CORE-001–005，原生 TUN 与可选接口监控 |
-| magicnet-routing-policy | 0.2.4 | 增量分流、指定目标拒绝、Voice规则清理与教育分类，POLICY-A01–20 |
+| magicnet-routing-policy | 0.2.5 | 增量分流、指定目标拒绝、Voice规则清理、教育分类与默认 DNS 出口，POLICY-A01–25 |
 | magicnet-module-delivery | 0.2.6 | 安装更新、共用启动器、目录合并、正式curl/TLS/证书组件与最终模块/组件排除测试目录 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
 
@@ -71,3 +71,9 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 ## 发布与发现
 
 项目名称保持 MagicNet。GitHub 发布配方时必须在原仓库保留已有 topics 并加入 recipkg，再回读确认；这只帮助发现，不证明配方正确。用户先授权按迁移技能发布独立源码仓库 magicnet-android 并接入主仓库，后明确授权发布新 Android 版本；v1.8.1 的公开发行和真实验证范围见 VERIFICATION.md，未执行设备部署或向无关项目推送。
+
+## 0.3.15 默认 DNS 修复
+
+本轮接入 routing-policy 0.2.5，依赖闭包仍为八包，无新增运行时依赖。当前固定源码为 `LIghtJUNction/magicnet-android@38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c`，源码版本保持 1.8.5，本轮不新建发行。
+
+内置模板固定为 `LIghtJUNction/MagicSingBox@ba5793b41fd06704102116fe2536eef5988f2905`，`config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。该模板以经 `proxy` 的 `doh-cloudflare` 承接默认 DNS，并保留 `bootstrap-local-dns` 引导解析和显式直连规则；精确旧官方默认 pin 迁移，自定义 repo/ref/digest 保留。验收对应 M60 与 POLICY-A21–A25，实际验证范围见 [DNS_REPAIR_2026-11-06.md](DNS_REPAIR_2026-11-06.md) 和 [VERIFICATION.md](VERIFICATION.md)。
