@@ -1,12 +1,19 @@
 # 实现与发行验证
 
-## 2026-11-06 / 正式HTTPS组件候选2bbbf2a
+## 2026-11-06 / 正式HTTPS组件候选ceb7d54
 
-固定[源码2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5](https://github.com/LIghtJUNction/magicnet-android/commit/2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5)，tree `73a97009348c6e487a62c2aa1d8b2c7647962259`。fa0e1ad新增正式curl/OpenSSL/zlib/内嵌CA组件、安装完整性、明确执行器原因和诊断来源；2bbbf2a仅修正宿主TLS proof的合法版本解析。真实Android仍按全部锁定版本精确核对。
+固定[源码ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9](https://github.com/LIghtJUNction/magicnet-android/commit/ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9)，tree `794e53afe208f03429748bdea554a71b792b5f3b`。fa0补入正式curl/TLS/CA，2bb修复宿主版本解析，f0规范KAM归档固定路径权限，218补全安装夹具依赖。218的质量7/7、Build完整安装模拟与组件门禁、Network3/3均成功，但Android在cold-boot的ADB reverse列表解析失败，前3阶段通过，后8未运行。第一轮新boot/root/Enforcing与三个原生init阶段已实际通过，实际包内curl摘要正确；显式tick及诊断导出尚未执行，旧失败保留且不交付。
 
-实际候选[Build42169118393](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118393)、[Quality42169118423](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118423)、[Android42169118312](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118312)和[Network42169118327](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42169118327)尚在执行，不能视为交付通过。fa0的宿主proof失败与Android未启动保留；旧b5无curl不交付。重启验收仅初次bootstrap late-load，后续核对当前boot三个原生init阶段及真实KSU/Enforcing，不重放生命周期。
+ceb7d54仅修正验收工具对官方ADB空白行的兼容，保留全部非空格式、重复端口、退出码、时间/输出与清理限制。旧代码反例复现、27 proof（26通过/原可选CA1跳过）、device100/public32通过，独立审查无阻断。实际reverse stdout未保留，官方格式+代码复现与设备错误位置一致，不能称该次输出已逐字节确认。
 
-已完成宿主门禁包括Rust定向导出/执行器测试与严格fmt/Clippy，fa0完整Rust workspace实际RUN成功，新proof23通过/1原可选CA样本跳过，harness100通过，workflow26、acceptance32、KSU夹具11通过；生产curl产物边界9、组件18、archive13、core-size5、Go race、父发布控制21通过。八包59份Markdown配方闭包已实际重新验证，delivery推进0.2.6，control0.2.6/runtime0.1.7/root0.3.14。
+| 当前精确提交门禁 | 状态 |
+| --- | --- |
+| [Quality42173653819](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819) | 运行中 |
+| [Build42173653787](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787) | 运行中，须重新独立审计最终归档 |
+| [Android42173653691](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691) | 运行中，需真实TLS/正常产品tick/只读导出及12阶段5重启 |
+| [Network42173653682](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653682) | 运行中 |
+
+旧失败和各自产物摘要见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)及CI JSON。只在初次bootstrap late-load，后续核对当前boot原生init，不重放生命周期。生产curl六路径严格验证与25分钟设备阶段预算未放宽。八包59份Markdown配方闭包已验证，root0.3.14/control0.2.6/runtime0.1.7/delivery0.2.6；未发布Release或部署用户设备。
 
 ## 2026-11-06 / 上一候选b5fa1cd（未交付）
 

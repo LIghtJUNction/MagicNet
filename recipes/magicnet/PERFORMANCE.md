@@ -2,7 +2,7 @@
 
 ## 2026-11-06：联网控制成本与真实核心转发
 
-当前控制测量按冻结文件摘要绑定源码2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5，Linux6.18.57/x86_64、9逻辑CPU，Rust1.87 release CLI SHA256为6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba。诊断执行器章节和环境隔离完成后重新测量；测时工作树为b5加已冻结修改，保留dirty事实，六个Rust文件与fa0/2bb提交逐字节相同；旧81a6010样本保留原身份，不改标为新提交。
+当前控制测量按冻结文件摘要绑定源码ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9，Linux6.18.57/x86_64、9逻辑CPU，Rust1.87 release CLI SHA256为6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba。诊断执行器章节和环境隔离完成后重新测量；测时工作树为b5加已冻结修改，保留dirty事实，六个Rust文件与fa0/2bb提交逐字节相同，之后f0/218/ceb的生产Rust路径无变化；旧81a6010样本保留原身份，不改标为新提交。
 
 | 项目 | 样本 | 中位耗时 | P95 | 内存口径与结果 |
 | --- | ---: | ---: | ---: | --- |
@@ -13,11 +13,11 @@
 
 20次tick后状态字节不变；诊断19917字节，与机器回执一致，CPU125.203ms。时间由原生fork/exec+wait4测量，排除Python驱动继承高水位；单进程峰值不等于并发总量或常驻。单次导出不报告P95或稳定优化比例。watchdog只测首次sleep、空回调；此段框架及模块运行路径在81a到b5fa1cd之间未变，不含核心和周期CLI，不推导电池开销。
 
-完整生产标签核心d850ff0，Go1.26.7，Linux二进制SHA256为bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407。上一候选b5fa1cd的Linux CI对54个本地规则集测得两轮稳定段RSS中位74062/74988KiB（约72.33/73.23MiB）；每轮8点取末4点，无TUN、活动连接或Android射频。简单mixed配置20秒/21点RSS59452KiB、PSS59444KiB，最多9线程。
+完整生产标签核心d850ff0，Go1.26.7，Linux二进制SHA256为bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407。当前218e165的Linux CI对54个本地规则集测得两轮稳定段RSS中位74174/74852KiB（约72.44/73.10MiB）；每轮8点取末4点，无TUN、活动连接或Android射频。简单mixed配置20秒/21点RSS58536KiB、PSS58528KiB，最多10线程。
 
-四次独立CI回环转发运行使用同一核心和脚本，各30组成对26字节请求与8组成对4MiB传输，响应逐字节核对：027e91f代理/直连中位耗时差0.3233ms、代理吞吐中位8.2140Gbit/s；81a6010分别为0.4680ms、5.5847Gbit/s；d22b122分别为0.4690ms、5.6049Gbit/s；b5fa1cd为0.3024ms、6.5838Gbit/s。共享runner负载不同，这不是源码A/B，不将差异归因于优化；回环吞吐也不等于互联网带宽或手机TUN性能。均为0公网请求。具体样本、环境、CPU粒度、规则清单和二进制哈希见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)和[CI JSON](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
+六次独立CI回环转发运行使用同一核心和脚本，各30组成对26字节请求与8组成对4MiB传输，响应逐字节核对：027e91f代理/直连中位耗时差0.3233ms、代理吞吐中位8.2140Gbit/s；81a6010分别为0.4680ms、5.5847Gbit/s；d22b122分别为0.4690ms、5.6049Gbit/s；b5fa1cd为0.3024ms、6.5838Gbit/s；2bbbf2a为0.3434ms、8.3628Gbit/s；当前218e165为0.3168ms、6.9371Gbit/s。共享runner负载不同，这不是源码A/B，不将差异归因于优化；回环吞吐也不等于互联网带宽或手机TUN性能。均为0公网请求。具体样本、环境、CPU粒度、规则清单和二进制哈希见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)和[CI JSON](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
 
-本机核心run受netlink权限阻断，保留local_acceptance=blocked、cli.acceptance=passed；实际转发来自具备权限的CI。新增控制开销已有测量，物理手机内存、持续负载、真实代理出口、Google实网和电池仍未得到证据；不声称全模块性能最优。
+本机核心run受netlink权限阻断，保留local_acceptance=blocked、cli.acceptance=passed；实际转发来自具备权限的CI。新增控制开销已有测量；Android设备与Google实际结果仍在验收，物理手机内存、持续负载、真实订阅代理出口和电池仍未得到证据；不声称全模块性能最优。
 
 ## 2026-11-06：跨层重写的宿主 A/B
 

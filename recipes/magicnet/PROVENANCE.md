@@ -6,13 +6,13 @@
 
 增量推送源码e8aad9e（打包）、9d545e1（WebUI）、aefcbfb（联网/导出）、027e91f（CI依赖与核心转发测量）、81a6010（真实监督器锁分离/诊断日志/Android导出验收）、d22b122（安装夹具清理和实包worker行为）及b5fa1cd（实际机器状态结构保真和有效MCP观察入口）。框架a7788737只新增字面路径回归，生产修复来自上游ea8758bf。该阶段候选源码b5fa1cd64788bdc5d1dbbd6b88d799c25f895944，tree fe78eb29a1dd8ab06292606b4ccf84b27e13cb88；核心d850ff0、模板6b5f68a保持。
 
-随后实际Android和归档审计发现b5缺少curl，fa0e1ad补入正式共享构建的HTTPS组件及诊断证据；原生init已成功后重复late-load触发ETXTBSY的问题通过只读核验原生启动修正。2bbbf2a修复宿主版本解析兼容，当前候选为`2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5`，tree `73a97009348c6e487a62c2aa1d8b2c7647962259`。两次b5生命周期失败和fa0前置失败保留，新精确CI尚未完成。固定输入、许可证和摘要见delivery/EXTERNAL_ASSETS.md。
+随后实际Android和归档审计发现b5缺少curl，fa0e1ad补入正式共享构建的HTTPS组件及诊断证据；原生init已成功后重复late-load触发ETXTBSY的问题通过只读核验原生启动修正。2bbbf2a修复宿主版本解析兼容，其后f0d2407修正KAM输出权限并明确界面执行器原因，f0实际ZIP和安装模拟通过，但测试临时项目遗漏新帮助脚本；218e165仅修复该夹具依赖。218质量、Build和Network通过后，Android在ADB reverse列表解析失败；ceb7d54只补充官方合法空白行兼容。当前候选为`ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9`，tree `794e53afe208f03429748bdea554a71b792b5f3b`。两次b5生命周期失败、fa0/2bb权限及版本前置失败、f0夹具失败均保留。218原失败与可复现解析反例保留；ceb四项精确门禁重新执行，尚未交付。固定输入、许可证和摘要见delivery/EXTERNAL_ASSETS.md。
 
 同期f7188cc的报告、PID边界和实际sleep观察，以及主项目407f5fa的重写合同和M59通过快进与三路整合保留。根配方0.3.14扩展真实框架LIFE-006和诊断证据范围；control0.2.6、runtime0.1.7、delivery0.2.6，仍为八包配方闭包；正式负载新增curl及静态TLS/压缩依赖。DIAG-A07要求对真实安装后的导出验证机器状态结构、公共语义与隐私；含URL的JSON不能被整段抹去，采集只使用支持的只读入口。GitHub更新使用预期SHA检查，没有覆盖并行工作。
 
 真实CI失败促成两层锁分离、旧测试夹具兼容修正以及对真实诊断内容的二次审查。d22虽然原门禁全绿，独立文件审计发现内容缺陷后仍停止交付；修改前CLI复现失败，最终15项导出unit、3项CLI集成和独立实际文件解析通过，再运行精确提交CI。初轮失败、宿主权限阻断和未覆盖范围保留，不能把fixture或编译通过当作手机数据面通过。
 
-新CLI重新测量并按六个冻结Rust文件与提交的逐字节一致性绑定2bbbf2a及6e989c28二进制；保留测时b5工作树dirty的原始状态，不将其改写为clean。watchdog测量保留81a原身份；该框架与运行路径未变。四轮核心CI分别保存样本、二进制摘要和环境，使用相同固定核心不等于共享runner上的受控版本A/B。具体门禁、归档身份和Android原生导出结果见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION；本轮不新建Release或部署用户设备。
+新CLI重新测量并按六个冻结Rust文件与提交的逐字节一致性绑定ceb7d54及6e989c28二进制；fa0至ceb生产Rust等价链逐项核对；保留测时b5工作树dirty的原始状态，不将其改写为clean。watchdog测量保留81a原身份；该框架与运行路径未变。六轮核心CI分别保存样本、二进制摘要和环境，使用相同固定核心不等于共享runner上的受控版本A/B。具体门禁、归档身份和Android原生导出结果见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION；本轮不新建Release或部署用户设备。
 
 ## 2026-11-06 / 跨层重写与原版行为对照
 

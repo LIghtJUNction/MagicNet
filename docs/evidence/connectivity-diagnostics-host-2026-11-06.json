@@ -1,7 +1,7 @@
 {
   "schema": 3,
   "scope": "Exact-commit Linux host measurements; initial feature and final candidate identities kept separate; Android and public internet are not inferred",
-  "final_source_commit": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+  "final_source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
   "final_host": {
     "schema": 1,
     "captured_at_utc": "2026-11-06T05:26:54.470928+00:00",
@@ -103,10 +103,16 @@
       "acceptance": "passed"
     },
     "local_acceptance": "blocked",
-    "tested_source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+    "tested_source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
     "source_binding_file": "/workspace/scratch/5fe57994f333/simulation/evidence/host-final-production-curl-source-binding.json",
     "measurement_worktree_was_dirty": true,
-    "prior_bound_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69"
+    "prior_bound_source_sha": "218e1653ba67f950aed25318347ea845bf7467e0",
+    "prior_bound_source_shas": [
+      "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+      "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+      "f0d240764870a97a3e54a1317c1a9590166ef44a",
+      "218e1653ba67f950aed25318347ea845bf7467e0"
+    ]
   },
   "watchdog_idle": {
     "schema_version": 1,
@@ -1031,8 +1037,8 @@
   "final_host_source_binding": {
     "schema": 1,
     "bound_at_utc": "2026-11-06T05:31:39.299799+00:00",
-    "tested_source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
-    "tested_source_tree": "73a97009348c6e487a62c2aa1d8b2c7647962259",
+    "tested_source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "tested_source_tree": "794e53afe208f03429748bdea554a71b792b5f3b",
     "measured_base_sha": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
     "measurement_worktree_was_dirty": true,
     "cli_sha256": "6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba",
@@ -1078,15 +1084,67 @@
     "note": "Bound after measurement by exact file SHA256 equality. Original measurement base SHA and dirty=true are retained; this is not a claim the worktree was clean at measurement time.",
     "first_bound_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
     "final_binding": {
-      "bound_at_utc": "2026-11-06T05:34:43.796008+00:00",
-      "previous_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
-      "source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+      "bound_at_utc": "2026-11-06T06:19:43.846387+00:00",
+      "previous_source_sha": "218e1653ba67f950aed25318347ea845bf7467e0",
+      "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
       "changed_files": [
         "scripts/android-public-curl-proof.py",
         "scripts/test-android-public-curl-proof.py"
       ],
+      "test_harness_only": true,
       "rust_production_files_and_host_performance_script_unchanged": true,
       "frozen_rust_file_count": 6
-    }
+    },
+    "binding_chain": [
+      {
+        "bound_at_utc": "2026-11-06T05:34:43.796008+00:00",
+        "previous_source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+        "source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+        "changed_files": [
+          "scripts/android-public-curl-proof.py",
+          "scripts/test-android-public-curl-proof.py"
+        ],
+        "rust_production_files_and_host_performance_script_unchanged": true,
+        "frozen_rust_file_count": 6
+      },
+      {
+        "bound_at_utc": "2026-11-06T05:51:03.576359+00:00",
+        "previous_source_sha": "2bbbf2aae491ef13e2b6d1963baa2f20eacc64e5",
+        "source_sha": "f0d240764870a97a3e54a1317c1a9590166ef44a",
+        "changed_files": [
+          "hooks/post-build/7900.sanitize_zip.sh",
+          "scripts/android-curl-artifact.py",
+          "scripts/test-android-curl-artifact.py",
+          "scripts/test-artifact-cleanup.sh",
+          "webui/src/components/ConnectivityNotice.vue",
+          "webui/src/i18n/catalogs/connectivity.ts"
+        ],
+        "rust_production_files_and_host_performance_script_unchanged": true,
+        "frozen_rust_file_count": 6
+      },
+      {
+        "bound_at_utc": "2026-11-06T05:56:44.672986+00:00",
+        "previous_source_sha": "f0d240764870a97a3e54a1317c1a9590166ef44a",
+        "source_sha": "218e1653ba67f950aed25318347ea845bf7467e0",
+        "changed_files": [
+          "scripts/test-kernelsu-installer-lifecycle.py"
+        ],
+        "test_only": true,
+        "rust_production_files_and_host_performance_script_unchanged": true,
+        "frozen_rust_file_count": 6
+      },
+      {
+        "bound_at_utc": "2026-11-06T06:19:43.846387+00:00",
+        "previous_source_sha": "218e1653ba67f950aed25318347ea845bf7467e0",
+        "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+        "changed_files": [
+          "scripts/android-public-curl-proof.py",
+          "scripts/test-android-public-curl-proof.py"
+        ],
+        "test_harness_only": true,
+        "rust_production_files_and_host_performance_script_unchanged": true,
+        "frozen_rust_file_count": 6
+      }
+    ]
   }
 }
