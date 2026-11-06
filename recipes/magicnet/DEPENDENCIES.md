@@ -83,3 +83,7 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@8ff1242817038dfe220a68b75934d6b127bea4b1`，tree `a23ade9034a47be945dc526f7fe5b00751267911`，源码 PR [#3](https://github.com/LIghtJUNction/magicnet-android/pull/3)。软件仍为 1.8.5 / 10613。control 0.2.7、runtime 0.1.8、delivery 0.2.7 接入 M61–M64，八包闭包不变；内核、模板、kamfw 和规则来源继续使用上一轮固定值，不引入新运行时库或模式。
 
 此提交包含九次增量提交：安装历史、TLS 夹具、监督恢复、实时 TUN 证据与文档精度，以及依赖安装预算、失败支持包和 Android 参数/数字表身份修正。已知限制、旧失败、当前 CI 和 Issue 处置见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。受控本地测试不替代真机网络切换；未实现的可信 NAS 入口继续单独跟踪。
+
+## 0.3.17 发布接口
+
+接入 delivery 0.2.8，八包闭包和全部运行时依赖保持。源码仓库新增只用于构建的版本注入与可复用 workflow 接口；主仓库使用自带 GITHUB_TOKEN 写固定发行快照与官方 Release，构建/模拟器只有读权限。版本不依赖跨仓库写入令牌，source_ref 显式选择后固定为 SHA，稳定索引与源码开发版本分离。

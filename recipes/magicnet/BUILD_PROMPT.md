@@ -123,3 +123,7 @@ Android CLI 明确使用系统路由、没有显式网卡或网络策略绑定�
 ## 0.3.16 Issue 与 PR 修复集成
 
 保持默认 DNS 经代理的既有修复，接入 runtime 0.1.8 的整组维护恢复、control 0.2.7 的实时 TUN 路由证据和 delivery 0.2.7 的安装缺省文件、历史迁移、TLS 与就绪失败诊断。就绪超时复用既有有界脱敏支持包，采集失败保持原错误和验收条件。八包闭包、schema-1、tun|ebpf、停止意图和私密状态边界保持；新增验收 M61–M64。实际代码、通过与失败、Issue 处置及尚需真机证据的部分写入 ISSUE_TRIAGE_2026-11-06.md，源码按 DEPENDENCIES.md 的固定提交构建。修复已证明的行为缺口，不把健康检测改进等同于已查明设备路由丢失原因。
+
+## 0.3.17 跨仓库发布入口
+
+接入 delivery 0.2.8：主仓库统一版本选择、固定源码/发行快照和官方 Release；源码仓库维护可复用构建与同版本 Android 验收。支持 bump 或自定义版本/code，稳定 updater 仅在公开成功后更新，预发布保留稳定索引；相同 run 的失败恢复绑定原 artifact。新增 M65，运行时接口与八包依赖闭包保持。具体操作见主仓库 docs/releasing.md，重建语义见 delivery/RELEASE_CONTRACT.md。
