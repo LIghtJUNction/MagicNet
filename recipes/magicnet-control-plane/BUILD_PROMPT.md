@@ -37,3 +37,7 @@ MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照�
 
 - [MCP_TOOL_SCHEMAS.md](MCP_TOOL_SCHEMAS.md)：完整已观察的工具目录。
 - [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–008，完整多源入口、公共/私密读取、逐源批次能力、计数、恢复及共享只读观测；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。
+
+## 0.2.4 目录与默认 TUN 栈
+
+遵守 STATE_CONTRACT.md 的 `.state`/`.cache` 布局及迁移私密边界，遵守 MACHINE_CONTRACT.md 的 `native_tun_stack` 能力和 `effective.stack=default` 语义。全部私密载荷入口与前端路径同时迁移，错误时不执行写动作；不增加新的机器写命令。

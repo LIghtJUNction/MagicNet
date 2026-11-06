@@ -45,3 +45,16 @@
 | LIFE-A07 | 目标 Android 上热点开/关、fswatch 应用、异常中断、父进程退出及回滚 | 对照核心 PID/启动身份、PGID、进程退出和信号来源；分别记录本地模拟与设备结果 |
 
 来源：MagicNet [#429](https://github.com/LIghtJUNction/MagicNet/issues/429)、[#430](https://github.com/LIghtJUNction/MagicNet/issues/430)。两项可独立发生；预算问题造成中断，PID 比较问题会阻碍中断后的锁恢复。
+
+## LIFE-005：配置锁属于实际执行者
+
+锁 owner 使用实际执行临界区的 shell PID 和 `/proc` 启动身份。POSIX 子 shell 中的 `$$` 可继续表示父 shell，因此不能直接作为执行者身份。获取成功才保存 owner token；释放必须匹配 token 和当前实际进程，子进程不能释放父进程的锁。启动时间短暂不可读时可以复用已验证的当前持锁 token，身份冲突或 unknown 仍不能删除他人的锁。旧 PID/start 标记继续按原校验导入。
+
+| 编号 | 输入与故障 | 预期 |
+| --- | --- | --- |
+| LIFE-A08 | Bash、mksh、BusyBox、POSIX sh 的嵌套/后台执行者获取锁后退出或被终止，父 shell 保持存活 | marker 绑定实际执行者；确认退出后下一写者能回收，不持续等待父 shell |
+| LIFE-A09 | 活/暂停/身份不可读 owner、正常嵌套、子进程尝试释放父锁、获取失败、释放阶段启动时间暂时不可读 | 保持单写者和 caller signal handler；只释放自己已取得的锁；清理失败如实报错 |
+
+停止继续先撤销自有路由和 DNS 捕获，清理失败保留核心；此修复不提供强删锁或跳过清理入口。
+
+LIFE-A10：并发两个启动入口先观察 stopped，再同时请求 start，只发布一个 watcher；重复 start 保持 PID，stop 与发布串行。watcher 存活时生命周期锁已释放；只关闭该锁描述符，不关闭无关继承 fd。flock 能力探测必须区分正常 contention 与不支持选项。

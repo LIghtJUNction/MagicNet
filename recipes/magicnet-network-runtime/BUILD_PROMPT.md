@@ -47,3 +47,7 @@ disable 保留身份与可恢复设置；enable 检查 revision；logout 先确�
 写前重新读取全部共享包/用户/策略；私密 0700 目录和 0600 journal 先原子持久化并 sync，再调用 setter/readback；最多 128 身份、每 record 64 KiB。prepared/applied/rollback_prepared/rolled_back 区分；超时和响应丢失保留证据。相同重复无副作用，第三方变更拒绝覆盖；限制回来必须新的显式 reapply，不后台反复清除。
 repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确认 UID/包身份集合及每项原策略，另记每项执行与回读进度。不能把“本次剩余待处理子集”写回成完整原始基线；setter 忽略写入、写后回应丢失或回滚中断仍可按读回恢复。第三方策略位或共享包身份变化明确冲突；全部项恢复前不报告 rolled_back，冲突或超时不丢原策略。
 不关闭厂商控制器，不放松 SELinux，不加 ALLOW_MULTI；API 配置回读成功不是 DNS/Play 成功。
+
+## 0.1.5 目录与锁所有权
+
+状态只写 `.state`，临时文件与缓存只写私密 `.cache`；旧目录在安装或运行入口按固定映射幂等迁移。迁移复用现有配置锁，不能在未持锁时移动其他写者的数据。配置锁按 LIFE-005 绑定实际执行临界区的进程。TUN 生成器从受管入站及恢复快照移除 `stack`，不改变模式、MTU、UDP 超时和应用分流。

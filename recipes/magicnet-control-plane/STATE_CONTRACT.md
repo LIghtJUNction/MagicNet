@@ -19,3 +19,7 @@ module-update accepted/installer exited/staged/reboot_required 与 effective ins
 网络策略 configured_verified 只表示 setter 后 API readback 一致，不表示 Play Store/DNS/下载可用。
 
 订阅当前已提交来源数、失败候选来源数、source缓存文件数、节点数和套餐记录行数分别是不同事实。subscription_batch_v1 使用机器接口表达同 generation 的多字段视图，不新增第二份 public marker 来让客户端自行拼凑。来源读取失败时，subscription canonical 的 state/source/configured_count 为 unknown token，支持包的 source_mode/configured_count 同样未知，不能发布成零来源成功。service.status 的 subscription.source 为 unknown 而独立服务事实保留；生产者和消费者共同遵守 SUBSCRIPTION_INTERFACE.md 的 C-SUB-008。普通读取不为补状态创建文件或目录。
+
+## 统一目录
+
+运行观测与构建元数据统一在 `.state`，可丢弃缓存和私密命令载荷统一在 `.cache`。WebUI、配置编辑、订阅候选、文件与节点命令都只生成 `.cache` 路径；沿用普通文件、owner/mode、链接、大小和原子发布检查。MCP 通用文件接口拒绝 `.cache`、旧 `.tmp`、旧 `.local/state` 与 `.state/directory-migration`，包含路径别名；迁移后的私密数据不能进入公共状态。旧根只作迁移输入，成功后不再保留第二套消费者路径。

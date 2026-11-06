@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.8）
+# 重建 MagicNet（配方 0.3.9）
 
 为 Android root 用户重建 MagicNet：从首次安装与订阅导入，到按应用、Wi-Fi、热点分流，再到节点、故障诊断和自动化控制。保留来源版本的完整用户行为，不能交付只有静态页面或包装命令的演示。
 
@@ -9,7 +9,7 @@
 - 保留操作流程，视觉沿用矿白、石墨与玉绿身份，增加留白、减少重复边框，用排版和背景层次组织内容；空间与控件规则见 webui 的 DESIGN.md。保留诊断、文件草稿、失败恢复和无障碍状态。
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
-- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@fd0e2dabf668e9b8cd6e16f5058e06517fe110c2；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进，正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
+- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@fafd08c3e1b2a7bce10222cdff0e13c7ebba5096；其基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进，正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
 - 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 保留原需求，M30–M39 新增多订阅、Encryption、可观测状态和重建交付验收。SOURCE_AUDIT.md 分开记录基线缺陷、当前源码修复和仍未知事项；配方合同或源码 main 更新都不等于 Android 版本已发布/部署或 #426 根因已确认。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
@@ -95,3 +95,13 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 ## 安装清理与突发 UDP 内存（2026-11-03）
 
 更新和安装继续使用唯一、有 ownership 标记的事务目录；失败先恢复再清理，恢复失败保留唯一恢复材料。清理分批遍历，避免文件数量决定瞬时列表内存，不新增时间戳备份。UDP 索引达到 1024 项后，在最后一项释放时丢弃空索引的底层空间；小流量仍复用索引。保留分片锁、共享引用计数和旧连接不能删除新连接的规则。测试覆盖大批连接释放、重建及安装成功/失败/恢复/未知目录保护；记录性能与内存实测，不把微基准当作真机 RSS。接口和运行依赖不变。
+
+## 目录、锁与 sing-box 1.15 迁移（2026-11-06）
+
+模块状态统一放在 `.state`，可丢弃缓存与私密临时载荷统一放在 `.cache`。构建、安装、Shell、Rust、WebUI 与组件打包使用同一布局；旧 `.local/state` 和 `.tmp` 仅作一次迁移输入。目标已有不同内容时保留目标，把旧内容放入私密恢复目录；失败保留未迁移数据，不能覆盖或丢失。移除 `magicnet-network-card.svg`，升级和复用构建也不再留下旧副本。
+
+配置锁记录实际执行临界区的 shell PID 与启动身份，嵌套 shell 的 `$$` 不能代替其实际进程。执行者退出后，即使父 shell 仍存活也能按身份回收；活 owner、暂停 owner、未知身份仍保留互斥。停止仍先清理自有热点路由和 DNS 规则，再结束核心。fswatch 的 status/start 与 stop 共用有界生命周期锁，并在锁内重查，重复 start 保持健康 watcher 的 PID；长驻进程不得继承临界区锁描述符。完整合同见 runtime/LIFECYCLE_CONTRACT.md。
+
+按用户本轮要求采用 sing-box 1.15 的原生 sing-tun 栈，生成器、内置模板、旧快照恢复与健康检查同步省略已弃用的 `stack`。此要求更新 M29 的默认栈选择；设备 A/B 性能结果仍须另行记录。模板固定到 `MagicSingBox@dacc776dad4bd2519d5dd0dfbf3839713f9e438c`，`config.json` SHA-256 为 `08996a10e24adc6ffb6a75f96d436a543264734d95f50f9952a7a265bb58213e`；既有指定域名拒绝与路由顺序保留。
+
+Android CLI 明确使用系统路由、没有显式网卡或网络策略绑定时，默认接口探测为空不能把整个网络工作器永久暂停。保留实际拨号错误及各层 readiness，不伪造网卡或联网状态；依赖真实接口的配置继续等待。失网取消过期异步更新，恢复后按新接口重置。根验收 M51–M53 分别绑定目录、锁和网络监控；control 的 `native_tun_stack` 能力说明 `effective.stack=default` 的配置含义。

@@ -1,5 +1,26 @@
 # 实现与发行验证
 
+## 2026-11-06 / 目录、停止锁、fswatch 与原生 TUN 修复
+
+源码固定 [fafd08c3e1b2a7bce10222cdff0e13c7ebba5096](https://github.com/LIghtJUNction/magicnet-android/commit/fafd08c3e1b2a7bce10222cdff0e13c7ebba5096)，tree 为 a041b51c2e0519e30f5464a67a769e13c9b358e4，基于同期 e8aad9e 主线保留 Voice 规则清理及安装包裁剪。内核固定 [d850ff0ff68e11a71aa8207627e0a826cb52808f](https://github.com/LIghtJUNction/sing-box/commit/d850ff0ff68e11a71aa8207627e0a826cb52808f)；最终模板为 dacc776dad4bd2519d5dd0dfbf3839713f9e438c，包含先行 b1fa62b 的原生栈迁移。软件版本仍为 v1.8.5 / 10613，配方为 0.3.9。
+
+修复统一 .state/.cache，迁移保留冲突和重试材料；删除网络卡 SVG。配置锁记录实际临界区 shell 身份，fswatch start/stop 共用有界互斥；停止网络清理失败时保留核心的行为未改。TUN 生成、恢复和健康检查不再写已弃用 stack；Android CLI 的可选默认接口观测缺失不再无条件暂停系统路由尝试。完整原因、文件链接与检查范围见[修复报告](../../docs/runtime-repairs-2026-11-06.md)。
+
+| 范围 | 本轮实际结果 |
+| --- | --- |
+| 锁与 fswatch | 新 ownership/lifecycle 回归在 Bash、sh、mksh、BusyBox 通过；锁预算、PID、停止保护和 watchdog 定向回归通过；signal safety 12 项、rollback 3 种 shell 各 15 项、Rust service_launch 9 项通过 |
+| 目录与私密边界 | 目录迁移/冲突/失败重试/实际互斥通过；对应 Rust 89 个不同测试通过；原生栈状态/健康/能力另 3 项通过 |
+| WebUI | 机器状态和私密载荷 17 项、typecheck、生产构建通过 |
+| 打包与 Android 夹具 | 远端整合后 components 17、archive safety 12、bundled rules 20、artifact cleanup 通过；Android 主机夹具 158 项通过 |
+| 配置 | 整合后 pin、旧默认来源迁移、24 项 config_editor、eBPF/TUN 模式及真实核心 orchestrator smoke 通过；重复测试不累计 |
+| 核心 | route 14 项、定向 race 15 项，两组去重 24 个顶层测试；vet、Android arm64 route 包与 Linux amd64 完整 CLI 的 23 个生产 tags 编译通过 |
+| 弃用警告对照 | 真实 CLI check：无 stack 最小 TUN 配置 exit=0 且无日志；加回 mixed 精确复现弃用警告 |
+| 配方 | check、pack、归档 check 与完整中文提示词通过，8 包、56 个 Markdown 文件 |
+
+安装夹具补齐 BusyBox 后 21 个方法通过；真实完整模板检查的 1 个方法有 6 个子项因缺少 geosite-category-ads-all.srs 等发布规则载荷失败，不能记为整组通过。本轮没有完整 Android 安装包构建、完整 host suite、shellcheck 或用户手机实测；无网启动、恢复和切网仍属设备验收。上述 Android 编译只覆盖 route 包，主机夹具不证明设备网络工作。
+
+旧 marker 若仍错误指向活父进程，修复不会强删；原进程退出或设备重启后，现有 PID/starttime 规则才能安全回收。真实日志未包含旧 owner 内容，四 shell 复现证明明确代码缺陷，不证明每次历史超时都由它引起。正式发行状态继续按已有发布合同与历史记录管理。
+
 ## 2026-11-06 / 清理专用 ChatGPT Voice 规则
 
 Android 源码已推送至 [`76a0e69e2fe473b2e3f14ea035baa3eab2f1009f`](https://github.com/LIghtJUNction/magicnet-android/commit/76a0e69e2fe473b2e3f14ea035baa3eab2f1009f)，模板已推送至 [`dacc776dad4bd2519d5dd0dfbf3839713f9e438c`](https://github.com/LIghtJUNction/MagicSingBox/commit/dacc776dad4bd2519d5dd0dfbf3839713f9e438c)。删除 hook 5460、专用 Voice JSON 分类、两条 IP/端口路由、CI 调用及相应测试与诊断特例；同步 CLI、安装器、WebUI 和配置文件的模板提交及 SHA-256。普通 `meta-openai` 域名分类、ChatGPT 应用包名及 `ai-chatgpt` 保留；仅曾命中 Voice IP 的连接改按其余现有规则处理。

@@ -61,3 +61,7 @@ WebUI zh-CN/en/ru，首次选浏览器首个受支持语言，否则 zh-CN；手
 接口与依赖：继续使用既有 schema=1 机器接口和 Vue 组件；不新增机器写接口、持久化字段、网络资源或 npm 依赖。configured/effective、unknown/pending 和错误状态保持原义。
 
 验收：本地类型检查和构建；既有行为测试；320px、390px 和桌面导航/布局浏览器回归，浅深主题正文及操作色对比度检查。浏览器模拟不等于设备验收。
+
+## 0.2.3 私密载荷与网络状态
+
+WebUI 私密临时载荷使用模块 `.cache`，与控制面消费者同步；仍用 0700 目录和 0600 文件，完整写入后交付，使用后清理。网络状态接受 native_tun_stack 能力下的 default token，只表示配置采用核心原生默认栈，不自行推断连通性。不加载或打包 magicnet-network-card.svg。

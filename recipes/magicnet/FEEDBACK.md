@@ -62,7 +62,7 @@
 | 启动的进程创建开销和公网稳定性需要可比较的真实基线 | [#396](https://github.com/LIghtJUNction/MagicNet/issues/396) 有 v1.6.2 约 2473 个 exec 事件/35–37 秒报告及 v1.7.2 更慢但带本地改动的样本；[#377](https://github.com/LIghtJUNction/MagicNet/issues/377) 的公网长期验收明确未完成；[#398](https://github.com/LIghtJUNction/MagicNet/issues/398) 还列出重复扫描和冷启动成本 | M26、性能 6：固定设备、核心、配置、测量窗口和观测器开销；分别报告启动分段时间、exec 次数、空闲重复扫描和不少于 600 秒公网 soak；预算仍未知，不能把不同环境样本拼成优化结论 |
 | 配置激活失败后必须有独立有效的 last-known-good 恢复基线 | [#254](https://github.com/LIghtJUNction/MagicNet/issues/254)；后续 PR #256/#403 修复部分恢复路径，原始设备故障因果仍未完全证明 | M27、运行时 15：损坏活动配置不能成为唯一回滚基线；已验证备份可恢复，备份缺失/损坏时拒绝继续并保留 journal；恢复中断可重试 |
 | 订阅超时和核心启动错误要给出可恢复下一步，不能泄漏原始响应/私密字段 | [#331](https://github.com/LIghtJUNction/MagicNet/issues/331) 与 [#324](https://github.com/LIghtJUNction/MagicNet/issues/324) 是低信息量用户报告；维护者确认 #331 的下载器修复未证明原订阅超时已消失，#324 根因未定位 | M28、控制面 9：把下载/解析/校验/启动阶段分开报告；超时可重试且不产生第二个 owner；未知根因保留为 unknown，不写成已修复 |
-| sing-box 新 TUN stack 与模块热点回程、DNS、IPv4/IPv6 的组合需要整体评估 | [#261](https://github.com/LIghtJUNction/MagicNet/issues/261)；维护者更新指出当前固定 fork 已包含 Go stack 基础，但配置仍锁在 mixed，尚无新 stack 真机 A/B | M29、引擎 10：以锁定核心为准比较 mixed 与 Go/default stack；完整跑热点回程、DNS、应用策略、IPv4/IPv6、长连接、RSS/CPU/延迟；通过前不改生产默认。stack 类型不等同 tun|ebpf 模式 |
+| sing-box 新 TUN stack 与模块热点回程、DNS、IPv4/IPv6 的组合需要整体评估 | [#261](https://github.com/LIghtJUNction/MagicNet/issues/261)；维护者更新指出当前固定 fork 已包含 Go stack 基础，但配置仍锁在 mixed，尚无新 stack 真机 A/B | M29、引擎 10：保留锁定核心的性能和设备比较要求；2026-11-06 用户明确要求处理弃用告警，默认迁移为原生栈，设备实测单独记录。保持 tun|ebpf 模式边界 |
 
 ## 仓库治理反馈
 

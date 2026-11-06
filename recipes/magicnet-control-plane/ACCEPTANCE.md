@@ -15,3 +15,6 @@
 11. 对运行时 LIFE-A01–A04 使用真实子进程检查一次性预算、父退出、超时清理与就绪后核心存活；内部启动入口带 `--json` 时仍只能返回结构化 unsupported，不能执行核心启动。
 12. 日志尾读比较空文件、1 MiB 密集空行、CRLF、中文、末行无换行、坏 UTF-8、截断多字节字符、读取期间追加、零行内部请求及最大公开行数。旧版与新版输出逐字相同；文件字节/行数上限、脱敏与非普通文件拒绝有效，临时行索引只随请求行数增长。记录可复现局部基准与分配口径。
 13. 执行 C-SUB-008：URL 清单与本地正文分别覆盖合法边界、超限、坏 UTF-8、NUL、symlink、目录/FIFO、权限错误、缺失和读取中改写。status/inspect 共用观测，失败非零且结构化；缺失父目录也不创建。canonical 与支持包未知来源/数量输出 unknown，service.status 保留其他独立事实；合成 canary 不进入任何公共错误/状态/支持包。检查只读调用前后的目录树和文件摘要。
+
+14. 缺省 stack、显式旧 stack、无 TUN、非法 stack 分别返回 default、原值、unavailable、unknown；capabilities 声明 native_tun_stack，WebUI 保留 token，健康检查接受原生默认且指出旧字段需迁移。
+15. 用带私密 canary 的 .cache、旧 .tmp、.local/state、directory-migration 与 symlink 别名测试通用文件读/列举拒绝；私密载荷正常读取消费，原有权限/硬链接/大小限制继续通过。

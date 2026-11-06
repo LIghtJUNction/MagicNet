@@ -62,3 +62,7 @@ SUB-A04 的旧实现聚合层反例已做受控复现，见合同第 17 节；�
 SUB-A04 另覆盖分享链接形式的 VLESS WebSocket：A/B 各一个名为 `HK`、server 不同的合法节点，分别执行 A、B、A+B 及只改 B 显示名的对照。先确认两源原生候选计数为 2、原生路径不能完整表达 WebSocket；完整转换输出合并后仍须保留两个不同端点及各自的 transport 字段，不能按 tag 折成一个，也不能通过删除 transport 后原生回退取得成功。固定旧版与候选结果分别绑定源码提交；受控转换器输出只证明转换调用、计数和合并路径，真实转换器、核心 check、完整事务与设备结果分别记录。
 
 补充跨 shell 回归：在 POSIX sh/dash、Bash 与固定 KernelSU BusyBox 中，以“不支持的 SNI 序列或转义 TLS 布尔值 + 有效节点”更新，均拒绝原生部分回退、保留旧配置并报告语义不完整；不得因计数子进程的 set -e 差异误报 native_count_failed。真实转换器能够完整转换时仍按完整性合同处理。
+
+## 0.1.5 回归
+
+执行 LIFE-A08–A09，保留既有 config-lock safety、budget、PID、subscription interruption 和 stop rollback 回归；旧目录迁移后重复启动/应用不会重建 .tmp/.local/state。TUN→eBPF→TUN 与缓存 TUN 再次应用均不恢复 stack 字段，用户其余调优保留。

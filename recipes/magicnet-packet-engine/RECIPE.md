@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-packet-engine"
-version = "0.2.2"
+version = "0.2.3"
 kind = "software"
 description = "MagicNet TUN 与 eBPF 数据面合同"
 entry = "BUILD_PROMPT.md"

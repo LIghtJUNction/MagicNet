@@ -1,5 +1,13 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / 目录与运行时修复
+
+输入为用户六项反馈：合并两组目录、删除 SVG、迁移 TUN stack、处理缺失默认接口及停止时 config.lock 超时。起点为 magicnet-android@c75583b00527acf96310e96c124805db010d939a、sing-box@d0b1422df5c36f49e7dbbccd0d49732040051974。开发过程中源仓进入 e8aad9e4b97c2601d029dcfa1f2b56ac90abd106，主仓进入 de5484f；通过三路合并保留全部同期规则和包装更新，再提交本轮修复。
+
+最终实现为 [magicnet-android@fafd08c3e1b2a7bce10222cdff0e13c7ebba5096](https://github.com/LIghtJUNction/magicnet-android/commit/fafd08c3e1b2a7bce10222cdff0e13c7ebba5096)。内核新增 helper/tests/spec 的提交为 8ec36f0423ce5b52251828c270c2649a6ec9c0d2，上游文件带 lx 标记的接入独立提交为 [d850ff0ff68e11a71aa8207627e0a826cb52808f](https://github.com/LIghtJUNction/sing-box/commit/d850ff0ff68e11a71aa8207627e0a826cb52808f)。模板原生栈先行提交 b1fa62b6912861292c895db58a88b8c5bdff3451，最终消费其后继 dacc776dad4bd2519d5dd0dfbf3839713f9e438c，配置 SHA-256 为 08996a10e24adc6ffb6a75f96d436a543264734d95f50f9952a7a265bb58213e。
+
+依据为四 shell 的真实 worker/父进程故障复现、fswatch 并发复现、固定核心代码路径和[官方 TUN 迁移说明](https://sing-box.sagernet.org/migration/#migrate-tun-stack)。修改既有实现，不是独立重建。M51–M53 分别承接目录、锁和接口观测；M50 的同期 Voice 清理继续保留。完整修复与实际验证见[报告](../../docs/runtime-repairs-2026-11-06.md)和 VERIFICATION.md。本轮没有把主机结果推广为设备已修复，也没有新建 Android 正式发行。
+
 ## 2026-11-05 / 指定目标拒绝与 v1.8.5
 
 输入为用户指定五个目标并要求提交、推送及发布新版本。目标用途说明未独立核验，本轮仅记录匹配与拒绝行为。四个完整域名和 `dm.wo.com.cn:18080` 的精确范围见 routing-policy/POLICY_INVENTORY.md。
