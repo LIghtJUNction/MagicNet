@@ -1,5 +1,17 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / 跨层重写与原版行为对照
+
+输入为用户要求先观察已有功能，再替换内部实现，覆盖 kamfw 并与原版比较，尽量精简。比较原版固定为 `magicnet-android@aefcbfbab80fe14008e4467eb0292251f7ce8f89` 和 `kamfw@bb0dc7582ee2c27e31e49d2d3b714b97528defef`；这两个基线含同期联网恢复、诊断及安装包清理。后续上游 CI/测试修正 `027e91f19330404d5a52120c1ed171f203d90175` 通过主线整合保留。
+
+完整回归使用的生产实现为 [d58dbdc5ed8a43bc1fee5050187b529a0f7136b7](https://github.com/LIghtJUNction/magicnet-android/commit/d58dbdc5ed8a43bc1fee5050187b529a0f7136b7)，框架固定 [kamfw@a7788737b938a9ed930645befe2526b626999a22](https://github.com/MemDeco-WG/kamfw/commit/a7788737b938a9ed930645befe2526b626999a22)。该同期后续提交只增加测试，相对已测 ea8758bf 的生产文件逐字节相同；新增 fswatch 方法在四 Shell × 两种 find 后端的 8 个组合中通过。WebUI、Rust、Shell、安装器、打包和框架分别完成分批提交，再提交交叉审查发现的 ZIP 长度与 fswatch 排除兼容修正。完整回归后保留同期主线 `81a60108477d31ca6131f930f955580ad4fa8ba1` 的监督器锁分离、诊断日志与 Android 验收脚本修正，并对受影响路径单独复验。主仓库 gitlink 还包含最终验收文档及行为测试夹具修正；固定 sing-box、模板、规则及其许可继续复用。
+
+最终源码交付提交为 [f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea](https://github.com/LIghtJUNction/magicnet-android/commit/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea)，包含完整验收证据、connectivity 行为夹具和 Android 验收脚本 PID 上限修正，主仓库以 gitlink 固定。
+
+本轮替换各层共享实现及 kamfw 运行时，保留部分稳定协议、事务算法、声明和页面模板，不宣称每个历史文件逐行重写。框架运行时代码由 6,614 降为 3,349 行；删去 MagicNet 重复的核心生命周期 overlay，使用共享框架。故障修正与严格等价场景分开记录，完整矩阵、原始 JSON、复现命令和测量口径见[重写验收报告](https://github.com/LIghtJUNction/magicnet-android/blob/f7188cc1f1184e5b5ac8da2d24b2dabeb42503ea/docs/rewrite-verification-2026-11-06.md)。
+
+根配方更新为 0.3.13，新增 REWRITE_CONTRACT.md 与 M59；八包闭包、同期 M56–M58 和子包版本保留。本轮是用户明确授权读取原版后进行的跨层重写，不是无旧源码独立重建。宿主结果不推导 Android 或实际网络已通过；浏览器被宿主 socket 权限阻断，自动审批拒绝扩大权限。未创建新 Release 或部署设备。
+
 ## 2026-11-06 / 低频联网恢复与单文件诊断
 
 输入为用户要求：最终模块不打包测试文件夹；本机模拟并测内存/性能；连接后低频测试Google，失败警告、指数退避和尝试订阅等恢复；一键导出集中路由、内核、订阅及相关信息的单文件诊断。

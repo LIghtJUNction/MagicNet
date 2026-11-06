@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.12"
+version = "0.3.13"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -60,3 +60,5 @@ source = "../software-quality"
 第四轮发现 jq 版本语法兼容问题，语义聚合改用 jq 1.7.1 与 1.8.2 均可解析的完整表达式绑定，不改变节点身份、去重或冲突拒绝规则。当前发行候选为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`；基线解释器下完整 105 项主机检查通过，正式发行结果见 VERIFICATION.md。
 
 v1.8.1 / versionCode 10609 已公开，配方/标签提交 `b762b8c54b99c7561914d3a02c3a635636ae6837`、源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。第五轮构建、完整质量与 Android 模拟器门槛通过；发布控制的草稿查询 404 已修复，并由独立恢复重新核对同一不可变产物和原 19 个附件后公开。详细 run 与实际验证边界见 VERIFICATION.md；未部署真机。
+
+0.3.13 增加 REWRITE_CONTRACT.md 与 M59：按功能合同覆盖框架、运行时、CLI/MCP、WebUI、安装器和打包链路，固定原版进行差分和资源测量。保留同期联网自愈与一键诊断导出；版本、接口、真实结果与未验证范围分别管理。
