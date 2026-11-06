@@ -5,6 +5,7 @@
 | 场景 | 操作 | 结果 |
 | --- | --- | --- |
 | full、core+组件、旧版无 manifest、全复用 | 安装/升级 | 同一最终 runtime 文件与权限；full/复用不联网；保留订阅和用户配置 |
+| 只有 `lib/kamfw/` 的干净检出、安装引导、卸载临时会话；当前用户浏览器缺失、角色查询失败、ActivityManager 输出错误或超时 | 初始化固定依赖并执行启动器、安装和卸载回归 | 同一 `launcher.sh` 支撑两个入口，无 `lib/kamfw-web/`；当前用户选择及 BROWSABLE/Binder 回退正确；失败有界且退出码保留；原有 URL/app 调用兼容，导入及调用不污染调用者状态；gitlink 变更触发对应检查 |
 | staging 完整安装后真实 rename 到最终模块目录，含自有缓存/checkpoint/last-known-good 与外部自定义路径 | 晋升后启动检查、恢复和再升级 | 自有路径解析到最终位置，不依赖已消失 staging；恢复内容保留；外部路径意图不被误改，不能只在未移动的测试目录宣称通过 |
 | MagicNet-core.zip、MagicNet.zip、magicnet_installer.zip | 比较摘要/模块身份，再分别安装升级 | 三者逐字节相同、ID 都为 MagicNet；更新同一模块，不出现外层 installer 模块、嵌套安装或重复核心下载 |
 | 未变组件只改 WebUI、改变 ZIP 顺序/时间戳 | 构建 | 未变组件 identity 不变，更新流量不强制重下核心 |

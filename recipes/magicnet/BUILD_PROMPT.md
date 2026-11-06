@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.9）
+# 重建 MagicNet（配方 0.3.10）
 
 为 Android root 用户重建 MagicNet：从首次安装与订阅导入，到按应用、Wi-Fi、热点分流，再到节点、故障诊断和自动化控制。保留来源版本的完整用户行为，不能交付只有静态页面或包装命令的演示。
 
@@ -29,6 +29,8 @@ Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策�
 0.3.7 增加 routing-policy 0.2.2 的 POLICY-A08–A12 与根验收 M49：四个精确域名拒绝连接，`dm.wo.com.cn` 仅限 TCP/UDP 目标端口 18080；保留前置 DNS/协议处理，拒绝先于模式、应用和业务分流。内置模板使用 MagicSingBox 固定提交 `6da399473a1ab3f99661556886e0b6701581af24`，`config.json` SHA-256 为 `6365ee9b4144974ced6012dc99b9712ceef3f721f58ae9eb0943024373b81d81`；普通订阅刷新不删除这些规则。
 
 0.3.8 通过 routing-policy 0.2.3 移除专用 ChatGPT Voice 更新脚本、Sukka Voice 上游、JSON 资产及对应 IP/端口规则。构建按现行 POLICY_INVENTORY 筛选历史来源，保留 `meta-openai`、`ai-chatgpt`、ChatGPT 域名和应用包名分流及对应 DNS。POLICY-A13–A15 与 M50 验收清理和分流保留，不增加运行依赖。
+
+0.3.10 通过 delivery 0.2.4 和 M54 统一安装、卸载的浏览器启动器。现行 Shell 实现直接维护固定 `MemDeco-WG/kamfw` 子模块的 `launcher.sh`，安装入口导入它，卸载临时会话复制它；移除 `lib/kamfw-web/`，同步依赖、构建和测试入口。当前用户浏览器回退、有界等待、错误传播和既有 URL/app 接口保留。
 
 ## 独立重建边界
 

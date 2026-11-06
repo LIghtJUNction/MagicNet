@@ -37,6 +37,21 @@ Android 源码已推送至 [`76a0e69e2fe473b2e3f14ea035baa3eab2f1009f`](https://
 | 已完成的源码 CI | [Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42148315485)、[Rules Release Integration](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42148315581) 成功；其他运行在记录时尚未完成 |
 
 本地结果限于宿主配置、定向回归与归档夹具；本地未运行完整 Android 安装包构建、真实上游资产 matcher 或真机语音验收。软件版本元数据未因这次清理变更，未发布新版本。
+## 2026-11-06 / kamfw 启动器整合
+
+启动器已直接合入 [`MemDeco-WG/kamfw@bb0dc758`](https://github.com/MemDeco-WG/kamfw/commit/bb0dc7582ee2c27e31e49d2d3b714b97528defef)，Android 源码已推送至 [`44f3c69f`](https://github.com/LIghtJUNction/magicnet-android/commit/44f3c69f1f9366ab373afcb62b03584e61459d2e)，保留之前清理 Voice 规则、运行时目录和打包目录的更新。安装、卸载、测试及 CI 使用同一 `kamfw/launcher.sh`，独立的 `lib/kamfw-web/` 已删除。配方为 `magicnet 0.3.10`、`delivery 0.2.4`，Android 版本元数据保持 `v1.8.5 / 10613`。
+
+| 本地检查范围 | 实际结果 |
+| --- | --- |
+| 浏览器启动回归 | 10 项通过 |
+| 安装引导 HTTP/CGI | 24 项通过 |
+| 卸载流程 | 15 项通过 |
+| 安装快路径 | 通过 |
+| 安装配置 | 最新源码 22 项中 20 项通过；缺少 BusyBox 的对应夹具和既有真实核心 opt-in 各跳过 1 项 |
+| launcher 直接行为 | 9 项通过 |
+| 配方材料 | `scripts/check-recipes.py` 的目录 check、pack、归档 check 和完整中文提示词检查通过；8 个包、56 个 UTF-8 Markdown 文件 |
+
+本轮未运行 ShellCheck、Android 真机或真实网络验收。上表为宿主及合成数据检查，未产生新 Android 发行版。
 
 ## 2026-11-05 / 指定目标拒绝与 v1.8.5 准备
 

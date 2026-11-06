@@ -15,6 +15,14 @@
 
 目录 metadata 的模块身份为 `MagicNet`，homepage/support 指向官方 `LIghtJUNction/MagicNet`，架构与真实交付保持一致，release.assetPattern 对应 `MagicNet-full.zip`。构建/目录检查核对 manifest、资源、模块身份和正式发布资产名称，缺失或失效引用给明确失败；发布时再次与完整资产清单核对。配方版本不替代模块软件版本，目录元数据恢复本身不证明安装或设备验收通过。
 
+## 启动器接口与来源
+
+现行安装、卸载入口共用固定 `MemDeco-WG/kamfw` 子模块中的 `lib/kamfw/launcher.sh`。安装时使用 `import launcher`；卸载临时会话复制该文件，使模块目录删除后仍能完成已启动的告别流程。源码、发布包和工作流只维护这一启动器来源，移除 `lib/kamfw-web/` 目录及其覆盖加载逻辑。
+
+`launch browser <http(s)-url>` 在 Android 当前用户中打开页面：先查询该用户的浏览器角色，依次尝试指定浏览器、通用 BROWSABLE intent 和 Binder activity 入口。每次系统命令有界等待；ActivityManager 输出错误时继续按失败处理，即使命令退出码为零。保留 `launch url|link`、`launch app|pkg` 和直接 URL 调用；导入无副作用，调用保留失败退出码，不污染调用者变量。
+
+源码子模块提交必须可获取；安装、卸载和浏览器回归工作流初始化同一个固定 `kamfw` 依赖后再执行。单独修改该 gitlink 也须触发对应检查。
+
 ## 权限与门槛
 
 构建和 Android 验收只有读取权限；只在主仓库 main 的显式 publish 请求中，独立发布 job 获得 contents:write。源码仓库不得创建官方软件 Release 或带发行请求的版本 PR。
