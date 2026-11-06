@@ -2,7 +2,7 @@
 
 ## 2026-11-06 / DNS 默认查询出口修复
 
-本轮源码固定 [`47097272655e5bf9bb80dcc910d110e56667be05`](https://github.com/LIghtJUNction/magicnet-android/commit/47097272655e5bf9bb80dcc910d110e56667be05)，tree `47fc30c1dc67663b1650b75548e3fa345a347304`；默认模板固定 [`ba5793b41fd06704102116fe2536eef5988f2905`](https://github.com/LIghtJUNction/MagicSingBox/commit/ba5793b41fd06704102116fe2536eef5988f2905)，生成配置 SHA-256 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。核心继续使用 `d850ff0ff68e11a71aa8207627e0a826cb52808f`。
+本轮源码固定 [`38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c`](https://github.com/LIghtJUNction/magicnet-android/commit/38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c)，tree `1e83b5b00e2f8b3aa2018358717a81e228820a94`；默认模板固定 [`ba5793b41fd06704102116fe2536eef5988f2905`](https://github.com/LIghtJUNction/MagicSingBox/commit/ba5793b41fd06704102116fe2536eef5988f2905)，生成配置 SHA-256 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。核心继续使用 `d850ff0ff68e11a71aa8207627e0a826cb52808f`。
 
 旧模板及生产物化函数对未分类域名选择直连 bootstrap；新增对照在旧代码上失败。修复将受管默认 final 与 evaluate 指向经 proxy 的 DoH，同时将节点域名的默认引导 resolver 保持为直连 bootstrap，避免代理启动递归。独立配置、显式直连、已有 resolver 和自定义模板 pin 保留。
 
@@ -10,7 +10,11 @@
 - 前一候选 `e2725d7` 的 [Network Regression Evidence 42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 整套成功。`core-evidence` job `127776187925` 于 07:47:12–07:47:18 UTC 实际运行新增 `--require` 测试：未知域名 A/AAAA 经 UDP/TCP 进入核心后走代理；节点地址直连引导；显式直连有效；代理拒绝时查询失败，直连业务查询为零。测试复用生产物化函数及固定核心，使用本地 TLS DoH/CONNECT 端点，不请求公共 DNS。
 - [模板 Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42182106388)、[Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836609)、[Rules Release Integration](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836597) 与 [Install Onboarding](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836687) 成功。
 
-独立审查发现显式 `type: "default"` 规则的诊断漏报；最终 `4709727` 补正类型与空匹配的 invert 元数据，新增反例先失败后通过，26 项 DNS 诊断测试及完整 Rust gate 再次通过。相对 `e2725d7` 仅更改诊断文件，已验证的生产 DNS 脚本、模板、核心和数据包夹具相同。配方 check/pack/归档 check/build 完整提示词通过，八包 60 份 Markdown；发布入口 21 项测试通过。
+独立审查发现显式 `type: "default"` 规则的诊断漏报；中间候选 `4709727` 补正类型与空匹配的 invert 元数据，新增反例先失败后通过，26 项 DNS 诊断测试及完整 Rust gate 再次通过。相对 `e2725d7` 仅更改诊断文件，已验证的生产 DNS 脚本、模板、核心和数据包夹具相同。配方 check/pack/归档 check/build 完整提示词通过，八包 60 份 Markdown；发布入口 21 项测试通过。
+
+中间候选 `4709727` 的 [Code Quality 42184638079](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638079) 已完成 7/7 jobs；[Network Regression Evidence 42184638173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638173) 的 3/3 jobs 成功，实际 DNS 出口必需步骤于 08:03:29–08:03:35 UTC 再次通过。主项目 [Recipe checks 42184931377](https://github.com/LIghtJUNction/MagicNet/actions/runs/42184931377) 成功。
+
+最终 `38c6eea` 补齐自动审查的空匹配器、伪装 proxy 出站、TLS 验证、profile 应用失败回滚和 WebUI 初始值。复用已有出站解析器与共享配置锁，保留显式 resolver；反例先失败后通过。该版本 DNS/profile 33 项、完整 Rust gate、生产物化与 profile 安全、正式 source/Shell lint、WebUI 相关 24 项均通过。远程门禁与实际安装包继续绑定最终 SHA，旧候选包不作为本轮交付。
 
 本地实际核心运行被容器的 AF_NETLINK 权限阻断，已明确记录，未把跳过记作通过；上述运行证据来自 GitHub runner。物理手机、移动网络切换、Android Private DNS、应用自带 DoH 与真实用户节点未在本轮执行。未创建正式 Release 或安装用户设备。完整原因、合法对照和证据边界见 [DNS 修复记录](DNS_REPAIR_2026-11-06.md)。
 

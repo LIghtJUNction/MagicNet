@@ -43,7 +43,7 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | --- | --- |
 | Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
 | Recipe | `0.3.15` |
-| Fixed implementation commit | `47097272655e5bf9bb80dcc910d110e56667be05` |
+| Fixed implementation commit | `38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
 | Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 

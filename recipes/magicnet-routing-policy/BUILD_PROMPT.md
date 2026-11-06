@@ -19,9 +19,9 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 
 规则模式下，未匹配显式 DNS 分类的查询使用 `doh-cloudflare`，其 HTTPS 连接必须经 `proxy`。模板的 `dns.final` 与 runtime 生成的默认 `evaluate/respond` 路径保持一致；新安装、升级、订阅刷新和重复应用 profile 都不得恢复直连 fallback。代理不可用或尚无节点时，默认查询失败，不自动交给本地解析器。
 
-`bootstrap-local-dns` 保留为代理节点地址的引导解析器，`route.default_domain_resolver` 继续指向它，避免连接代理之前先依赖同一代理解析节点域名。国内分类、LAN/Tailnet 与显式 Direct 模式的 DNS 规则继续使用原有本地加密解析器。独立导入配置在默认 profile 下保留自己经过验证的 DNS 图；显式 DNS profile 保持既有选择语义。
+`bootstrap-local-dns` 保留为代理节点地址的引导解析器；受管配置缺少 `route.default_domain_resolver` 时指向它，已有显式 resolver 保留，避免将合法用户引导图强制重写。默认图不在连接代理之前依赖同一代理解析节点域名。国内分类、LAN/Tailnet 与显式 Direct 模式的 DNS 规则继续使用原有本地加密解析器。独立导入配置在默认 profile 下保留自己经过验证的 DNS 图；显式 DNS profile 保持既有选择语义。
 
-诊断需要检查默认查询实际引用的 DNS server 和其 detour，不能仅因服务器列表中存在某个公共 DNS 厂商就报告默认出口受保护。配置检查、锁定核心的隔离查询测试和 Android 实际流量结果分别记录；静态规则匹配不作为设备流量结论。
+诊断需要检查默认查询实际引用的 DNS server、detour 与配置的出站链，不能仅因服务器列表中存在某个公共 DNS 厂商或出站名为 proxy 就报告受保护。默认规则类型元数据、空匹配列表和其他中性值不能掩盖无条件直连。受管默认拒绝禁用 TLS 证书验证的远端；profile 应用失败恢复原持久化意图或原不存在状态，复用配置锁并诚实报告回滚失败。WebUI 初始默认值与机器响应一致。配置检查、锁定核心的隔离查询测试和 Android 实际流量结果分别记录；静态规则匹配不作为设备流量结论。
 
 ### 指定域名拒绝
 

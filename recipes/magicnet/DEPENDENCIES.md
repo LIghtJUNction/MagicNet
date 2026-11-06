@@ -74,6 +74,6 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 ## 0.3.15 默认 DNS 修复
 
-本轮接入 routing-policy 0.2.5，依赖闭包仍为八包，无新增运行时依赖。当前固定源码为 `LIghtJUNction/magicnet-android@47097272655e5bf9bb80dcc910d110e56667be05`，源码版本保持 1.8.5，本轮不新建发行。
+本轮接入 routing-policy 0.2.5，依赖闭包仍为八包，无新增运行时依赖。当前固定源码为 `LIghtJUNction/magicnet-android@38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c`，源码版本保持 1.8.5，本轮不新建发行。
 
 内置模板固定为 `LIghtJUNction/MagicSingBox@ba5793b41fd06704102116fe2536eef5988f2905`，`config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。该模板以经 `proxy` 的 `doh-cloudflare` 承接默认 DNS，并保留 `bootstrap-local-dns` 引导解析和显式直连规则；精确旧官方默认 pin 迁移，自定义 repo/ref/digest 保留。验收对应 M60 与 POLICY-A21–A25，实际验证范围见 [DNS_REPAIR_2026-11-06.md](DNS_REPAIR_2026-11-06.md) 和 [VERIFICATION.md](VERIFICATION.md)。

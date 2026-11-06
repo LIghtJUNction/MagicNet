@@ -8,7 +8,7 @@
 
 | 层 | 固定提交与审阅入口 |
 | --- | --- |
-| Android 源码 | [`47097272655e5bf9bb80dcc910d110e56667be05`](https://github.com/LIghtJUNction/magicnet-android/commit/47097272655e5bf9bb80dcc910d110e56667be05)，[PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2) |
+| Android 源码 | [`38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c`](https://github.com/LIghtJUNction/magicnet-android/commit/38c6eea6a42eb5f2cc3697c81225f35fd3c82d5c)，[PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2) |
 | 默认模板 | [`ba5793b41fd06704102116fe2536eef5988f2905`](https://github.com/LIghtJUNction/MagicSingBox/commit/ba5793b41fd06704102116fe2536eef5988f2905)，[PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21) |
 | 模板内容摘要 | `config.json` SHA-256：`e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0` |
 | 实际核心 | `1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e`；源码 pin `d850ff0ff68e11a71aa8207627e0a826cb52808f` |
@@ -25,10 +25,12 @@ sing-box 的新式 HTTPS DNS server 在没有 detour 时使用直接拨号；`dn
 
 ## 修复方式
 
-1. **模板与运行时使用相同默认出口。** 默认 `dns.final` 和 `magicnet-final-dns` 的 evaluate server 均使用 `doh-cloudflare`。受管旧配置缺少该解析器时补入代理 DoH；保留标签存在但定义冲突、类型不合格或重复的情况则原子拒绝，旧文件保持完整。
+1. **模板与运行时使用相同默认出口。** 默认 `dns.final` 和 `magicnet-final-dns` 的 evaluate server 均使用 `doh-cloudflare`。受管旧配置缺少该解析器时补入代理 DoH；保留标签存在但定义冲突、类型不合格、重复或关闭 TLS 证书验证的情况则原子拒绝，旧文件保持完整。
 2. **代理节点独立引导解析。** 受管配置缺少 `route.default_domain_resolver` 时使用直连的 `bootstrap-local-dns`。否则，建立代理连接所需的节点域名可能需要先通过尚未建立的代理解析。已有显式 resolver 与 default standalone 配置的原解析图保留。[Dial Fields 文档](https://sing-box.sagernet.org/configuration/shared/dial/)说明该字段对代理出站解析的是服务器地址。
-3. **诊断检查默认引用。** 健康检查核对最终解析器与无条件 route/evaluate 的 resolver detour，拒绝缺失、重复或直连的默认引用，接受不同厂商和 IP 地址形式。它是配置层检查，实际出口仍由数据包测试确认。
-4. **升级与展示同步。** 安装器、CLI、WebUI、默认配置源和子模块统一固定到新模板。迁移只匹配官方旧 revision 与 digest 的精确配对；自定义仓库、版本或摘要保持原值。默认 DNS 状态展示为 `doh-cloudflare`，机器接口 schema 与显式 profile 名称保持兼容。
+3. **诊断检查默认引用。** 健康检查核对最终解析器、无条件 route/evaluate 及其配置的出站链，识别默认类型和空匹配值，拒绝缺失、重复、循环或落到直连的默认引用，接受不同厂商和 IP 地址形式。它是配置层检查，实际出口仍由数据包测试确认。
+4. **升级与展示同步。** 安装器、CLI、WebUI、默认配置源和子模块统一固定到新模板。迁移只匹配官方旧 revision 与 digest 的精确配对；自定义仓库、版本或摘要保持原值。默认 DNS 状态及 WebUI 尚未取得响应时的初始值均为 `doh-cloudflare`，机器接口 schema 与显式 profile 名称保持兼容。
+
+profile 应用与回滚复用现有配置锁；物化失败时恢复原 `dns.conf` 的精确内容或原不存在状态，回滚失败保留失败信息，失败路径不启动或停止核心。已有合法 profile 的成功路径保持。
 
 本次未增加常驻进程、周期探测或公共联网请求。正常模板复用现有 DNS server；手动 Cloudflare UDP/DoT/DoH profile 继续保留各自传输方式。没有从这些结构性事实推导未经测量的性能提升比例。
 
@@ -47,23 +49,27 @@ sing-box 的新式 HTTPS DNS server 在没有 detour 时使用直接拨号；`dn
 | `bash scripts/test-dns-profile-safety.sh` | 通过；三个手动 profile、默认远端、缺失补齐、冲突/重复拒绝、独立配置、缓存偏好与原子写入 |
 | `python3 scripts/test-dns-proxy-egress.py` | 生产物化断言通过：默认代理、独立 bootstrap、显式直连保留、重复应用字节一致 |
 | 锁定核心 `sing-box check` | 本地合成的生产 DNS 配置通过校验 |
-| `bash scripts/quality-gate.sh rust` | 格式检查、Clippy 与全套 Rust 单元/集成测试通过；诊断补正后再次全套通过，DNS 诊断定向 26 项通过 |
+| `bash scripts/quality-gate.sh rust` | 格式检查、Clippy 与全套 Rust 单元/集成测试通过；边界补正后再次全套通过，DNS/profile 定向 33 项通过 |
 | `python3 scripts/test-dns-output-order.py` | 15 项通过 |
 | `python3 scripts/test-dns-capture-fast-path.py` | 6 项通过 |
 | `bash scripts/test-dns-leak-guard-timeout.sh` | 有界超时保护通过 |
 | pin、精确迁移、安装刷新与路由模板检查 | 通过；自定义 pin 保留。安装模板套件 20 通过、2 因可选环境缺失跳过 |
-| WebUI DNS profile 测试与类型检查 | 通过；类型检查使用 `NODE_OPTIONS=--max-old-space-size=768` |
+| WebUI DNS/profile/状态/刷新测试与类型检查 | 相关测试 24 项通过；类型检查使用 `NODE_OPTIONS=--max-old-space-size=768` |
 | 正式 Shell lint、源码检查与 CI 合同测试 | 通过 |
 
 本地容器禁止创建 `AF_NETLINK` 套接字，实际核心在 DNS listener 启动前退出。因此本地 `--require` 数据包测试明确失败于环境能力，没有把跳过记作通过。
 
 ### 独立审查与补正
 
-独立审查发现一项 P2 诊断漏报：显式 `type: "default"` 与省略类型在核心中等价，但前一候选的健康检查把类型元数据误当成匹配条件，可能漏报无条件直连规则。新增回归在前一候选上失败；最终提交 `4709727` 识别省略、空串和显式默认类型，并依据固定核心语义处理没有匹配条件时的 `invert` 元数据。route/evaluate 的直连反例、远端正例及带条件的国内/Direct 合法规则均通过。该补正只改动诊断与单元测试，生产 DNS 物化脚本、模板、核心和数据包夹具与 `e2725d7` 相同。
+独立审查发现一项 P2 诊断漏报：显式 `type: "default"` 与省略类型在核心中等价，但前一候选的健康检查把类型元数据误当成匹配条件，可能漏报无条件直连规则。新增回归在前一候选上失败；增量提交 `4709727` 识别省略、空串和显式默认类型，并依据固定核心语义处理没有匹配条件时的 `invert` 元数据。route/evaluate 的直连反例、远端正例及带条件的国内/Direct 合法规则均通过。该补正只改动诊断与单元测试，生产 DNS 物化脚本、模板、核心和数据包夹具与 `e2725d7` 相同。
+
+后续仓库自动审查的有效边界由 `38c6eea` 合并修正：空数组/null/关闭的匹配器不能把无条件规则伪装成条件规则；复用路由诊断解析 `proxy` 的实际配置链，直连、缺失、重复和循环不通过，默认无节点的 block 仍能阻止泄漏；受管远端拒绝 `tls.insecure: true`；失败应用恢复原 profile；前端初始默认值同步。对应空匹配器、伪装出站、TLS 和失败持久化的反例先失败后通过。
+
+显式 `route.default_domain_resolver` 继续保留：它可能对应已有合法引导图、数字地址节点或单节点 resolver。强制覆盖所有非空值会破坏该配置接口；缺省受管配置已明确使用独立 bootstrap，用户自定义循环不被静默改写。
 
 ### GitHub 实际核心数据包测试
 
-[前一候选 e2725d7 的 Network Regression Evidence](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598)整套成功，包含步骤 `Verify DNS proxy egress and closed failure with the production core`。`core-evidence` job `127776187925` 于 07:47:12–07:47:18 UTC 执行该步骤，使用仓库固定核心，在本地 TLS DoH 服务与 HTTP CONNECT 代理之间发送真实数据包，保持生产物化结果中的 DNS 规则、final、detour 和节点解析器，仅替换端点地址、端口与证书信任。
+[中间候选 4709727 的 Network Regression Evidence](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638173)整套成功，包含步骤 `Verify DNS proxy egress and closed failure with the production core`。`core-evidence` job `127781965303` 于 08:03:29–08:03:35 UTC 执行该步骤，使用仓库固定核心，在本地 TLS DoH 服务与 HTTP CONNECT 代理之间发送真实数据包，保持生产物化结果中的 DNS 规则、final、detour 和节点解析器，仅替换端点地址、端口与证书信任。
 
 | 场景 | 实际验收 |
 | --- | --- |
@@ -73,6 +79,8 @@ sing-box 的新式 HTTPS DNS server 在没有 detour 时使用直接拨号；`dn
 | 代理拒绝连接 | A/AAAA 查询失败；对应直连业务查询为零；没有绕过代理到达远端夹具 |
 
 测试不访问公共 DNS、不使用用户订阅、不修改主机路由或防火墙，也不关闭 TLS 证书验证。CI 使用 `--require`，缺核心或能力不足会失败。模板的 [Validate configuration](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42182106388) 与源码的 [Network regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836609)亦已通过。
+
+中间候选 `4709727` 的 [Code Quality 42184638079](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42184638079) 全部 7 个 job 成功，包括 Rust、Shell/host、WebUI、组件与 Android probe 合同。前一候选 `e2725d7` 的 [42182836598](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42182836598) 也通过同一真实核心场景；每轮验证使用自己的运行记录，不将旧结果改写为新提交结果。最终 `38c6eea` 的远程门禁另行核对。
 
 ### 配方与发布入口
 
