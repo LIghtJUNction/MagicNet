@@ -6,13 +6,19 @@
 
 增量推送源码e8aad9e（打包）、9d545e1（WebUI）、aefcbfb（联网/导出）、027e91f（CI依赖与核心转发测量）、81a6010（真实监督器锁分离/诊断日志/Android导出验收）、d22b122（安装夹具清理和实包worker行为）及b5fa1cd（实际机器状态结构保真和有效MCP观察入口）。框架a7788737只新增字面路径回归，生产修复来自上游ea8758bf。该阶段候选源码b5fa1cd64788bdc5d1dbbd6b88d799c25f895944，tree fe78eb29a1dd8ab06292606b4ccf84b27e13cb88；核心d850ff0、模板6b5f68a保持。
 
-随后实际Android和归档审计发现b5缺少curl，fa0e1ad补入正式共享构建的HTTPS组件及诊断证据；原生init已成功后重复late-load触发ETXTBSY的问题通过只读核验原生启动修正。2bbbf2a修复宿主版本解析兼容，其后f0d2407修正KAM输出权限并明确界面执行器原因，f0实际ZIP和安装模拟通过，但测试临时项目遗漏新帮助脚本；218e165仅修复该夹具依赖。218质量、Build和Network通过后，Android在ADB reverse列表解析失败；ceb7d54只补充官方合法空白行兼容。当前候选为`ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9`，tree `794e53afe208f03429748bdea554a71b792b5f3b`。两次b5生命周期失败、fa0/2bb权限及版本前置失败、f0夹具失败均保留。218原失败与可复现解析反例保留；ceb四项精确门禁重新执行，尚未交付。固定输入、许可证和摘要见delivery/EXTERNAL_ASSETS.md。
+随后实际Android和归档审计发现b5缺少curl，fa0e1ad补入正式共享构建的HTTPS组件及诊断证据；原生init已成功后重复late-load触发ETXTBSY的问题通过只读核验原生启动修正。2bbbf2a修复宿主版本解析兼容，其后f0d2407修正KAM输出权限并明确界面执行器原因，f0实际ZIP和安装模拟通过，但测试临时项目遗漏新帮助脚本；218e165仅修复该夹具依赖。218质量、Build和Network通过后，Android在ADB reverse列表解析失败；ceb7d54只补充官方合法空白行兼容。最终验收源码为`ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9`，tree `794e53afe208f03429748bdea554a71b792b5f3b`。两次b5生命周期失败、fa0/2bb权限及版本前置失败、f0夹具失败及218解析失败保留，未由后续通过记录覆盖。固定输入、许可证和摘要见delivery/EXTERNAL_ASSETS.md。
+
+最终提交的四条CI均成功：[Quality42173653819](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819)为7/7 jobs、122项RUN/PASS及3项Rust结果HIT；[Build42173653787](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787)和全部14个ZIP的独立审计通过；[Network42173653682](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653682)为3/3 jobs；[Android42173653691](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691)在attempt1完成12/12阶段、5/5重启，0 JUnit失败。本地应用UID/TUN控制、生命周期与真实单文件导出已有AVD执行证据，不外推为ARM64物理手机、真实公网代理出口或续航已验证。
+
+实际模块curl的版本、gzip、内嵌CA身份和本地TLS正负控制通过，但Google没有返回HTTP 204。一次显式正常产品tick记录`tls_failure`、HTTP为null、警告为true及60秒退避；直连对照也失败且只有首次失败，未触发订阅刷新或重启。原因审查未取得具体curl失败码或握手原文，不能把fixture猜成唯一原因。固定curl官方源码与构建选项的只读审查未发现默认内嵌CA加载路径断开；这仍不证明该次公网握手已完成CA加载或接受公共证书链。不同架构和每次curl构建都按各自产物摘要验证，不宣称跨构建字节相同。
 
 同期f7188cc的报告、PID边界和实际sleep观察，以及主项目407f5fa的重写合同和M59通过快进与三路整合保留。根配方0.3.14扩展真实框架LIFE-006和诊断证据范围；control0.2.6、runtime0.1.7、delivery0.2.6，仍为八包配方闭包；正式负载新增curl及静态TLS/压缩依赖。DIAG-A07要求对真实安装后的导出验证机器状态结构、公共语义与隐私；含URL的JSON不能被整段抹去，采集只使用支持的只读入口。GitHub更新使用预期SHA检查，没有覆盖并行工作。
 
 真实CI失败促成两层锁分离、旧测试夹具兼容修正以及对真实诊断内容的二次审查。d22虽然原门禁全绿，独立文件审计发现内容缺陷后仍停止交付；修改前CLI复现失败，最终15项导出unit、3项CLI集成和独立实际文件解析通过，再运行精确提交CI。初轮失败、宿主权限阻断和未覆盖范围保留，不能把fixture或编译通过当作手机数据面通过。
 
-新CLI重新测量并按六个冻结Rust文件与提交的逐字节一致性绑定ceb7d54及6e989c28二进制；fa0至ceb生产Rust等价链逐项核对；保留测时b5工作树dirty的原始状态，不将其改写为clean。watchdog测量保留81a原身份；该框架与运行路径未变。六轮核心CI分别保存样本、二进制摘要和环境，使用相同固定核心不等于共享runner上的受控版本A/B。具体门禁、归档身份和Android原生导出结果见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)与VERIFICATION；本轮不新建Release或部署用户设备。
+新CLI重新测量并按六个冻结Rust文件与提交的逐字节一致性绑定ceb7d54及6e989c28二进制；fa0至ceb生产Rust等价链逐项核对；保留测时b5工作树dirty的原始状态，不将其改写为clean。watchdog测量保留81a原身份；该框架与运行路径未变。七轮核心CI分别保存样本、二进制摘要和环境，使用相同固定核心不等于共享runner上的受控版本A/B。Android核心75,900KiB、11线程、51FD是单一AVD fixture快照；实际诊断64,649字节、48节、764ms与宿主样本分别记录。完整门禁、归档身份、Google原因审查和默认CA源码审查见[报告](../../docs/connectivity-diagnostics-2026-11-06.md)及[CI证据](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
+
+完整离线模块与实际设备诊断样本已经交付。模块为68,476,029字节，SHA256 `8dc73eb02ed508b772ed55618fa835ef869906ec8f3ae326e594fc94a0fd4d63`；[模块交付文件](https://drive.google.com/file/d/1b0qGXu15kLS01dFjhhF74_tqphRmYaAt/view?usp=drivesdk)与[诊断样本](https://drive.google.com/file/d/1e_Cj7QrqJmOCjXNzWdDhxRrKH5bsdaoJ/view?usp=drivesdk)保留对应实际产物。本轮未新建正式Release或部署用户设备。
 
 ## 2026-11-06 / 跨层重写与原版行为对照
 

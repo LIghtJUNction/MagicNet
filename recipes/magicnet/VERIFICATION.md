@@ -1,19 +1,27 @@
 # 实现与发行验证
 
-## 2026-11-06 / 正式HTTPS组件候选ceb7d54
+## 2026-11-06 / 正式HTTPS组件最终验收ceb7d54
 
-固定[源码ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9](https://github.com/LIghtJUNction/magicnet-android/commit/ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9)，tree `794e53afe208f03429748bdea554a71b792b5f3b`。fa0补入正式curl/TLS/CA，2bb修复宿主版本解析，f0规范KAM归档固定路径权限，218补全安装夹具依赖。218的质量7/7、Build完整安装模拟与组件门禁、Network3/3均成功，但Android在cold-boot的ADB reverse列表解析失败，前3阶段通过，后8未运行。第一轮新boot/root/Enforcing与三个原生init阶段已实际通过，实际包内curl摘要正确；显式tick及诊断导出尚未执行，旧失败保留且不交付。
+最终验收固定[源码ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9](https://github.com/LIghtJUNction/magicnet-android/commit/ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9)，tree `794e53afe208f03429748bdea554a71b792b5f3b`。该提交的四条CI全部成功，完整离线包与实际诊断样本已交付；Google实网HTTP 204仍未取得，失败告警与退避按实际结果记录。
+
+历史修复与失败保留各自身份：fa0补入正式curl/TLS/CA，2bb修复宿主版本解析，f0规范KAM归档固定路径权限，218补全安装夹具依赖。218的质量7/7、Build完整安装模拟与组件门禁、Network3/3均成功，但Android在cold-boot的ADB reverse列表解析失败，前3阶段通过，后8未运行。该轮第一轮新boot/root/Enforcing与三个原生init阶段已实际通过，实际包内curl摘要正确；显式tick及诊断导出尚未执行，旧失败保留且不交付。
 
 ceb7d54仅修正验收工具对官方ADB空白行的兼容，保留全部非空格式、重复端口、退出码、时间/输出与清理限制。旧代码反例复现、27 proof（26通过/原可选CA1跳过）、device100/public32通过，独立审查无阻断。实际reverse stdout未保留，官方格式+代码复现与设备错误位置一致，不能称该次输出已逐字节确认。
 
 | 当前精确提交门禁 | 状态 |
 | --- | --- |
-| [Quality42173653819](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819) | 运行中 |
-| [Build42173653787](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787) | 运行中，须重新独立审计最终归档 |
-| [Android42173653691](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691) | 运行中，需真实TLS/正常产品tick/只读导出及12阶段5重启 |
-| [Network42173653682](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653682) | 运行中 |
+| [Quality42173653819](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819) | 7/7 jobs通过；122 RUN/PASS、3 Rust精确指纹HIT、0 FAIL；完整WebUI实际运行498.75秒 |
+| [Build42173653787](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787) | 构建与安装门禁通过；独立审计14ZIP/1104成员、17摘要、10组件/168成员、12pins、9 ELF路径全部通过，测试开发目录0 |
+| [Android42173653691](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691) | attempt1成功；12/12阶段、5/5重启、0 JUnit失败；包内curl的本地TLS正负控制、正常产品tick和真实单文件导出均完成 |
+| [Network42173653682](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653682) | 3/3 jobs通过；300浏览器场景、真实核心转发；截图与核心归档核对官方摘要和大小，内部192张PNG及核心文件核验CRC和安全路径 |
 
-旧失败和各自产物摘要见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)及CI JSON。只在初次bootstrap late-load，后续核对当前boot原生init，不重放生命周期。生产curl六路径严格验证与25分钟设备阶段预算未放宽。八包59份Markdown配方闭包已验证，root0.3.14/control0.2.6/runtime0.1.7/delivery0.2.6；未发布Release或部署用户设备。
+Android 15 / KernelSU / x86_64的实际设备流程覆盖本地`app-uid-tun-controls`、无效配置回滚、停止清理、重启幂等、升级保留及禁用/启用/卸载后的重启，均通过。只在初次bootstrap late-load，后续5次重启均核对新boot、root、SELinux Enforcing和当前boot的三个KernelSU原生init阶段，不重放生命周期。包内curl在无系统curl环境下完成版本、gzip、内嵌CA身份、本地TLS正向与主机名/默认信任负向控制；生产curl六路径严格验证与25分钟设备阶段预算未放宽。
+
+验收显式调用一次正常产品tick，Google实际结果为`offline/upstream_unavailable`、`primary_reason=tls_failure`、HTTP为null、⚠️为true，首次失败进入60秒退避。辅助代理和直连对照均失败，未满足恢复门槛，因此没有刷新订阅或重启。该轮最多一次Google主请求及两次辅助请求，不代表十二阶段全部网络请求总数；现有记录未保留具体curl失败码与握手原文，不能将fixture、CA或外部网络认定为唯一原因，也不能把流程通过写成Google 204通过。
+
+真实诊断文件为64,649字节、48节，18个必需节完整；采集764ms，0 incomplete、0 truncated。服务/TUN/DNS机器状态和MCP内容可解析，私密值脱敏；导出不新增公网探测，探测时间、次数、结果和恢复动作保持，倒计时正常递减。该AVD中的核心RSS快照为75,900KiB（约74.12MiB），11线程、51FD；这是单一fixture下的核心瞬时值，不是整模块峰值。
+
+最终完整离线包为68,476,029字节，SHA256 `8dc73eb02ed508b772ed55618fa835ef869906ec8f3ae326e594fc94a0fd4d63`；全部14个ZIP已独立审计，测试/开发目录0匹配。[下载完整离线模块](https://drive.google.com/file/d/1b0qGXu15kLS01dFjhhF74_tqphRmYaAt/view?usp=drivesdk)，[查看实际诊断样本](https://drive.google.com/file/d/1e_Cj7QrqJmOCjXNzWdDhxRrKH5bsdaoJ/view?usp=drivesdk)。旧失败、当前审计和各自产物摘要见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)及[CI证据](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。ARM64物理手机、真实公网代理订阅出口、持续负载和续航仍无证据。八包59份Markdown配方闭包已验证，root0.3.14/control0.2.6/runtime0.1.7/delivery0.2.6；未新建正式Release或部署用户设备。
 
 ## 2026-11-06 / 上一候选b5fa1cd（未交付）
 

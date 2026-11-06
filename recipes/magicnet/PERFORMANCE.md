@@ -13,11 +13,15 @@
 
 20次tick后状态字节不变；诊断19917字节，与机器回执一致，CPU125.203ms。时间由原生fork/exec+wait4测量，排除Python驱动继承高水位；单进程峰值不等于并发总量或常驻。单次导出不报告P95或稳定优化比例。watchdog只测首次sleep、空回调；此段框架及模块运行路径在81a到b5fa1cd之间未变，不含核心和周期CLI，不推导电池开销。
 
-完整生产标签核心d850ff0，Go1.26.7，Linux二进制SHA256为bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407。当前218e165的Linux CI对54个本地规则集测得两轮稳定段RSS中位74174/74852KiB（约72.44/73.10MiB）；每轮8点取末4点，无TUN、活动连接或Android射频。简单mixed配置20秒/21点RSS58536KiB、PSS58528KiB，最多10线程。
+完整生产标签核心d850ff0，Go1.26.7，Linux二进制SHA256为bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407。当前ceb7d54的Linux CI对54个本地规则集测得两轮稳定段RSS中位74476/73688KiB（约72.73/71.96MiB）；每轮8点取末4点，无TUN、活动连接或Android射频。简单mixed配置20秒/21点RSS59180KiB、PSS59172KiB，最多10线程。
 
-六次独立CI回环转发运行使用同一核心和脚本，各30组成对26字节请求与8组成对4MiB传输，响应逐字节核对：027e91f代理/直连中位耗时差0.3233ms、代理吞吐中位8.2140Gbit/s；81a6010分别为0.4680ms、5.5847Gbit/s；d22b122分别为0.4690ms、5.6049Gbit/s；b5fa1cd为0.3024ms、6.5838Gbit/s；2bbbf2a为0.3434ms、8.3628Gbit/s；当前218e165为0.3168ms、6.9371Gbit/s。共享runner负载不同，这不是源码A/B，不将差异归因于优化；回环吞吐也不等于互联网带宽或手机TUN性能。均为0公网请求。具体样本、环境、CPU粒度、规则清单和二进制哈希见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)和[CI JSON](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
+七次独立CI回环转发运行使用同一核心和脚本，各30组成对26字节请求与8组成对4MiB传输，响应逐字节核对：027e91f代理/直连中位耗时差0.3233ms、代理吞吐中位8.2140Gbit/s；81a6010分别为0.4680ms、5.5847Gbit/s；d22b122分别为0.4690ms、5.6049Gbit/s；b5fa1cd为0.3024ms、6.5838Gbit/s；2bbbf2a为0.3434ms、8.3628Gbit/s；218e165为0.3168ms、6.9371Gbit/s；当前ceb7d54为0.4556ms、5.5933Gbit/s。共享runner负载不同，这不是源码A/B，不将差异归因于优化；回环吞吐也不等于互联网带宽或手机TUN性能。均为0公网请求。具体样本、环境、CPU粒度、规则清单和二进制哈希见[完整报告](../../docs/connectivity-diagnostics-2026-11-06.md)、[host JSON](../../docs/evidence/connectivity-diagnostics-host-2026-11-06.json)和[CI JSON](../../docs/evidence/connectivity-diagnostics-ci-2026-11-06.json)。
 
-本机核心run受netlink权限阻断，保留local_acceptance=blocked、cli.acceptance=passed；实际转发来自具备权限的CI。新增控制开销已有测量；Android设备与Google实际结果仍在验收，物理手机内存、持续负载、真实订阅代理出口和电池仍未得到证据；不声称全模块性能最优。
+同一提交的[Android验收42173653691](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691)在attempt1完成12/12阶段与5/5重启，0 JUnit失败，本地`app-uid-tun-controls`实际通过。Android 15 / KernelSU / x86_64单一AVD fixture中的核心RSS快照为75,900KiB（约74.12MiB），11线程、51FD；不是整模块峰值，也不是ARM64物理手机测量。设备端真实诊断为64,649字节、48节、18个必需节完整，采集阶段764ms，0 incomplete、0 truncated；此设备采集计时与前表Linux fork/exec总耗时口径不同，不据两者计算版本提速比例。
+
+实际Google检查完成但未取得HTTP 204。验收显式调用一次正常产品tick，结果为`offline/upstream_unavailable`、`primary_reason=tls_failure`、HTTP为null，保留警告并进入60秒退避；一次探测轮次不等于全流程只发出一次网络请求。直连对照也失败且尚为首次失败，未执行订阅刷新或重启。本地TLS正负控制、gzip与内嵌CA身份检查通过，但具体公网TLS根因未由现有证据确定，不能把fixture或运行环境直接定为原因。
+
+本机核心run受netlink权限阻断，仍保留local_acceptance=blocked、cli.acceptance=passed；Linux回环转发与Android本地TUN控制分别使用各自实际证据。物理手机内存、持续负载、真实公网代理订阅出口和电池仍未得到证据；本轮不声称全模块性能最优。最终离线包和设备诊断样本的交付位置见[VERIFICATION](VERIFICATION.md)。
 
 ## 2026-11-06：跨层重写的宿主 A/B
 

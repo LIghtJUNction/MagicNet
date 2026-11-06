@@ -4586,7 +4586,23 @@
     "packages": 8,
     "markdown_files": 59,
     "status": "passed",
-    "scope": "directory, recursive archive, complete Chinese build prompt; no runtime binaries in recipe payload"
+    "scope": "directory, recursive archive, complete Chinese build prompt; no runtime binaries in recipe payload",
+    "final_delivery_source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "final_delivery_check": {
+      "status": "passed",
+      "markdown_files": 59,
+      "archive": {
+        "path": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-0.3.14-ceb7d54-final-delivery.recipe.tar.gz",
+        "bytes": 245023,
+        "sha256": "7aa6d50b45d7d00da0650a01755279fe87bdf95220d643735492ba1a227783c9"
+      },
+      "complete_zh_CN_prompt": {
+        "path": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-0.3.14-ceb7d54-final-delivery.zh-CN.md",
+        "bytes": 623311,
+        "sha256": "470a1bc9c7a55c00e3d971a1435154205fd1fe4f65ccd0972178b506d768dfdf"
+      },
+      "commands_exit_zero": true
+    }
   },
   "pre_fidelity_fix_source_commit": "d22b122624f30757bd9df182656eaed6883a0365",
   "pre_fidelity_fix_source_tree": "55148ed9fdf2348beae2e37a73ddf0da83f3d7ec",
@@ -7396,29 +7412,8 @@
     },
     "boundary_note": "Unknown numeric scalars remain observable under aliased future keys. Current three fixed schemas contain no private numeric identifiers outside recognised private-key filters; future machine-field additions require privacy review."
   },
-  "final_delivery_ready": false,
-  "final_delivery_pending": [
-    "Exact ceb7d54 Quality",
-    "Exact ceb7d54 Build and archive audit",
-    "Exact ceb7d54 Android curl/TLS/product connectivity/diagnostic/lifecycle",
-    "Exact ceb7d54 Network evidence",
-    "Final immutable package and receipts"
-  ],
-  "unchanged_runtime_scope_since_81a": {
-    "verified_by_git_diff": true,
-    "unchanged": [
-      "connectivity implementation",
-      "watchdog and module runtime",
-      "core and recursive dependency pins",
-      "host forwarding measurement script",
-      "installer",
-      "webui",
-      "hooks",
-      "config"
-    ],
-    "production_difference": "diagnostics_export.rs only; exporter tests and Android semantic harness also changed",
-    "note": "This is not a claim that the entire production tree or final CLI binary equals 81a."
-  },
+  "final_delivery_ready": true,
+  "final_delivery_pending": [],
   "production_curl_dependency_blocker": {
     "schema": 1,
     "source_sha": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
@@ -7596,6 +7591,22 @@
       ],
       "android_harness": "installed_controls requests read-only connectivity status and explicitly records active_connectivity_probe_requested=false; its pass is not an active Google probe pass.",
       "android_harness_reference": "scripts/android-device-simulation.py:325-358"
+    },
+    "historical_finding": true,
+    "implementation_fix_source_commit": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+    "complete_package_audit_source_commit": "218e1653ba67f950aed25318347ea845bf7467e0",
+    "current_runtime_validation": {
+      "status": "resolved_missing_executor_dependency",
+      "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "android_run": 42173653691,
+      "system_curl_available": false,
+      "module_curl_selected_and_digest_matched": true,
+      "local_tls_positive_negative_gzip_cleanup": "passed",
+      "embedded_ca_bytes_and_digest": "passed",
+      "actual_google_probe": "tls_failure",
+      "google_https_204_observed": false,
+      "public_tls_root_cause": "not_established",
+      "scope": "Missing production curl was fixed. Local explicit-CA positive and default-trust self-signed negative controls do not establish successful default public-certificate validation."
     }
   },
   "pre_production_curl_candidate": {
@@ -11460,11 +11471,45 @@
       "android_revalidation": "pending_new_source"
     },
     "delivery_ready": false,
-    "superseded_reason": "Production curl missing; diagnostic-only and partial lifecycle evidence did not authorize delivery."
+    "superseded_reason": "Production curl missing; diagnostic-only and partial lifecycle evidence did not authorize delivery.",
+    "unchanged_runtime_scope_since_81a": {
+      "verified_by_git_diff": true,
+      "unchanged": [
+        "connectivity implementation",
+        "watchdog and module runtime",
+        "core and recursive dependency pins",
+        "host forwarding measurement script",
+        "installer",
+        "webui",
+        "hooks",
+        "config"
+      ],
+      "production_difference": "diagnostics_export.rs only; exporter tests and Android semantic harness also changed",
+      "note": "This is not a claim that the entire production tree or final CLI binary equals 81a.",
+      "compared_source_commits": [
+        "81a60108477d31ca6131f930f955580ad4fa8ba1",
+        "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944"
+      ],
+      "scope_note": "Historical 81a-to-b5 comparison only. Later production curl, environment isolation, packaging normalization and warning UI changes are outside this unchanged scope."
+    }
   },
   "delivery_source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
   "delivery_source_tree": "794e53afe208f03429748bdea554a71b792b5f3b",
-  "final_module_file": null,
+  "final_module_file": {
+    "artifact_source": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-full.zip",
+    "bytes": 68476029,
+    "sha256": "8dc73eb02ed508b772ed55618fa835ef869906ec8f3ae326e594fc94a0fd4d63",
+    "delivered": true,
+    "name": "MagicNet-full-v1.8.5-ceb7d54.zip",
+    "persistent_save_succeeded": true,
+    "google_drive_url": "https://drive.google.com/file/d/1b0qGXu15kLS01dFjhhF74_tqphRmYaAt/view?usp=drivesdk",
+    "google_drive_metadata_verified": {
+      "bytes": 68476029,
+      "parent_folder": "1l506lcpZnJS-42-bpKHdk4W8yiAZenrc"
+    },
+    "copy_verified_byte_identical": true,
+    "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9"
+  },
   "production_curl_implementation": {
     "source_commit": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
     "tree": "63161fc0d9c4a9a3549a31e0a842c83b5a4e0aa4",
@@ -11974,7 +12019,8 @@
     "build": 42173653787,
     "android": 42173653691,
     "network_evidence": 42173653682,
-    "status": "running"
+    "status": "all_four_workflows_passed",
+    "android_attempt": 1
   },
   "production_curl_initial_build": {
     "source_commit": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
@@ -18405,5 +18451,4792 @@
       "scripts/test-android-public-curl-proof.py": "bf1ba602884ad7745eab744ece48f8413af6cf2d26a9061945a7548016577828"
     },
     "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9"
+  },
+  "core_memory_delivery": {
+    "schema": 1,
+    "scope": "Linux_idle_local_rules_AB_not_Android",
+    "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+    "rule_inventory": [
+      {
+        "tag": "lyc-geosite-ads",
+        "bytes": 1637123,
+        "sha256": "5c05659a518ff2eb88411bb86bed6269edb63189ec0a319ec4968e7446f10e49"
+      },
+      {
+        "tag": "lyc-geosite-cn",
+        "bytes": 445435,
+        "sha256": "e645fb089753bb08905450c951168ad027b1c229b579c41e6dfbccb6384c2c20"
+      },
+      {
+        "tag": "lyc-geoip-cn",
+        "bytes": 36600,
+        "sha256": "e811f3171ea3de9669d64c467294e4612554ea9447d4ff8443af7fa208e6ba9b"
+      },
+      {
+        "tag": "lyc-geoip-telegram",
+        "bytes": 127,
+        "sha256": "c5ae208004b0752baee307348ef820b9fe9e8aa3a14556f54af68791b6d4030b"
+      },
+      {
+        "tag": "metacubex-geosite-cn",
+        "bytes": 446000,
+        "sha256": "66f3c2324558f166b1ecb1237fdeac29f98af8b9e84d18f501c44445f97e25be"
+      },
+      {
+        "tag": "metacubex-geoip-cn",
+        "bytes": 36417,
+        "sha256": "ac82bac86a7f9f873b4e016765f9ee5afe0152da52049b72c16f459572c317ee"
+      },
+      {
+        "tag": "metacubex-geosite-geolocation-not-cn",
+        "bytes": 160882,
+        "sha256": "01aea245a7f9ee3fc8bd7a07d86112c8b5413751b21c539ae00378acba783075"
+      },
+      {
+        "tag": "hagezi-light",
+        "bytes": 442972,
+        "sha256": "0facb50354f4c53c855876d283a323b4928d4716481162266db10bb24bc8d9a5"
+      },
+      {
+        "tag": "karing-acl4ssr-wechat",
+        "bytes": 208,
+        "sha256": "106d897c3720759591f321228cb5f4e6ef04da3e812a15db8141552f9fcc7f59"
+      },
+      {
+        "tag": "service-wechat-dns",
+        "bytes": 335,
+        "sha256": "497df098e359e4d705395bd0ea79751ea070e65bbb54e5762dc3797440db5fb3"
+      },
+      {
+        "tag": "karing-acl4ssr-china-domain",
+        "bytes": 3638,
+        "sha256": "2cce86f9a063af98d32d6a391a343e4348a32e478b06cb94ed6a93beec19800c"
+      },
+      {
+        "tag": "karing-acl4ssr-china-ip",
+        "bytes": 24852,
+        "sha256": "89a131c3f3cff938070fd3a643259e3bce0ccdb3d9d45fb13be353c5d13a9ae7"
+      },
+      {
+        "tag": "meta-tencent",
+        "bytes": 3723,
+        "sha256": "b7485d62e12e381f6c8a5ed7c06701ecf3c4b64f64d169c639166b99be4ffa64"
+      },
+      {
+        "tag": "meta-category-doh",
+        "bytes": 1188,
+        "sha256": "caa28943a82287c48bd1f260af6970ac85d8a9fcaac15d8961f041585f805ad9"
+      },
+      {
+        "tag": "meta-category-ip-geo-detect",
+        "bytes": 1892,
+        "sha256": "71259c8fa922268b7a2a2c71b4ae9e38d94152d5d0d132e8b9854ef3683b5eac"
+      },
+      {
+        "tag": "meta-connectivity-check",
+        "bytes": 479,
+        "sha256": "8b81e05b171942d958997bd565e0365adc717836ebc68786052bfe59f54382be"
+      },
+      {
+        "tag": "meta-speedtest",
+        "bytes": 286,
+        "sha256": "f55bbb72eb6e8e660eb02524add4430c36643b3c0d55948fc469342acf8a2781"
+      },
+      {
+        "tag": "meta-openai",
+        "bytes": 435,
+        "sha256": "d2c8fffc93d82084c4a01955891195cb7df84e1a804200de9e41868ac99e723b"
+      },
+      {
+        "tag": "meta-google-gemini",
+        "bytes": 523,
+        "sha256": "e41fafdc7c5dd6f0d64e6c551f820baa5822d9fc613e65654fbf57e7b8390805"
+      },
+      {
+        "tag": "meta-xai",
+        "bytes": 77,
+        "sha256": "88b662b6ecf53728a581f18e296ed67c4cc5a85230d44a0c1a8ca436c1e7374d"
+      },
+      {
+        "tag": "meta-anthropic",
+        "bytes": 167,
+        "sha256": "cbaa0874fa37674750fe33ac07525d7bc25ae22851b1733e282c4db425f6752b"
+      },
+      {
+        "tag": "meta-bing@cn",
+        "bytes": 112,
+        "sha256": "3941def52f3c3030cab6dc52db5e7251913555cacd3413d71f8c6d9e42c8a695"
+      },
+      {
+        "tag": "meta-bing",
+        "bytes": 470,
+        "sha256": "2450c4da4cb22d97c0ac7ee3f2c0db91f183f50c5e2749e30c6c2d18664394e1"
+      },
+      {
+        "tag": "meta-category-game-platforms-download",
+        "bytes": 1825,
+        "sha256": "585de57fa33833134f277e65aff2fe737b28361f6f0215886d5bc52cf5ea2adf"
+      },
+      {
+        "tag": "meta-win-update",
+        "bytes": 1553,
+        "sha256": "347521beae83ed80156862be5971abe05086d5adbecefbc9257654a8f55d0293"
+      },
+      {
+        "tag": "meta-apple-update",
+        "bytes": 227,
+        "sha256": "3776acf4ab5e11d3324b20f870e969357aff7d0fdf620b2053f77221f8932c62"
+      },
+      {
+        "tag": "meta-icloud",
+        "bytes": 487,
+        "sha256": "ebc8deafa0cfcb75c2c47119cc0d808b821e52b20f6744b6f552ca3dd804e92b"
+      },
+      {
+        "tag": "meta-apple",
+        "bytes": 14449,
+        "sha256": "bdc028903330da7aa9a43db610caac7b1877f8861bf347e2b13f5a6a759958f8"
+      },
+      {
+        "tag": "meta-microsoft",
+        "bytes": 6032,
+        "sha256": "a86d4cbcfddbd3c20bba8e1a569b831d758b052f0318af014158b1ef2e3145ad"
+      },
+      {
+        "tag": "meta-category-scholar-!cn",
+        "bytes": 4353,
+        "sha256": "5336c9bdb9c731a0793940f090f851b9672d09917323d428e9b7e3c7ceebedd2"
+      },
+      {
+        "tag": "meta-category-ai-!cn",
+        "bytes": 1884,
+        "sha256": "ecd8c691ff2728d4f479f621dab170c92d757ba916606efe37bf392111762dc1"
+      },
+      {
+        "tag": "meta-category-dev",
+        "bytes": 5581,
+        "sha256": "872b3c8cf12fa8779d8a4bf0e4641898148e33b760d89e112c18af6730d74065"
+      },
+      {
+        "tag": "meta-category-media",
+        "bytes": 12553,
+        "sha256": "34405bd7eb11cae426e3b70c895d2cb66a0624d605dfc965689478157636000a"
+      },
+      {
+        "tag": "meta-category-games-!cn",
+        "bytes": 7622,
+        "sha256": "b13888e1ce43ff82f732972dba03402c8cb3c2568d9ae96dc2aa8e5757601362"
+      },
+      {
+        "tag": "meta-category-social-media-!cn",
+        "bytes": 4840,
+        "sha256": "1e4190830a9752b752d91a0f901a6c264cd32355f10596f009305fc103a214ba"
+      },
+      {
+        "tag": "meta-telegram",
+        "bytes": 248,
+        "sha256": "30cd392b1d79b0569af077874b36c6892bf13a94dce0d8e4410c3b1976d62ea2"
+      },
+      {
+        "tag": "meta-twitter",
+        "bytes": 284,
+        "sha256": "a2da69babdc2441e8ac487ddf91a5259e4628de74f44bb9bcd6a2113841bac0f"
+      },
+      {
+        "tag": "meta-whatsapp",
+        "bytes": 180,
+        "sha256": "69c3a413c97070f9db7ea836c48998217e2fbfb2535b887e312424da843554a3"
+      },
+      {
+        "tag": "meta-google",
+        "bytes": 6255,
+        "sha256": "a480f7e9de5d1d76c035cadc5fba575510b701703d719bc908923915acd7b7ba"
+      },
+      {
+        "tag": "meta-google-play",
+        "bytes": 220,
+        "sha256": "646adc5da39b1a1373c7feb0a5c480dc9807d3a63392e7ace7c93364fdf531e1"
+      },
+      {
+        "tag": "meta-category-entertainment",
+        "bytes": 16978,
+        "sha256": "d907af66f6709619cf070aa30f55bb32037bbe0d4979b2a35b06805d1c133912"
+      },
+      {
+        "tag": "meta-category-communication",
+        "bytes": 1375,
+        "sha256": "1392f62e02d03cb6dc2ddb887a56222383f7562205fe4858bb5fdb5421506c74"
+      },
+      {
+        "tag": "meta-github",
+        "bytes": 692,
+        "sha256": "66f7429acc1054306eda75a3e674085754df5ed221685f866d2fd05e33617d7c"
+      },
+      {
+        "tag": "meta-huggingface",
+        "bytes": 69,
+        "sha256": "5b281328abcc078fa081cd9799a556da569bcf8d1f68436ffdacc90a02589b6e"
+      },
+      {
+        "tag": "meta-gitlab",
+        "bytes": 126,
+        "sha256": "2f99efe3f68d03671c168101c8a33aeabfb3e58f761a92e7e8aa804badcd8909"
+      },
+      {
+        "tag": "meta-docker",
+        "bytes": 200,
+        "sha256": "ed47d702ba34fd9a75fd981fa6c8e87fafa7cdc616d4eafde7b215bb1b34fdc1"
+      },
+      {
+        "tag": "meta-npmjs",
+        "bytes": 76,
+        "sha256": "1d4f9228d3a0af89a5ddcfedad52cc059efc61cffa4fccb70d78df88e1553c3c"
+      },
+      {
+        "tag": "meta-notion",
+        "bytes": 126,
+        "sha256": "5888ab752aa9b2b52ef0e77bbd6888013f2c80903feb411a69ff3a09dd837b6a"
+      },
+      {
+        "tag": "meta-discord",
+        "bytes": 408,
+        "sha256": "289c98b6887f4de780670618deed0613c2cd489818b2c8abd1ee9d12bb972734"
+      },
+      {
+        "tag": "meta-slack",
+        "bytes": 163,
+        "sha256": "e46249bbc512ca3c5c1f49a83c2fb477e4dafeeffcc3b675710298c33d219782"
+      },
+      {
+        "tag": "meta-reddit",
+        "bytes": 181,
+        "sha256": "4677ea3324d082ca9a47c2bae79f27f04fdf008e1a5946ec6a4485887559b521"
+      },
+      {
+        "tag": "meta-spotify",
+        "bytes": 362,
+        "sha256": "0e187c6c538b48975f07f9668388bf25e1bae43cf8cce2e82396cbb0a7ac94ea"
+      },
+      {
+        "tag": "meta-netflix",
+        "bytes": 344,
+        "sha256": "40c5f50c80ceaba2a5e0b5c5760c9c5fce0b08498501397d8264dcae2aeeda53"
+      },
+      {
+        "tag": "meta-youtube",
+        "bytes": 1147,
+        "sha256": "c0536fe1195a661bce0c603686291e36b5465d0f8b046ee562180beeb2eaa20b"
+      }
+    ],
+    "results": {
+      "minimal": [
+        {
+          "rule_set_count": 0,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 103,
+          "samples": [
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58092,
+              "VmRSS": 58092,
+              "RssAnon": 8108,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            },
+            {
+              "VmHWM": 58096,
+              "VmRSS": 58096,
+              "RssAnon": 8112,
+              "RssFile": 49984,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 4423680
+            }
+          ],
+          "median_rss_kib": 58092.0,
+          "median_anon_kib": 8108.0
+        },
+        {
+          "rule_set_count": 0,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 102,
+          "samples": [
+            {
+              "VmHWM": 57604,
+              "VmRSS": 57604,
+              "RssAnon": 8256,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57604,
+              "VmRSS": 57604,
+              "RssAnon": 8256,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4718592
+            },
+            {
+              "VmHWM": 57624,
+              "VmRSS": 57624,
+              "RssAnon": 8276,
+              "RssFile": 49348,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 4734976
+            }
+          ],
+          "median_rss_kib": 57624.0,
+          "median_anon_kib": 8276.0
+        }
+      ],
+      "ads_only": [
+        {
+          "rule_set_count": 2,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 202,
+          "samples": [
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64780,
+              "RssAnon": 14152,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64804,
+              "RssAnon": 14176,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            },
+            {
+              "VmHWM": 70264,
+              "VmRSS": 64808,
+              "RssAnon": 14180,
+              "RssFile": 50628,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10289152
+            }
+          ],
+          "median_rss_kib": 64804.0,
+          "median_anon_kib": 14176.0
+        },
+        {
+          "rule_set_count": 2,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 202,
+          "samples": [
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            },
+            {
+              "VmHWM": 69892,
+              "VmRSS": 64964,
+              "RssAnon": 14272,
+              "RssFile": 50692,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 10305536
+            }
+          ],
+          "median_rss_kib": 64964.0,
+          "median_anon_kib": 14272.0
+        }
+      ],
+      "cn_only": [
+        {
+          "rule_set_count": 7,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 102,
+          "samples": [
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63536,
+              "RssAnon": 12468,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8601600
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63548,
+              "RssAnon": 12480,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8601600
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63556,
+              "RssAnon": 12488,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63572,
+              "RssAnon": 12504,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63572,
+              "RssAnon": 12504,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63572,
+              "RssAnon": 12504,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63572,
+              "RssAnon": 12504,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            },
+            {
+              "VmHWM": 65292,
+              "VmRSS": 63572,
+              "RssAnon": 12504,
+              "RssFile": 51068,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 8634368
+            }
+          ],
+          "median_rss_kib": 63572.0,
+          "median_anon_kib": 12504.0
+        },
+        {
+          "rule_set_count": 7,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 102,
+          "samples": [
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64024,
+              "RssAnon": 12892,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64036,
+              "RssAnon": 12904,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            },
+            {
+              "VmHWM": 65020,
+              "VmRSS": 64040,
+              "RssAnon": 12908,
+              "RssFile": 51132,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 8871936
+            }
+          ],
+          "median_rss_kib": 64036.0,
+          "median_anon_kib": 12904.0
+        }
+      ],
+      "all_local_rules": [
+        {
+          "rule_set_count": 54,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 208,
+          "samples": [
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74428,
+              "RssAnon": 23424,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21413888
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74444,
+              "RssAnon": 23440,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21422080
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74452,
+              "RssAnon": 23448,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21422080
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74452,
+              "RssAnon": 23448,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21430272
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74460,
+              "RssAnon": 23456,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21495808
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74476,
+              "RssAnon": 23472,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21495808
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74476,
+              "RssAnon": 23472,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21528576
+            },
+            {
+              "VmHWM": 76864,
+              "VmRSS": 74480,
+              "RssAnon": 23476,
+              "RssFile": 51004,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21528576
+            }
+          ],
+          "median_rss_kib": 74476.0,
+          "median_anon_kib": 23472.0
+        },
+        {
+          "rule_set_count": 54,
+          "GOMEMLIMIT": "off",
+          "GOGC": "100",
+          "startup_ms": 202,
+          "samples": [
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73656,
+              "RssAnon": 22528,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21643264
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73660,
+              "RssAnon": 22532,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21676032
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73672,
+              "RssAnon": 22544,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21708800
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73676,
+              "RssAnon": 22548,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21708800
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73676,
+              "RssAnon": 22548,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21741568
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73688,
+              "RssAnon": 22560,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21741568
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73688,
+              "RssAnon": 22560,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21741568
+            },
+            {
+              "VmHWM": 78840,
+              "VmRSS": 73688,
+              "RssAnon": 22560,
+              "RssFile": 51128,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21741568
+            }
+          ],
+          "median_rss_kib": 73688.0,
+          "median_anon_kib": 22560.0
+        }
+      ],
+      "all_rules_soft64MiB": [
+        {
+          "rule_set_count": 54,
+          "GOMEMLIMIT": "64MiB",
+          "GOGC": "100",
+          "startup_ms": 202,
+          "samples": [
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74412,
+              "RssAnon": 24120,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21716992
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74416,
+              "RssAnon": 24124,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21749760
+            },
+            {
+              "VmHWM": 76100,
+              "VmRSS": 74428,
+              "RssAnon": 24136,
+              "RssFile": 50292,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 10,
+              "core_api_memory_bytes": 21749760
+            }
+          ],
+          "median_rss_kib": 74416.0,
+          "median_anon_kib": 24124.0
+        },
+        {
+          "rule_set_count": 54,
+          "GOMEMLIMIT": "64MiB",
+          "GOGC": "100",
+          "startup_ms": 202,
+          "samples": [
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74256,
+              "RssAnon": 23060,
+              "RssFile": 51196,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21348352
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74256,
+              "RssAnon": 23060,
+              "RssFile": 51196,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21348352
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74256,
+              "RssAnon": 23060,
+              "RssFile": 51196,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21381120
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74268,
+              "RssAnon": 23072,
+              "RssFile": 51196,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21381120
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74268,
+              "RssAnon": 23072,
+              "RssFile": 51196,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21422080
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74424,
+              "RssAnon": 23100,
+              "RssFile": 51324,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21487616
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74440,
+              "RssAnon": 23116,
+              "RssFile": 51324,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21487616
+            },
+            {
+              "VmHWM": 77524,
+              "VmRSS": 74440,
+              "RssAnon": 23116,
+              "RssFile": 51324,
+              "RssShmem": 0,
+              "VmSwap": 0,
+              "Threads": 9,
+              "core_api_memory_bytes": 21487616
+            }
+          ],
+          "median_rss_kib": 74432.0,
+          "median_anon_kib": 23108.0
+        }
+      ]
+    },
+    "not_measured": [
+      "Android",
+      "TUN",
+      "active_connections",
+      "Tailscale",
+      "throughput",
+      "battery",
+      "Go_heap_allocation_profile"
+    ],
+    "notes": "The soft-limit experiment is not a recommendation or RSS cap. Anonymous RSS is not synonymous with live Go heap."
+  },
+  "host_forwarding_delivery": {
+    "schema": 1,
+    "captured_at_utc": "2026-11-06T06:25:22.915693+00:00",
+    "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+    "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "environment": {
+      "os": "Linux",
+      "release": "7.0.0-1017-azure",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "python": "3.12.3",
+      "load_average": [
+        1.11181640625,
+        2.61328125,
+        1.43994140625
+      ],
+      "cpu_tick_hz": 100
+    },
+    "google_once": {
+      "status": "not_requested",
+      "requests": 0
+    },
+    "core": {
+      "source_revision": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+      "binary_sha256": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+      "binary_bytes": 86507646,
+      "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend\nCGO: disabled",
+      "config": "mixed_loopback_only_no_tun_no_ebpf",
+      "log_level": "warn",
+      "production_build_tags_verified": true,
+      "configuration_check": "passed"
+    },
+    "loopback": {
+      "status": "passed",
+      "transport": "http_over_ipv4_loopback_mixed_proxy",
+      "external_requests": 0,
+      "request_count": 77,
+      "idle": {
+        "elapsed_seconds": 20.0383,
+        "cpu_seconds": 0.0,
+        "cpu_percent_one_core": 0.0,
+        "rss_start_kib": 59180,
+        "rss_end_kib": 59180,
+        "peak_rss_kib": 59180,
+        "rss_kib": {
+          "samples": 21,
+          "min": 59180,
+          "median": 59180,
+          "p95_nearest_rank": 59180,
+          "max": 59180
+        },
+        "pss_kib": {
+          "samples": 21,
+          "min": 59172,
+          "median": 59172,
+          "p95_nearest_rank": 59172,
+          "max": 59172
+        },
+        "maximum_threads": 10
+      },
+      "core_during_load": {
+        "elapsed_seconds": 0.111,
+        "cpu_seconds": 0.1,
+        "cpu_percent_one_core": 90.0945,
+        "rss_start_kib": 59180,
+        "rss_end_kib": 61320,
+        "peak_rss_kib": 61320
+      },
+      "workloads": {
+        "latency": {
+          "payload_bytes": 26,
+          "samples_per_path": 30,
+          "connection_mode": "new_http_connection_per_request",
+          "payload_verified_each_request": true,
+          "direct": {
+            "elapsed_ms": {
+              "samples": 30,
+              "min": 0.4595,
+              "median": 0.5206,
+              "p95_nearest_rank": 0.6489,
+              "max": 0.9434
+            },
+            "throughput_mbps": {
+              "samples": 30,
+              "min": 0.2205,
+              "median": 0.3996,
+              "p95_nearest_rank": 0.4465,
+              "max": 0.4526
+            },
+            "elapsed_ms_samples": [
+              0.94341,
+              0.5054,
+              0.57894,
+              0.47284,
+              0.5658,
+              0.59891,
+              0.51011,
+              0.51662,
+              0.49698,
+              0.52503,
+              0.48393,
+              0.54242,
+              0.53519,
+              0.47253,
+              0.52688,
+              0.48648,
+              0.4817,
+              0.52058,
+              0.53965,
+              0.52053,
+              0.55414,
+              0.46586,
+              0.51321,
+              0.45954,
+              0.64889,
+              0.59753,
+              0.49928,
+              0.5294,
+              0.54407,
+              0.51258
+            ]
+          },
+          "proxy": {
+            "elapsed_ms": {
+              "samples": 30,
+              "min": 0.8708,
+              "median": 0.9762,
+              "p95_nearest_rank": 1.086,
+              "max": 1.2289
+            },
+            "throughput_mbps": {
+              "samples": 30,
+              "min": 0.1693,
+              "median": 0.2131,
+              "p95_nearest_rank": 0.2389,
+              "max": 0.2389
+            },
+            "elapsed_ms_samples": [
+              1.22891,
+              1.04543,
+              0.96358,
+              0.96826,
+              1.04532,
+              0.92923,
+              1.07451,
+              0.92568,
+              0.95745,
+              0.99131,
+              0.92325,
+              0.98418,
+              0.9643,
+              0.99975,
+              0.99991,
+              0.92242,
+              1.02212,
+              0.87083,
+              0.91494,
+              0.94578,
+              0.96068,
+              0.9872,
+              1.02219,
+              1.02488,
+              0.95853,
+              0.87082,
+              1.086,
+              0.98921,
+              0.95564,
+              0.98939
+            ]
+          }
+        },
+        "throughput": {
+          "payload_bytes": 4194304,
+          "samples_per_path": 8,
+          "connection_mode": "new_http_connection_per_request",
+          "payload_verified_each_request": true,
+          "direct": {
+            "elapsed_ms": {
+              "samples": 8,
+              "min": 1.2312,
+              "median": 1.3178,
+              "p95_nearest_rank": 3.4233,
+              "max": 3.4233
+            },
+            "throughput_mbps": {
+              "samples": 8,
+              "min": 9801.8798,
+              "median": 25462.6838,
+              "p95_nearest_rank": 27254.2563,
+              "max": 27254.2563
+            },
+            "elapsed_ms_samples": [
+              3.42327,
+              1.36484,
+              1.26051,
+              1.23116,
+              1.32232,
+              1.23548,
+              1.31328,
+              1.33309
+            ]
+          },
+          "proxy": {
+            "elapsed_ms": {
+              "samples": 8,
+              "min": 5.5039,
+              "median": 6.0027,
+              "p95_nearest_rank": 6.3832,
+              "max": 6.3832
+            },
+            "throughput_mbps": {
+              "samples": 8,
+              "min": 5256.6813,
+              "median": 5593.3372,
+              "p95_nearest_rank": 6096.4751,
+              "max": 6096.4751
+            },
+            "elapsed_ms_samples": [
+              6.3832,
+              6.25534,
+              5.85363,
+              6.15178,
+              5.82573,
+              5.50391,
+              5.62267,
+              6.20436
+            ]
+          }
+        }
+      },
+      "proxy_added_median_latency_ms": 0.4556,
+      "proxy_to_direct_median_throughput_ratio": 0.2197
+    },
+    "local_acceptance": "passed"
+  },
+  "candidate_network_core_artifact": {
+    "run_id": 42173653682,
+    "job_id": 127747030835,
+    "artifact_id": 13483095609,
+    "bytes": 6443,
+    "sha256": "1601344a85f7543a3d634043d4ffa45462f6c2eac695ca6c0b60f3d3c6f5e744",
+    "official_size_digest_crc_and_safe_members": "passed",
+    "source_commit_verified": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "binary_sha256_verified": "bb4194f38699337ffcda5da788df97d715b10724cec706967811672b6099d407",
+    "whole_workflow": "success"
+  },
+  "current_measurement_scope": {
+    "cli": "Frozen production Rust files match fa0 through ceb; exact binding and original dirty measurement identity preserved in host evidence.",
+    "watchdog": "Earlier 81a first-sleep shell+sleep observation only; excludes core, periodic CLI and Android runtime.",
+    "core": "Exact final ceb Linux CI sample; the same fixed sing-box binary is used, independent shared-runner measurements are not a controlled version A/B.",
+    "curl": "Each Android build artifact is verified against its own recorded size/hash. Equal sources/inputs do not claim bit-for-bit reproducible curl outputs across builds.",
+    "android": "Android15/API35 x86_64 standalone lifecycle/TUN fixture; core RSS75900KiB/11threads/51FD at one capture, diagnostic collector764ms; not whole-module resident/peak or physical-device battery measurement."
+  },
+  "final_quality": {
+    "schema": 1,
+    "source": {
+      "repository": "LIghtJUNction/magicnet-android",
+      "sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "tree": "794e53afe208f03429748bdea554a71b792b5f3b",
+      "release_cli_sha256": "6e989c28d8648d05a385a4237a3273aee67d54a0766fc869dc2d1746a1a34fba",
+      "release_source_binding": "host-final-production-curl-source-binding.json"
+    },
+    "quality": {
+      "id": 42173653819,
+      "name": "Code Quality",
+      "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-06T06:19:02Z",
+      "updated_at": "2026-11-06T06:33:10Z",
+      "run_attempt": 1,
+      "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819",
+      "tree_sha": "794e53afe208f03429748bdea554a71b792b5f3b",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819",
+      "observed_at_utc": "2026-11-06T06:34:08.556Z",
+      "elapsed_seconds_including_queue": 848,
+      "successful_jobs": 7,
+      "total_jobs": 7
+    },
+    "jobs": [
+      {
+        "id": 127747031894,
+        "name": "CI infrastructure",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:05Z",
+        "completed_at": "2026-11-06T06:19:33Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747031894",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:06Z",
+            "completed_at": "2026-11-06T06:19:07Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:07Z",
+            "completed_at": "2026-11-06T06:19:09Z"
+          },
+          {
+            "name": "Install workflow test dependency",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:09Z",
+            "completed_at": "2026-11-06T06:19:09Z"
+          },
+          {
+            "name": "Test CI failure propagation and cache invalidation",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:09Z",
+            "completed_at": "2026-11-06T06:19:15Z"
+          },
+          {
+            "name": "Setup Go for actionlint",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T06:19:15Z",
+            "completed_at": "2026-11-06T06:19:23Z"
+          },
+          {
+            "name": "Validate quality workflow semantics",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T06:19:23Z",
+            "completed_at": "2026-11-06T06:19:30Z"
+          },
+          {
+            "name": "Post Setup Go for actionlint",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11,
+            "started_at": "2026-11-06T06:19:30Z",
+            "completed_at": "2026-11-06T06:19:30Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12,
+            "started_at": "2026-11-06T06:19:30Z",
+            "completed_at": "2026-11-06T06:19:31Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13,
+            "started_at": "2026-11-06T06:19:31Z",
+            "completed_at": "2026-11-06T06:19:31Z"
+          }
+        ]
+      },
+      {
+        "id": 127747203960,
+        "name": "rust",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:36Z",
+        "completed_at": "2026-11-06T06:19:50Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747203960",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:38Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:38Z",
+            "completed_at": "2026-11-06T06:19:40Z"
+          },
+          {
+            "name": "Initialize Rust test submodules",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:40Z",
+            "completed_at": "2026-11-06T06:19:41Z"
+          },
+          {
+            "name": "Restore per-check test results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:41Z",
+            "completed_at": "2026-11-06T06:19:42Z"
+          },
+          {
+            "name": "Install Rust quality tools",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T06:19:42Z",
+            "completed_at": "2026-11-06T06:19:42Z"
+          },
+          {
+            "name": "Fingerprint Rust toolchain",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T06:19:42Z",
+            "completed_at": "2026-11-06T06:19:42Z"
+          },
+          {
+            "name": "Cache Cargo",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-11-06T06:19:42Z",
+            "completed_at": "2026-11-06T06:19:45Z"
+          },
+          {
+            "name": "Check Rust workspace",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-11-06T06:19:45Z",
+            "completed_at": "2026-11-06T06:19:46Z"
+          },
+          {
+            "name": "Save successful per-check results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-11-06T06:19:46Z",
+            "completed_at": "2026-11-06T06:19:47Z"
+          },
+          {
+            "name": "Post Cache Cargo",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17,
+            "started_at": "2026-11-06T06:19:47Z",
+            "completed_at": "2026-11-06T06:19:48Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18,
+            "started_at": "2026-11-06T06:19:48Z",
+            "completed_at": "2026-11-06T06:19:48Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19,
+            "started_at": "2026-11-06T06:19:48Z",
+            "completed_at": "2026-11-06T06:19:48Z"
+          }
+        ]
+      },
+      {
+        "id": 127747203983,
+        "name": "shell",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:36Z",
+        "completed_at": "2026-11-06T06:33:03Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747203983",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:37Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:39Z"
+          },
+          {
+            "name": "Initialize shell test submodules",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:39Z",
+            "completed_at": "2026-11-06T06:19:52Z"
+          },
+          {
+            "name": "Restore per-check test results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:52Z",
+            "completed_at": "2026-11-06T06:19:53Z"
+          },
+          {
+            "name": "Install missing host check dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T06:19:53Z",
+            "completed_at": "2026-11-06T06:20:03Z"
+          },
+          {
+            "name": "Check shell code and host regressions",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T06:20:03Z",
+            "completed_at": "2026-11-06T06:33:00Z"
+          },
+          {
+            "name": "Save successful per-check results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-11-06T06:33:00Z",
+            "completed_at": "2026-11-06T06:33:01Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14,
+            "started_at": "2026-11-06T06:33:01Z",
+            "completed_at": "2026-11-06T06:33:01Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15,
+            "started_at": "2026-11-06T06:33:01Z",
+            "completed_at": "2026-11-06T06:33:02Z"
+          }
+        ]
+      },
+      {
+        "id": 127747203990,
+        "name": "components",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:36Z",
+        "completed_at": "2026-11-06T06:21:31Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747203990",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:38Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:38Z",
+            "completed_at": "2026-11-06T06:19:40Z"
+          },
+          {
+            "name": "Initialize installer framework",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:40Z",
+            "completed_at": "2026-11-06T06:19:40Z"
+          },
+          {
+            "name": "Restore per-check test results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:40Z",
+            "completed_at": "2026-11-06T06:19:41Z"
+          },
+          {
+            "name": "Setup Go",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T06:19:41Z",
+            "completed_at": "2026-11-06T06:19:48Z"
+          },
+          {
+            "name": "Cache component Go build outputs",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T06:19:48Z",
+            "completed_at": "2026-11-06T06:19:49Z"
+          },
+          {
+            "name": "Install missing package test dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-11-06T06:19:49Z",
+            "completed_at": "2026-11-06T06:19:50Z"
+          },
+          {
+            "name": "Test component packaging and updates",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-11-06T06:19:50Z",
+            "completed_at": "2026-11-06T06:21:27Z"
+          },
+          {
+            "name": "Save successful per-check results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-11-06T06:21:27Z",
+            "completed_at": "2026-11-06T06:21:28Z"
+          },
+          {
+            "name": "Post Cache component Go build outputs",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 16,
+            "started_at": "2026-11-06T06:21:28Z",
+            "completed_at": "2026-11-06T06:21:28Z"
+          },
+          {
+            "name": "Post Setup Go",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17,
+            "started_at": "2026-11-06T06:21:28Z",
+            "completed_at": "2026-11-06T06:21:28Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18,
+            "started_at": "2026-11-06T06:21:28Z",
+            "completed_at": "2026-11-06T06:21:29Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19,
+            "started_at": "2026-11-06T06:21:29Z",
+            "completed_at": "2026-11-06T06:21:29Z"
+          }
+        ]
+      },
+      {
+        "id": 127747204007,
+        "name": "webui",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:36Z",
+        "completed_at": "2026-11-06T06:28:46Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747204007",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:38Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:38Z",
+            "completed_at": "2026-11-06T06:19:39Z"
+          },
+          {
+            "name": "Restore per-check test results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:39Z",
+            "completed_at": "2026-11-06T06:19:40Z"
+          },
+          {
+            "name": "Setup Node.js",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:40Z",
+            "completed_at": "2026-11-06T06:19:40Z"
+          },
+          {
+            "name": "Probe exact WebUI test results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T06:19:40Z",
+            "completed_at": "2026-11-06T06:19:44Z"
+          },
+          {
+            "name": "Cache npm package downloads",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T06:19:44Z",
+            "completed_at": "2026-11-06T06:19:45Z"
+          },
+          {
+            "name": "Install locked WebUI dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-11-06T06:19:45Z",
+            "completed_at": "2026-11-06T06:19:48Z"
+          },
+          {
+            "name": "Test, typecheck Vue components, and build",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-11-06T06:19:48Z",
+            "completed_at": "2026-11-06T06:20:03Z"
+          },
+          {
+            "name": "Cache Playwright browsers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-11-06T06:20:03Z",
+            "completed_at": "2026-11-06T06:20:07Z"
+          },
+          {
+            "name": "Install browser test dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10,
+            "started_at": "2026-11-06T06:20:07Z",
+            "completed_at": "2026-11-06T06:20:22Z"
+          },
+          {
+            "name": "Verify mobile layouts and interactions",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11,
+            "started_at": "2026-11-06T06:20:22Z",
+            "completed_at": "2026-11-06T06:28:42Z"
+          },
+          {
+            "name": "Upload browser failure diagnostics",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 12,
+            "started_at": "2026-11-06T06:28:42Z",
+            "completed_at": "2026-11-06T06:28:42Z"
+          },
+          {
+            "name": "Save successful per-check results",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13,
+            "started_at": "2026-11-06T06:28:42Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          },
+          {
+            "name": "Post Cache Playwright browsers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 23,
+            "started_at": "2026-11-06T06:28:43Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          },
+          {
+            "name": "Post Cache npm package downloads",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 24,
+            "started_at": "2026-11-06T06:28:43Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          },
+          {
+            "name": "Post Setup Node.js",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 25,
+            "started_at": "2026-11-06T06:28:43Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 26,
+            "started_at": "2026-11-06T06:28:43Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 27,
+            "started_at": "2026-11-06T06:28:43Z",
+            "completed_at": "2026-11-06T06:28:43Z"
+          }
+        ]
+      },
+      {
+        "id": 127747204077,
+        "name": "Android probe contract",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:36Z",
+        "completed_at": "2026-11-06T06:20:18Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127747204077",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:19:37Z",
+            "completed_at": "2026-11-06T06:19:38Z"
+          },
+          {
+            "name": "Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:19:38Z",
+            "completed_at": "2026-11-06T06:19:39Z"
+          },
+          {
+            "name": "Test app request engine and failure accounting",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:19:39Z",
+            "completed_at": "2026-11-06T06:19:59Z"
+          },
+          {
+            "name": "Compile actual Android test APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T06:19:59Z",
+            "completed_at": "2026-11-06T06:20:16Z"
+          },
+          {
+            "name": "Post Checkout repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-11-06T06:20:16Z",
+            "completed_at": "2026-11-06T06:20:17Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-11-06T06:20:17Z",
+            "completed_at": "2026-11-06T06:20:17Z"
+          }
+        ]
+      },
+      {
+        "id": 127751759100,
+        "name": "CI Quality Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:33:06Z",
+        "completed_at": "2026-11-06T06:33:09Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653819/job/127751759100",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T06:33:07Z",
+            "completed_at": "2026-11-06T06:33:07Z"
+          },
+          {
+            "name": "Require every quality job to succeed",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T06:33:07Z",
+            "completed_at": "2026-11-06T06:33:07Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T06:33:07Z",
+            "completed_at": "2026-11-06T06:33:07Z"
+          }
+        ]
+      }
+    ],
+    "results": {
+      "CI infrastructure": {
+        "job_id": 127747031894,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [
+          21,
+          20
+        ],
+        "excluded_cache_selftest_events": {
+          "RUN": 45,
+          "HIT": 9,
+          "PASS": 42,
+          "FAIL": 3
+        },
+        "log": "ci-42173653819-job-127747031894.log",
+        "log_sha256": "d89ede274062d4462c37e01e1ecda400e549819b3aea55c05dd56d4f46a132d7"
+      },
+      "rust": {
+        "job_id": 127747203960,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 0,
+          "HIT": 3,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [],
+        "excluded_cache_selftest_events": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "log": "ci-42173653819-job-127747203960.log",
+        "log_sha256": "6f085beaf69aeee2155f77cad5b37c1951d5d14b3bc06a07b5983f3e17b40d96",
+        "restored_cache_keys": [
+          "tests-v1-Linux-X64-Code Quality-rust-trusted-42171293268-1",
+          "Linux-X64-quality-rust-v2-f22d5e4e9ced367e774ce5bc140d9e6b1235c1882fec80d011044851f3ae6369-127939fd502d68fa659afde1be25273b03c760693fb42a6678f15ee0829e7dd6-4b7bb8e3aed8a22c30d98e129533b6b00bcb5f18f26e7da6f98b599f75cf0017"
+        ]
+      },
+      "shell": {
+        "job_id": 127747203983,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 109,
+          "HIT": 0,
+          "PASS": 109,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [
+          6,
+          12
+        ],
+        "excluded_cache_selftest_events": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "log": "ci-42173653819-job-127747203983.log",
+        "log_sha256": "cda5344aa40e4cbb6e3f3a46fae5efc9e311bb291e86dc06c651d8975780b94d",
+        "restored_cache_keys": [
+          "tests-v1-Linux-X64-Code Quality-shell-trusted-42171293268-1"
+        ]
+      },
+      "components": {
+        "job_id": 127747203990,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 11,
+          "HIT": 0,
+          "PASS": 11,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [
+          21,
+          20
+        ],
+        "excluded_cache_selftest_events": {
+          "RUN": 45,
+          "HIT": 9,
+          "PASS": 42,
+          "FAIL": 3
+        },
+        "log": "ci-42173653819-job-127747203990.log",
+        "log_sha256": "1ca18102f5834df22c1dcdc5b958f038f8557e1ca01fea8feb0fdd330e35ade0",
+        "restored_cache_keys": [
+          "tests-v1-Linux-X64-Code Quality-components-trusted-42171293268-1",
+          "components-go-v1-Linux-X64-1.26.7-a58949161b9d6cb5330b40c4cdb2e46ba27e85aa6d58fd66288c278ecadde4e3"
+        ]
+      },
+      "webui": {
+        "job_id": 127747204007,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 2,
+          "HIT": 0,
+          "PASS": 2,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [],
+        "excluded_cache_selftest_events": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "log": "ci-42173653819-job-127747204007.log",
+        "log_sha256": "5bb669d4bd636c172d7664aca0e0d21db99a18aac71d4e1c85cdbf4e8c3784a9",
+        "restored_cache_keys": [
+          "tests-v1-Linux-X64-Code Quality-webui-trusted-42171293268-1",
+          "Linux-X64-quality-npm-v1-node24-1be7a88978ba1beda03377a973189463bf7c6884b91615a8bbbd1800d8f072c0",
+          "playwright-v1-Linux-X64-1be7a88978ba1beda03377a973189463bf7c6884b91615a8bbbd1800d8f072c0"
+        ]
+      },
+      "Android probe contract": {
+        "job_id": 127747204077,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [
+          7,
+          21,
+          26,
+          5
+        ],
+        "excluded_cache_selftest_events": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "log": "ci-42173653819-job-127747204077.log",
+        "log_sha256": "e4ba85c67faab24ec6cc5f0a708ab0cbbe293dea6f08aad169f69df0537e60e6"
+      },
+      "CI Quality Gate": {
+        "job_id": 127751759100,
+        "conclusion": "success",
+        "per_check_counts": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "direct_unittest_suite_counts": [],
+        "excluded_cache_selftest_events": {
+          "RUN": 0,
+          "HIT": 0,
+          "PASS": 0,
+          "FAIL": 0
+        },
+        "log": "ci-42173653819-job-127751759100.log",
+        "log_sha256": "68e3997954782357ada39c9fd4fb1c1388073eeca3cfcd08cfeb5b7af2cf3790"
+      }
+    },
+    "result_cache_totals": {
+      "RUN": 122,
+      "HIT": 3,
+      "PASS": 122,
+      "FAIL": 0
+    },
+    "accepted_named_checks": 125,
+    "all_named_checks_file": "ci-ceb7d54-quality-checks.json",
+    "raw_logs": [
+      {
+        "job": "CI infrastructure",
+        "job_id": 127747031894,
+        "file": "ci-42173653819-job-127747031894.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747031894.log",
+        "bytes": 28768,
+        "sha256": "d89ede274062d4462c37e01e1ecda400e549819b3aea55c05dd56d4f46a132d7"
+      },
+      {
+        "job": "rust",
+        "job_id": 127747203960,
+        "file": "ci-42173653819-job-127747203960.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747203960.log",
+        "bytes": 44231,
+        "sha256": "6f085beaf69aeee2155f77cad5b37c1951d5d14b3bc06a07b5983f3e17b40d96"
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "file": "ci-42173653819-job-127747203983.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747203983.log",
+        "bytes": 62517,
+        "sha256": "cda5344aa40e4cbb6e3f3a46fae5efc9e311bb291e86dc06c651d8975780b94d"
+      },
+      {
+        "job": "components",
+        "job_id": 127747203990,
+        "file": "ci-42173653819-job-127747203990.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747203990.log",
+        "bytes": 37953,
+        "sha256": "1ca18102f5834df22c1dcdc5b958f038f8557e1ca01fea8feb0fdd330e35ade0"
+      },
+      {
+        "job": "webui",
+        "job_id": 127747204007,
+        "file": "ci-42173653819-job-127747204007.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747204007.log",
+        "bytes": 47728,
+        "sha256": "5bb669d4bd636c172d7664aca0e0d21db99a18aac71d4e1c85cdbf4e8c3784a9"
+      },
+      {
+        "job": "Android probe contract",
+        "job_id": 127747204077,
+        "file": "ci-42173653819-job-127747204077.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127747204077.log",
+        "bytes": 18992,
+        "sha256": "e4ba85c67faab24ec6cc5f0a708ab0cbbe293dea6f08aad169f69df0537e60e6"
+      },
+      {
+        "job": "CI Quality Gate",
+        "job_id": 127751759100,
+        "file": "ci-42173653819-job-127751759100.log",
+        "absolute_path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-42173653819-job-127751759100.log",
+        "bytes": 4701,
+        "sha256": "68e3997954782357ada39c9fd4fb1c1388073eeca3cfcd08cfeb5b7af2cf3790"
+      }
+    ],
+    "relevant_checks": [
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-android-curl-artifact.py",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:20:39.3410895Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(0.21s, exit=0)",
+            "at_utc": "2026-11-06T06:20:39.5556830Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 0.21,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-android-acceptance-contract.py",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:21:21.4761511Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(2.17s, exit=0)",
+            "at_utc": "2026-11-06T06:21:23.6448342Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 2.17,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-connectivity-watchdog.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:24:51.5178906Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(0.26s, exit=0)",
+            "at_utc": "2026-11-06T06:24:51.7826179Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 0.26,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-fswatch-lifecycle.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:24:52.5046185Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(29.49s, exit=0)",
+            "at_utc": "2026-11-06T06:25:21.9927818Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 29.49,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-supervisor-start-policy.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:24:50.4789815Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(0.31s, exit=0)",
+            "at_utc": "2026-11-06T06:24:50.7939959Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 0.31,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-config-lock-ownership.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:26:07.3354411Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(1.37s, exit=0)",
+            "at_utc": "2026-11-06T06:26:08.7028213Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 1.37,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-subscription-fetch-policy.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:23:33.6480310Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(11.10s, exit=0)",
+            "at_utc": "2026-11-06T06:23:44.7445077Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 11.1,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-subscription-network.py",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:23:45.4881501Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(14.66s, exit=0)",
+            "at_utc": "2026-11-06T06:24:00.1458210Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 14.66,
+        "exit_code": 0
+      },
+      {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-subscription-lifecycle.sh",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:32:11.2274012Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(16.60s, exit=0)",
+            "at_utc": "2026-11-06T06:32:27.8304876Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 16.6,
+        "exit_code": 0
+      },
+      {
+        "job": "components",
+        "job_id": 127747203990,
+        "name": "kernelsu-installer-lifecycle",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:21:06.8250145Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(11.39s, exit=0)",
+            "at_utc": "2026-11-06T06:21:18.2177503Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 11.39,
+        "exit_code": 0
+      },
+      {
+        "job": "components",
+        "job_id": 127747203990,
+        "name": "component-archive-safety",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:21:20.3648760Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(0.26s, exit=0)",
+            "at_utc": "2026-11-06T06:21:20.6296653Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 0.26,
+        "exit_code": 0
+      },
+      {
+        "job": "webui",
+        "job_id": 127747204007,
+        "name": "webui-check",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:19:49.1301786Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(14.42s, exit=0)",
+            "at_utc": "2026-11-06T06:20:03.5517415Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 14.42,
+        "exit_code": 0
+      },
+      {
+        "job": "webui",
+        "job_id": 127747204007,
+        "name": "webui-browser",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:20:23.1728041Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(498.75s, exit=0)",
+            "at_utc": "2026-11-06T06:28:41.9256393Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 498.75,
+        "exit_code": 0
+      },
+      {
+        "job": "rust",
+        "job_id": 127747203960,
+        "name": "rust-fmt",
+        "events": [
+          {
+            "status": "HIT",
+            "detail": "5001da6ffa13",
+            "at_utc": "2026-11-06T06:19:46.0714954Z"
+          }
+        ],
+        "result": "HIT",
+        "fingerprint_prefix": "5001da6ffa13"
+      },
+      {
+        "job": "rust",
+        "job_id": 127747203960,
+        "name": "rust-clippy",
+        "events": [
+          {
+            "status": "HIT",
+            "detail": "f8a0d27dafe7",
+            "at_utc": "2026-11-06T06:19:46.3893872Z"
+          }
+        ],
+        "result": "HIT",
+        "fingerprint_prefix": "f8a0d27dafe7"
+      },
+      {
+        "job": "rust",
+        "job_id": 127747203960,
+        "name": "rust-test",
+        "events": [
+          {
+            "status": "HIT",
+            "detail": "d497ed4f8c89",
+            "at_utc": "2026-11-06T06:19:46.7039783Z"
+          }
+        ],
+        "result": "HIT",
+        "fingerprint_prefix": "d497ed4f8c89"
+      }
+    ],
+    "rust_cache_lineage": {
+      "current_checks": "HIT; no Rust tests rerun in this workflow",
+      "restored_from_run": 42171293268,
+      "initial_actual_execution": {
+        "source_sha": "fa0e1ad0d36dba6136d8d27364aa98dcde3b5e69",
+        "run_id": 42168764867,
+        "job_id": 127731585106,
+        "fmt_seconds": 1.62,
+        "strict_clippy_seconds": 5.93,
+        "workspace_tests_seconds": 47.99,
+        "evidence": "magicnet-fa0e1ad-quality-summary.json"
+      },
+      "frozen_rust_files_equal_to_current_commit": 6
+    },
+    "browser_scope": {
+      "command": "cd webui && npm run test:ui",
+      "spec_filter": null,
+      "result": "RUN/PASS",
+      "seconds": 498.75,
+      "individual_case_passed_count": null,
+      "count_note": "Successful wrapper suppresses child stdout; no collection count is represented as an observed pass count."
+    },
+    "android_scope": {
+      "probe_contract_job_direct_tests": [
+        7,
+        21,
+        26,
+        5
+      ],
+      "probe_contract_job_direct_test_total": 59,
+      "acceptance_contract_check": {
+        "job": "shell",
+        "job_id": 127747203983,
+        "name": "test-android-acceptance-contract.py",
+        "events": [
+          {
+            "status": "RUN",
+            "detail": "",
+            "at_utc": "2026-11-06T06:21:21.4761511Z"
+          },
+          {
+            "status": "PASS",
+            "detail": "(2.17s, exit=0)",
+            "at_utc": "2026-11-06T06:21:23.6448342Z"
+          }
+        ],
+        "result": "PASS",
+        "seconds": 2.17,
+        "exit_code": 0
+      },
+      "acceptance_individual_case_count_observed_in_quality_log": null,
+      "reverse_listing_proof_tests": "Run by the separate android-kernelsu-acceptance workflow harness; not one of these Quality named checks. See its own exact-SHA log evidence.",
+      "full_device_lifecycle_in_this_workflow": false
+    },
+    "prior_failures_preserved": {
+      "f0_components_summary": "magicnet-f0d2407-components-failure.json",
+      "f0_quality_summary": "magicnet-f0d2407-quality-summary.json",
+      "218_android_artifacts": "ci-218e165-android",
+      "note": "The 218 Android reverse-list parser failure was in a different workflow; this Quality success does not rewrite it as passed."
+    },
+    "performance_identity_rechecked": {
+      "performance": "host-final-production-curl.json",
+      "identity": "host-final-production-curl-identity.json",
+      "binding": "host-final-production-curl-source-binding.json",
+      "original_measurement_base_sha": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
+      "measurement_was_dirty": true,
+      "measured_at_utc": "2026-11-06T05:26:54.470928+00:00",
+      "tested_source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "frozen_rust_files_verified": 6,
+      "cli_acceptance": "passed",
+      "overall_local_acceptance": "blocked",
+      "blocking_reason": "host_netlink_socket_denied",
+      "public_requests": 0
+    },
+    "caveats": [
+      "RUN/PASS/HIT are named command or script counts, not a sum of individual test cases.",
+      "Expected synthetic failures from cache self-tests named test are recorded separately and excluded from the real FAIL counter.",
+      "Download/build cache restoration is distinct from a successful test-result cache HIT.",
+      "Rust and Playwright individual pass/ignored/skip counts are not inferred from collection or enumeration.",
+      "Successful Quality is independent of Android lifecycle, public Google connectivity and Network Regression Evidence outcomes.",
+      "The host performance sample retains its original b5 base and dirty measurement state; binding to ceb proves source equivalence rather than a new measurement."
+    ],
+    "local_tests_rerun_for_ci_monitoring": false,
+    "retry_triggered": false
+  },
+  "final_network_evidence_audit": {
+    "schema": 1,
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "source_tree": "794e53afe208f03429748bdea554a71b792b5f3b",
+    "run": {
+      "id": 42173653682,
+      "name": "Network Regression Evidence",
+      "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "created_at": "2026-11-06T06:19:02Z",
+      "updated_at": "2026-11-06T06:32:28Z",
+      "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653682"
+    },
+    "jobs": [
+      {
+        "id": 127747030835,
+        "name": "core-evidence",
+        "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:06Z",
+        "completed_at": "2026-11-06T06:25:50Z"
+      },
+      {
+        "id": 127747031186,
+        "name": "avd-storage",
+        "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:05Z",
+        "completed_at": "2026-11-06T06:20:27Z"
+      },
+      {
+        "id": 127747031217,
+        "name": "visual-evidence",
+        "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:05Z",
+        "completed_at": "2026-11-06T06:32:28Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 13483236550,
+        "name": "webui-page-evidence",
+        "bytes": 19473650,
+        "digest": "sha256:a97d4b14b3594c00fbb577ef515ff02c356c4e5c20a12f7f61c509e8af2b43a0",
+        "downloaded_and_verified": true
+      },
+      {
+        "id": 13483095609,
+        "name": "core-memory-evidence",
+        "bytes": 6443,
+        "digest": "sha256:1601344a85f7543a3d634043d4ffa45462f6c2eac695ca6c0b60f3d3c6f5e744",
+        "downloaded_and_verified": true
+      },
+      {
+        "id": 13482147030,
+        "name": "avd-storage-evidence",
+        "bytes": 389,
+        "digest": "sha256:d57995df6f1649b78b4b9e7465ea0367099bd58cd81e26f6e5014e2b5dcf83fb",
+        "downloaded_and_verified": false
+      }
+    ],
+    "core_integrity": {
+      "official_size_and_digest": "passed",
+      "crc": "passed",
+      "safe_unique_regular_members": 2,
+      "source_sha": "verified",
+      "binary_sha256": "verified"
+    },
+    "visual_integrity": {
+      "schema": 1,
+      "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "run_id": 42173653682,
+      "job_id": 127747031217,
+      "artifact_id": 13483236550,
+      "path": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-webui-pages-ceb7d54.zip",
+      "bytes": 19473650,
+      "sha256": "a97d4b14b3594c00fbb577ef515ff02c356c4e5c20a12f7f61c509e8af2b43a0",
+      "official_size_and_digest": "passed",
+      "crc": "passed",
+      "safe_unique_regular_members": "passed",
+      "pngs_verified": 192,
+      "member_count": 192,
+      "actual_playwright_passed": 300,
+      "actual_playwright_duration": "3.3m",
+      "manual_review_scope": {
+        "page-review-control-has-a-usable-layout-light-phone-390/light-control.png": {
+          "sha256": "7d6228dc6a0bde41194315fcb8335b60740b5d1e14756e0a4cd7626cd8bdd492",
+          "byte_equal_to_manually_reviewed_218_png": true
+        },
+        "page-review-health-has-a-usable-layout-light-phone-390/light-health.png": {
+          "sha256": "05a84168fc2400d298af853d23f10f42fd770e63590090cd6faa2034c7bc2b7f",
+          "byte_equal_to_manually_reviewed_218_png": true
+        }
+      },
+      "all_images_manually_reviewed": false
+    },
+    "visual_log": {
+      "path": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-network-visual.log",
+      "bytes": 90694,
+      "sha256": "0d94be05ac175da1fa4e33a12e49396c08e0e12c64b754bd261c71371c5a0073"
+    },
+    "network_scope": {
+      "host_public_requests": 0,
+      "host_loopback_requests": 77,
+      "actual_google_outcome": "Separate Android acceptance, not inferred from this workflow."
+    },
+    "retries": 0
+  },
+  "final_network_visual_artifact_audit": {
+    "schema": 1,
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "run_id": 42173653682,
+    "job_id": 127747031217,
+    "artifact_id": 13483236550,
+    "path": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-webui-pages-ceb7d54.zip",
+    "bytes": 19473650,
+    "sha256": "a97d4b14b3594c00fbb577ef515ff02c356c4e5c20a12f7f61c509e8af2b43a0",
+    "official_size_and_digest": "passed",
+    "crc": "passed",
+    "safe_unique_regular_members": "passed",
+    "pngs_verified": 192,
+    "member_count": 192,
+    "actual_playwright_passed": 300,
+    "actual_playwright_duration": "3.3m",
+    "manual_review_scope": {
+      "page-review-control-has-a-usable-layout-light-phone-390/light-control.png": {
+        "sha256": "7d6228dc6a0bde41194315fcb8335b60740b5d1e14756e0a4cd7626cd8bdd492",
+        "byte_equal_to_manually_reviewed_218_png": true
+      },
+      "page-review-health-has-a-usable-layout-light-phone-390/light-health.png": {
+        "sha256": "05a84168fc2400d298af853d23f10f42fd770e63590090cd6faa2034c7bc2b7f",
+        "byte_equal_to_manually_reviewed_218_png": true
+      }
+    },
+    "all_images_manually_reviewed": false
+  },
+  "final_archive_audit": {
+    "schema": 1,
+    "checked_at": "2026-11-06T06:37:29.671019+00:00",
+    "repository": "LIghtJUNction/magicnet-android",
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "source_tree": "794e53afe208f03429748bdea554a71b792b5f3b",
+    "workflow_run": 42173653787,
+    "workflow_conclusion": "success",
+    "workflow_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787",
+    "artifact_id": 13482174433,
+    "artifact_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653787/artifacts/13482174433",
+    "artifact_file": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-ceb7d54-ci-artifact.zip",
+    "artifact_bytes": 142224689,
+    "artifact_sha256": "dab0b12d6002c52baa39bf6b3ce8e75750ca9b385e4a80e0df136ea540ac2c77",
+    "artifact_outer_crc": "passed",
+    "artifact_github_digest": "matched",
+    "asset_directory": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final",
+    "asset_count": 18,
+    "sha256sums_verified_files": 17,
+    "zip_count": 14,
+    "component_zip_count": 10,
+    "total_zip_member_entries": 1104,
+    "development_directory_matches": 0,
+    "development_metadata_matches": 0,
+    "crc": "passed_for_all_14_zip_archives",
+    "archive_path_safety": "passed",
+    "manifest_identity_and_embedded_copies": "passed",
+    "component_archive_and_member_hash_size_mode": "passed",
+    "component_member_count": 168,
+    "full_equals_core_plus_components": "passed_except_intended_cli_alias_representation",
+    "core_aliases_byte_identical": "passed",
+    "module_version": "v1.8.5",
+    "module_version_code": "10613",
+    "recursive_pins_verified": {
+      ".kam/bases/hooks": "13cff0dc1f30d8d0842e563008c7e2712233243f",
+      ".kam/bases/workflows": "f21050a31c33f0ebcbf429af3056ec43c1b816ef",
+      "rules": "f3335f9420d07b8c50b26488df2a9492da6bbb44",
+      "sing-box": "d850ff0ff68e11a71aa8207627e0a826cb52808f",
+      "sing-box/clients/android": "f87c2ebdb7e34754be751bb5e58926db2fed8f8c",
+      "sing-box/clients/apple": "2dd154e7586188d5fff8de615e8c821ed25ec089",
+      "sing-box/clients/apple/Frameworks/Runestone": "baeb3cbf8332d26b4f7b4c175a01f288ebbf3e7f",
+      "sing-box/clients/desktop": "8aab8eab022366e1032e952d499c9252b833e6c3",
+      "sing-box/clients/desktop/dashboard": "3e4bf08e5bf5b9417cf9c36e5a2d5abcb21bdd34",
+      "sing-box/clients/desktop/dashboard/vendor/iterm2-color-schemes": "8c84dd1a859f36ec8601b082bd97b4ec888f0f4d",
+      "src/MagicNet/.config/sing-box": "6b5f68a261818a4ffda6eb9a11b21eef9b755650",
+      "src/MagicNet/lib/kamfw": "a7788737b938a9ed930645befe2526b626999a22"
+    },
+    "runtime_sources_byte_equal_to_pins": [
+      "lib/kamfw/watchdog.sh",
+      "lib/kamfw/fswatch.sh",
+      "lib/magicnet/supervisors.sh"
+    ],
+    "package_sizes": {
+      "version": "v1.8.5",
+      "removed_build_cache_bytes": 34741944,
+      "core_bytes": 3455240,
+      "installer_bytes": 3455240,
+      "core_limit_bytes": 12582912,
+      "full_bytes": 68476029,
+      "components": [
+        {
+          "id": "bin-curl",
+          "bytes": 2898943,
+          "sha256": "769353b1973c037fdb5747bb869a6747d7f4c9cd3bb8dde0f851fba65d824dcc"
+        },
+        {
+          "id": "bin-ecapture",
+          "bytes": 18241443,
+          "sha256": "361016d000bed2c0ddb41be2dbd0aa62725ef1ff78a15d3a18448874be21b03b"
+        },
+        {
+          "id": "bin-jq",
+          "bytes": 796214,
+          "sha256": "64b47114d97556740c0994d1520fef6eb438ff919ae9eae2d47f3948269bd8a2"
+        },
+        {
+          "id": "bin-magicnet-cli",
+          "bytes": 1063603,
+          "sha256": "97d9f18fd8260f392057e5a2e0539c1c6d15f76559e192871269542a8f291027"
+        },
+        {
+          "id": "bin-proxylink",
+          "bytes": 2775320,
+          "sha256": "adf05d6e1355ce97f0695e88578dab40e9b82474f1a8a4ad6dafdcc5c0ab5bf5"
+        },
+        {
+          "id": "bin-sing-box",
+          "bytes": 27526376,
+          "sha256": "2c03447258e5688f82fd021e89bd80cfefc2a2063bd4e6c217147ea7b5e5515e"
+        },
+        {
+          "id": "bin-yq",
+          "bytes": 4878730,
+          "sha256": "b5eadbcbb8e8df4a0fbfd9c5374af4204b11cad00d8fb0a1f926765ff645e35b"
+        },
+        {
+          "id": "rules",
+          "bytes": 3343455,
+          "sha256": "ad37563e3a8e16c50456201ee5287f01841db951d8677d0cfa1f4c4a4d003464"
+        },
+        {
+          "id": "webui",
+          "bytes": 656872,
+          "sha256": "e947a5b19298de6a109439385b50653c77f193ff71c61b7f9fc521220136d6a7"
+        },
+        {
+          "id": "zashboard",
+          "bytes": 1776596,
+          "sha256": "6459ba4a32be9e3a40d83de273573c6e20a9b560b89aa3fec87f0ae2d377aebc"
+        }
+      ]
+    },
+    "android_arm64_elfs": [
+      {
+        "path": "cli",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "/system/bin/linker64",
+        "bytes": 2102144,
+        "sha256": "d8d132f141a607a92cc9ff732bfd7adf7e82536a41a80898960a153ef7c67847"
+      },
+      {
+        "path": "bin/curl",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "/system/bin/linker64",
+        "bytes": 6090720,
+        "sha256": "7e3dd60a276db4f4c41aa1678d860097e189984a18231859e3465f9d4c53ea18"
+      },
+      {
+        "path": "bin/ecapture",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "static",
+        "bytes": 31665928,
+        "sha256": "05aa5bc84b44c90a30e7609bfd149fa1c7b97796376e8f9197d76fcc2dc9aeb9"
+      },
+      {
+        "path": "bin/jq",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "static",
+        "bytes": 1797688,
+        "sha256": "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309"
+      },
+      {
+        "path": "bin/magicnet-cli",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "/system/bin/linker64",
+        "bytes": 2102144,
+        "sha256": "d8d132f141a607a92cc9ff732bfd7adf7e82536a41a80898960a153ef7c67847"
+      },
+      {
+        "path": "bin/magicnet-components",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "/system/bin/linker64",
+        "bytes": 6947076,
+        "sha256": "7f097bea724349ef01070b7a6db27b9c88b744b52e69684223941e1c42baf23a"
+      },
+      {
+        "path": "bin/proxylink",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "static",
+        "bytes": 6946978,
+        "sha256": "398cb8991126189d7bca681de3158771212bda89ca2570c8d1f7c0b7b81cde17"
+      },
+      {
+        "path": "bin/sing-box",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "/system/bin/linker64",
+        "bytes": 88539396,
+        "sha256": "93eb71a8ba1d5bfa61c7125b1d330f9acc9feb71aa5edf13f08a3de15654636a"
+      },
+      {
+        "path": "bin/yq",
+        "class": 64,
+        "machine": "AArch64",
+        "interpreter": "static",
+        "bytes": 12845218,
+        "sha256": "578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea"
+      }
+    ],
+    "singbox_go_version": "go1.26.7",
+    "singbox_production_tags": [
+      "with_gvisor",
+      "with_quic",
+      "with_dhcp",
+      "with_wireguard",
+      "with_utls",
+      "with_acme",
+      "with_clash_api",
+      "with_tailscale",
+      "with_ccm",
+      "with_ocm",
+      "with_cloudflared",
+      "with_usbip",
+      "with_openvpn",
+      "with_openconnect",
+      "with_ebpf",
+      "badlinkname",
+      "tfogo_checklinkname0",
+      "with_xhttp",
+      "with_awg",
+      "with_lx_command",
+      "with_lxd",
+      "with_lx_chain",
+      "with_lx_idle_suspend"
+    ],
+    "singbox_android_build_and_compiled_source_suffix": "passed",
+    "archives": [
+      {
+        "name": "MagicNet-component-bin-curl-769353b1973c037fdb5747bb869a6747d7f4c9cd3bb8dde0f851fba65d824dcc.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-curl-769353b1973c037fdb5747bb869a6747d7f4c9cd3bb8dde0f851fba65d824dcc.zip",
+        "bytes": 2898943,
+        "sha256": "769353b1973c037fdb5747bb869a6747d7f4c9cd3bb8dde0f851fba65d824dcc",
+        "entries": 6,
+        "uncompressed_bytes": 6111339,
+        "files": 6,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-ecapture-361016d000bed2c0ddb41be2dbd0aa62725ef1ff78a15d3a18448874be21b03b.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-ecapture-361016d000bed2c0ddb41be2dbd0aa62725ef1ff78a15d3a18448874be21b03b.zip",
+        "bytes": 18241443,
+        "sha256": "361016d000bed2c0ddb41be2dbd0aa62725ef1ff78a15d3a18448874be21b03b",
+        "entries": 1,
+        "uncompressed_bytes": 31665928,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-jq-64b47114d97556740c0994d1520fef6eb438ff919ae9eae2d47f3948269bd8a2.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-jq-64b47114d97556740c0994d1520fef6eb438ff919ae9eae2d47f3948269bd8a2.zip",
+        "bytes": 796214,
+        "sha256": "64b47114d97556740c0994d1520fef6eb438ff919ae9eae2d47f3948269bd8a2",
+        "entries": 1,
+        "uncompressed_bytes": 1797688,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-magicnet-cli-97d9f18fd8260f392057e5a2e0539c1c6d15f76559e192871269542a8f291027.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-magicnet-cli-97d9f18fd8260f392057e5a2e0539c1c6d15f76559e192871269542a8f291027.zip",
+        "bytes": 1063603,
+        "sha256": "97d9f18fd8260f392057e5a2e0539c1c6d15f76559e192871269542a8f291027",
+        "entries": 1,
+        "uncompressed_bytes": 2102144,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-proxylink-adf05d6e1355ce97f0695e88578dab40e9b82474f1a8a4ad6dafdcc5c0ab5bf5.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-proxylink-adf05d6e1355ce97f0695e88578dab40e9b82474f1a8a4ad6dafdcc5c0ab5bf5.zip",
+        "bytes": 2775320,
+        "sha256": "adf05d6e1355ce97f0695e88578dab40e9b82474f1a8a4ad6dafdcc5c0ab5bf5",
+        "entries": 1,
+        "uncompressed_bytes": 6946978,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-sing-box-2c03447258e5688f82fd021e89bd80cfefc2a2063bd4e6c217147ea7b5e5515e.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-sing-box-2c03447258e5688f82fd021e89bd80cfefc2a2063bd4e6c217147ea7b5e5515e.zip",
+        "bytes": 27526376,
+        "sha256": "2c03447258e5688f82fd021e89bd80cfefc2a2063bd4e6c217147ea7b5e5515e",
+        "entries": 1,
+        "uncompressed_bytes": 88539396,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-bin-yq-b5eadbcbb8e8df4a0fbfd9c5374af4204b11cad00d8fb0a1f926765ff645e35b.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-bin-yq-b5eadbcbb8e8df4a0fbfd9c5374af4204b11cad00d8fb0a1f926765ff645e35b.zip",
+        "bytes": 4878730,
+        "sha256": "b5eadbcbb8e8df4a0fbfd9c5374af4204b11cad00d8fb0a1f926765ff645e35b",
+        "entries": 1,
+        "uncompressed_bytes": 12845218,
+        "files": 1,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-rules-ad37563e3a8e16c50456201ee5287f01841db951d8677d0cfa1f4c4a4d003464.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-rules-ad37563e3a8e16c50456201ee5287f01841db951d8677d0cfa1f4c4a4d003464.zip",
+        "bytes": 3343455,
+        "sha256": "ad37563e3a8e16c50456201ee5287f01841db951d8677d0cfa1f4c4a4d003464",
+        "entries": 55,
+        "uncompressed_bytes": 3336096,
+        "files": 55,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-webui-e947a5b19298de6a109439385b50653c77f193ff71c61b7f9fc521220136d6a7.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-webui-e947a5b19298de6a109439385b50653c77f193ff71c61b7f9fc521220136d6a7.zip",
+        "bytes": 656872,
+        "sha256": "e947a5b19298de6a109439385b50653c77f193ff71c61b7f9fc521220136d6a7",
+        "entries": 73,
+        "uncompressed_bytes": 1493831,
+        "files": 73,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-component-zashboard-6459ba4a32be9e3a40d83de273573c6e20a9b560b89aa3fec87f0ae2d377aebc.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-component-zashboard-6459ba4a32be9e3a40d83de273573c6e20a9b560b89aa3fec87f0ae2d377aebc.zip",
+        "bytes": 1776596,
+        "sha256": "6459ba4a32be9e3a40d83de273573c6e20a9b560b89aa3fec87f0ae2d377aebc",
+        "entries": 28,
+        "uncompressed_bytes": 4076234,
+        "files": 28,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-core.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-core.zip",
+        "bytes": 3455240,
+        "sha256": "22f80aaa01289f7f449dc0590f5af086233703da5016575a2d5aad5505bae216",
+        "entries": 192,
+        "uncompressed_bytes": 8465887,
+        "files": 191,
+        "directories": 0,
+        "symlinks": {
+          "cli": "bin/magicnet-cli"
+        },
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet-full.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-full.zip",
+        "bytes": 68476029,
+        "sha256": "8dc73eb02ed508b772ed55618fa835ef869906ec8f3ae326e594fc94a0fd4d63",
+        "entries": 360,
+        "uncompressed_bytes": 169482867,
+        "files": 360,
+        "directories": 0,
+        "symlinks": {},
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "MagicNet.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet.zip",
+        "bytes": 3455240,
+        "sha256": "22f80aaa01289f7f449dc0590f5af086233703da5016575a2d5aad5505bae216",
+        "entries": 192,
+        "uncompressed_bytes": 8465887,
+        "files": 191,
+        "directories": 0,
+        "symlinks": {
+          "cli": "bin/magicnet-cli"
+        },
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      },
+      {
+        "name": "magicnet_installer.zip",
+        "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/magicnet_installer.zip",
+        "bytes": 3455240,
+        "sha256": "22f80aaa01289f7f449dc0590f5af086233703da5016575a2d5aad5505bae216",
+        "entries": 192,
+        "uncompressed_bytes": 8465887,
+        "files": 191,
+        "directories": 0,
+        "symlinks": {
+          "cli": "bin/magicnet-cli"
+        },
+        "crc": "passed_all_members_read",
+        "safe_paths": "passed",
+        "development_directory_matches": [],
+        "development_metadata_matches": []
+      }
+    ],
+    "full_package": {
+      "name": "MagicNet-full.zip",
+      "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-full.zip",
+      "bytes": 68476029,
+      "sha256": "8dc73eb02ed508b772ed55618fa835ef869906ec8f3ae326e594fc94a0fd4d63",
+      "entries": 360,
+      "uncompressed_bytes": 169482867,
+      "files": 360,
+      "directories": 0,
+      "symlinks": {},
+      "crc": "passed_all_members_read",
+      "safe_paths": "passed",
+      "development_directory_matches": [],
+      "development_metadata_matches": []
+    },
+    "core_package": {
+      "name": "MagicNet-core.zip",
+      "file": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-final/MagicNet-core.zip",
+      "bytes": 3455240,
+      "sha256": "22f80aaa01289f7f449dc0590f5af086233703da5016575a2d5aad5505bae216",
+      "entries": 192,
+      "uncompressed_bytes": 8465887,
+      "files": 191,
+      "directories": 0,
+      "symlinks": {
+        "cli": "bin/magicnet-cli"
+      },
+      "crc": "passed_all_members_read",
+      "safe_paths": "passed",
+      "development_directory_matches": [],
+      "development_metadata_matches": []
+    },
+    "scope": "Independent static audit of the exact successful Build workflow artifact; Android runtime acceptance is a separate workflow; no release was published. Delivery also requires the separate Android and Quality acceptance; this static audit alone does not establish runtime success.",
+    "cli_changed_from_b5fa1cd_baseline": {
+      "previous_source": "b5fa1cd64788bdc5d1dbbd6b88d799c25f895944",
+      "previous_sha256": "37ed71a74789ffe07bd14cd3251a758b958352d1d38487ae7cd413dd2b9d4d65",
+      "current_sha256": "d8d132f141a607a92cc9ff732bfd7adf7e82536a41a80898960a153ef7c67847",
+      "previous_bytes": 2075744,
+      "current_bytes": 2102144,
+      "changed": true
+    },
+    "curl": {
+      "component_files": [
+        "bin/curl",
+        "licenses/curl/Mozilla-CA-NOTICE.txt",
+        "licenses/curl/OpenSSL-LICENSE.txt",
+        "licenses/curl/build-provenance.json",
+        "licenses/curl/curl-COPYING.txt",
+        "licenses/curl/zlib-README.txt"
+      ],
+      "component_sha256": "769353b1973c037fdb5747bb869a6747d7f4c9cd3bb8dde0f851fba65d824dcc",
+      "provenance": {
+        "builder_sha256": "547345572ef9b62ee50b92c7ac0c5a62d89c911b8d5d8c5eaa307f930d8c87d9",
+        "ca": {
+          "bytes": 188900,
+          "cert_count": 121,
+          "mode": "embedded",
+          "runtime_bundle": false,
+          "sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+          "system_store": false,
+          "version": "2026-09-25"
+        },
+        "curl_bytes": 6090720,
+        "curl_sha256": "7e3dd60a276db4f4c41aa1678d860097e189984a18231859e3465f9d4c53ea18",
+        "elf": {
+          "interpreter": "/system/bin/linker64",
+          "needed": [
+            "libc.so",
+            "libdl.so"
+          ],
+          "rpath": false
+        },
+        "licenses": {
+          "Mozilla-CA-NOTICE.txt": {
+            "bytes": 1338,
+            "sha256": "6b9c56075a3fa56682eb14a3d26b55e2a68b7c3cbae72842e3357a29dc0aded6"
+          },
+          "OpenSSL-LICENSE.txt": {
+            "bytes": 10175,
+            "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+          },
+          "curl-COPYING.txt": {
+            "bytes": 1088,
+            "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681"
+          },
+          "zlib-README.txt": {
+            "bytes": 5291,
+            "sha256": "4026d921213bb2e311d8d42b44ef53361c102d5d45ae32f93f8e52eaee8d068f"
+          }
+        },
+        "lock_sha256": "f17065bd8fb97dbd855736c4756e1a627786da951bfd248da753cee3d72adf59",
+        "runtime_capability": "not_tested",
+        "schema": 1,
+        "scope": "production-android-curl",
+        "sources": {
+          "ca": {
+            "sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+            "url": "https://curl.se/ca/cacert-2026-09-25.pem"
+          },
+          "curl": {
+            "sha256": "f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7",
+            "url": "https://github.com/curl/curl/releases/download/curl-8_22_0/curl-8.22.0.tar.xz"
+          },
+          "openssl": {
+            "sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+            "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz"
+          },
+          "zlib": {
+            "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+            "url": "https://zlib.net/fossils/zlib-1.3.2.tar.gz"
+          }
+        },
+        "status": "built",
+        "target": {
+          "abi": "arm64-v8a",
+          "api": 21,
+          "os": "android"
+        },
+        "toolchain": {
+          "compiler": "Android (13691557, +pgo, +bolt, +lto, +mlgo, based on r522817d) clang version 18.0.4 (https://android.googlesource.com/toolchain/llvm-project d8003a456d14a3deb8054cdaa529ffbf02d9b262)",
+          "ndk_revision": "27.3.13750724",
+          "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a"
+        },
+        "verifier_sha256": "6b2a3b17786f0d88e174e8ba158ee60b9e4c42faea7e5160d2db510ccfda131b",
+        "versions": {
+          "curl": "8.22.0",
+          "openssl": "3.5.8",
+          "zlib": "1.3.2"
+        }
+      },
+      "exact_embedded_ca_bytes_sha256": "matched_to_immutable_lock",
+      "embedded_ca_bytes": 188900,
+      "embedded_ca_cert_count": 121,
+      "static_ca_occurrences": 1,
+      "dynamic_libraries": [
+        "libc.so",
+        "libdl.so"
+      ],
+      "runtime_ca_file_dependency": false,
+      "source_builder_verifier_digests": "matched_to_selected_git_tree",
+      "licenses": "all_four_original_notice_hashes_match",
+      "version_literals": {
+        "curl": true,
+        "openssl": true,
+        "zlib": true
+      },
+      "foreign_elf_executed": false,
+      "runtime_https_acceptance": "separate_android_workflow_required"
+    },
+    "delivery_status": "requires_separate_android_and_quality_acceptance"
+  },
+  "final_android_audit": {
+    "schema": 1,
+    "candidate_status": "android_acceptance_passed_public_google_https_unavailable",
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "source_tree": "794e53afe208f03429748bdea554a71b792b5f3b",
+    "kamfw_sha": "a7788737b938a9ed930645befe2526b626999a22",
+    "audited_at_utc": "2026-11-06T06:48:27.229915+00:00",
+    "run": {
+      "id": 42173653691,
+      "head_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691"
+    },
+    "jobs": [
+      {
+        "id": 127747031240,
+        "name": "Simulation harness contracts",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:05Z",
+        "completed_at": "2026-11-06T06:19:38Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691/job/127747031240"
+      },
+      {
+        "id": 127747233003,
+        "name": "Android 15 / KernelSU / x86_64",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:19:41Z",
+        "completed_at": "2026-11-06T06:45:32Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691/job/127747233003"
+      },
+      {
+        "id": 127755976521,
+        "name": "Android Simulation Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-11-06T06:45:35Z",
+        "completed_at": "2026-11-06T06:45:38Z",
+        "html_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691/job/127755976521"
+      }
+    ],
+    "artifact": {
+      "id": 13483710663,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42173653691/artifacts/13483710663",
+      "sha256": "501e231e8f0abd4270e31984a9ab9df74c1a6970abfa351151dc1c5a4c59755f",
+      "bytes": 509375,
+      "crc_verified": true,
+      "safe_paths_and_regular_files_verified": true,
+      "entry_count": 28,
+      "uncompressed_bytes": 2870167,
+      "archive": "/workspace/scratch/5fe57994f333/simulation/evidence/magicnet-ceb7d54-android-simulation.zip",
+      "extracted_directory": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-android"
+    },
+    "lifecycle": {
+      "passed_phases": 12,
+      "total_phases": 12,
+      "junit_failures": 0,
+      "cases": [
+        {
+          "name": "environment",
+          "status": "passed",
+          "seconds": 46.002
+        },
+        {
+          "name": "kernelsu-bootstrap",
+          "status": "passed",
+          "seconds": 5.391
+        },
+        {
+          "name": "install-before-first-boot",
+          "status": "passed",
+          "seconds": 20.967
+        },
+        {
+          "name": "cold-boot",
+          "status": "passed",
+          "seconds": 67.672
+        },
+        {
+          "name": "app-uid-tun-controls",
+          "status": "passed",
+          "seconds": 58.951
+        },
+        {
+          "name": "invalid-config-rollback",
+          "status": "passed",
+          "seconds": 0.841
+        },
+        {
+          "name": "stop-cleanup",
+          "status": "passed",
+          "seconds": 4.251
+        },
+        {
+          "name": "restart-idempotence",
+          "status": "passed",
+          "seconds": 82.377
+        },
+        {
+          "name": "upgrade-preservation",
+          "status": "passed",
+          "seconds": 147.606
+        },
+        {
+          "name": "disable-reboot",
+          "status": "passed",
+          "seconds": 37.286
+        },
+        {
+          "name": "enable-reboot",
+          "status": "passed",
+          "seconds": 110.598
+        },
+        {
+          "name": "uninstall-reboot",
+          "status": "passed",
+          "seconds": 43.811
+        }
+      ],
+      "phase_seconds_sum": 625.753,
+      "workflow_step": {
+        "name": "Exercise Android KernelSU lifecycle",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 36,
+        "started_at": "2026-11-06T06:34:14Z",
+        "completed_at": "2026-11-06T06:44:41Z"
+      },
+      "reboot_checks": [
+        {
+          "status": "passed",
+          "command_exit_code": 0,
+          "command_result": "completed",
+          "new_boot_observed": true,
+          "root_verified": true,
+          "selinux_enforcing": true,
+          "kernelsu_reactivation": "verified_native_init",
+          "kernelsu_native_boot": {
+            "mode": "pinned-kernel-native-init",
+            "stages": {
+              "post-fs-data": "passed",
+              "services": "passed",
+              "boot-completed": "passed"
+            },
+            "kernel_interface": true,
+            "domain_verified": true,
+            "selinux_enforcing": true,
+            "busybox_verified": true
+          }
+        },
+        {
+          "status": "passed",
+          "command_exit_code": 0,
+          "command_result": "completed",
+          "new_boot_observed": true,
+          "root_verified": true,
+          "selinux_enforcing": true,
+          "kernelsu_reactivation": "verified_native_init",
+          "kernelsu_native_boot": {
+            "mode": "pinned-kernel-native-init",
+            "stages": {
+              "post-fs-data": "passed",
+              "services": "passed",
+              "boot-completed": "passed"
+            },
+            "kernel_interface": true,
+            "domain_verified": true,
+            "selinux_enforcing": true,
+            "busybox_verified": true
+          }
+        },
+        {
+          "status": "passed",
+          "command_exit_code": 0,
+          "command_result": "completed",
+          "new_boot_observed": true,
+          "root_verified": true,
+          "selinux_enforcing": true,
+          "kernelsu_reactivation": "verified_native_init",
+          "kernelsu_native_boot": {
+            "mode": "pinned-kernel-native-init",
+            "stages": {
+              "post-fs-data": "passed",
+              "services": "passed",
+              "boot-completed": "passed"
+            },
+            "kernel_interface": true,
+            "domain_verified": true,
+            "selinux_enforcing": true,
+            "busybox_verified": true
+          }
+        },
+        {
+          "status": "passed",
+          "command_exit_code": 0,
+          "command_result": "completed",
+          "new_boot_observed": true,
+          "root_verified": true,
+          "selinux_enforcing": true,
+          "kernelsu_reactivation": "verified_native_init",
+          "kernelsu_native_boot": {
+            "mode": "pinned-kernel-native-init",
+            "stages": {
+              "post-fs-data": "passed",
+              "services": "passed",
+              "boot-completed": "passed"
+            },
+            "kernel_interface": true,
+            "domain_verified": true,
+            "selinux_enforcing": true,
+            "busybox_verified": true
+          }
+        },
+        {
+          "status": "passed",
+          "command_exit_code": 0,
+          "command_result": "completed",
+          "new_boot_observed": true,
+          "root_verified": true,
+          "selinux_enforcing": true,
+          "kernelsu_reactivation": "verified_native_init",
+          "kernelsu_native_boot": {
+            "mode": "pinned-kernel-native-init",
+            "stages": {
+              "post-fs-data": "passed",
+              "services": "passed",
+              "boot-completed": "passed"
+            },
+            "kernel_interface": true,
+            "domain_verified": true,
+            "selinux_enforcing": true,
+            "busybox_verified": true
+          }
+        }
+      ],
+      "serial_log_independent_checks": {
+        "linux_boot_banners": 6,
+        "restart_markers": 5,
+        "reboot_requests": 5,
+        "native_stages_per_boot": [
+          {
+            "boot_index": 0,
+            "native_stage_exit_rows": []
+          },
+          {
+            "boot_index": 1,
+            "native_stage_exit_rows": [
+              {
+                "stage": "post-fs-data",
+                "exit_code": 0
+              },
+              {
+                "stage": "services",
+                "exit_code": 0
+              },
+              {
+                "stage": "boot-completed",
+                "exit_code": 0
+              }
+            ]
+          },
+          {
+            "boot_index": 2,
+            "native_stage_exit_rows": [
+              {
+                "stage": "post-fs-data",
+                "exit_code": 0
+              },
+              {
+                "stage": "services",
+                "exit_code": 0
+              },
+              {
+                "stage": "boot-completed",
+                "exit_code": 0
+              }
+            ]
+          },
+          {
+            "boot_index": 3,
+            "native_stage_exit_rows": [
+              {
+                "stage": "post-fs-data",
+                "exit_code": 0
+              },
+              {
+                "stage": "services",
+                "exit_code": 0
+              },
+              {
+                "stage": "boot-completed",
+                "exit_code": 0
+              }
+            ]
+          },
+          {
+            "boot_index": 4,
+            "native_stage_exit_rows": [
+              {
+                "stage": "post-fs-data",
+                "exit_code": 0
+              },
+              {
+                "stage": "services",
+                "exit_code": 0
+              },
+              {
+                "stage": "boot-completed",
+                "exit_code": 0
+              }
+            ]
+          },
+          {
+            "boot_index": 5,
+            "native_stage_exit_rows": [
+              {
+                "stage": "post-fs-data",
+                "exit_code": 0
+              },
+              {
+                "stage": "services",
+                "exit_code": 0
+              },
+              {
+                "stage": "boot-completed",
+                "exit_code": 0
+              }
+            ]
+          }
+        ]
+      },
+      "final_state": "module uninstalled and reboot cleanup verified; post-lifecycle CLI log is unavailable because executable was removed"
+    },
+    "installed_controls": {
+      "schema": 1,
+      "status": "passed",
+      "active_connectivity_probe_requested": false,
+      "stage": "complete",
+      "supervisor_start_exit_code": 0,
+      "fswatch_running": true,
+      "connectivity": {
+        "target": "https://www.google.com/generate_204",
+        "path": "mixed_proxy",
+        "status": "offline",
+        "reason": "upstream_unavailable",
+        "primary_reason": "tls_failure",
+        "warning": true,
+        "checked_at": 1793946976,
+        "next_check_at": 1793947036,
+        "retry_in_seconds": 43,
+        "consecutive_failures": 1,
+        "probe_count": 1,
+        "backoff_seconds": 60,
+        "latency_ms": null,
+        "http_status": null,
+        "secondary_status": "failed",
+        "direct_status": "failed",
+        "last_action": "none",
+        "action_status": "none",
+        "last_action_at": null,
+        "last_refresh_at": null
+      },
+      "support_export": {
+        "path": "/sdcard/Download/MagicNet/MagicNet-diagnostics.txt",
+        "bytes": 64649,
+        "artifact": "diagnostic-export.txt",
+        "sha256": "145b8cda596cd8348cdfd805f39580b6d31bc0f05e79f29f0522dfd75559175f",
+        "required_sections": [
+          "platform and versions",
+          "system resources",
+          "subscription lifecycle",
+          "canonical state",
+          "connectivity history",
+          "configuration structure",
+          "configuration: route",
+          "configuration: dns",
+          "service status",
+          "core resources",
+          "sing-box version",
+          "sing-box configuration check",
+          "routes: ipv4 rules",
+          "routes: ipv6 rules",
+          "routes: ipv4 routes",
+          "routes: ipv6 routes",
+          "transparent TUN and eBPF observation",
+          "collection summary"
+        ],
+        "content": {
+          "service_status": {
+            "command": "service.status",
+            "schema": 1,
+            "core_running": true,
+            "api_ready": true,
+            "dataplane_ready": true,
+            "overall_ready": true,
+            "fswatch_running": true,
+            "rss_kib": 75900,
+            "connectivity": {
+              "target": "https://www.google.com/generate_204",
+              "path": "mixed_proxy",
+              "status": "offline",
+              "reason": "upstream_unavailable",
+              "primary_reason": "tls_failure",
+              "warning": true,
+              "checked_at": 1793946976,
+              "next_check_at": 1793947035,
+              "retry_in_seconds": 42,
+              "consecutive_failures": 1,
+              "probe_count": 1,
+              "backoff_seconds": 60,
+              "latency_ms": null,
+              "http_status": null,
+              "secondary_status": "failed",
+              "direct_status": "failed",
+              "last_action": "none",
+              "action_status": "none",
+              "last_action_at": null,
+              "last_refresh_at": null
+            }
+          },
+          "mcp_status": {
+            "enabled": false,
+            "secret_set": false,
+            "port": 8766,
+            "running": false
+          },
+          "curl_executor": {
+            "selection": "module_bin",
+            "available": true,
+            "network_request": "not_run",
+            "versions": {
+              "curl": "8.22.0",
+              "openssl": "3.5.8",
+              "zlib": "1.3.2"
+            },
+            "https": true,
+            "tls": true,
+            "gzip": true,
+            "embedded_ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+            "curl_sha256": "d53f2d630cf69c6456a1af6e0ab8ad2eb843caf5acb8e8cfc09680633d934929",
+            "curl_bytes": 6681856,
+            "target": {
+              "abi": "x86_64",
+              "api": 21,
+              "os": "android"
+            },
+            "runtime_capability_in_build_record": "not_tested",
+            "binary_digest_verification_by_export": "not_run"
+          }
+        }
+      },
+      "seconds": 16.533
+    },
+    "module_curl_controls": {
+      "schema": 1,
+      "status": "passed",
+      "stage": "complete",
+      "system_curl_available": false,
+      "selected_path": "/data/adb/modules/MagicNet/bin/curl",
+      "build": {
+        "schema": 1,
+        "scope": "production-android-curl",
+        "target": {
+          "abi": "x86_64",
+          "api": 21,
+          "os": "android"
+        },
+        "versions": {
+          "curl": "8.22.0",
+          "openssl": "3.5.8",
+          "zlib": "1.3.2"
+        },
+        "source_sha256": {
+          "curl": "f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7",
+          "openssl": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+          "zlib": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+          "ca": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+        },
+        "ca_embedded": true,
+        "ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+        "builder_sha256": "547345572ef9b62ee50b92c7ac0c5a62d89c911b8d5d8c5eaa307f930d8c87d9",
+        "verifier_sha256": "6b2a3b17786f0d88e174e8ba158ee60b9e4c42faea7e5160d2db510ccfda131b",
+        "lock_sha256": "f17065bd8fb97dbd855736c4756e1a627786da951bfd248da753cee3d72adf59",
+        "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a",
+        "curl_sha256": "d53f2d630cf69c6456a1af6e0ab8ad2eb843caf5acb8e8cfc09680633d934929",
+        "curl_bytes": 6681856,
+        "elf": {
+          "interpreter": "/system/bin/linker64",
+          "needed": [
+            "libc.so",
+            "libdl.so"
+          ],
+          "rpath": false
+        }
+      },
+      "installed_binary_verified": true,
+      "local_tls": {
+        "schema": 1,
+        "status": "verified",
+        "https": true,
+        "ssl": true,
+        "resolve": true,
+        "gzip": true,
+        "tls_positive": true,
+        "hostname_reject": true,
+        "default_trust_reject": true,
+        "cleanup": true,
+        "embedded_ca_identity": true,
+        "embedded_ca_bytes": 188900,
+        "embedded_ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+        "embedded_ca_cert_count": 121,
+        "versions": {
+          "curl": "8.22.0",
+          "libcurl": "8.22.0",
+          "openssl": "3.5.8",
+          "zlib": "1.3.2"
+        },
+        "positive_gets": 1,
+        "hostname_reject_gets": 0,
+        "default_reject_gets": 0
+      },
+      "connectivity": {
+        "schema": 1,
+        "status": "observed",
+        "explicit_tick_count": 1,
+        "explicit_request_upper_bound": {
+          "google": 1,
+          "auxiliary": 2
+        },
+        "canonical_state_modified_by_harness": false,
+        "google_https_204_observed": false,
+        "status_reads": 2,
+        "before": {
+          "target": "https://www.google.com/generate_204",
+          "path": "mixed_proxy",
+          "status": "unknown",
+          "reason": "not_checked",
+          "primary_reason": "not_checked",
+          "warning": false,
+          "checked_at": null,
+          "next_check_at": null,
+          "retry_in_seconds": null,
+          "consecutive_failures": 0,
+          "probe_count": 0,
+          "backoff_seconds": 300,
+          "latency_ms": null,
+          "http_status": null,
+          "secondary_status": "not_run",
+          "direct_status": "not_run",
+          "last_action": "none",
+          "action_status": "none",
+          "last_action_at": null,
+          "last_refresh_at": null
+        },
+        "observation_source": "single_product_tick",
+        "tick_exit_code": 0,
+        "after": {
+          "target": "https://www.google.com/generate_204",
+          "path": "mixed_proxy",
+          "status": "offline",
+          "reason": "upstream_unavailable",
+          "primary_reason": "tls_failure",
+          "warning": true,
+          "checked_at": 1793946976,
+          "next_check_at": 1793947035,
+          "retry_in_seconds": 58,
+          "consecutive_failures": 1,
+          "probe_count": 1,
+          "backoff_seconds": 60,
+          "latency_ms": null,
+          "http_status": null,
+          "secondary_status": "failed",
+          "direct_status": "failed",
+          "last_action": "none",
+          "action_status": "none",
+          "last_action_at": null,
+          "last_refresh_at": null
+        }
+      },
+      "seconds": 3.213
+    },
+    "export_audit": {
+      "actual_bytes": 64649,
+      "sha256": "145b8cda596cd8348cdfd805f39580b6d31bc0f05e79f29f0522dfd75559175f",
+      "receipt_matches_downloaded_file": true,
+      "device_and_pull_size_equality_asserted_by_native_harness": true,
+      "provenance_receipt_matches_standalone_receipt": true,
+      "required_sections_present": 18,
+      "actual_section_count": 48,
+      "sections": [
+        "platform and versions",
+        "Android: ro.build.version.release",
+        "Android: ro.build.version.sdk",
+        "Android: ro.build.version.security_patch",
+        "SELinux mode",
+        "system resources",
+        "subscription lifecycle",
+        "startup state",
+        "canonical state",
+        "connectivity history",
+        "curl executor",
+        "configuration structure",
+        "configuration: route",
+        "configuration: dns",
+        "configuration: inbounds",
+        "configuration: outbounds",
+        "configuration: experimental",
+        "configuration: log",
+        "subscription refresh log counts",
+        "recent logs: sing-box",
+        "recent logs: service",
+        "recent logs: subscription-refresh",
+        "recent logs: connectivity",
+        "recent logs: magicnet-kernel",
+        "recent logs: fswatch",
+        "recent logs: supervisors",
+        "recent logs: connectivity-watchdog",
+        "service status",
+        "core resources",
+        "health",
+        "sing-box version",
+        "sing-box build identity",
+        "sing-box configuration check",
+        "core process and listeners",
+        "tun routes and ip rules",
+        "routes: links",
+        "routes: addresses",
+        "routes: ipv4 rules",
+        "routes: ipv6 rules",
+        "routes: ipv4 routes",
+        "routes: ipv6 routes",
+        "firewall: iptables-save",
+        "firewall: ip6tables-save",
+        "transparent TUN and eBPF observation",
+        "kernel networking",
+        "proxy selector and connection chains",
+        "dns api and mcp",
+        "collection summary"
+      ],
+      "collection_summary": {
+        "duration_ms": "764",
+        "incomplete_commands": "0",
+        "truncated_sections": "0",
+        "external_network_probes": "not_run",
+        "state_mutations": "none",
+        "missing_or_truncated_evidence_is_not_success": "true",
+        "end_of_report": "true"
+      },
+      "report_limit_bytes": 524288,
+      "section_limit_bytes": 49152,
+      "largest_section_bytes": 15114,
+      "service_status_json_preserved": true,
+      "transparent_status_json_preserved": true,
+      "dns_status_json_preserved": true,
+      "service_status": {
+        "command": "service.status",
+        "data": {
+          "api": {
+            "ready": true,
+            "url": "<redacted-url>",
+            "webui": "<redacted-url>"
+          },
+          "connectivity": {
+            "action_status": "none",
+            "backoff_seconds": 60,
+            "checked_at": 1793946976,
+            "consecutive_failures": 1,
+            "direct_status": "failed",
+            "http_status": null,
+            "last_action": "none",
+            "last_action_at": null,
+            "last_refresh_at": null,
+            "latency_ms": null,
+            "next_check_at": 1793947035,
+            "path": "mixed_proxy",
+            "primary_reason": "tls_failure",
+            "probe_count": 1,
+            "reason": "upstream_unavailable",
+            "retry_in_seconds": 42,
+            "secondary_status": "failed",
+            "status": "offline",
+            "target": "https://www.google.com/generate_204",
+            "warning": true
+          },
+          "core": {
+            "selected": "sing-box",
+            "sing_box": {
+              "pid_summary": "3100",
+              "process_state": "running",
+              "rss_kib": 75900,
+              "running": true
+            }
+          },
+          "lifecycle": "ready",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "subscription": {
+            "source": "remote_url"
+          },
+          "supervisors": {
+            "fswatch": "8499",
+            "wifi_policy": "stopped"
+          },
+          "transparent": {
+            "capability": "not_required",
+            "configured_mode": "tun",
+            "dataplane_ready": true,
+            "effective_mode": "tun",
+            "effective_type": "tun",
+            "has_recent_error": false,
+            "local_cgroup": "inactive",
+            "local_ready": null,
+            "mode": "tun",
+            "shared_interface_count": 0,
+            "shared_ready": null,
+            "shared_tc": "inactive",
+            "transition": "idle"
+          }
+        },
+        "ok": true,
+        "schema": 1
+      },
+      "transparent_status": {
+        "command": "transparent.status",
+        "data": {
+          "capability": "not_required",
+          "configured_mode": "tun",
+          "dataplane_ready": true,
+          "effective_mode": "tun",
+          "effective_type": "tun",
+          "has_recent_error": false,
+          "local_cgroup": "inactive",
+          "local_ready": null,
+          "mode": "tun",
+          "shared_interface_count": 0,
+          "shared_ready": null,
+          "shared_tc": "inactive",
+          "transition": "idle"
+        },
+        "ok": true,
+        "schema": 1
+      },
+      "dns_status": {
+        "command": "dns.status",
+        "data": {
+          "primary": "<ref:22>",
+          "profile": "default",
+          "secondary": null,
+          "transport": "default"
+        },
+        "ok": true,
+        "schema": 1
+      },
+      "mcp_status": {
+        "enabled": false,
+        "secret_set": false,
+        "port": 8766,
+        "running": false
+      },
+      "curl_executor": {
+        "selection": "module_bin",
+        "version": {
+          "capabilities": {
+            "gzip": true,
+            "https": true,
+            "tls": true
+          },
+          "curl_version": "8.22.0",
+          "libcurl_version": "8.22.0",
+          "network_request": "not_run",
+          "tls_backend": "OpenSSL",
+          "tls_version": "3.5.8",
+          "unrecognized_version_text": "omitted",
+          "zlib_version": "1.3.2"
+        },
+        "build_record": {
+          "applies_to_selected_path": true,
+          "binary_digest_verification": "not_run",
+          "builder_sha256": "547345572ef9b62ee50b92c7ac0c5a62d89c911b8d5d8c5eaa307f930d8c87d9",
+          "ca": {
+            "bytes": 188900,
+            "cert_count": 121,
+            "mode": "embedded",
+            "runtime_bundle": false,
+            "sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+            "system_store": false,
+            "version": "2026-09-25"
+          },
+          "curl_bytes": 6681856,
+          "curl_sha256": "d53f2d630cf69c6456a1af6e0ab8ad2eb843caf5acb8e8cfc09680633d934929",
+          "other_build_fields": "omitted",
+          "runtime_capability": "not_tested",
+          "schema": 1,
+          "scope": "production-android-curl",
+          "source": "packaged_build_record",
+          "sources": {
+            "ca": {
+              "sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+            },
+            "curl": {
+              "sha256": "f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7"
+            },
+            "openssl": {
+              "sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
+            },
+            "zlib": {
+              "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+            }
+          },
+          "status": "available",
+          "target": {
+            "abi": "x86_64",
+            "api": 21,
+            "os": "android"
+          },
+          "toolchain": {
+            "ndk_revision": "27.3.13750724",
+            "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a"
+          },
+          "versions": {
+            "curl": "8.22.0",
+            "openssl": "3.5.8",
+            "zlib": "1.3.2"
+          }
+        },
+        "installed_build_record_matches": true,
+        "export_did_not_rehash_binary": true
+      },
+      "privacy_checks": {
+        "mode": "redacted",
+        "url_values_present": [
+          "https://www.google.com/generate_204"
+        ],
+        "raw_uuid_count": 0,
+        "certificate_or_private_key_pem_count": 0,
+        "redaction_marker_count": 454,
+        "opaque_reference_count": 26,
+        "scope": "inspection of this actual exported artifact plus parser checks; not a proof for arbitrary future user input"
+      },
+      "defects": []
+    },
+    "google_https_204_observed": false,
+    "connectivity_evidence": {
+      "machine_snapshot": {
+        "target": "https://www.google.com/generate_204",
+        "path": "mixed_proxy",
+        "status": "offline",
+        "reason": "upstream_unavailable",
+        "primary_reason": "tls_failure",
+        "warning": true,
+        "checked_at": 1793946976,
+        "next_check_at": 1793947036,
+        "retry_in_seconds": 43,
+        "consecutive_failures": 1,
+        "probe_count": 1,
+        "backoff_seconds": 60,
+        "latency_ms": null,
+        "http_status": null,
+        "secondary_status": "failed",
+        "direct_status": "failed",
+        "last_action": "none",
+        "action_status": "none",
+        "last_action_at": null,
+        "last_refresh_at": null
+      },
+      "after_explicit_tick": {
+        "target": "https://www.google.com/generate_204",
+        "path": "mixed_proxy",
+        "status": "offline",
+        "reason": "upstream_unavailable",
+        "primary_reason": "tls_failure",
+        "warning": true,
+        "checked_at": 1793946976,
+        "next_check_at": 1793947035,
+        "retry_in_seconds": 58,
+        "consecutive_failures": 1,
+        "probe_count": 1,
+        "backoff_seconds": 60,
+        "latency_ms": null,
+        "http_status": null,
+        "secondary_status": "failed",
+        "direct_status": "failed",
+        "last_action": "none",
+        "action_status": "none",
+        "last_action_at": null,
+        "last_refresh_at": null
+      },
+      "diagnostic_snapshot": {
+        "action_status": "none",
+        "backoff_seconds": 60,
+        "checked_at": 1793946976,
+        "consecutive_failures": 1,
+        "direct_status": "failed",
+        "http_status": null,
+        "last_action": "none",
+        "last_action_at": null,
+        "last_refresh_at": null,
+        "latency_ms": null,
+        "next_check_at": 1793947035,
+        "path": "mixed_proxy",
+        "primary_reason": "tls_failure",
+        "probe_count": 1,
+        "reason": "upstream_unavailable",
+        "retry_in_seconds": 42,
+        "secondary_status": "failed",
+        "status": "offline",
+        "target": "https://www.google.com/generate_204",
+        "warning": true
+      },
+      "diagnostic_history": "schema=1\ndomain=connectivity\nphase=offline\nreason=upstream_unavailable\nprimary_reason=tls_failure\nchecked_at=1793946976\nchecked_uptime=42\nnext_uptime=102\nfailures=1\nprobes=1\nhttp_code=unknown\nlatency_ms=unknown\nsecondary=failed\ndirect=failed\nlast_action=none\naction_status=none\naction_at=0\naction_uptime=0\nrefresh_at=0\nrefresh_uptime=0\nrecovery_stage=0",
+      "diagnostic_log": "total_bytes=169 tail_only=true retained_lines=1 retained_bytes=168\nepoch=1793946976 level=warn target=google phase=offline reason=upstream_unavailable primary_reason=tls_failure failures=1 next_uptime=102 action=none action_status=none",
+      "health_warning_lines": [
+        "[warn] <redacted-host> ⚠️ status=offline reason=upstream_unavailable <redacted-sensitive> checked_at=1793946976 retry_in_seconds=42"
+      ],
+      "fresh_probes_by_collector": "not_run",
+      "explicit_tick_count": 1,
+      "explicit_request_upper_bound": {
+        "google": 1,
+        "auxiliary": 2
+      },
+      "background_network_request_total": null,
+      "background_total_note": "canonical probe_count=1 is a cached counter at capture; no packet capture establishes the total across subsequent lifecycle reboots",
+      "root_cause_of_tls_failure": "not established by retained code-level classification alone; separate read-only cause review follows"
+    },
+    "android_core_memory_snapshot": {
+      "vmrss_kib": 75900,
+      "service_status_rss_kib": 75900,
+      "vmhwm_kib": 83324,
+      "threads": 11,
+      "fd_count": 51,
+      "scope": "one Android cold-boot core snapshot from diagnostic export; VmHWM is this process lifetime high-water mark, not whole-module peak or steady-state budget"
+    },
+    "device": {
+      "sdk": 35,
+      "requested_memory_mib": 2048,
+      "observed_memtotal_kib": 2531920,
+      "memory_source": "/proc/meminfo"
+    },
+    "kernel_provenance": {
+      "schema": 1,
+      "build_id": "12525588",
+      "common": "8adecb593e9b745427da9d61c3cc8bc4857de209",
+      "kernelsu": "5f9cada650f1171807c0d702b6cfbf510a2ec175",
+      "recipe_sha256": "3a06394d29fc87cf9204137bb4634d5dc91030251df962d82ae084b3e1c870a8",
+      "source_manifest_sha256": "3828669e61c1cba6a312e1946b702625ed7cff4586ef047fb21f4efbd372dd91",
+      "target": "//common-modules/virtual-device:virtual_device_x86_64_dist",
+      "sha256": {
+        "bzImage": "2b675feb0572fa2177f35183ba2159d945a4c07b12120838e2f19ded6de3c580",
+        "build-info.txt": "c423f31d0f0819b0e88cb4f61a9e43898a80bb5a3e84a14ec10feb1657cc13f1"
+      }
+    },
+    "payload_provenance": {
+      "production_zip_sha256": "5a6c6d6fc47cb02160db2a98796d74eeb10b8ef0a046321edd7d73548204d76a",
+      "fixture_zip_sha256": "38da046e498a4c415cad80c1a88120faeea07717ecea93c6c03d216e5033f672",
+      "payload_sha256": {
+        "bin/magicnet-cli": "32cd64c56e0cfed5904fd67577227db8d6a82614827007fcdc2acd98f3458db2",
+        "bin/sing-box": "4c31c2c0fd4ef65a5d86f6467ee869a272e29896f6a91e6031db29f76ddd180f",
+        "bin/jq": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f",
+        "bin/yq": "17cf42d3429dc60b589e7d60dba13f2a26735f70c1420ebf2cf18f1958edba2f",
+        "bin/curl": "d53f2d630cf69c6456a1af6e0ab8ad2eb843caf5acb8e8cfc09680633d934929",
+        "bin/ecapture": "82f5b7a2dfd8630fcf51a1f453311b1ae1a454ea6a3dd41b29566d4e0d9a9ab3",
+        "bin/proxylink": "ebfa5522c96bc5c704b1df711131615ca53874b63b374a6577013338451b84b9"
+      },
+      "metadata_sha256": {
+        "licenses/curl/build-provenance.json": "929a7df2b35852691ff9921261539afb7384846c647033db0caa40e36b7a7add"
+      },
+      "curl_build": {
+        "schema": 1,
+        "scope": "production-android-curl",
+        "target": {
+          "abi": "x86_64",
+          "api": 21,
+          "os": "android"
+        },
+        "versions": {
+          "curl": "8.22.0",
+          "openssl": "3.5.8",
+          "zlib": "1.3.2"
+        },
+        "source_sha256": {
+          "curl": "f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7",
+          "openssl": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+          "zlib": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+          "ca": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+        },
+        "ca_embedded": true,
+        "ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+        "builder_sha256": "547345572ef9b62ee50b92c7ac0c5a62d89c911b8d5d8c5eaa307f930d8c87d9",
+        "verifier_sha256": "6b2a3b17786f0d88e174e8ba158ee60b9e4c42faea7e5160d2db510ccfda131b",
+        "lock_sha256": "f17065bd8fb97dbd855736c4756e1a627786da951bfd248da753cee3d72adf59",
+        "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a",
+        "curl_sha256": "d53f2d630cf69c6456a1af6e0ab8ad2eb843caf5acb8e8cfc09680633d934929",
+        "curl_bytes": 6681856,
+        "elf": {
+          "interpreter": "/system/bin/linker64",
+          "needed": [
+            "libc.so",
+            "libdl.so"
+          ],
+          "rpath": false
+        }
+      }
+    },
+    "scope": "Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture",
+    "not_tested": [
+      "stock-kernel KernelSU LKM injection",
+      "ARM64 execution",
+      "OEM kernels",
+      "Play/GMS login/download",
+      "public proxy quality",
+      "eBPF dataplane",
+      "IPv6 packet forwarding",
+      "eCapture execution",
+      "proxylink subscription parsing"
+    ],
+    "prior_candidate_failure_preserved": {
+      "source_sha": "218e1653ba67f950aed25318347ea845bf7467e0",
+      "audit": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-218e165-android-audit.json",
+      "reproduction": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-218e165-adb-list-fix-verification.json",
+      "overwritten": false
+    },
+    "verification_actions": {
+      "workflow_retries_triggered_by_auditor": 0,
+      "extra_network_probes_triggered_by_auditor": 0,
+      "source_modifications": 0,
+      "timeouts_extended": false
+    }
+  },
+  "final_audit_file_identities": {
+    "ci-ceb7d54-android-audit.json": {
+      "bytes": 33686,
+      "sha256": "f10448c14a853d453bbb768c74c522b9cfc426766eaeae5d998fa66fe4d75d75"
+    },
+    "ci-ceb7d54-google-cause-review.json": {
+      "bytes": 5423,
+      "sha256": "ea1372581b68a80372ca9fea60da86829c00086bc391fab855c81a7bb7a7a308"
+    },
+    "ci-ceb7d54-curl-default-ca-source-review.json": {
+      "bytes": 5615,
+      "sha256": "72023736244c6c67416b8243cadd43e8facc8fd4e75a5ceae35a4f511f0d4c67"
+    }
+  },
+  "final_google_cause_review": {
+    "schema": 1,
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "run_id": 42173653691,
+    "artifact_id": 13483710663,
+    "scope": "read-only attribution review of existing accepted Android artifacts; no extra requests or reruns",
+    "result": "root_cause_not_established",
+    "known": {
+      "google": {
+        "target": "https://www.google.com/generate_204",
+        "path": "mixed_proxy",
+        "status": "offline",
+        "reason": "upstream_unavailable",
+        "primary_reason": "tls_failure",
+        "warning": true,
+        "checked_at": 1793946976,
+        "next_check_at": 1793947035,
+        "retry_in_seconds": 58,
+        "consecutive_failures": 1,
+        "probe_count": 1,
+        "backoff_seconds": 60,
+        "latency_ms": null,
+        "http_status": null,
+        "secondary_status": "failed",
+        "direct_status": "failed",
+        "last_action": "none",
+        "action_status": "none",
+        "last_action_at": null,
+        "last_refresh_at": null
+      },
+      "secondary_target": "https://cp.cloudflare.com/generate_204",
+      "secondary_retained_result": "failed; detailed reason and exit code not retained",
+      "direct_target": "https://www.baidu.com/",
+      "direct_retained_result": "failed; detailed reason and exit code not retained",
+      "local_tls_controls": "positive, hostname negative, default trust negative, gzip, embedded CA identity and cleanup passed",
+      "clock_at_probe_utc": "2026-11-06T06:36:16+00:00"
+    },
+    "code_mapping": {
+      "file": "crates/magicnet-cli/src/connectivity.rs",
+      "sha256": "adc0be02767d1dd02d9716a793e464530c23b0006c4bcf4716b7264043ce4ba6",
+      "classified_as_tls_failure_exit_codes": [
+        35,
+        51,
+        58,
+        60,
+        77,
+        80,
+        82,
+        83,
+        90,
+        91
+      ],
+      "raw_exit_code_retained": false,
+      "handshake_stderr_retained": false,
+      "classification_does_not_distinguish": "TLS negotiation, verification, CA loading, or other grouped backend errors"
+    },
+    "fixture": {
+      "file": "scripts/android-device-simulation.py",
+      "sha256": "b413b6ae242db05890cb43e895c513df519bf7d289b9c6bd7bade0bb330a8841",
+      "dns_type": "hosts",
+      "only_predefined_hostname": "magicnet.test",
+      "external_dns_provider_configured_by_fixture": false,
+      "route_final": "direct",
+      "remote_proxy_subscription_configured": false,
+      "purpose": "standalone lifecycle and TUN controls, not a real public proxy subscription success test",
+      "limitation": "these fixture constraints do not by themselves explain the observed numeric TLS error because that numeric code was not retained"
+    },
+    "retained_logs": {
+      "diagnostic_core_tail_start_utc": "2026-11-06T06:36:19Z",
+      "probe_checked_at_utc": "2026-11-06T06:36:16Z",
+      "tail_start_is_after_probe": true,
+      "later_network_unreachable_events": [
+        "+0000 2026-11-06 06:36:22 ERROR [2033598348 3ms] connection: open connection to <redacted-ip> using outbound/direct[private-label]: dial tcp <redacted-ip> connect: network is unreachable",
+        "+0000 2026-11-06 06:36:22 ERROR [317045587 8ms] connection: open connection to <redacted-ip> using outbound/direct[private-label]: dial tcp <redacted-ip> connect: network is unreachable",
+        "+0000 2026-11-06 06:36:27 ERROR [3501975038 19ms] connection: open connection to <redacted-ip> using outbound/direct[private-label]: dial tcp <redacted-ip> connect: network is unreachable",
+        "+0000 2026-11-06 06:36:27 ERROR [1526720936 5ms] connection: open connection to <redacted-ip> using outbound/direct[private-label]: dial tcp <redacted-ip> connect: network is unreachable"
+      ],
+      "events_attributable_to_google": false,
+      "attribution_limitation": "timestamps are later and peer identifiers were redacted; unrelated Android traffic is present",
+      "post_lifecycle_sing_box_log": "tail: /data/adb/modules/MagicNet/.log/sing-box.log: No such file or directory",
+      "post_lifecycle_service_log": "tail: /data/adb/modules/MagicNet/.log/service.log: No such file or directory",
+      "post_lifecycle_logcat_scope": "last uninstall boot; not the original tick handshake"
+    },
+    "unproven_causes": [
+      "peer certificate validation error",
+      "wrong device clock",
+      "broken embedded CA loading",
+      "network filtering",
+      "TLS negotiation failure",
+      "specific Google versus Cloudflare versus direct upstream failure mechanism"
+    ],
+    "safe_conclusion": "Actual product-path Google probe executed and produced a TLS-class failure with a warning and backoff. The complete local TLS controls passed. Public Google 204 was not observed. The retained evidence cannot identify the exact public TLS cause or classify each auxiliary failure as TLS.",
+    "network_requests_added": 0,
+    "workflow_retries_triggered": 0,
+    "source_modified": false,
+    "main_audit": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-android-audit.json",
+    "evidence_sha256": {
+      "module-curl-controls.json": "964f42ba298875300becea29e4566a81a1db8bb3085a07abbe865ad4e857525c",
+      "installed-controls.json": "bf46cc470461d59174956b428b2f3cca084c8451b22fb02561b481a384354cb1",
+      "diagnostic-export.txt": "145b8cda596cd8348cdfd805f39580b6d31bc0f05e79f29f0522dfd75559175f",
+      "sing-box.log": "f1c91287cece37cffc67af6112af5ab37f2d7fcb73c9b96d0330be247d0051f9",
+      "service.log": "1bb517b6c064360f00f94e6be3d9a16e155f92adaf410f2ed0a23cc996b563a4",
+      "logcat.txt": "ffc73697ba7bac215c73923230d3419a30314fe128049a872a1dc4c5b591d789"
+    }
+  },
+  "final_curl_default_ca_source_review": {
+    "schema": 1,
+    "reviewed_at": "2026-11-06T06:52:10.826Z",
+    "scope": "Bounded read-only review of the production CA embed default loading path. No network probes, new builds, source edits, or artifact changes.",
+    "source_sha": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9",
+    "curl_version": "8.22.0",
+    "openssl_version": "3.5.8",
+    "official_source_ref": "curl/curl curl-8_22_0",
+    "conclusion": "Production options and the official tool-to-OpenSSL implementation select and load the embedded CA bundle for default HTTPS when cacert/capath are not explicitly set. No disconnected embed-only/default-empty-store configuration was found. Existing runtime artifacts do not establish that this particular failing public TLS handshake completed CA loading, nor its root cause.",
+    "sources": [
+      {
+        "local_file": "/workspace/scratch/5fe57994f333/simulation/evidence/curl-ca-default-source-review/config2setopts.c",
+        "url": "https://github.com/curl/curl/blob/curl-8_22_0/src/config2setopts.c"
+      },
+      {
+        "local_file": "/workspace/scratch/5fe57994f333/simulation/evidence/curl-ca-default-source-review/src-Makefile.am",
+        "url": "https://github.com/curl/curl/blob/curl-8_22_0/src/Makefile.am"
+      },
+      {
+        "local_file": "/workspace/scratch/5fe57994f333/simulation/evidence/curl-ca-default-source-review/lib-setopt.c",
+        "url": "https://github.com/curl/curl/blob/curl-8_22_0/lib/setopt.c"
+      },
+      {
+        "local_file": "/workspace/scratch/5fe57994f333/simulation/evidence/curl-ca-default-source-review/openssl.c",
+        "url": "https://github.com/curl/curl/blob/curl-8_22_0/lib/vtls/openssl.c"
+      }
+    ],
+    "chain": [
+      {
+        "file": "scripts/build-android-curl.sh",
+        "lines": [
+          109,
+          116
+        ],
+        "fact": "--with-ca-embed plus --without-ca-bundle/path/fallback; OpenSSL backend, auto-load config disabled. The removed file/path/fallback defaults are separate from the command tool CA blob."
+      },
+      {
+        "source": "src-Makefile.am",
+        "lines": [
+          131,
+          131,
+          188,
+          195
+        ],
+        "fact": "curl_CPPFLAGS gains CURL_CA_EMBED and tool_ca_embed.c is generated from the selected PEM for the curl target, including its config2setopts object."
+      },
+      {
+        "source": "config2setopts.c",
+        "lines": [
+          308,
+          363,
+          1036,
+          1039
+        ],
+        "fact": "Default !cacert && !capath branch assigns the global embedded bytes using CURLOPT_CAINFO_BLOB; the TLS path invokes ssl_ca_setopts. HTTPS proxy CA blob is assigned analogously."
+      },
+      {
+        "source": "lib-setopt.c",
+        "lines": [
+          2856,
+          2870
+        ],
+        "fact": "CAINFO_BLOB is accepted when the selected TLS backend advertises SSLSUPP_CAINFO_BLOB."
+      },
+      {
+        "source": "openssl.c",
+        "lines": [
+          5527,
+          5530,
+          3016,
+          3024
+        ],
+        "fact": "OpenSSL advertises CAINFO_BLOB; a configured CA blob is loaded into X509_STORE and store_is_empty becomes false only after successful loading."
+      },
+      {
+        "source": "openssl.c",
+        "lines": [
+          2733,
+          2793
+        ],
+        "fact": "PEM_X509_INFO_read_bio parses the supplied memory; X509_STORE_add_cert adds certificates. Empty import or parse/add error returns CURLE_SSL_CACERT_BADFILE (77)."
+      },
+      {
+        "file": "crates/magicnet-cli/src/process.rs",
+        "lines": [
+          1026,
+          1058
+        ],
+        "fact": "trusted_curl prepends -q and removes CURL_CA_BUNDLE, SSL_CERT_FILE, SSL_CERT_DIR, CURL_SSL_BACKEND and OpenSSL configuration variables."
+      },
+      {
+        "file": "crates/magicnet-cli/src/connectivity.rs",
+        "lines": [
+          637,
+          676,
+          693,
+          701
+        ],
+        "fact": "Probe does not set cacert/capath; the normalized tls_failure merges raw curl codes 35/51/58/60/77/80/82/83/90/91."
+      }
+    ],
+    "actual_build_evidence": {
+      "log": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-build-127747032438.log",
+      "ca_embed_configuration_lines": [
+        12701,
+        12703,
+        13060,
+        13064
+      ],
+      "real_object_compilation_lines": [
+        14047,
+        14089,
+        14135
+      ],
+      "archive_audit": "/workspace/scratch/5fe57994f333/simulation/evidence/ci-ceb7d54-archive-audit.json",
+      "embedded_ca_bytes": 188900,
+      "certificate_count": 121,
+      "ca_sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+    },
+    "runtime_evidence_boundary": {
+      "provided_by": "root and connectivity agents, existing ceb Android evidence",
+      "passed": [
+        "same-builder x86_64 curl version and CA dump identity",
+        "explicit local --cacert positive TLS",
+        "hostname mismatch rejection",
+        "default trust rejects self-signed local peer"
+      ],
+      "not_proved_by_these": [
+        "default embedded trust accepted a valid public certificate chain",
+        "the failing public TLS request reached or completed CA store loading"
+      ],
+      "missing": [
+        "raw public probe curl exit code",
+        "public probe handshake stderr or verbose CA-load messages"
+      ],
+      "existing_verbose_markers_if_present": [
+        "Using embedded CA bundle (188900 bytes)",
+        "CA Blob from configuration"
+      ],
+      "auxiliary_results": "Existing normalized failed fields do not establish that auxiliary probes also failed for TLS."
+    },
+    "next_action": "No source change is justified by this read-only CA-loading review alone. Preserve the observed public TLS failure and the missing cause evidence; do not attribute it to environment or a trust-store defect without additional evidence."
+  },
+  "final_delivery_assessment": {
+    "status": "delivered_with_documented_public_connectivity_limit",
+    "google_https_204_observed": false,
+    "actual_google_result": "tls_failure",
+    "public_tls_root_cause": "not_established",
+    "scope": "Packaging, lifecycle, local TLS controls, warning/backoff, diagnostic fidelity and bounded host measurements passed. No real subscription/public proxy success, physical ARM64 execution, whole-module peak memory or battery claim."
+  },
+  "final_diagnostic_file": {
+    "name": "MagicNet-diagnostics-Android15-ceb7d54.txt",
+    "bytes": 64649,
+    "sha256": "145b8cda596cd8348cdfd805f39580b6d31bc0f05e79f29f0522dfd75559175f",
+    "delivered": true,
+    "persistent_save_succeeded": true,
+    "google_drive_url": "https://drive.google.com/file/d/1e_Cj7QrqJmOCjXNzWdDhxRrKH5bsdaoJ/view?usp=drivesdk",
+    "google_drive_metadata_verified": {
+      "bytes": 64649,
+      "parent_folder": "1l506lcpZnJS-42-bpKHdk4W8yiAZenrc"
+    },
+    "copy_verified_byte_identical": true,
+    "scope": "Actual unedited Android 15/API35 x86_64 simulation diagnostic export, not a report from the user device",
+    "source_commit": "ceb7d54daf0a010bebdcb82b79349f96ac7e0bd9"
+  },
+  "delivery_file_verification_scope": "Local files match independently audited immutable CI artifact bytes and SHA256; successful persistent save receipts; Drive readback confirms name, size and parent only, not a remote SHA256.",
+  "final_report_file": {
+    "path": "docs/connectivity-diagnostics-2026-11-06.md",
+    "bytes": 39993,
+    "sha256": "e2dda48160bdcbced7661977277633ce30ca5ff96e90a7e99b2918cf748642e6",
+    "google_drive_url": "https://drive.google.com/file/d/1BgTpaxwSDhH1FAeOp-rpX_fzntbBmWK8/view?usp=drivesdk",
+    "google_drive_name_size_parent_verified": true
   }
 }
