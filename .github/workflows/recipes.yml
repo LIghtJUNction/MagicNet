@@ -1,6 +1,15 @@
 name: Recipe checks
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - recipes/**
+      - scripts/**
+      - .github/**
+      - .gitmodules
+      - generated/magicnet-android
+      - update.json
   pull_request:
     paths:
       - recipes/**
@@ -9,6 +18,7 @@ on:
       - .gitmodules
       - generated/magicnet-android
       - update.json
+  merge_group:
 permissions:
   contents: read
 concurrency:

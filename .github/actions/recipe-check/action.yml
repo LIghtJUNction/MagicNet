@@ -15,4 +15,6 @@ runs:
       run: python3 scripts/check-recipes.py
     - name: Test release validation
       shell: bash
-      run: python3 scripts/test-release.py
+      run: |
+        python3 scripts/test-release.py
+        python3 scripts/test-release-plan.py

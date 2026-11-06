@@ -4,10 +4,12 @@
 
 ## 输入与身份
 
-- 主仓库 `.github/workflows/release.yml` 只接受手动请求，默认 `mode=build`；`mode=publish` 才请求正式发行。普通 push 不启动重型打包或发布。
-- 软件版本来自固定源码的模块 metadata，不使用 Recipkg 配方版本。kam、module.prop、源码与主仓库 update.json 必须一致；更新 URL 固定为官方仓库本次版本的 magicnet_installer.zip。构建前校验 KAM 的 changelog URL 与 update.json 一致，changelog_file 指向同版本的现存源码发布说明；禁止等构建完成后才发现导出 metadata 漂移。
-- 源码只能取本次主仓库提交的 mode-160000 gitlink，不跟随源码 main 的浮动 tip。工作流代码引用固定完整提交；构建与 Android 验收均显式检出并核对同一实现 SHA。
-- 机器可读 build-source.json 使用 schema=1，包含 repository、source_repository、recipe_sha、source_sha、version、version_code。version_code 是十进制字符串；两个 SHA 均是完整提交。build-submodules.txt 记录完整初始化且未偏离 gitlink 的依赖快照。
+- 主仓库 `.github/workflows/release.yml` 提供手动 `build / verify / publish`，默认 `build`。`verify` 执行完整发布门禁；仅显式 `publish` 可创建发行。工作流、发布脚本和源码指针 PR 执行下一补丁版的完整验收预览，普通 main push 执行轻量配方和发布脚本检查。
+- 版本可选择 `none / patch / minor / major`，或指定 `X.Y.Z / vX.Y.Z`；自定义版本与非 none bump 互斥。递增以源码与已公开版本中较新者为基准；改变版本时默认 code 为两者较大 code 加一，也可显式指定合法整数。发行时版本和 code 均须高于已公开版本，包括已经公开的预发布。
+- 主仓库 `main/update.json` 表示已发布稳定版，允许落后于源码声明版本。源码 kam、module.prop、update.json 仍须内部一致；发布前统一写入目标版本/code、官方版本化安装器 URL、KAM changelog URL 与同版说明，再执行实际构建验证。
+- 默认使用主仓库的 mode-160000 gitlink；可通过 `source_ref` 明确选择源码分支、标签或 SHA，解析后固定完整提交。reusable workflow 代码固定完整 SHA；构建与 Android 验收检出同一源码并调用相同的版本注入脚本。
+- `publish` 在主仓库创建 `release/run-<run_id>` 固定快照，其父提交为触发 main 提交，包含所选源码 gitlink、release-plan.json、目标 update.json 和发行说明。重跑同一 run 复用并验证原快照及输入，不移动快照分支。build/verify 不写远端。
+- `release-plan.json` schema=1 记录 base_sha、source_sha、目标 version/code、run_id、prerelease 和输入；`build-source.json` schema=1 保留 repository、source_repository、recipe_sha、source_sha、version、version_code。recipe_sha 为发布快照（预览时为触发提交），source_sha 为版本注入前的源码基线，version_code 为十进制字符串。目标版本与固定基线共同定义构建，不能称作未经修改的源码提交。build-submodules.txt 记录完整且未偏离的嵌套依赖快照。
 
 ## 模块目录元数据
 
@@ -35,19 +37,21 @@ KAM 清理失败、组件打包器发现未清理目录，或发布验证器在�
 
 ## 权限与门槛
 
-构建和 Android 验收只有读取权限；只在主仓库 main 的显式 publish 请求中，独立发布 job 获得 contents:write。源码仓库不得创建官方软件 Release 或带发行请求的版本 PR。
+构建和 Android 验收只有读取权限。主仓库计划 job 在 main 的显式 publish 请求中使用 contents:write 创建固定快照，独立发布 job 使用同一主仓库令牌上传和公开发行、同步稳定索引；不需要跨仓库 PAT。源码仓库只负责构建和测试，不创建官方软件 Release 或发行请求版本 PR。
 
 正式发行必须同时通过：配方 check/pack/归档检查/完整提示词、发布边界回归、模块构建、安装/升级与组件测试、完整质量门槛、同一源码提交的 Android/KernelSU 模拟器验收、子模块快照复核，以及最终资产校验。模拟器覆盖不可代替 Android arm64 真机与真实网络验收，结果分别记录。任何必需 job 失败、取消或跳过都不公开 Release。
 
-发布前再次核对两个提交、版本、官方更新地址、组件与内嵌 manifest、组件大小与摘要、三个核心别名的字节身份，以及完整资产清单。SHA256SUMS 不得包含路径穿越、重复项或自身摘要；不接受未列入清单的额外附件。既有版本标签不得覆盖；软件版本及 versionCode 必须大于上一稳定发行。
+发布前再次核对两个提交、版本、官方更新地址、组件与内嵌 manifest、组件大小与摘要、三个核心别名的字节身份，以及完整资产清单。SHA256SUMS 不得包含路径穿越、重复项或自身摘要；不接受未列入清单的额外附件。既有版本标签不得覆盖；软件版本及 versionCode 必须大于已公开发行基线。
 
 ## 发布与失败
 
-标签指向主仓库提交；实现 SHA 由 provenance 和 gitlink 固定。先创建草稿并上传全部附件，再核对服务端附件清单、大小和 SHA-256，全部成功才公开。失败保留草稿，不能把半套附件作为正式发行。已有标签/草稿的重跑必须拒绝替换，维护者检查后单独处理恢复，不自动删除旧版本。
+标签指向主仓库本次固定发行快照；实现 SHA 由计划、provenance 与快照 gitlink 固定。先创建草稿并上传全部附件，再核对服务端附件清单、大小和 SHA-256，全部成功才公开。任何必需门槛失败、取消或跳过都不公开 Release。
 
-草稿可在标签查询中返回 404；通过 Release 列表定位唯一同版本草稿，并以数字 release ID 读回、校验和公开。不能将 404 当作无草稿后重复创建，也不能在 ID 歧义或任一服务端资产不符时公开。
+草稿通过 Release 列表定位唯一同版本记录，以数字 release ID 查询、上传和公开，兼容草稿标签查询返回 404。Release 正文记录原 run、不可变 artifact ID 与快照；已有身份不符、歧义、非法 ID、已上传资产不符时拒绝恢复。上传中断后，原 run 的 failed-jobs 重跑保留原 artifact，仅补齐缺失文件。服务端 502 留下的 state=starter 且 size=0 空资产，仅在同身份草稿中按合法数字 asset ID 清理后补传；已 uploaded 内容永不覆盖。
 
-独立恢复只适用于原 run 的构建、完整质量和 Android 门槛均成功，而发布控制失败的既有草稿。必须验证原官方 main 运行、固定的配方/源码提交、未过期且摘要固定的 artifact，再对原草稿执行同等完整资产校验；只公开该 ID，不创建版本、不换附件、不重写标签。构建或验收失败、取消、跳过仍然禁止恢复发布。原失败与独立恢复的结果分别记录，不能改写成原工作流全绿。
+完整重建产生了不同 artifact ID 时，禁止用它覆盖原草稿。已公开发行在同身份、同资产校验通过后视为发布步骤幂等成功；公开资产缺失或变动仍失败。只在确认公开、非预发布、tag 指向正确快照且资产一致后更新 main 的稳定 updater；更新使用最新 main 的小提交，保留用户同时提交的文件和 gitlink，不回退更高版本或 code。预发布只补入发行说明，保留稳定 update.json 与源码指针。
+
+公开成功但 main 同步失败须明确区分“Release 已发布、索引同步失败”；原失败 job 可继续同步，不重新发行。构建或验收失败仍先修复和重新验证，不用上传重试代替质量门槛。历史独立恢复按其真实执行证据记录，当前自动恢复只使用原运行与原 artifact。
 
 校验和与 GitHub 资产摘要不是独立公钥签名。任何签名能力与真实设备验收都须另记实际证据，不能由工作流文件存在推断。
 
