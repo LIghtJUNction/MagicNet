@@ -52,11 +52,10 @@
 | M46 | C-SUB-008：status/inspect 的 URL 64 KiB、本地 8 MiB 边界、坏编码、NUL、链接/目录/FIFO、I/O 错误、缺失父目录及读取中变化 | 共用有界零写入观测；缺失可未配置，坏数据非零结构化失败，读取不创建目录；canonical/支持包来源与计数 unknown，不伪零；service.status 保留独立服务事实；公共结果不泄漏 canary |
 | M47 | 配方迁移、合并及发布前检查主仓库根 module.yaml、description/icon 引用资源和正式资产目录 | manifest 及引用资源受跟踪、路径可解析；模块身份 MagicNet、官方仓库与 MagicNet-full.zip 匹配，源仓库中有文件不能替代主仓库入口；缺文件、失效引用或目录身份不一致阻止对应发布/目录校验 |
 | M48 | CORE-A01–A06：固定上游同步、TCP/UDP 握手失败、AttachFlow/CloseFlow 重叠与竞态、资源回收和同参数内存测量 | 错误回调与连接一起清理，挂接和关闭重叠时不丢注册或重复释放；生产 tags、eBPF、Encryption 与 AWG 保留；宿主、Android 构建和真机结果各有对应 SHA 与证据 |
-
 | M49 | POLICY-A08–A12：精确目标、端口、模式/应用/用户增量重叠、DNS 优先、新装/升级和订阅刷新 | 四个完整域名与 `dm.wo.com.cn:18080` 按固定规则拒绝；域名边界、其他端口和 DNS 行为保持；模板固定提交/摘要与发布包一致；配置模型、真实核心、模拟器和真机证据分别记录 |
 | M50 | POLICY-A13–A15：Voice 维护入口、规则库存、构建/刷新与普通 ChatGPT 分流 | 专用 Voice 脚本、上游、JSON 与路由引用移除；`meta-openai`、`ai-chatgpt`、ChatGPT 域名/应用包名及对应 DNS 保留；不把配方检查当成设备流量验证 |
 | M54 | delivery 启动器合同：干净检出初始化 `kamfw`，执行安装、卸载、当前用户浏览器选择与错误回退 | 两个入口共用固定 `lib/kamfw/launcher.sh`，源码与包内无 `lib/kamfw-web/`；既有接口兼容，失败有界且退出码准确，gitlink 变更触发相应 CI；宿主与 Android 结果分别记录 |
-
+| M55 | POLICY-A16–A20：16 个教育后缀的根域名/子域名、边界负例、前序保护及后续分类重叠；新装/升级生成、默认 pin 迁移与订阅刷新 | 默认经 `cn-direct` 直连并使用对应本地加密 DNS；用户/应用规则、模式、广告和 DNS 防护继续优先，五个拒绝目标保留；精确旧默认 pin 迁移，自定义 repo/ref/digest 保留；范围、次序、手选和依赖集合符合 policy 合同；模板、生成配置、锁定核心、模拟器与设备结果分别记录 |
 | M51 | 同时存在 .local/state、.state、.tmp、.cache；同名相同/冲突文件、迁移失败/重入、升级/复用打包 | 生产只用 .state/.cache，数据与私密边界保留；旧根迁移成功后删除；网络卡 SVG 不进入模块 |
 | M52 | 嵌套或后台锁 owner 被终止、父进程仍活；正常嵌套、活 owner、暂停/未知 owner | 按实际执行者 PID/启动身份回收已死锁；不偷活锁、不由子进程释放父锁；停止保持网络清理顺序；并发 fswatch 只启动一次、start/stop 串行且不泄漏锁描述符 |
 | M53 | Android CLI 系统路由无默认接口观测、显式接口绑定、图形客户端、失网后恢复 | 无绑定系统路由继续真实拨号；依赖接口者等待；取消旧更新、恢复后重置；不伪造接口或网络 ready |

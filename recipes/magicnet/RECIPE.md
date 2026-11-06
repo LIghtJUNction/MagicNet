@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.10"
+version = "0.3.11"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -28,6 +28,8 @@ source = "../software-quality"
 0.3.9 统一 `.state` / `.cache`，增加实际进程锁归属、fswatch 并发启停、原生 TUN 栈及 Android 可选接口监控合同，新增 M51–M53。保留 0.3.8 同期的规则清理和安装包裁剪；Android 产品版本不变。实际源码、定向检查与设备边界见 PROVENANCE.md 和 VERIFICATION.md。
 
 0.3.8 通过 routing-policy 0.2.3 清理专用 ChatGPT Voice 规则维护与分发，新增 POLICY-A13–A15 和 M50。保留普通 ChatGPT 域名、应用包名、DNS 与 `ai-chatgpt` selector，不改变 Android 软件版本；实现与实际检查结果见 VERIFICATION.md。
+
+0.3.11 在尚未发行的 v1.8.5 / 10613 候选中整合 routing-policy 0.2.4：16 个大陆教育服务后缀复用默认直连的 `cn-direct` 和现有加密 DNS，保留前序模式、用户/应用分流及保护规则。新增 M55 与 POLICY-A16–A20；八包依赖图、selector 和规则数据依赖保持，来源与实际结果见 PROVENANCE.md、VERIFICATION.md。
 
 0.3.10 通过 delivery 0.2.4 统一安装和卸载的浏览器启动器，直接维护固定 `kamfw` 子模块，移除 `lib/kamfw-web/`。M54 覆盖共用来源、既有调用兼容、当前用户选择和失败回退；Android 软件版本由源码 metadata 单独管理。
 

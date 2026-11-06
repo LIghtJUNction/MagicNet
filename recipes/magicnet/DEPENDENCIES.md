@@ -13,16 +13,16 @@ graph TD
 
 所有箭头均指实际存在、可检查并递归打包的 Markdown 配方。quality 是复用的工程合同；其余是重建的组件。webui 和 delivery 与 control 的集成由根包协调，避免以重复递归依赖复制同一控制面规格。
 
-## 0.3.10 闭包与具体接口
+## 0.3.11 闭包与具体接口
 
 | 包 | 版本 | 本轮合同责任 |
 | --- | --- | --- |
-| magicnet | 0.3.10 | 全产品保留范围、M01–M54、候选整合和真实验证 |
+| magicnet | 0.3.11 | 全产品保留范围、M01–M55、候选整合和真实验证 |
 | magicnet-control-plane | 0.2.4 | C-SUB-001–008、共享只读来源、统一私密缓存及原生 TUN 状态 |
 | magicnet-network-runtime | 0.1.5 | SUB-001–015，LIFE-001–005，实际进程锁与 fswatch 生命周期 |
 | magicnet-web-console | 0.2.3 | UI-SUB-001–012、统一私密载荷目录与原生 TUN 状态 |
 | magicnet-packet-engine | 0.2.3 | VE-001–006、CORE-001–005，原生 TUN 与可选接口监控 |
-| magicnet-routing-policy | 0.2.3 | 增量分流、订阅归属、指定目标拒绝与 Voice 规则清理，POLICY-A01–15 |
+| magicnet-routing-policy | 0.2.4 | 增量分流、订阅归属、指定目标拒绝、Voice 规则清理与教育域名分类，POLICY-A01–20 |
 | magicnet-module-delivery | 0.2.4 | 安装更新、目录合并恢复、缓存与旧图标清理、统一 kamfw 启动器合同 |
 | software-quality | 0.1.0 | 沿用已固定工程质量合同，未更改 |
 
@@ -44,9 +44,11 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 0.3.9 保持八包闭包，不增加常驻服务、运行库或内核模块。配置锁和 fswatch 互斥复用现有 proc 身份与 metadata guard，目录迁移复用原有配置锁。固定核心的可选 Android 接口补丁不改变接口结构或真实拨号错误语义。
 
+0.3.11 在同一八包闭包中由 routing-policy 0.2.4 维护 16 个教育服务后缀及路由/DNS 优先级，官方来源随 POLICY_INVENTORY.md 打包。复用 `cn-direct`、现有 DNS server 与规则资产，不增加 selector、运行库、规则数据下载或常驻服务；模板固定为 `6b5f68a261818a4ffda6eb9a11b21eef9b755650`，`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`。精确旧默认 pin 升级至该提交和摘要，自定义 repo/ref/digest 不变；实际来源和验证结果分别记录。
+
 ## 实现与观察材料
 
-`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，本轮为 `44f3c69f1f9366ab373afcb62b03584e61459d2e`，软件版本仍为 `v1.8.5 / 10613`。该源码保留 `76a0e69e2fe473b2e3f14ea035baa3eab2f1009f` 的 ChatGPT Voice 规则清理、后续安装包裁剪，以及 `fafd08c3e1b2a7bce10222cdff0e13c7ebba5096` 的目录、锁、fswatch 与原生 TUN 修复；内核固定 `d850ff0ff68e11a71aa8207627e0a826cb52808f`。本轮直接移除 `lib/kamfw-web/`，并将 `src/MagicNet/lib/kamfw` 固定到公开的 `MemDeco-WG/kamfw@bb0dc7582ee2c27e31e49d2d3b714b97528defef`。本轮没有生成正式发行包或完成 Android 真机验收；实际结果见 VERIFICATION.md。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
+`generated/magicnet-android/` 是独立源码仓库 `https://github.com/LIghtJUNction/magicnet-android.git` 的固定提交子模块，本轮为 `cb7f63bc8eb426c8633de70ef03c9f8af0034ef6`，软件版本仍为 `v1.8.5 / 10613`。该提交在 `44f3c69f1f9366ab373afcb62b03584e61459d2e` 上集成教育模板及精确默认 pin 迁移。源码保留 `76a0e69e2fe473b2e3f14ea035baa3eab2f1009f` 的 ChatGPT Voice 规则清理、后续安装包裁剪，以及 `fafd08c3e1b2a7bce10222cdff0e13c7ebba5096` 的目录、锁、fswatch 与原生 TUN 修复；内核固定 `d850ff0ff68e11a71aa8207627e0a826cb52808f`。此前的 launcher 维护已移除 `lib/kamfw-web/`，并将 `src/MagicNet/lib/kamfw` 固定到公开的 `MemDeco-WG/kamfw@bb0dc7582ee2c27e31e49d2d3b714b97528defef`。本轮没有生成正式发行包或完成 Android 真机验收；实际结果见 VERIFICATION.md。源码仓库仍保留六个嵌套源码子模块，不加入上面的 Recipkg 依赖图，也不进入 Markdown 配方归档。观察 checkout 与实现分开；无需读取源码才能获取本包完整需求。
 
 ## 外部前提，未打包为依赖
 

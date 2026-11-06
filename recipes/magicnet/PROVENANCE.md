@@ -1,5 +1,15 @@
 # 来源、证据与未验证项
 
+## 2026-11-06 / 大陆教育域名分类与默认模板迁移
+
+输入为用户要求补充大陆学校与教育网站直连。本轮依据官方主站、服务说明及 CERNIC 的域名管理职责，选择 16 个后缀：`edu.cn`、`moe.gov.cn`、`chsi.com.cn`、`smartedu.cn`、`neea.cn`、`ncss.cn`、`icourse163.org`、`icourses.cn`、`xuetangx.com`、`yuketang.cn`、`chaoxing.com`、`zhihuishu.com`、`eol.cn`、`cnki.net`、`wanfangdata.com.cn`、`cqvip.com`。逐项官方 URL 与用途见 [POLICY_INVENTORY.md](../magicnet-routing-policy/POLICY_INVENTORY.md)，查阅日期为 2026-11-06。后缀覆盖根域名与子域名；不扩展为全球 `.edu`、全部 `.cn` 或共享 CDN，也不据此断言每个子域名的服务器位置。
+
+模板固定为 [`MagicSingBox@6b5f68a261818a4ffda6eb9a11b21eef9b755650`](https://github.com/LIghtJUNction/MagicSingBox/commit/6b5f68a261818a4ffda6eb9a11b21eef9b755650)，`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`。路由复用 `cn-direct`（默认 `direct`），DNS 复用现有本地加密解析器；前序模式、LAN、用户与应用分流、广告及 DNS 防护保留优先级。不增加 selector、规则数据来源或运行依赖，五个指定目标拒绝、Voice 清理与原生 TUN 默认值继续保留。
+
+实现为 [`magicnet-android@cb7f63bc8eb426c8633de70ef03c9f8af0034ef6`](https://github.com/LIghtJUNction/magicnet-android/commit/cb7f63bc8eb426c8633de70ef03c9f8af0034ef6)，父提交为 `44f3c69f1f9366ab373afcb62b03584e61459d2e`，保留同期运行时和 launcher 维护。安装器在既有旧默认迁移清单中新增官方默认仓库、`dacc776dad4bd2519d5dd0dfbf3839713f9e438c` 与对应摘要的精确配对；原有四组配对保留，统一迁移至新模板，用户自定义 repo/ref/digest 保留。根配方为 0.3.11（M55），routing-policy 为 0.2.4（POLICY-A16–A20）；这是既有实现维护，没有独立重建。
+
+直接证据包括 32 项模板测试、生成一致性检查和固定模板提交的 [配置 CI 成功记录](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42149178371)。源码定向检查与各自基线、未完成的构建及设备范围见 VERIFICATION.md。本轮软件仍为尚未公开发行的 `v1.8.5 / 10613` 候选，官方更新索引保持公开 `v1.8.4`。
+
 ## 2026-11-06 / 目录与运行时修复
 
 输入为用户六项反馈：合并两组目录、删除 SVG、迁移 TUN stack、处理缺失默认接口及停止时 config.lock 超时。起点为 magicnet-android@c75583b00527acf96310e96c124805db010d939a、sing-box@d0b1422df5c36f49e7dbbccd0d49732040051974。开发过程中源仓进入 e8aad9e4b97c2601d029dcfa1f2b56ac90abd106，主仓进入 de5484f；通过三路合并保留全部同期规则和包装更新，再提交本轮修复。

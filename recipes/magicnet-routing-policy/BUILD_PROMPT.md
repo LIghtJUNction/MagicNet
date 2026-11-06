@@ -1,6 +1,6 @@
 # 默认路由、DNS 和规则数据
 
-交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision dacc776dad4bd2519d5dd0dfbf3839713f9e438c（MagicSingBox）；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
+交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision 6b5f68a261818a4ffda6eb9a11b21eef9b755650（MagicSingBox），`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
 复用上游规则数据需要其许可与可获取性；数据是外部前提，配方不含 .srs 或原配置源码。没有数据时应明确缺失，不用空文件替代真实分类。
 
 先读 POLICY_INVENTORY.md 的公开标签/默认值。默认 tun-in/magicnet0 和 loopback mixed-in，本地管理 API；runtime 在显式模式切换中物化 ebpf，不能在这里加 auto/TProxy/Redirect。
@@ -11,6 +11,7 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 
 基础入口处理（53 端口 DNS 劫持、嗅探、DNS 协议劫持、ICMP 与 `0.0.0.0` 保护）→ 指定域名拒绝 → 显式 mode → LAN/保留地址保护 → 原生应用提示 → 广告分类 → 业务分类 → 一般国家 IP/final。
 具体 AI 在一般 AI 前，Gemini/YouTube 在 Google 前，iCloud 在 Apple 前，Bing/开发/游戏服务在 Microsoft 前，游戏下载在游戏社区/登录前，Telegram 在一般通信前。已知外国服务域不能因解析到 CN IP 被错误直连。
+大陆教育域名分类置于既有 DNS 防护之后、后续国外学术、AI、游戏、开发和媒体分类之前；具体插入点与范围见下节。其他既有规则保持相对次序。
 业务 DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。以下指定域名拒绝只作用于路由，保持 DNS 捕获和解析配置。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
 不能恢复泛 analytics/tracker/github/captive 子串匹配。国内连通性探针是显式例外，不等于任意 captive 域放行。
 
@@ -29,6 +30,16 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 前四个域名共享一条拒绝规则；第五个域名使用另一条规则，同时匹配域名与目标端口。保留基础入口处理的优先级：DNS 请求继续由既有 DNS 规则处理，ICMP 和 `0.0.0.0` 沿用原行为。拒绝规则位于 `rule`、`global`、`direct` 模式分流及应用、用户增量和业务规则之前，不能通过后续 selector 选择覆盖。
 
 匹配依赖进入 sing-box 的流量带有可识别的目标域名。纯 IP 且无域名信息的连接、非目标域名以及 `dm.wo.com.cn` 的其他端口继续按原有规则处理。规则随固定内置模板分发，新安装与正常升级使用内置模板，无需额外执行社区模板更新；普通订阅刷新不删除这些规则。
+
+### 大陆教育域名分类
+
+使用 POLICY_INVENTORY.md 中列明并有官方来源的 16 个域名后缀，以 `domain_suffix` 匹配根域名及其子域名。范围包括 `edu.cn`、指定教育公共服务、慕课与教学平台、教育资讯及学术资源；不以 `edu`/`school` 等关键词匹配，也不扩大到所有 `.edu`、`.cn` 或共享 CDN。
+
+新增路由是一条普通业务规则：`outbound: cn-direct`，省略 `action`，保持现有 `cn-direct` selector 默认 `direct` 及用户手选。插在目标端口 `853`、出口 `dns-guard` 的规则之后。DNS 增加同一组后缀，插在 `meta-category-doh` / `meta-category-ip-geo-detect` 分类规则之后，使用现有本地加密解析器；路由与 DNS 的后缀集合必须一致。
+
+既有指定目标拒绝、模式、LAN/Tailnet、用户增量、应用分流、广告和 DNS 防护继续优先。教育分类优先于插入点之后的国外学术、AI、游戏、开发和媒体分类，避免这些较宽分类抢先接管清单中的站点。保留手动 DNS profile 的既有覆盖语义，按实际配置区分出口组选择与 DNS 解析器选择。
+
+复用现有 selector、DNS server 和规则资产，不新增下载来源、`.srs` 数据或常驻服务。规则随固定内置模板进入新安装、升级和生成配置；普通订阅刷新保留规则与现有用户选择。在既有旧默认迁移清单中新增官方默认仓库、`dacc776dad4bd2519d5dd0dfbf3839713f9e438c` 和对应摘要的精确配对；保留原有配对，统一迁移至当前固定模板。用户自定义 repo、ref 或 digest 保持不变。未在清单中的站点、共享资源和缺少可识别域名的连接沿用原有分流，实际流量结果分层记录。
 
 ## 维护与分发
 

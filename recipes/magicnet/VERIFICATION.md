@@ -1,5 +1,23 @@
 # 实现与发行验证
 
+## 2026-11-06 / 大陆教育域名分类与默认模板迁移
+
+本轮模板为 [`6b5f68a261818a4ffda6eb9a11b21eef9b755650`](https://github.com/LIghtJUNction/MagicSingBox/commit/6b5f68a261818a4ffda6eb9a11b21eef9b755650)，`config.json` SHA-256 为 `cda86a582c15e6976e6b9eb1e3c7a00811b6efea4e604bcf3f44ecae443a3db3`；消费源码为 [`cb7f63bc8eb426c8633de70ef03c9f8af0034ef6`](https://github.com/LIghtJUNction/magicnet-android/commit/cb7f63bc8eb426c8633de70ef03c9f8af0034ef6)。16 个后缀及官方来源见 [POLICY_INVENTORY.md](../magicnet-routing-policy/POLICY_INVENTORY.md)。规则使用现有 `cn-direct` 和本地加密 DNS，保留前序保护、用户选择及五个指定拒绝目标；不代表所有教育网站或共享资源均被分类。
+
+| 检查范围 | 实际结果 |
+| --- | --- |
+| 模板生成与模型 | `generate.py --check`、32 项 unittest 通过；包括教育后缀范围、负例、路由/DNS 次序及既有拒绝规则保留 |
+| 配置 CI | [Validate configuration 42149178371](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/42149178371) 对上述模板提交完成，API 回读 `head_sha` 一致、`conclusion=success` |
+| Rust 教育定向回归 | `fafd08c3e1b2a7bce10222cdff0e13c7ebba5096` 基线加教育变更的 exact 过滤测试 1 项通过；后续父提交 `44f3c69f1f9366ab373afcb62b03584e61459d2e` 仅变更 launcher，路由实现未变，不记为最终提交完整 Rust 套件通过 |
+| shell 应用策略 | 同一 `fafd08c3e1b2a7bce10222cdff0e13c7ebba5096` 基线加教育变更的 `test-app-routing-policy.sh` 通过，覆盖应用策略物化后的教育规则与先前拒绝规则保留 |
+| 最终整合检查 | 在 `44f3c69f1f9366ab373afcb62b03584e61459d2e` 加最终教育变更上，默认模板 pin、配置仓库迁移、安装配置刷新、maintained 结构检查通过；routing-template 4 项与格式检查通过 |
+| 默认记录迁移 | 清单新增旧官方默认仓库、`dacc776dad4bd2519d5dd0dfbf3839713f9e438c` 及其摘要的精确配对，保留原有四组配对并统一迁移至新固定点；自定义 repo/ref/digest 保留，迁移目标与默认配置来源一致 |
+| 已完成的源码 CI | 最终源码提交的 [Rules Release Integration 42150121228](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42150121228)、[Network regression 42150121142](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42150121142)、[Install Onboarding 42150121217](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42150121217) 和 [Network Regression Evidence 42150121399](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42150121399) 成功 |
+| 主仓库配方 | Recipkg 0.1.1 完成目录检查、递归打包、归档检查与完整提示词展开，验证 8 包、56 份 Markdown；M01–M55 与 POLICY-A01–A20 唯一且完整，根更新索引仍为已公开 v1.8.4 |
+| 尚待完成 | 截至 2026-11-06 02:31 UTC，源码 Build 等待，Code Quality 与 Android 运行中；正式发行尚未执行，未进行真机安装或真实应用流量验收 |
+
+上述结果限于模板模型和宿主定向回归，不能代替 Android 数据面的流量证明。源码版本保持 `v1.8.5 / 10613`，本轮尚未公开发行；根 `update.json` 仍指向已公开的 `v1.8.4`。历史版本的构建或验收记录保留原提交归属。
+
 ## 2026-11-06 / 目录、停止锁、fswatch 与原生 TUN 修复
 
 源码固定 [fafd08c3e1b2a7bce10222cdff0e13c7ebba5096](https://github.com/LIghtJUNction/magicnet-android/commit/fafd08c3e1b2a7bce10222cdff0e13c7ebba5096)，tree 为 a041b51c2e0519e30f5464a67a769e13c9b358e4，基于同期 e8aad9e 主线保留 Voice 规则清理及安装包裁剪。内核固定 [d850ff0ff68e11a71aa8207627e0a826cb52808f](https://github.com/LIghtJUNction/sing-box/commit/d850ff0ff68e11a71aa8207627e0a826cb52808f)；最终模板为 dacc776dad4bd2519d5dd0dfbf3839713f9e438c，包含先行 b1fa62b 的原生栈迁移。软件版本仍为 v1.8.5 / 10613，配方为 0.3.9。
