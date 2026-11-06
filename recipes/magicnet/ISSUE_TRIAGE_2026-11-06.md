@@ -40,7 +40,7 @@ Android TLS 验收补入实际退出码、固定错误分类、GET 计数、主�
 
 原 main `faa7d956324a20889cb921ff35c9f13b66dc0c1a` 的 [Android run 42192735920](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42192735920) 保持失败记录：cold-boot 的 `curl_tls_positive_failed`，当时未保存 curl 详细原因。失败产物 SHA-256 为 `154930452efb433dba982bc77eb193690359b0a0f60aa5c1836227d0720f6028`。本轮修订后使用新提交运行完整门禁，不把旧失败改写成成功。
 
-候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。首次整合源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。最新提交的最终门禁与合并结果将在完成后补齐。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
+候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。首次整合源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，当时主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。最新提交的最终门禁与合并结果将在完成后补齐。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
 
 ### 中间候选 39ba7487 的实际整合结果
 
@@ -59,6 +59,39 @@ Android TLS 验收补入实际退出码、固定错误分类、GET 计数、主�
 Android 在 2026-11-06 12:01:23–12:04:43 UTC 执行生命周期步骤；cold-boot 等待约 130.465 秒后报 `core process/API/TUN did not become ready`。失败时核心进程为 running，API ready=true，但 `transparent.dataplane_ready` 和整体 readiness 均为 null，生命周期为 running_unknown；TUN 日志仍有接收连接。该产物没有路由快照或 health 详细理由，尚不能仅凭 null 判断具体命令、解析或预算故障。
 
 本轮尚未进入本地 TLS proof，因而没有 `module-curl-controls.json` 或 `local_tls_diagnostics`；不能把本次失败归因于证书或时钟，也不能宣称新增 TLS 诊断已经通过 Android 验收。[失败产物 13499539200](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473958/artifacts/13499539200) 为 169,342 字节，SHA-256 `fcb5f4e271493083809c7a23731cd0bb4baa35f1bd5bb220ce1adc157b9bf996`，下载校验与 GitHub digest 一致。修复后将使用新源码运行，不覆盖这次失败。
+
+固定 [AOSP android-15.0.0_r1 的 ip/ip.c](https://android.googlesource.com/platform/external/iproute2/+/refs/tags/android-15.0.0_r1/ip/ip.c) 显示 `-numeric` 分支被编译条件禁用，未知选项在打开 netlink 前退出；39ba7487 候选的观察器无条件传入 `-N`，因此存在可由固定源码证明的 Android 参数不兼容。下载源码 SHA-256 为 `e9d7bacc4b0864b6f58a26fc547207157f250717d36cae9f0a73b758d18c0673`。这支持修正平台调用，不能从缺少详细命令证据的旧产物排除并存原因；新的实际 Android 结果另记。
+
+预发布独立复核另发现数字外观表别名的误报：在固定 AOSP 解析器的合成映射 `4242 2022` 下，参数 `2022` 与输出名称都可指向真实表 4242，而不是配置的表 2022。原解析器的 15 组受控参数对照证明，单个 argv 的前导 ASCII 空格可排除 `%s` 读取的别名匹配，并保留数字解析；修复必须同时保护 RPDB 过滤与 FIB 目标，且不能因输出看似数字而跳过实际表身份核验。此反例属于宿主解析器与受控表映射验证，未修改系统或设备路由，也不等同于旧 Android run 的原始现场证据。
+
+自动审查服务的结果单独记录：源码 PR 的 Sourcery 审查因七天差分配额不足未完成，Codex Security Review 也因账户用量上限失败；当前没有可行动的 inline 审查线程，不能把这些服务状态写成审查通过。已有 DNS PR 的两个审查线程依据原代码与固定核心处理；本轮代码继续通过独立复核及固定源码 CI 验证，没有更改账户额度或付费设置。
+
+### 最终整合候选 8ff1242
+
+当前源码为 `8ff1242817038dfe220a68b75934d6b127bea4b1`，tree `a23ade9034a47be945dc526f7fe5b00751267911`，主仓库 gitlink、README、依赖与来源记录均接入该固定点。三个增量提交分别为安装引导预算 `92b3fe62bc49902c540db2dfeb7ce9a6a16a493c`、就绪失败支持包 `7e497c3c978780f888572c2a4f5fbc16668da862`、Android 参数兼容与精确表 ID `8ff1242817038dfe220a68b75934d6b127bea4b1`。本地与远端 tree 已核对一致。
+
+Android 固定调用 `/system/bin/ip` 并使用系统支持的参数。配置规则窗口和 redirect fallback 内的每条相关 lookup，包括数字外观输出，均须和无歧义目标数字表的过滤快照逐条对应；所有平台 FIB 使用同一无歧义表参数。无法证明的映射保持 unknown。每族最多三份快照，全部仍共享原三秒命令截止时间与每流 256 KiB 上限。原规则残片、连接子网和 FIB 覆盖判断保持。
+
+就绪超时在失败收尾优先复用现有 `support export`，导出最多 20 秒、受限读取最多 4 秒，二者和原有诊断共享同一个 25 秒截止时间；固定路径、非链接、512 KiB 上限、精确 UTF-8 字节数与完整格式检查后才保存 `readiness-support.txt`。失败只记规范化回执，既有生产脱敏实现不变，原错误和就绪成功条件不变。安装引导拆分依赖步骤：npm 5 分钟、Chromium/系统依赖 20 分钟、BusyBox/字体 25 分钟；browser job 60 分钟，实际测试仍为 5 分钟。这些是明确预算，不把已成功的旧镜像延迟说成浏览器失败。
+
+| 新增验证 | 结果与身份 |
+| --- | --- |
+| Android 命令兼容及数字表身份 | 宿主编译的固定 AOSP 原版 ip 的双栈 `-N` 均 exit255；原表解析器 15 组参数对照；生产观察器旧伪绿反例为 `[true,true]`，新结果为 `[unknown,false]`；Linux FIB 另有正反例 |
+| 最终 Rust 实现 | 独立修复树 `9d7b68188ee7e15b1f5f6778a898703605084974`：CLI 841 passed / 1 ignored，含 TUN 19 项；根整合的 Cargo 文件、crates 和生产模块与此树逐字节相同 |
+| 失败支持包 | `693b2e4c029f0d714ac225f67089124d570dea7e`：simulation 109 项通过，包括 7 个新增失败采集反例；与最终候选对应 Python 文件相同 |
+| 整合静态检查 | 官方 source lint 823 个跟踪文本、Rust fmt、diff check 均通过；独立复核无剩余阻断；未重复声称本地有匹配 Clippy |
+
+新候选七条工作流均已启动，attempt 1。完成后的结果及实际合并、Issue 状态将在此处补齐；旧失败和新验证保留各自身份。
+
+| 最终候选工作流 | 当前结果 |
+| --- | --- |
+| [Code Quality 42218750003](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750003) | 运行中 |
+| [Build Kam Module 42218750064](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750064) | 运行中 |
+| [Network regression 42218749897](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749897) | 成功；DNS NAT 与 offline 测试通过，按条件未运行公网 runner 观察 |
+| [Rules Release Integration 42218750114](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750114) | 成功 |
+| [Network Regression Evidence 42218749968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218749968) | 运行中 |
+| [Install Onboarding 42218750011](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750011) | 运行中 |
+| [Android KernelSU Acceptance 42218750254](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42218750254) | 运行中 |
 
 ## 剩余验收
 

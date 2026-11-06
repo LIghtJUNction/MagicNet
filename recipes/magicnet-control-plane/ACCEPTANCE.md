@@ -21,4 +21,4 @@
 14. 缺省 stack、显式旧 stack、无 TUN、非法 stack 分别返回 default、原值、unavailable、unknown；capabilities 声明 native_tun_stack，WebUI 保留 token，健康检查接受原生默认且指出旧字段需迁移。
 15. 用带私密 canary 的 .cache、旧 .tmp、.local/state、directory-migration 与 symlink 别名测试通用文件读/列举拒绝；私密载荷正常读取消费，原有权限/硬链接/大小限制继续通过。
 
-16. 使用同一 TUN 观测覆盖 auto_route 开/关、IPv4/IPv6、自定义表与优先级、redirect mark、必要规则缺失、仅热点 iif 或 fallback 残留、受限查表规则、错误设备路由及截断/失败/超时。health 与机器快照一致：任一必要项已知缺失 false；无已知缺失而有未知时 null。机器 snapshot 对 stopped/unknown 不执行路由探测，人类 health 可检查残留接口。RPDB/FIB 子命令只读，共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB，不改规则/canonical、不发公网请求；真实 netd 网络切换及 App 流量须另记设备证据。
+16. 使用同一 TUN 观测覆盖 auto_route 开/关、IPv4/IPv6、自定义表与优先级、redirect mark、必要规则缺失、仅热点 iif 或 fallback 残留、受限查表规则、错误设备路由及截断/失败/超时。Android 参数不支持、普通命名表及数字外观别名分别验证；RPDB/FIB 必须指向同一真实数字 ID，不能由错误表共同伪装为成功。health 与机器快照共享观测：机器字段在任一必要项已知缺失时为 false，无已知缺失而有未知时为 null；人类 health 用 warning/detail 区分缺失与未知。机器 snapshot 对 stopped/unknown 不执行路由探测，人类 health 可检查残留接口。RPDB/FIB 子命令只读，共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB，不改规则/canonical、不发公网请求；真实 netd 网络切换及 App 流量须另记设备证据。

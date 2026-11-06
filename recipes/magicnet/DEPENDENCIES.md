@@ -80,6 +80,6 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 ## 0.3.16 Issue 修复集成
 
-当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，源码 PR [#3](https://github.com/LIghtJUNction/magicnet-android/pull/3)。软件仍为 1.8.5 / 10613。control 0.2.7、runtime 0.1.8、delivery 0.2.7 接入 M61–M64，八包闭包不变；内核、模板、kamfw 和规则来源继续使用上一轮固定值，不引入新运行时库或模式。
+当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@8ff1242817038dfe220a68b75934d6b127bea4b1`，tree `a23ade9034a47be945dc526f7fe5b00751267911`，源码 PR [#3](https://github.com/LIghtJUNction/magicnet-android/pull/3)。软件仍为 1.8.5 / 10613。control 0.2.7、runtime 0.1.8、delivery 0.2.7 接入 M61–M64，八包闭包不变；内核、模板、kamfw 和规则来源继续使用上一轮固定值，不引入新运行时库或模式。
 
-此提交包含六次增量提交的安装历史、TLS 夹具、监督恢复与实时 TUN 证据修复。已知限制、旧失败、当前 CI 和 Issue 处置见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。受控本地测试不替代真机网络切换；未实现的可信 NAS 入口继续单独跟踪。
+此提交包含九次增量提交：安装历史、TLS 夹具、监督恢复、实时 TUN 证据与文档精度，以及依赖安装预算、失败支持包和 Android 参数/数字表身份修正。已知限制、旧失败、当前 CI 和 Issue 处置见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。受控本地测试不替代真机网络切换；未实现的可信 NAS 入口继续单独跟踪。

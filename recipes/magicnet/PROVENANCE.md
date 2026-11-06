@@ -284,4 +284,4 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 
 ## 2026-11-06 Issue 修复来源
 
-按用户直接合并并处理 Issue/PR 的授权，独立源码分支逐次推送五个修复提交及一份文档精度修订，最终 `39ba7487f187d44febaf573c3ba1faf3992e0797`（tree `4e16922735c22fc696c6dd73b6a44182e8635acb`），由 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) 审阅与验收。主仓库通过固定 gitlink 接入，不复制实现源码。报告 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md) 关联 #436–#440、两个已处理的 DNS 审查线程、实际测试和未完成能力。未读取生产订阅或设备私密身份，未部署物理手机。
+按用户直接合并并处理 Issue/PR 的授权，独立源码分支逐次推送五个修复提交、一份文档精度修订，以及三份验收与平台兼容修订，当前候选 `8ff1242817038dfe220a68b75934d6b127bea4b1`（tree `a23ade9034a47be945dc526f7fe5b00751267911`），由 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) 审阅与验收。主仓库通过固定 gitlink 接入，不复制实现源码。报告 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md) 关联 #436–#440、两个已处理的 DNS 审查线程、实际测试和未完成能力。未读取生产订阅或设备私密身份，未部署物理手机。
