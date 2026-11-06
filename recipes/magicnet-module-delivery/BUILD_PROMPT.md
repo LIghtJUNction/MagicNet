@@ -73,3 +73,5 @@ manager 开始后 partial/interrupted failure 由 manager 拥有，不以删除�
 订阅历史 `.state/sing-box/subscription-status` 加入唯一迁移清单，恢复后保持私有权限及已记录时间、阶段和结果。本轮不新增 PID、owner 或锁迁移项；已验证当前 `.state/sing-box/subscription-update.lock` 不随该历史恢复。既有旧目录整目录迁移保持，未新增对所有历史布局运行锁的过滤证明。canonical 运行状态仍从当前证据重建。原先没有历史时保持未记录，不补造成功。
 
 Android 验收的临时 TLS 证书仅容忍有限客体时钟落后：notBefore 固定为签发前 300 秒，notAfter 为签发后 86400 秒，不修改系统时间或按观测值任意扩大窗口。可信 CA 成功、错误主机名拒绝、默认信任拒绝三项控制及原有总预算继续执行。失败也将脱敏诊断写入既有 module-curl-controls.json：主机与客体 UTC、实际证书有效期、退出码、固定错误类别、服务端 GET 计数和清理结果。不可读时间为 null/unknown，不记录原始 stderr、URL、请求或私钥。该证书只属于验收夹具，不改变产品信任库。
+
+核心/API/TUN 就绪等待超时时，在失败收尾阶段复用既有 `support export` 的有界脱敏产物，保留 health 的固定原因与路由证据。验证受控路径、文件大小和脱敏合同后才收录；导出或读取失败只记录固定采集状态，不覆盖原阶段错误、不更改就绪条件、不让未知状态通过。失败证据采集不新增公网探测，也不输出原始订阅配置或命令错误正文。

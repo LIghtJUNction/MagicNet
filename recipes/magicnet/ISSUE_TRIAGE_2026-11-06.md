@@ -4,7 +4,7 @@
 
 用户授权直接合并并处理 Issue/PR。本记录追踪三个项目仓库的当前事项；源码候选仍在最终整合与门禁阶段，以下本地结果不能替代尚未完成的 CI 或物理设备验收。
 
-此前 DNS 修复已经合并：[源码 PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2)、[模板 PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21)、[主仓库 PR #441](https://github.com/LIghtJUNction/MagicNet/pull/441)。本轮核对时三仓库均无待合并 PR；主仓库有五个开放 Issue。两个尚未解决的 DNS 审查线程已补充依据并标记解决：保留用户显式解析器属于兼容边界；当前固定核心按 transport tag 隔离 DNS 缓存，不能套用旧版独立缓存开关的结论。
+此前 DNS 修复已经合并：[源码 PR #2](https://github.com/LIghtJUNction/magicnet-android/pull/2)、[模板 PR #21](https://github.com/LIghtJUNction/MagicSingBox/pull/21)、[主仓库 PR #441](https://github.com/LIghtJUNction/MagicNet/pull/441)。本轮初始核对时三仓库均无待合并 PR；主仓库有五个开放 Issue。两个尚未解决的 DNS 审查线程已补充依据并标记解决：保留用户显式解析器属于兼容边界；当前固定核心按 transport tag 隔离 DNS 缓存，不能套用旧版独立缓存开关的结论。
 
 ## Issue 处置与证据边界
 
@@ -40,7 +40,25 @@ Android TLS 验收补入实际退出码、固定错误分类、GET 计数、主�
 
 原 main `faa7d956324a20889cb921ff35c9f13b66dc0c1a` 的 [Android run 42192735920](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42192735920) 保持失败记录：cold-boot 的 `curl_tls_positive_failed`，当时未保存 curl 详细原因。失败产物 SHA-256 为 `154930452efb433dba982bc77eb193690359b0a0f60aa5c1836227d0720f6028`。本轮修订后使用新提交运行完整门禁，不把旧失败改写成成功。
 
-候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。最终源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。最新提交的最终门禁与合并结果将在完成后补齐。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
+候选已按修复单元增量推送：安装与历史 `cacbb3456686d0b819650b079bfcfeec478cdd72`，TLS `ccbaada2feb108805e2d45654cf1df345d95cd5e`，监督恢复 `ef56af9a964f73cf0b5cb618492b9831850ee861`。独立启动恢复入口追加 `1439c08c2e454354d52db6a3700af8bb84b2104b`，旧代码在真实配置锁夹具内启动维护进程，修复后锁内只保留核心/策略事务，维护进程全部锁外恢复；这证明锁序缺口，不证明实际设备必然死锁。首次整合源码为 `39ba7487f187d44febaf573c3ba1faf3992e0797`，tree `4e16922735c22fc696c6dd73b6a44182e8635acb`，对应 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3)，主仓库 gitlink 指向该提交。整合后官方 ShellCheck、823 个跟踪文本的 source lint 与 Rust fmt 通过。首次 PR 候选的 Android run [42211936356](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42211936356) 为 attempt 1，随后由仅修正文档证据边界的新提交替代；生产与测试代码未变。最新提交的最终门禁与合并结果将在完成后补齐。软件版本保持 1.8.5 / 10613，本次不创建正式 Release。
+
+### 中间候选 39ba7487 的实际整合结果
+
+以下均为该候选的 attempt 1，不用其他源码的结果替代。受测 PR merge 提交为 `aa38c7ab9ff949a4a2d504733e93c35054a5fd2a`，其 tree 与 PR head 相同。
+
+| 工作流 | 结果 |
+| --- | --- |
+| [Code Quality 42212473927](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473927) | 7 个 job 全部成功，包含匹配 stable 的 Rust Clippy 与完整质量门槛 |
+| [Build Kam Module 42212473994](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473994) | 构建、包内容与分包门槛成功，未创建正式发行 |
+| [Network regression 42212473950](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473950) | 成功 |
+| [Rules Release Integration 42212474058](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212474058) | 成功 |
+| [Network Regression Evidence 42212474059](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212474059) | 成功 |
+| [Install Onboarding 42212474153](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212474153) | contracts 与真实浏览器测试成功；依赖安装用时 22 分 56 秒，完成后的日志定位为 Ubuntu 镜像的字体下载慢及回退；实际浏览器测试用时 38 秒 |
+| [Android KernelSU Acceptance 42212473958](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473958) | harness 成功；environment、kernelsu-bootstrap、install-before-first-boot 通过；cold-boot 失败，其余 8 阶段未运行 |
+
+Android 在 2026-11-06 12:01:23–12:04:43 UTC 执行生命周期步骤；cold-boot 等待约 130.465 秒后报 `core process/API/TUN did not become ready`。失败时核心进程为 running，API ready=true，但 `transparent.dataplane_ready` 和整体 readiness 均为 null，生命周期为 running_unknown；TUN 日志仍有接收连接。该产物没有路由快照或 health 详细理由，尚不能仅凭 null 判断具体命令、解析或预算故障。
+
+本轮尚未进入本地 TLS proof，因而没有 `module-curl-controls.json` 或 `local_tls_diagnostics`；不能把本次失败归因于证书或时钟，也不能宣称新增 TLS 诊断已经通过 Android 验收。[失败产物 13499539200](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42212473958/artifacts/13499539200) 为 169,342 字节，SHA-256 `fcb5f4e271493083809c7a23731cd0bb4baa35f1bd5bb220ce1adc157b9bf996`，下载校验与 GitHub digest 一致。修复后将使用新源码运行，不覆盖这次失败。
 
 ## 剩余验收
 
