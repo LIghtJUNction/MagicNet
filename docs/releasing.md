@@ -4,7 +4,7 @@
 
 ## 在网页上发布
 
-打开入口，点击 **Run workflow**，选择主仓库 **main**。日常发布选择 `mode=publish`、`bump=patch`；需要使用源码仓库最新提交时填写 `source_ref=main`。点击运行后，工作流会完成版本规划、构建、完整质量检查、Android/KernelSU 模拟器验收、资产校验、草稿上传和公开发布。稳定版公开成功后，再更新主仓库 `update.json`。
+打开入口，点击 **Run workflow**，选择主仓库 **main**。日常发布选择 `mode=publish`、`bump=patch`；需要使用源码仓库最新提交时填写 `source_ref=main`。点击运行后，工作流会完成版本规划、构建、完整质量检查、Android/KernelSU 模拟器验收、资产校验、草稿上传和公开发布。稳定版公开成功后，再同步主仓库 `update.json` 和三个 README 的当前发行版本、版本号与下载说明链接。
 
 要指定版本，例如 `1.9.0`，选择 `bump=none`，在 `version` 填写 `1.9.0` 或 `v1.9.0`。`version_code` 留空即可自动计算。已有源码声明版本尚未发布时，也可以选择 `bump=none` 并留空 `version`，直接构建、验收并发布该版本。
 
@@ -59,12 +59,16 @@ Actions 的构建 artifact 包含 `MagicNet.zip`、`MagicNet-core.zip`、`magicn
 
 主仓库涉及工作流、发布脚本或源码指针的 PR 会执行下一补丁版的完整验收预览，覆盖跨仓库调用和版本注入；普通 main push 执行轻量配方与发布脚本回归。源码仓库日常 CI 继续验证自己的实现。真实 arm64 手机和真实网络验收需要单独记录，模拟器结果按模拟器范围报告。
 
+轻量检查也会运行 `bash scripts/check-workflows.sh`，用固定版本、固定 SHA-256 的 actionlint 检查仓库内全部 `.github/workflows/*.yml` 和 `*.yaml`。它检查 Actions 的字段、表达式上下文、任务依赖及可复用工作流接口，不把只读 YAML 解析成功当作工作流有效。已有 ShellCheck、Python 和产品测试继续各自执行。
+
+权限使用 GitHub 支持的静态值：`plan_read` 处理 PR、`build` 和 `verify`，只有 `contents: read`；`plan_publish` 只处理显式 `publish`，使用 `contents: write` 创建快照。两者共用同一准备 action，`plan` 仅选择成功结果。构建和验收显式检查前置任务成功，避免另一规划任务被正常跳过时连带跳过整个构建。公开发行还必须同时确认计划、构建、Android 和最终资产验证全部成功。
+
 ## 失败后继续
 
 构建或验收失败会阻止公开 Release。上传先使用草稿，并逐项核对服务端资产名称、大小和 SHA-256；完整资产检查通过后才公开。既有正式版本和已上传但内容不匹配的资产不会被覆盖。
 
 如果上传中断，使用原运行的 **Re-run failed jobs**。工作流核对原运行、原 artifact ID 和固定快照，保留已经校验通过的资产，只补齐缺失文件，再验证完整清单。重新构建导致 artifact ID 改变时，会拒绝替换已有草稿，避免把两次构建拼成一个版本。
 
-如果 Release 已公开但稳定索引同步失败，结果会明确显示“Release 已发布，索引同步失败”。重跑失败的发布 job 会先核对已公开资产，然后继续索引同步，不会重复创建版本。同步基于最新 main 的小范围提交，保留其他代码变更，并拒绝把较新的稳定索引回退。
+如果 Release 已公开但稳定索引同步失败，结果会明确显示“Release 已发布，索引同步失败”。重跑失败的发布 job 会先核对已公开资产，然后继续索引同步，不会重复创建版本。同步基于最新 main 的小范围提交，同时更新稳定索引和 README 的当前发行字段，保留历史版本说明、并发文档编辑及源码 gitlink，并拒绝把较新的稳定索引回退。即使 `update.json` 已同步，重跑仍会检查并补齐遗漏的 README 字段。
 
 预发布始终保留稳定更新索引，公开成功后只同步发行说明，保证 changelog 链接可访问。正式发布及快照写入使用主仓库自带 `GITHUB_TOKEN`；源码构建和 Android jobs 只有读取权限。

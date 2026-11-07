@@ -29,6 +29,7 @@ FIXTURE = load_module("release_fixture", "test-release.py")
 RELEASE = FIXTURE.RELEASE
 with patch.dict(sys.modules, {"release": RELEASE}):
     PLANNER = load_module("release_planner", "release-plan.py")
+RECIPES = load_module("recipe_checks", "check-recipes.py")
 
 
 class FakeGitHub:
@@ -124,6 +125,40 @@ class ReleasePlanTest(unittest.TestCase):
     assets = FIXTURE.ReleaseTest.assets
     checksums = FIXTURE.ReleaseTest.checksums
 
+    def readmes(self, version="v1.2.2", code=122, source_sha=None):
+        """Use the maintained README field shapes, plus history using the same old version."""
+        source_sha = source_sha or self.source_sha
+        tag = f"https://github.com/{RELEASE.REPOSITORY}/releases/tag/{version}"
+        notes = f"docs/releases/{version}.md"
+        history = ("\nHistorical release: [v1.2.2 / 122]"
+                   f"(https://github.com/{RELEASE.REPOSITORY}/releases/tag/v1.2.2). "
+                   "[v1.2.2 installation notes](docs/releases/v1.2.2.md).\n"
+                   "The source metadata is v1.2.3 / 123; v9.0.0 is only a version example.\n\n")
+        return {
+            "README.md": (
+                "\n# MagicNet\n\n"
+                f"  [![Android release](https://img.shields.io/badge/Android-{version}"
+                f"%20%2F%20{code}-111111?style=flat-square&logo=android)]({tag})\n\n"
+                "| Install and use MagicNet | [Releases]"
+                f"(https://github.com/{RELEASE.REPOSITORY}/releases) and "
+                f"[{version} installation notes]({notes}) |\n"
+                f"| Published Android package | [`{version} / {code}`]({tag}) |\n"
+                f"| Fixed implementation commit | `{source_sha}` |\n" + history),
+            "README.en.md": (
+                "# MagicNet\n\nOriginal v1.2.2 / 122 evidence stays unchanged. "
+                f"current gitlink: `{source_sha}`; current Android release: "
+                f"[{version} / {code}]({tag}). [Release and installation notes]({notes}).\n" + history),
+            "README.ru.md": (
+                "# MagicNet\n\nИсторический выпуск v1.2.2 / 122. "
+                f"текущий gitlink: `{source_sha}`; текущий выпуск Android: "
+                f"[{version} / {code}]({tag}). [Установка и изменения]({notes}).\n" + history),
+        }
+
+    def main_readmes(self):
+        return {path: subprocess.check_output(
+            ["git", "-C", str(self.origin), "show", f"main:{path}"],
+        ).decode("utf-8") for path in self.readmes()}
+
     def setUp(self):
         FIXTURE.ReleaseTest.setUp(self)
         temporary = tempfile.TemporaryDirectory(prefix="magicnet-release-remotes-")
@@ -136,7 +171,10 @@ class ReleasePlanTest(unittest.TestCase):
         self.git(self.source, "remote", "add", "origin", str(self.source_origin))
         # The published stable index legitimately lags behind source development.
         self.write(self.root / "update.json", PLANNER.json_text(RELEASE.updater("v1.2.2", 122)))
-        self.git(self.root, "add", "update.json")
+        for path, text in self.readmes().items():
+            self.write(self.root / path, text)
+        self.write(self.root / "recipes/magicnet/DEPENDENCIES.md", f"Current source: {self.source_sha}\n")
+        self.git(self.root, "add", "update.json", *self.readmes(), "recipes")
         self.git(self.root, "commit", "-m", "Index previous stable release")
         self.git(self.root, "push", "origin", "main")
         self.base = self.git(self.root, "rev-parse", "HEAD")
@@ -513,19 +551,108 @@ class ReleasePlanTest(unittest.TestCase):
     def test_stable_index_sync_preserves_new_main_files_and_gitlink_then_is_idempotent(self):
         self.publish_release()
         source_sha = self.advance_source("Main has newer development source")
-        newer_main = self.set_remote_main(files={"README.md": "Concurrent documentation change\n"}, source_sha=source_sha)
+        concurrent = "Concurrent documentation change: keep v1.2.2 / 122 as historical evidence.\n\n"
+        files = {path: text + concurrent for path, text in self.readmes(source_sha=source_sha).items()}
+        files["recipes/magicnet/DEPENDENCIES.md"] = f"Current source: {source_sha}\n"
+        files["CONTRIBUTING.md"] = "A concurrent document must remain untouched.\n"
+        newer_main = self.set_remote_main(files=files, source_sha=source_sha)
         self.git(self.source, "checkout", "--detach", self.source_sha)
         snapshot = self.git(self.root, "rev-parse", "HEAD")
         PLANNER.sync_index(self.root, self.directory)
         updated = self.git(self.origin, "rev-parse", "main")
         self.assertEqual(self.git(self.origin, "rev-parse", "main^"), newer_main)
         self.assertEqual(json.loads(self.git(self.origin, "show", "main:update.json")), RELEASE.updater("v1.2.3", 123))
-        self.assertEqual(self.git(self.origin, "show", "main:README.md"), "Concurrent documentation change")
+        expected_readmes = {path: text + concurrent
+                            for path, text in self.readmes("v1.2.3", 123, source_sha).items()}
+        self.assertEqual(self.main_readmes(), expected_readmes)
+        self.assertEqual(self.git(self.origin, "show", "main:CONTRIBUTING.md"), files["CONTRIBUTING.md"].strip())
         self.assertEqual(self.git(self.origin, "ls-tree", "main", RELEASE.SOURCE).split()[2], source_sha)
         self.assertNotIn(RELEASE.PLAN_FILE, self.git(self.origin, "ls-tree", "--name-only", "main"))
         self.assertEqual(self.git(self.root, "rev-parse", "HEAD"), snapshot)
+        with tempfile.TemporaryDirectory(prefix="magicnet-synced-pins-") as temporary:
+            checkout = Path(temporary) / "recipe"
+            self.git(self.root, "clone", str(self.origin), str(checkout))
+            self.assertEqual(RECIPES.verify_live_pins(checkout), (source_sha, "v1.2.3", 123))
         PLANNER.sync_index(self.root, self.directory)
         self.assertEqual(self.git(self.origin, "rev-parse", "main"), updated)
+
+    def test_stable_index_repairs_readmes_when_updater_and_notes_are_already_current(self):
+        self.publish_release()
+        partial = self.readmes()
+        partial["README.en.md"] = self.readmes("v1.2.3", 123)["README.en.md"]
+        partial["README.md"] += "New main text after the first synchronization.\n"
+        previous = self.set_remote_main(RELEASE.updater("v1.2.3", 123), files=partial)
+        PLANNER.sync_index(self.root, self.directory)
+        updated = self.git(self.origin, "rev-parse", "main")
+        self.assertNotEqual(updated, previous)
+        self.assertEqual(self.git(self.origin, "rev-parse", "main^"), previous)
+        expected = self.readmes("v1.2.3", 123)
+        expected["README.md"] += "New main text after the first synchronization.\n"
+        self.assertEqual(self.main_readmes(), expected)
+        PLANNER.sync_index(self.root, self.directory)
+        self.assertEqual(self.git(self.origin, "rev-parse", "main"), updated)
+
+    def test_stable_index_push_retry_preserves_the_newest_readme_edits(self):
+        self.publish_release()
+        raced = []
+        concurrent = "Another maintainer edited this translation while sync was pushing.\n"
+
+        def race_before_first_push(repo, *args):
+            if args[:2] == ("push", "origin") and args[-1].endswith(":refs/heads/main") and not raced:
+                files = self.readmes()
+                files["README.ru.md"] += concurrent
+                raced.append(self.set_remote_main(files=files))
+            return self.git(repo, *args)
+
+        with patch.object(PLANNER, "git", race_before_first_push):
+            PLANNER.sync_index(self.root, self.directory)
+        self.assertEqual(len(raced), 1)
+        self.assertEqual(self.git(self.origin, "rev-parse", "main^"), raced[0])
+        expected = self.readmes("v1.2.3", 123)
+        expected["README.ru.md"] += concurrent
+        self.assertEqual(self.main_readmes(), expected)
+
+    def test_stable_index_refuses_to_regress_a_newer_readme_release_or_code(self):
+        self.publish_release()
+        for version, code in (("v1.4.0", 200), ("v1.2.3", 999)):
+            with self.subTest(version=version, code=code):
+                files = self.readmes()
+                files["README.en.md"] = self.readmes(version, code)["README.en.md"]
+                previous = self.set_remote_main(files=files)
+                before = self.main_readmes()
+                with self.assertRaisesRegex(ValueError, "README.en.md.*must not regress"):
+                    PLANNER.sync_index(self.root, self.directory)
+                self.assertEqual(self.git(self.origin, "rev-parse", "main"), previous)
+                self.assertEqual(self.main_readmes(), before)
+
+    def test_stable_index_rejects_missing_or_ambiguous_current_readme_fields(self):
+        self.publish_release()
+        missing = self.readmes()["README.md"].replace("Published Android package", "Historical Android package")
+        duplicate = self.readmes()["README.ru.md"] * 2
+        for path, text in (("README.md", missing), ("README.ru.md", duplicate)):
+            with self.subTest(path=path):
+                files = self.readmes()
+                files[path] = text
+                previous = self.set_remote_main(files=files)
+                with self.assertRaisesRegex(ValueError, "exactly one current"):
+                    PLANNER.sync_index(self.root, self.directory)
+                self.assertEqual(self.git(self.origin, "rev-parse", "main"), previous)
+
+    def test_stable_index_updates_the_repository_readme_layouts_without_touching_history(self):
+        self.publish_release()
+        repository = Path(__file__).resolve().parents[1]
+        stable = json.loads((repository / "update.json").read_text())
+        files = {path: (repository / path).read_text().replace(stable["version"], "v1.2.2")
+                 .replace(str(stable["versionCode"]), "122") for path in self.readmes()}
+        self.set_remote_main(files=files)
+        PLANNER.sync_index(self.root, self.directory)
+        updated = self.main_readmes()
+        for path, text in updated.items():
+            self.assertIn("v1.2.3 / 123", text)
+            self.assertIn("docs/releases/v1.2.3.md", text)
+            self.assertEqual(text.count("v1.8.0"), files[path].count("v1.8.0"))
+            self.assertEqual(text.count("v1.8.1"), files[path].count("v1.8.1"))
+        self.assertIn("Android-v1.2.3%20%2F%20123-111111", updated["README.md"])
 
     def test_stable_index_does_not_downgrade_a_newer_release(self):
         self.publish_release()
@@ -550,11 +677,13 @@ class ReleasePlanTest(unittest.TestCase):
         os.environ["GITHUB_SHA"] = self.base
         before_update = subprocess.check_output(["git", "-C", str(self.origin), "show", "main:update.json"])
         before_gitlink = self.git(self.origin, "ls-tree", "main", RELEASE.SOURCE)
+        before_readmes = self.main_readmes()
         self.publish_release(prerelease=True)
         PLANNER.sync_index(self.root, self.directory)
         self.assertEqual(self.git(self.origin, "show", f"main:{notes_path}"), (self.root / notes_path).read_text().strip())
         self.assertEqual(subprocess.check_output(["git", "-C", str(self.origin), "show", "main:update.json"]), before_update)
         self.assertEqual(self.git(self.origin, "ls-tree", "main", RELEASE.SOURCE), before_gitlink)
+        self.assertEqual(self.main_readmes(), before_readmes)
         self.assertNotIn(RELEASE.PLAN_FILE, self.git(self.origin, "ls-tree", "--name-only", "main"))
         synced = self.git(self.origin, "rev-parse", "main")
         PLANNER.sync_index(self.root, self.directory)
