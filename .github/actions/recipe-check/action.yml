@@ -3,6 +3,9 @@ description: Check the complete recipe archive, prompt and release boundary regr
 runs:
   using: composite
   steps:
+    - name: Validate all workflow semantics
+      shell: bash
+      run: bash scripts/check-workflows.sh
     - name: Install pinned Recipkg CLI
       shell: bash
       run: |

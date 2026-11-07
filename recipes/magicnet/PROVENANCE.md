@@ -289,3 +289,10 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 ## 2026-11-07 当前 gitlink 回读
 
 当前主仓库 gitlink 为 [`b989227b140a7627edff8b60ad87655cb09ac2d0`](https://github.com/LIghtJUNction/magicnet-android/commit/b989227b140a7627edff8b60ad87655cb09ac2d0)，tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`，由源码 PR [#4](https://github.com/LIghtJUNction/magicnet-android/pull/4) 与主仓库 PR [#443](https://github.com/LIghtJUNction/MagicNet/pull/443) 接入。该提交只补齐完整质量套件所需 mksh，不改变 0.3.16 已验收的运行时。已发布 Android 包仍以根 `update.json` 的 v1.8.4 / 10612 为准；源码 metadata 仍为 1.8.5 / 10613。#436 与 #440 保持开放。
+
+
+## 2026-11-07 工作流审计后的固定点
+
+工作流逐项审计后，源码先推送至 [`af3930bd9860344688efa62684afdd7ba4ba25f5`](https://github.com/LIghtJUNction/magicnet-android/commit/af3930bd9860344688efa62684afdd7ba4ba25f5)，tree `60a573d8a4d7e349f70801edbf3b3882e8a9dd8a`，主仓库 [PR #445](https://github.com/LIghtJUNction/MagicNet/pull/445) 同步 gitlink 与两个可复用工作流引用。相对上节 b989 固定点，三个源码提交分别加入全部工作流语义检查、配置 gitlink 精确触发和 ADB 成功测试的独立预算；生产脚本、模块版本及嵌套依赖固定点保持。此前 b989 的通过记录仍属于原提交，不移作新提交的证据。
+
+源码 metadata 仍为 1.8.5 / 10613，公开稳定版仍为 v1.8.4 / 10612。完整工作流修复、失败根因与复验记录由主仓库 docs/workflow-audit-2026-11-07.md 汇总；发布预览产生的候选包不改变已发布版本。

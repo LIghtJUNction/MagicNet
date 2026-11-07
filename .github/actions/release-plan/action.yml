@@ -1,0 +1,69 @@
+name: Prepare MagicNet release plan
+description: Validate recipes, select the version and save the immutable plan
+inputs:
+  mode:
+    description: build, verify or publish
+    required: true
+  bump:
+    description: none, patch, minor or major
+    default: none
+  version:
+    description: Optional exact version
+    default: ''
+  version_code:
+    description: Optional Android versionCode
+    default: ''
+  source_ref:
+    description: Optional source repository ref
+    default: ''
+  prerelease:
+    description: Whether publication is a prerelease
+    default: 'false'
+outputs:
+  source_sha:
+    description: Fixed source commit
+    value: ${{ steps.plan.outputs.source_sha }}
+  recipe_sha:
+    description: Fixed recipe commit
+    value: ${{ steps.plan.outputs.recipe_sha }}
+  version:
+    description: Selected module version
+    value: ${{ steps.plan.outputs.version }}
+  version_code:
+    description: Selected Android versionCode
+    value: ${{ steps.plan.outputs.version_code }}
+  artifact_id:
+    description: Immutable plan artifact ID
+    value: ${{ steps.artifact.outputs.artifact-id }}
+runs:
+  using: composite
+  steps:
+    - name: Initialize pinned implementation
+      shell: bash
+      run: git submodule update --init --depth 1 -- generated/magicnet-android
+    - uses: ./.github/actions/recipe-check
+    - name: Select version and freeze the release snapshot
+      id: plan
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_MODE: ${{ inputs.mode }}
+        BUMP: ${{ inputs.bump }}
+        VERSION: ${{ inputs.version }}
+        VERSION_CODE: ${{ inputs.version_code }}
+        SOURCE_REF: ${{ inputs.source_ref }}
+        PRERELEASE: ${{ inputs.prerelease }}
+      run: |
+        args=(prepare --mode "$RELEASE_MODE" --bump "$BUMP" --version "$VERSION"
+              --version-code "$VERSION_CODE" --source-ref "$SOURCE_REF"
+              --output "$RUNNER_TEMP/plan/release-plan.json")
+        if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
+        python3 scripts/release-plan.py "${args[@]}"
+    - name: Save immutable release plan
+      id: artifact
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: magicnet-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/plan/release-plan.json
+        if-no-files-found: error
+        retention-days: 30

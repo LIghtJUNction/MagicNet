@@ -9,7 +9,7 @@
 - 保留操作流程，视觉沿用矿白、石墨与玉绿身份，增加留白、减少重复边框，用排版和背景层次组织内容；空间与控件规则见 webui 的 DESIGN.md。保留诊断、文件草稿、失败恢复和无障碍状态。
 - 沿用现有语种：WebUI zh-CN/en/ru；安装向导和操作菜单保留已有中、英、俄、日、韩语言能力及各自回退。机器 token、命令参数、配置内容、日志不翻译。
 - 测量并记录现有性能基线；性能预算未知，不能把基线直接宣布为承诺。见 PERFORMANCE.md。
-- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@b989227b140a7627edff8b60ad87655cb09ac2d0（tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`）；其 v1.8.0 导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进；当前实现保留同期教育模板与精确默认 pin 迁移、低频联网恢复、单文件诊断和全部模块归档排除测试目录；本轮替换各层共享实现及 kamfw 运行时，并保留最终锁分离和诊断日志修正，按 REWRITE_CONTRACT.md 分开记录完整回归、原版缺陷和最终定向复验。正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
+- 项目和主仓库名称保持 MagicNet，不加 recipkg 后缀。配方为本体；generated/ 只作容器，实现放在独立的小写连字符源码仓库，以固定提交子模块接入 generated/<source-repository-name>/，仓库名与子目录名相同。当前源码固定为 LIghtJUNction/magicnet-android@af3930bd9860344688efa62684afdd7ba4ba25f5（tree `60a573d8a4d7e349f70801edbf3b3882e8a9dd8a`）；其 v1.8.0 导入基线 `0dca28dd984d82333707cbf4b222596934b4d847` 的完整 tree 与原仓库 v1.8.0 相同。后续提交包含订阅修复、跨仓库构建发布兼容、服务交接与 PID 校验修复、日志内存优化、前端留白与边框调整，以及逐源转换下界、共享有界来源观测和固定上游内核同步/连接资源清理与手机端导航和输入改进；当前实现保留同期教育模板与精确默认 pin 迁移、低频联网恢复、单文件诊断和全部模块归档排除测试目录；本轮替换各层共享实现及 kamfw 运行时，并保留最终锁分离和诊断日志修正，按 REWRITE_CONTRACT.md 分开记录完整回归、原版缺陷和最终定向复验。正式构建发布的状态与证据见 VERIFICATION.md，尚未部署设备。main 跟踪 gitlink 和 .gitmodules；源码与观察 checkout 均不是 Recipkg 依赖，不进入配方负载。原仓库历史标签保留发行来源。
 - 用户反馈与 Issue 转录见 FEEDBACK.md；M18–M29 保留原需求，M30–M39 新增多订阅、Encryption、可观测状态和重建交付验收。SOURCE_AUDIT.md 分开记录基线缺陷、当前源码修复和仍未知事项；配方合同或源码 main 更新都不等于 Android 版本已发布/部署或 #426 根因已确认。
 
 Android 全产品最低版本及 WebView 最低版本仍未知。Java 网络策略桥以 API 26 为最低目标不等于整个产品保证支持 Android 8。不得从一台 Android 14 设备推导全版本兼容。
@@ -126,4 +126,4 @@ Android CLI 明确使用系统路由、没有显式网卡或网络策略绑定�
 
 ## 0.3.17 跨仓库发布入口
 
-接入 delivery 0.2.8：主仓库统一版本选择、固定源码/发行快照和官方 Release；源码仓库维护可复用构建与同版本 Android 验收。支持 bump 或自定义版本/code，稳定 updater 仅在公开成功后更新，预发布保留稳定索引；相同 run 的失败恢复绑定原 artifact。新增 M65，运行时接口与八包依赖闭包保持。可复用工作流与当前 gitlink 均为 `b989227b140a7627edff8b60ad87655cb09ac2d0`；相对 0.3.16 的 Issue 验收提交 `8ff1242817038dfe220a68b75934d6b127bea4b1` 只补齐完整质量套件所需 mksh。具体操作见主仓库 docs/releasing.md，重建语义见 delivery/RELEASE_CONTRACT.md。
+接入 delivery 0.2.8：主仓库统一版本选择、固定源码/发行快照和官方 Release；源码仓库维护可复用构建与同版本 Android 验收。支持 bump 或自定义版本/code，稳定 updater 仅在公开成功后更新，预发布保留稳定索引；相同 run 的失败恢复绑定原 artifact。新增 M65，运行时接口与八包依赖闭包保持。可复用工作流与当前 gitlink 均为 `af3930bd9860344688efa62684afdd7ba4ba25f5`；相对 0.3.16 的 Issue 验收提交 `8ff1242817038dfe220a68b75934d6b127bea4b1`，后续 CI 修订补齐完整质量套件所需 mksh、全部工作流语义检查、配置 gitlink 精确触发与 ADB 成功测试的独立超时预算，生产运行时保持。主仓库使用静态权限，公开发行前明确要求计划、构建、Android 与资产验证全部成功；稳定版公开后同步 updater 与 README 的当前发行字段。具体操作见主仓库 docs/releasing.md，重建语义见 delivery/RELEASE_CONTRACT.md。

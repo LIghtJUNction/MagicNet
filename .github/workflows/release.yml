@@ -55,56 +55,96 @@ defaults:
     shell: bash
 
 jobs:
-  plan:
+  plan_read:
+    name: Plan build or verification
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'publish'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'publish' && 'write' || 'read' }}
+      contents: read
     outputs:
       source_sha: ${{ steps.plan.outputs.source_sha }}
       recipe_sha: ${{ steps.plan.outputs.recipe_sha }}
       version: ${{ steps.plan.outputs.version }}
       version_code: ${{ steps.plan.outputs.version_code }}
-      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      artifact_id: ${{ steps.plan.outputs.artifact_id }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
-          persist-credentials: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'publish' }}
+          persist-credentials: false
           fetch-depth: 2
-      - name: Initialize pinned implementation
-        run: git submodule update --init --depth 1 -- generated/magicnet-android
-      - uses: ./.github/actions/recipe-check
-      - name: Select version and freeze the release snapshot
+      - uses: ./.github/actions/release-plan
         id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_MODE: ${{ inputs.mode || 'verify' }}
-          BUMP: ${{ inputs.bump || 'patch' }}
-          VERSION: ${{ inputs.version }}
-          VERSION_CODE: ${{ inputs.version_code }}
-          SOURCE_REF: ${{ inputs.source_ref }}
-          PRERELEASE: ${{ inputs.prerelease }}
-        run: |
-          args=(prepare --mode "$RELEASE_MODE" --bump "$BUMP" --version "$VERSION"
-                --version-code "$VERSION_CODE" --source-ref "$SOURCE_REF"
-                --output "$RUNNER_TEMP/plan/release-plan.json")
-          if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
-          python3 scripts/release-plan.py "${args[@]}"
-      - name: Save immutable release plan
-        id: artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: magicnet-plan-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/plan/release-plan.json
-          if-no-files-found: error
-          retention-days: 30
+          mode: ${{ inputs.mode || 'verify' }}
+          bump: ${{ inputs.bump || 'patch' }}
+          version: ${{ inputs.version }}
+          version_code: ${{ inputs.version_code }}
+          source_ref: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease || false }}
+
+  plan_publish:
+    name: Plan publication
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      recipe_sha: ${{ steps.plan.outputs.recipe_sha }}
+      version: ${{ steps.plan.outputs.version }}
+      version_code: ${{ steps.plan.outputs.version_code }}
+      artifact_id: ${{ steps.plan.outputs.artifact_id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+          fetch-depth: 2
+      - uses: ./.github/actions/release-plan
+        id: plan
+        with:
+          mode: publish
+          bump: ${{ inputs.bump }}
+          version: ${{ inputs.version }}
+          version_code: ${{ inputs.version_code }}
+          source_ref: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease || false }}
+
+  plan:
+    name: Select completed release plan
+    needs: [plan_read, plan_publish]
+    # Exactly one planner is intentionally skipped. Explicit status conditions
+    # also keep that skipped ancestor from silently skipping downstream jobs.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      source_sha: ${{ needs.plan_read.outputs.source_sha || needs.plan_publish.outputs.source_sha }}
+      recipe_sha: ${{ needs.plan_read.outputs.recipe_sha || needs.plan_publish.outputs.recipe_sha }}
+      version: ${{ needs.plan_read.outputs.version || needs.plan_publish.outputs.version }}
+      version_code: ${{ needs.plan_read.outputs.version_code || needs.plan_publish.outputs.version_code }}
+      artifact_id: ${{ needs.plan_read.outputs.artifact_id || needs.plan_publish.outputs.artifact_id }}
+    steps:
+      - name: Require one successful planner and one skipped planner
+        env:
+          READ_RESULT: ${{ needs.plan_read.result }}
+          PUBLISH_RESULT: ${{ needs.plan_publish.result }}
+        run: |
+          case "$READ_RESULT/$PUBLISH_RESULT" in
+            success/skipped|skipped/success) ;;
+            *) echo '::error::Release planning failed or returned an ambiguous result'; exit 1 ;;
+          esac
 
   build:
     needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     permissions:
       contents: read
-    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@b989227b140a7627edff8b60ad87655cb09ac2d0
+    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@af3930bd9860344688efa62684afdd7ba4ba25f5
     with:
       source_sha: ${{ needs.plan.outputs.source_sha }}
       recipe_sha: ${{ needs.plan.outputs.recipe_sha }}
@@ -114,10 +154,10 @@ jobs:
 
   android:
     needs: plan
-    if: github.event_name == 'pull_request' || inputs.mode == 'publish' || inputs.mode == 'verify'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (github.event_name == 'pull_request' || inputs.mode == 'publish' || inputs.mode == 'verify') }}
     permissions:
       contents: read
-    uses: LIghtJUNction/magicnet-android/.github/workflows/android-kernelsu-acceptance.yml@b989227b140a7627edff8b60ad87655cb09ac2d0
+    uses: LIghtJUNction/magicnet-android/.github/workflows/android-kernelsu-acceptance.yml@af3930bd9860344688efa62684afdd7ba4ba25f5
     with:
       source_sha: ${{ needs.plan.outputs.source_sha }}
       release_version: ${{ needs.plan.outputs.version }}
@@ -126,6 +166,7 @@ jobs:
   verify:
     name: Verify release assets
     needs: [plan, build]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -156,7 +197,7 @@ jobs:
 
   publish:
     needs: [plan, build, android, verify]
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.mode == 'publish' && needs.plan.result == 'success' && needs.build.result == 'success' && needs.android.result == 'success' && needs.verify.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

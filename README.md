@@ -43,13 +43,13 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | --- | --- |
 | Published Android package | [`v1.8.4 / 10612`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4) |
 | Recipe | `0.3.17` |
-| Fixed implementation commit | `b989227b140a7627edff8b60ad87655cb09ac2d0` |
+| Fixed implementation commit | `af3930bd9860344688efa62684afdd7ba4ba25f5` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
 | Unreleased source metadata | `v1.8.5 / 10613` in the pinned tree: process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
 
-Recipe `0.3.17` records the split-repository release entry and the current source pin `b989227b140a7627edff8b60ad87655cb09ac2d0`. That pin includes the Issue recovery work plus a CI-only mksh install for the full quality suite; it does not publish a new Android package. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work (#436, #440).
+Recipe `0.3.17` records the split-repository release entry and the current source pin `af3930bd9860344688efa62684afdd7ba4ba25f5`. That pin includes the Issue recovery work, mksh for the full quality suite, checks for every workflow, an exact submodule trigger path, and a separate timeout budget for the successful ADB test fixture. These CI changes preserve Android runtime behavior and software versions. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work (#436, #440).
 
 Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`. The fixed core passed host tests, Linux amd64 and Android arm64 builds and final Linux configuration/DNS checks. Measured memory results apply to the specific sing-tun lifecycle experiment; Android RSS and device traffic remain unverified. Source identities, exclusions and original evidence are tracked in the verification record.
 

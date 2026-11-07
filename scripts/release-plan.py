@@ -22,6 +22,69 @@ def json_text(value):
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
+def tree_text(root, ref, path):
+    """Read committed text without stripping the document's whitespace."""
+    return subprocess.check_output(
+        ["git", "-C", str(root), "show", f"{ref}:{path}"], stderr=subprocess.PIPE,
+    ).decode("utf-8")
+
+
+def readme_release_text(text, path, update):
+    """Update only the current release fields, never historical release mentions."""
+    version, code = update["version"], update["versionCode"]
+    target = release.version_tuple(version)
+    release.updater(version, code)
+    software_version = r"v[0-9]+\.[0-9]+\.[0-9]+"
+    tag = re.escape(f"https://github.com/{REPO}/releases/tag/") + rf"(?P<tag>{software_version})"
+    pair = (rf"\[`?(?P<version>{software_version})[ \t]*/[ \t]*"
+            rf"(?P<code>[1-9][0-9]*)`?\]\({tag}\)")
+    notes = rf"docs/releases/(?P<notes>{software_version})\.md"
+    patterns = {
+        "README.md": (
+            ("Android release badge",
+             rf"\[!\[Android release\]\(https://img\.shields\.io/badge/Android-"
+             rf"(?P<version>{software_version})%20%2[Ff]%20(?P<code>[1-9][0-9]*)"
+             rf"-[^)\r\n]+\)\]\({tag}\)"),
+            ("published package", rf"^[ \t]*\|[ \t]*Published Android package[ \t]*\|[ \t]*{pair}"),
+            ("installation notes",
+             rf"^[ \t]*\|[ \t]*Install and use MagicNet[ \t]*\|[^\r\n]*?"
+             rf"\[(?P<version>{software_version})[ \t]+installation notes\]\({notes}\)"),
+        ),
+        "README.en.md": (("current Android release",
+                          rf"current Android release:[ \t]*{pair}\.[ \t\r\n]*"
+                          rf"\[Release and installation notes\]\({notes}\)"),),
+        "README.ru.md": (("current Android release",
+                          rf"текущий выпуск Android:[ \t]*{pair}\.[ \t\r\n]*"
+                          rf"\[Установка и изменения\]\({notes}\)"),),
+    }
+    for label, pattern in patterns[path]:
+        matches = list(re.finditer(pattern, text, re.MULTILINE))
+        require(len(matches) == 1, f"{path} must contain exactly one current {label} field")
+        match = matches[0]
+        replacements = []
+        for key, old in match.groupdict().items():
+            if key == "code":
+                require(int(old) <= code, f"{path} versionCode must not regress")
+                value = str(code)
+            else:
+                require(release.version_tuple(old) <= target, f"{path} release version must not regress")
+                value = version
+            replacements.append((*match.span(key), value))
+        for start, end, value in sorted(replacements, reverse=True):
+            text = text[:start] + value + text[end:]
+    return text
+
+
+def readme_updates(root, head, update):
+    files = {}
+    for path in ("README.md", "README.en.md", "README.ru.md"):
+        original = tree_text(root, head, path)
+        updated = readme_release_text(original, path, update)
+        if updated != original:
+            files[path] = updated
+    return files
+
+
 def gh(*args):
     return subprocess.check_output(["gh", *map(str, args)], text=True)
 
@@ -288,9 +351,7 @@ def sync_index(root, directory):
     require(tag and tag[0] == expected["recipe_sha"], "Published tag differs from release snapshot")
     update = json.loads((directory / "update.json").read_text())
     notes_path = f"docs/releases/{expected['version']}.md"
-    files = {notes_path: (root / notes_path).read_text()}
-    if not found["prerelease"]:
-        files["update.json"] = (directory / "update.json").read_text()
+    notes = (root / notes_path).read_text()
     for _ in range(3):
         git(root, "fetch", "--no-tags", "origin", "refs/heads/main")
         head = git(root, "rev-parse", "FETCH_HEAD")
@@ -299,16 +360,26 @@ def sync_index(root, directory):
         if not found["prerelease"] and release.version_tuple(current["version"]) > release.version_tuple(update["version"]):
             print("A newer stable release is already indexed")
             return
-        if found["prerelease"] or current == update:
+        files = {notes_path: notes}
+        if not found["prerelease"]:
+            if current != update:
+                require(update["versionCode"] > current["versionCode"], "Stable updater must not regress")
+            files["update.json"] = (directory / "update.json").read_text()
+            # Read every document from this fetched main, including after a push
+            # race. The snapshot README still describes the previously stable release.
+            files.update(readme_updates(root, head, update))
+        changed = {}
+        for path, text in files.items():
             try:
-                if git(root, "show", f"{head}:{notes_path}") == files[notes_path].strip():
-                    print("Release notes and stable updater are already current")
-                    return
+                if tree_text(root, head, path) == text:
+                    continue
             except subprocess.CalledProcessError:
                 pass
-        else:
-            require(update["versionCode"] > current["versionCode"], "Stable updater must not regress")
-        commit = snapshot_commit(root, head, files, f"chore(release): index {expected['version']}")
+            changed[path] = text
+        if not changed:
+            print("Release notes, stable updater and README release fields are already current")
+            return
+        commit = snapshot_commit(root, head, changed, f"chore(release): index {expected['version']}")
         try:
             git(root, "push", "origin", f"{commit}:refs/heads/main")
             print(f"Release metadata synchronized at {commit}; stable updater "
