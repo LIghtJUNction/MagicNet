@@ -732,3 +732,11 @@ Android arm64 完整 sing-box 核心编译通过。发现并删除 target 指向
 ## 2026-11-06 Issue/PR 修复集成
 
 配方 0.3.16 接入 control 0.2.7、runtime 0.1.8、delivery 0.2.7，保持八包闭包及源码软件版本 1.8.5。最终受测源码 `8ff1242817038dfe220a68b75934d6b127bea4b1` 的七条工作流均在 attempt 1 成功；Android 12/12 阶段、5/5 重启与本地 TLS 三控通过，Google 204 仍未取得。源码 PR #3 合并为 `9664c2ba4a8503df0423b6de2271af8dca1a86dd`，主仓库 PR #442 合并为 `e8394e7cf9044c7f4c2e1f542c3d5a228b8716b4`；#437/#438/#439 已关闭，#436/#440 保持开放。固定源码、历史失败、实际验收、合并及 Issue 回读集中记录在 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。安装器、监督恢复、TLS 与 TUN 检查具有本地反例和回归；main Android 旧失败保留，新 PR 结果独立记录。配方 check/pack/完整提示词验证为 8 包、61 Markdown，发布边界 21 项通过；这些结果不等同于物理设备安装或已创建正式发行。
+
+## 2026-11-07 当前 pin 与发布面回读
+
+公开 Issue 仍为 [#436](https://github.com/LIghtJUNction/MagicNet/issues/436)、[#440](https://github.com/LIghtJUNction/MagicNet/issues/440)；源码仓库无开放 Issue/PR。生产路径扫描未发现可在本配方仓库单独落地的确认漏洞。#436 剩余规则消失根因与 #440 可信 NAS 入口需要源码仓库变更，本轮未向 `magicnet-android` 推送。
+
+配方合同此前仍把当前 gitlink 写成 `8ff1242817038dfe220a68b75934d6b127bea4b1`、把已发布 Android 包写成 v1.8.1 / 10609。HEAD gitlink 实际为 `b989227b140a7627edff8b60ad87655cb09ac2d0`（tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`），根 `update.json` 与 GitHub latest 均为 v1.8.4 / 10612。已把 README、DEPENDENCIES、BUILD_PROMPT、RECIPE、ISSUE_TRIAGE 与 PROVENANCE 的当前固定点对齐，并让 `scripts/check-recipes.py` 拒绝 README/DEPENDENCIES 与 HEAD gitlink 或稳定 updater 不一致。发布 plan job 仅在 `mode=publish` 时保留 contents:write。
+
+本轮本地结果：`python3 scripts/test-check-recipes.py` 4 项通过；`test-release.py` 19 项通过；`test-release-plan.py` 32 项通过；固定 Recipkg CLI 0.1.1 的目录 check/pack/归档 check/完整中文提示词通过，8 包、61 Markdown，输出含 live pin `b989227b140a7627edff8b60ad87655cb09ac2d0 / v1.8.4 10612`。未修改运行时、未创建正式 Release、未部署设备。

@@ -10,6 +10,9 @@ on:
       - .gitmodules
       - generated/magicnet-android
       - update.json
+      - README.md
+      - README.en.md
+      - README.ru.md
   pull_request:
     paths:
       - recipes/**
@@ -18,6 +21,9 @@ on:
       - .gitmodules
       - generated/magicnet-android
       - update.json
+      - README.md
+      - README.en.md
+      - README.ru.md
   merge_group:
 permissions:
   contents: read

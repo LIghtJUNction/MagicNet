@@ -18,3 +18,4 @@ runs:
       run: |
         python3 scripts/test-release.py
         python3 scripts/test-release-plan.py
+        python3 scripts/test-check-recipes.py

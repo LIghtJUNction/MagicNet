@@ -79,7 +79,7 @@ M30–M39 来自本轮 #426 与固定 v1.8.0 源码提取；证据和修正边�
 ## 配方与源码布局验收
 
 - MagicNet 主仓库保留原名称和 `recipes/`。`generated/` 仅包含具名源码子模块；`git ls-tree HEAD generated/magicnet-android` 必须显示 mode `160000`，`.gitmodules` 的 URL 为独立的 `LIghtJUNction/magicnet-android`，仓库与子目录同名。不能整体忽略这个入口。
-- 源码 gitlink 指向已公开可获取的完整提交。干净检出主仓库并初始化该子模块，须取得该提交的同一 tree 及其实际固定的嵌套依赖；保留已有本地修改、历史及其他 worktree。沿用历史验证记录必须核对其原提交/tree 和范围；旧实现的六个依赖不强制成为独立重建的目录结构。
+- 源码 gitlink 指向已公开可获取的完整提交。干净检出主仓库并初始化该子模块，须取得该提交的同一 tree 及其实际固定的嵌套依赖；保留已有本地修改、历史及其他 worktree。沿用历史验证记录必须核对其原提交/tree 和范围；旧实现的六个依赖不强制成为独立重建的目录结构。README 与 DEPENDENCIES 记载的当前固定提交必须与 `HEAD` gitlink 一致；README 记载的已发布 Android 版本必须与根 `update.json` 一致。
 - 集成人员按当前 `.gitmodules` 和 Git tree 逐项核对共享技能的上游 URL、mode `160000`、完整提交、SKILL.md 入口及引用资源，不硬编码历史技能数量或依赖不存在的清单路径；原项目自定义技能保留。技能不进入运行时或配方归档。
 - `recipkg check` 通过，临时 pack 归档再次 check 通过；归档只含普通 UTF-8 `.md`，无链接、源码、Git 元数据、私密文件或执行钩子。完整 build 提示词包含所有递归 Markdown 材料。未明确要求交付归档时，验证后清理临时文件。
 - 发布后回读主仓库 gitlink、独立源码提交和原仓库 topics；保留已有 topics 并包含 `recipkg`。这项结构验收与 Android 构建、设备、网络和独立重建验收分别报告。

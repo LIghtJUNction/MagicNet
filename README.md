@@ -4,7 +4,7 @@
   <p><strong>A transparent networking control plane for rooted Android.</strong></p>
   <p>Subscriptions · app and domain routing · DNS · TUN/eBPF · sing-box-compatible runtime · web console</p>
 
-  [![Android release](https://img.shields.io/badge/Android-v1.8.1%20%2F%2010609-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1)
+  [![Android release](https://img.shields.io/badge/Android-v1.8.4%20%2F%2010612-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.17-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
   [![Last commit](https://img.shields.io/github/last-commit/LIghtJUNction/MagicNet?style=flat-square)](https://github.com/LIghtJUNction/MagicNet/commits/main)
@@ -16,7 +16,7 @@
 
 | Goal | Entry point |
 | --- | --- |
-| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.1 installation notes](docs/releases/v1.8.1.md) |
+| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.4 installation notes](docs/releases/v1.8.4.md) |
 | Rebuild the product with a code agent | [`recipes/magicnet/`](recipes/magicnet/) and the commands below |
 | Work on the maintained implementation | [`generated/magicnet-android/`](generated/magicnet-android/) or the [source repository](https://github.com/LIghtJUNction/magicnet-android) |
 | Audit claims and limitations | [Verification](recipes/magicnet/VERIFICATION.md), [performance](recipes/magicnet/PERFORMANCE.md) and [provenance](recipes/magicnet/PROVENANCE.md) |
@@ -41,15 +41,15 @@ Changes are previewed before they are applied. Private subscriptions, credential
 
 | Layer | Current state |
 | --- | --- |
-| Published Android package | [`v1.8.1 / 10609`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.1) |
+| Published Android package | [`v1.8.4 / 10612`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4) |
 | Recipe | `0.3.17` |
-| Fixed implementation commit | `8ff1242817038dfe220a68b75934d6b127bea4b1` |
+| Fixed implementation commit | `b989227b140a7627edff8b60ad87655cb09ac2d0` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
-| Unreleased implementation work | process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
+| Unreleased source metadata | `v1.8.5 / 10613` in the pinned tree: process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 
 The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
 
-Recipe `0.3.17` adds subscription supervisor recovery, upgrade defaults/history preservation, live TUN routing evidence and bounded Android TLS test diagnostics. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work.
+Recipe `0.3.17` records the split-repository release entry and the current source pin `b989227b140a7627edff8b60ad87655cb09ac2d0`. That pin includes the Issue recovery work plus a CI-only mksh install for the full quality suite; it does not publish a new Android package. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work (#436, #440).
 
 Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`. The fixed core passed host tests, Linux amd64 and Android arm64 builds and final Linux configuration/DNS checks. Measured memory results apply to the specific sing-tun lifecycle experiment; Android RSS and device traffic remain unverified. Source identities, exclusions and original evidence are tracked in the verification record.
 
@@ -133,6 +133,7 @@ Local lightweight checks:
 python3 scripts/check-recipes.py
 python3 scripts/test-release.py
 python3 scripts/test-release-plan.py
+python3 scripts/test-check-recipes.py
 ```
 
 ## Evidence and limits
