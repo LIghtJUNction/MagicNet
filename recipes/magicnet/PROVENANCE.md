@@ -284,4 +284,8 @@ recipkg search "android network" 实际候选为空；不代表不存在相关�
 
 ## 2026-11-06 Issue 修复来源
 
-按用户直接合并并处理 Issue/PR 的授权，独立源码分支逐次推送五个修复提交、一份文档精度修订，以及三份验收与平台兼容修订，当前候选 `8ff1242817038dfe220a68b75934d6b127bea4b1`（tree `a23ade9034a47be945dc526f7fe5b00751267911`），由 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) 审阅与验收。主仓库通过固定 gitlink 接入，不复制实现源码。报告 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md) 关联 #436–#440、两个已处理的 DNS 审查线程、实际测试和未完成能力。未读取生产订阅或设备私密身份，未部署物理手机。
+按用户直接合并并处理 Issue/PR 的授权，独立源码分支逐次推送五个修复提交、一份文档精度修订，以及三份验收与平台兼容修订，Issue 验收候选 `8ff1242817038dfe220a68b75934d6b127bea4b1`（tree `a23ade9034a47be945dc526f7fe5b00751267911`），由 [源码 PR #3](https://github.com/LIghtJUNction/magicnet-android/pull/3) 审阅与验收。主仓库通过固定 gitlink 接入，不复制实现源码。报告 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md) 关联 #436–#440、两个已处理的 DNS 审查线程、实际测试和未完成能力。未读取生产订阅或设备私密身份，未部署物理手机。
+
+## 2026-11-07 当前 gitlink 回读
+
+当前主仓库 gitlink 为 [`b989227b140a7627edff8b60ad87655cb09ac2d0`](https://github.com/LIghtJUNction/magicnet-android/commit/b989227b140a7627edff8b60ad87655cb09ac2d0)，tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`，由源码 PR [#4](https://github.com/LIghtJUNction/magicnet-android/pull/4) 与主仓库 PR [#443](https://github.com/LIghtJUNction/MagicNet/pull/443) 接入。该提交只补齐完整质量套件所需 mksh，不改变 0.3.16 已验收的运行时。已发布 Android 包仍以根 `update.json` 的 v1.8.4 / 10612 为准；源码 metadata 仍为 1.8.5 / 10613。#436 与 #440 保持开放。

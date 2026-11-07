@@ -2,6 +2,7 @@
 """Check, pack and inspect the complete Markdown recipe without retaining outputs."""
 
 from pathlib import Path, PurePosixPath
+import json
 import re
 import subprocess
 import tarfile
@@ -17,10 +18,44 @@ def identity(body):
     return package["name"], package["version"]
 
 
+def gitlink_sha(root):
+    entry = subprocess.check_output(
+        ["git", "-C", str(root), "ls-tree", "HEAD", "--", "generated/magicnet-android"],
+        text=True,
+    ).split()
+    if len(entry) != 4 or entry[:2] != ["160000", "commit"]:
+        raise ValueError("Missing source gitlink")
+    return entry[2]
+
+
+def published_updater(root):
+    data = json.loads((root / "update.json").read_text())
+    version, code = data.get("version"), data.get("versionCode")
+    if not isinstance(version, str) or type(code) is not int:
+        raise ValueError("Invalid stable updater")
+    return version, code
+
+
+def verify_live_pins(root):
+    """Refuse README/DEPENDENCIES that advertise a SHA or release other than HEAD."""
+    gitlink = gitlink_sha(root)
+    version, code = published_updater(root)
+    dependencies = (root / "recipes/magicnet/DEPENDENCIES.md").read_text()
+    readme = (root / "README.md").read_text()
+    if gitlink not in dependencies:
+        raise ValueError("DEPENDENCIES.md does not record the current source gitlink")
+    if gitlink not in readme:
+        raise ValueError("README.md does not record the current source gitlink")
+    if version not in readme or str(code) not in readme:
+        raise ValueError("README.md does not record the published updater version")
+    return gitlink, version, code
+
+
 def main():
     def run(*args):
         subprocess.run(["recipkg", *map(str, args)], cwd=ROOT, check=True)
 
+    gitlink, version, code = verify_live_pins(ROOT)
     run("check", "recipes/magicnet")
     with tempfile.TemporaryDirectory(prefix="magicnet-recipe-check-") as temporary:
         archive = Path(temporary) / "magicnet.recipe.tar.gz"
@@ -51,7 +86,10 @@ def main():
         expected = [identity(path.read_text()) for path in sorted((ROOT / "recipes").glob("*/RECIPE.md"))]
         if sorted(manifests) != sorted(expected):
             raise ValueError("Recipe closure differs from the maintained package set")
-        print(f"Recipe archive and complete prompt verified: {len(manifests)} packages, {count} Markdown files")
+        print(
+            f"Recipe archive and complete prompt verified: {len(manifests)} packages, "
+            f"{count} Markdown files; live pin {gitlink} / {version} {code}"
+        )
 
 
 if __name__ == "__main__":

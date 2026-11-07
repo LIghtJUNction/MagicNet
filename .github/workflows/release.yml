@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
+      contents: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'publish' && 'write' || 'read' }}
     outputs:
       source_sha: ${{ steps.plan.outputs.source_sha }}
       recipe_sha: ${{ steps.plan.outputs.recipe_sha }}
