@@ -747,3 +747,8 @@ Android arm64 完整 sing-box 核心编译通过。发现并删除 target 指向
 主仓库 [PR #445](https://github.com/LIghtJUNction/MagicNet/pull/445) 将动态 permissions 改为静态只读/发布 job，并严格检查依赖状态。[首次完整预览 42328103256](https://github.com/LIghtJUNction/MagicNet/actions/runs/42328103256) 的规划、Android 15 / KernelSU 和最终 Android gate 成功，构建质量门禁在 ADB 成功测试退出码上失败；资产验证与发布依赖被正确阻止。
 
 失败可在整数秒边界重现：测试把正常启动与超时负例共用 1 秒预算，8–11 毫秒内也可能跨过 Bash SECONDS 的截止值。源码 `af3930bd9860344688efa62684afdd7ba4ba25f5` 仅将成功测试预算设为 5 秒，并增加同样 1.2 秒延迟在 1 秒预算失败、5 秒预算成功的对照；生产脚本仍是原始字节，默认启动预算仍为 300 秒。源码实现与独立复核均为 6 项测试通过，原断连、超时、错误码与非法预算负例保留。主仓库 gitlink 和可复用工作流引用均接入该提交，再执行完整预览。
+
+
+本轮最终复验成功：源码 `af3930bd9860344688efa62684afdd7ba4ba25f5` 的 [质量 42330416104](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42330416104)、[构建 42330416074](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42330416074)、[证据 42330415990](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42330415990) 和 [Android 42330416075](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42330416075) 全部成功。主仓库 [完整预览 42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044) 对同一源码注入 v1.8.6 / 10614，强制完整质量检查、Android 15 / KernelSU、最终资产校验均成功；ADB 回归实际执行 4.32 秒并通过。两个公开发布相关 job 按 PR 条件跳过。
+
+PR #445 已合并为 `3e2e604683ab9e0b5309a1b5ed2c4fc4fba7e2ce`，tree `a9153c3032503e82cfd8db701bc4753a6efb3b36`，与受测 PR merge 提交 `d2956b7e4e0b285a18e5907dd4cbda0c33d6eaa9` 完全相同。最终候选模块 artifact 为 `13557459752`（142,285,073 bytes），Android 验收 artifact 为 `13557792885`；公开稳定版仍为 v1.8.4 / 10612。主仓库 37 项 release-plan、19 项资产、4 项 live-pin 本地回归及 8 包 / 61 Markdown 配方检查通过。五个仓库共 26 份现行 workflow 的逐项结果见主仓库 docs/workflow-audit-2026-11-07.md，其中 sing-box fork 的 Actions 暂停单独记为线上验证阻塞。
