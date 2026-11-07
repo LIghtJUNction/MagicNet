@@ -59,7 +59,7 @@ Actions 的构建 artifact 包含 `MagicNet.zip`、`MagicNet-core.zip`、`magicn
 
 主仓库涉及工作流、发布脚本或源码指针的 PR 会执行下一补丁版的完整验收预览，覆盖跨仓库调用和版本注入；普通 main push 执行轻量配方与发布脚本回归。源码仓库日常 CI 继续验证自己的实现。真实 arm64 手机和真实网络验收需要单独记录，模拟器结果按模拟器范围报告。
 
-轻量检查也会运行 `bash scripts/check-workflows.sh`，用固定版本、固定 SHA-256 的 actionlint 检查仓库内全部 `.github/workflows/*.yml` 和 `*.yaml`。它检查 Actions 的字段、表达式上下文、任务依赖及可复用工作流接口，不把只读 YAML 解析成功当作工作流有效。已有 ShellCheck、Python 和产品测试继续各自执行。
+轻量检查也会运行 `bash scripts/check-workflows.sh`，用固定版本、固定 SHA-256 的 actionlint 检查仓库内全部 `.github/workflows/*.yml` 和 `*.yaml`。它检查 Actions 的字段、表达式上下文、任务依赖及可在仓库内解析的可复用接口；跨仓库固定 SHA 的接口还通过实际 PR 调用验证。已有 ShellCheck、Python 和产品测试继续各自执行。
 
 权限使用 GitHub 支持的静态值：`plan_read` 处理 PR、`build` 和 `verify`，只有 `contents: read`；`plan_publish` 只处理显式 `publish`，使用 `contents: write` 创建快照。两者共用同一准备 action，`plan` 仅选择成功结果。构建和验收显式检查前置任务成功，避免另一规划任务被正常跳过时连带跳过整个构建。公开发行还必须同时确认计划、构建、Android 和最终资产验证全部成功。
 

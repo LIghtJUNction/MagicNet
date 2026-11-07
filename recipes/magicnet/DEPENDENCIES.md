@@ -86,6 +86,6 @@ delivery 同时维护 RELEASE_CONTRACT.md：区分源码仓库、配方提交和
 
 ## 0.3.17 发布接口
 
-当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@b989227b140a7627edff8b60ad87655cb09ac2d0`，tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`。相对 0.3.16 的 `8ff1242817038dfe220a68b75934d6b127bea4b1`，该提交只安装完整质量套件所需的 mksh，不改变运行时行为、八包闭包或软件版本 1.8.5 / 10613。主仓库可复用工作流与 gitlink 使用同一 SHA。源码 PR [#4](https://github.com/LIghtJUNction/magicnet-android/pull/4)，主仓库 PR [#443](https://github.com/LIghtJUNction/MagicNet/pull/443)。已发布 Android 包仍为 v1.8.4 / 10612。
+当前 `generated/magicnet-android` 固定为 `LIghtJUNction/magicnet-android@af3930bd9860344688efa62684afdd7ba4ba25f5`，tree `60a573d8a4d7e349f70801edbf3b3882e8a9dd8a`。相对 0.3.16 的 `8ff1242817038dfe220a68b75934d6b127bea4b1`，后续 CI 修订补齐 mksh、全部工作流语义检查、配置 gitlink 精确触发路径，以及 ADB 成功测试的独立超时预算；运行时行为、八包闭包及源码软件版本 1.8.5 / 10613 保持。主仓库可复用工作流与 gitlink 使用同一 SHA；最初跨仓库入口见源码 PR [#4](https://github.com/LIghtJUNction/magicnet-android/pull/4) 和主仓库 PR [#443](https://github.com/LIghtJUNction/MagicNet/pull/443)，本轮修复见主仓库 PR [#445](https://github.com/LIghtJUNction/MagicNet/pull/445)。已发布 Android 包仍为 v1.8.4 / 10612。
 
 接入 delivery 0.2.8，八包闭包和全部运行时依赖保持。源码仓库新增只用于构建的版本注入与可复用 workflow 接口；主仓库使用自带 GITHUB_TOKEN 写固定发行快照与官方 Release，构建/模拟器只有读权限。版本不依赖跨仓库写入令牌，source_ref 显式选择后固定为 SHA，稳定索引与源码开发版本分离。

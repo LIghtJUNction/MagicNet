@@ -149,3 +149,10 @@ TLS 安装后二进制摘要核验通过，local_tls_diagnostics 为 verified，
 | 实验是否支持结论 | 旧版失败与修复后通过逐项记录，主机替身不标为设备成功 |
 | 覆盖是否完整 | 最终 CI 已逐项记录；物理设备、真实公网和 NAS 能力保留各自待验证/待实现边界 |
 | 方法边界是否保持 | 未知归属继续保守，TLS 拒绝与隐私边界保持，无新增产品模式 |
+
+
+## 2026-11-07 工作流审计后追加固定点
+
+CI 审计将当前源码指针前进至 [`af3930bd9860344688efa62684afdd7ba4ba25f5`](https://github.com/LIghtJUNction/magicnet-android/commit/af3930bd9860344688efa62684afdd7ba4ba25f5)，tree `60a573d8a4d7e349f70801edbf3b3882e8a9dd8a`，由主仓库 [PR #445](https://github.com/LIghtJUNction/MagicNet/pull/445) 接入。新增源码提交仅涉及工作流门禁、gitlink 触发路径与 ADB 成功测试预算；本记录原 Issue 验收提交 `8ff1242817038dfe220a68b75934d6b127bea4b1` 及此前 b989 验证记录保留原身份。
+
+这些 CI 修订不改变 #436 的真机网络证据缺口或 #440 的可信来源设计范围，也不新增 Android 软件发行。逐工作流结果及本轮真实 CI 见主仓库 docs/workflow-audit-2026-11-07.md。

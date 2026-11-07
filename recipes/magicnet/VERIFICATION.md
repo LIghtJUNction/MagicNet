@@ -740,3 +740,10 @@ Android arm64 完整 sing-box 核心编译通过。发现并删除 target 指向
 配方合同此前仍把当前 gitlink 写成 `8ff1242817038dfe220a68b75934d6b127bea4b1`、把已发布 Android 包写成 v1.8.1 / 10609。HEAD gitlink 实际为 `b989227b140a7627edff8b60ad87655cb09ac2d0`（tree `7857e06e0f556aee1cb716cbcd717324e1da3f05`），根 `update.json` 与 GitHub latest 均为 v1.8.4 / 10612。已把 README、DEPENDENCIES、BUILD_PROMPT、RECIPE、ISSUE_TRIAGE 与 PROVENANCE 的当前固定点对齐，并让 `scripts/check-recipes.py` 拒绝 README/DEPENDENCIES 与 HEAD gitlink 或稳定 updater 不一致。发布 plan job 仅在 `mode=publish` 时保留 contents:write。
 
 本轮本地结果：`python3 scripts/test-check-recipes.py` 4 项通过；`test-release.py` 19 项通过；`test-release-plan.py` 32 项通过；固定 Recipkg CLI 0.1.1 的目录 check/pack/归档 check/完整中文提示词通过，8 包、61 Markdown，输出含 live pin `b989227b140a7627edff8b60ad87655cb09ac2d0 / v1.8.4 10612`。未修改运行时、未创建正式 Release、未部署设备。
+
+
+## 2026-11-07 全部工作流检查与 ADB 测试修复
+
+主仓库 [PR #445](https://github.com/LIghtJUNction/MagicNet/pull/445) 将动态 permissions 改为静态只读/发布 job，并严格检查依赖状态。[首次完整预览 42328103256](https://github.com/LIghtJUNction/MagicNet/actions/runs/42328103256) 的规划、Android 15 / KernelSU 和最终 Android gate 成功，构建质量门禁在 ADB 成功测试退出码上失败；资产验证与发布依赖被正确阻止。
+
+失败可在整数秒边界重现：测试把正常启动与超时负例共用 1 秒预算，8–11 毫秒内也可能跨过 Bash SECONDS 的截止值。源码 `af3930bd9860344688efa62684afdd7ba4ba25f5` 仅将成功测试预算设为 5 秒，并增加同样 1.2 秒延迟在 1 秒预算失败、5 秒预算成功的对照；生产脚本仍是原始字节，默认启动预算仍为 300 秒。源码实现与独立复核均为 6 项测试通过，原断连、超时、错误码与非法预算负例保留。主仓库 gitlink 和可复用工作流引用均接入该提交，再执行完整预览。

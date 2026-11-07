@@ -144,7 +144,7 @@ jobs:
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     permissions:
       contents: read
-    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@b989227b140a7627edff8b60ad87655cb09ac2d0
+    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@af3930bd9860344688efa62684afdd7ba4ba25f5
     with:
       source_sha: ${{ needs.plan.outputs.source_sha }}
       recipe_sha: ${{ needs.plan.outputs.recipe_sha }}
@@ -157,7 +157,7 @@ jobs:
     if: ${{ !cancelled() && needs.plan.result == 'success' && (github.event_name == 'pull_request' || inputs.mode == 'publish' || inputs.mode == 'verify') }}
     permissions:
       contents: read
-    uses: LIghtJUNction/magicnet-android/.github/workflows/android-kernelsu-acceptance.yml@b989227b140a7627edff8b60ad87655cb09ac2d0
+    uses: LIghtJUNction/magicnet-android/.github/workflows/android-kernelsu-acceptance.yml@af3930bd9860344688efa62684afdd7ba4ba25f5
     with:
       source_sha: ${{ needs.plan.outputs.source_sha }}
       release_version: ${{ needs.plan.outputs.version }}
