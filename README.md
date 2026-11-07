@@ -4,7 +4,7 @@
   <p><strong>A transparent networking control plane for rooted Android.</strong></p>
   <p>Subscriptions · app and domain routing · DNS · TUN/eBPF · sing-box-compatible runtime · web console</p>
 
-  [![Android release](https://img.shields.io/badge/Android-v1.8.4%20%2F%2010612-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4)
+  [![Android release](https://img.shields.io/badge/Android-v1.8.5%20%2F%2010613-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.17-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
   [![Last commit](https://img.shields.io/github/last-commit/LIghtJUNction/MagicNet?style=flat-square)](https://github.com/LIghtJUNction/MagicNet/commits/main)
@@ -16,7 +16,7 @@
 
 | Goal | Entry point |
 | --- | --- |
-| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.4 installation notes](docs/releases/v1.8.4.md) |
+| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.5 installation notes](docs/releases/v1.8.5.md) |
 | Rebuild the product with a code agent | [`recipes/magicnet/`](recipes/magicnet/) and the commands below |
 | Work on the maintained implementation | [`generated/magicnet-android/`](generated/magicnet-android/) or the [source repository](https://github.com/LIghtJUNction/magicnet-android) |
 | Audit claims and limitations | [Verification](recipes/magicnet/VERIFICATION.md), [performance](recipes/magicnet/PERFORMANCE.md) and [provenance](recipes/magicnet/PROVENANCE.md) |
@@ -41,7 +41,7 @@ Changes are previewed before they are applied. Private subscriptions, credential
 
 | Layer | Current state |
 | --- | --- |
-| Published Android package | [`v1.8.4 / 10612`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.4) |
+| Published Android package | [`v1.8.5 / 10613`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5) |
 | Recipe | `0.3.17` |
 | Fixed implementation commit | `af3930bd9860344688efa62684afdd7ba4ba25f5` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
