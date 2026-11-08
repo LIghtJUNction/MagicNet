@@ -23,50 +23,8 @@ source = "../magicnet-module-delivery"
 source = "../software-quality"
 ~~~
 
-配方版本与被观察软件版本分开管理；初始来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210，后续 v1.8.0 迭代与证据见 PROVENANCE.md 和 VERIFICATION.md。0.2.1 修正源码子模块布局与获取方法，没有改变 Android 软件版本。实现源码不属于本包。
+本包描述完整 Android root 网络工作台；行为与 M01–M65 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
 
-0.3.17 接入 delivery 0.2.8 的跨仓库发布入口，当前源码 gitlink 为 `af3930bd9860344688efa62684afdd7ba4ba25f5`。相对 0.3.16 的 Issue 验收提交 `8ff1242817038dfe220a68b75934d6b127bea4b1`，后续 CI 修订补齐完整质量套件所需 mksh、全部工作流语义检查、配置 gitlink 精确触发，以及 ADB 成功测试的独立超时预算。运行时保持；主仓库使用静态权限与严格依赖结果执行发布。已发布 Android 包仍为 v1.8.4 / 10612；源码 metadata 仍为 1.8.5 / 10613。#436 与 #440 保持开放。
+配方版本与 Android 软件版本独立。当前依赖、源码固定点见 [DEPENDENCIES.md](DEPENDENCIES.md)；已发布安装物以根 `update.json` 为准，实际验证与未完成范围见 [VERIFICATION.md](VERIFICATION.md)。delivery 0.2.8 定义跨仓库构建、版本选择和发布合同。
 
-0.3.16 接入 runtime 0.1.8、control 0.2.7 与 delivery 0.2.7，补齐订阅重启后的维护进程恢复、实时 TUN 路由证据、升级默认文件及订阅历史迁移，并为 Android TLS 验收保留失败诊断与有限时钟容差。新增 M61–M64，八包依赖闭包和 tun|ebpf 模式保持。源码版本仍为 1.8.5；Issue、合并、固定提交和实际验证范围见 ISSUE_TRIAGE_2026-11-06.md，不由主机夹具推断真机网络故障已解决。
-
-0.3.15 接入 routing-policy 0.2.5 的默认 DNS 出口修复，以 M60 关联 POLICY-A21–A25：未知域名默认经代理解析，代理不可用时失败，保留引导解析和显式直连规则。模板、精确默认 pin 迁移及诊断按有效 DNS 图对齐；独立配置的既有 DNS 图保留。固定源码与模板见 DEPENDENCIES.md，验证范围见 DNS_REPAIR_2026-11-06.md；源码保持 1.8.5，本轮不新建发行。
-
-0.3.14 补齐真实框架集成暴露的监督器双层锁与生成文件排除问题：runtime 0.1.7要求两层锁分离、精确保留相对路径排除，实际加载固定kamfw验证生命周期。正式包检查还暴露了HTTPS执行器缺失，delivery 0.2.6补入固定curl/OpenSSL/zlib、内嵌CA及许可证/来源，runtime CON-004要求实际可执行与证书验证。control 0.2.6补充后台监督启动故障日志、HTTPS工具能力和真实Android导出检查，按字段脱敏并验证机器状态结构及真实阶段。CI初始化与缓存指纹覆盖测试依赖；宿主核心内存/回环转发、生产归档与Android模拟器结果分别绑定各自提交和产物，不将中途失败或待完成门禁写成成功。
-
-0.3.12 增加连接后低频 Google 检查、指数退避与有条件自愈、单文件脱敏诊断导出，以及最终全部模块/组件 ZIP 排除测试和开发目录的合同。新增 M56–M58；control 0.2.5、runtime 0.1.6、webui 0.2.4、delivery 0.2.5，八包依赖图保持不变。模拟、实际 CLI 资源测量、完整核心运行和真机的验证范围分别记录，不自动宣称新 Android 版本已发行。
-
-0.3.9 统一 `.state` / `.cache`，增加实际进程锁归属、fswatch 并发启停、原生 TUN 栈及 Android 可选接口监控合同，新增 M51–M53。保留 0.3.8 同期的规则清理和安装包裁剪；Android 产品版本不变。实际源码、定向检查与设备边界见 PROVENANCE.md 和 VERIFICATION.md。
-
-0.3.8 通过 routing-policy 0.2.3 清理专用 ChatGPT Voice 规则维护与分发，新增 POLICY-A13–A15 和 M50。保留普通 ChatGPT 域名、应用包名、DNS 与 `ai-chatgpt` selector，不改变 Android 软件版本；实现与实际检查结果见 VERIFICATION.md。
-
-0.3.11 在尚未发行的 v1.8.5 / 10613 候选中整合 routing-policy 0.2.4：16 个大陆教育服务后缀复用默认直连的 `cn-direct` 和现有加密 DNS，保留前序模式、用户/应用分流及保护规则。新增 M55 与 POLICY-A16–A20；八包依赖图、selector 和规则数据依赖保持，来源与实际结果见 PROVENANCE.md、VERIFICATION.md。
-
-0.3.10 通过 delivery 0.2.4 统一安装和卸载的浏览器启动器，直接维护固定 `kamfw` 子模块，移除 `lib/kamfw-web/`。M54 覆盖共用来源、既有调用兼容、当前用户选择和失败回退；Android 软件版本由源码 metadata 单独管理。
-
-0.3.7 对应 v1.8.5：routing-policy 0.2.2 增加五个指定目标的精确拒绝合同，其中 `dm.wo.com.cn` 仅限 TCP/UDP 目标端口 18080；规则随内置模板分发，保留 DNS 行为并先于模式、应用与业务分流。实际源码、固定模板与验证结果见 PROVENANCE.md 和 VERIFICATION.md。
-
-0.3.6 对应 v1.8.4：runtime 0.1.4 增加默认 UA 遇 HTTP 403 的单次回退（#434）；合并 #435 的 IPv4-mapped 地址钉选与 MCP 路由/屏蔽清单拒绝，并由公开源码实现。
-
-0.3.3 在保留订阅配方 0.3.2 的基础上，通过 packet-engine 0.2.1 增加固定上游同步、握手失败清理与流关闭并发合同，核心验收为 M48。已有八包依赖图、Android 产品版本和前端合同继续保留。内核的已采用提交及实际检查见 PROVENANCE.md 与 VERIFICATION.md。
-
-0.3.2 整合独立候选发现的目录晋升、更新回执重放、网络策略恢复和订阅草稿验收，并补齐冲突引用、逐来源数量下界、共享只读来源检查与模块目录元数据。control 为 0.2.3，runtime 为 0.1.3；保留 M41–M43 和最新 WebUI 视觉合同。规格先于本轮源码修复，实施与测试结果见 VERIFICATION.md；候选源码仍作为独立历史证据，不替换现行 gitlink。
-
-0.3.1 将 #429、#430 的超时继承、持久核心交接与 32 位 PID 校验问题纳入实现和重建合同，同时约束日志尾读的临时内存。依赖闭包仍为八包；本次配方版本变更不改变已公开 Android 安装包的版本，实际源码和验证结果见 VERIFICATION.md。
-
-2026-10-29 配方 0.3.0 基于固定 v1.8.0 源码 `0dca28dd984d82333707cbf4b222596934b4d847` 补齐重建合同。后续未发行源码修复已推送到 `magicnet-android@ed01282e8ee4bcfc27ce5f95f37723c34aebf745` 并由本仓库固定 gitlink 接入；尚未发布 Android 版本或部署设备。来源与验证见根 SOURCE_AUDIT.md、PROVENANCE.md、VERIFICATION.md。
-
-2026-10-29 构建发布工作流修复后，当前实现 gitlink 固定为 `magicnet-android@b0bfe8b9f2fccdc4cbb46f5f0091a2d94694afc7`。保留前述订阅修复，增加同提交跨仓库 Android 验收和源码仓库发行拦截；正式发布入口恢复在 MagicNet 主仓库，默认只构建。Android 软件版本仍为 v1.8.0，没有创建新发行版。
-
-2026-10-29 v1.8.1 发行准备：软件版本 v1.8.1 / versionCode 10609，当前源码 gitlink 为 `68ad77453d752845eedb5dd8ca56110c18de4b26`。发行说明与官方更新地址同步；最终构建、Android 验收和公开发布结果另记 VERIFICATION.md。
-
-同日正式验收发现并修正 POSIX shell 的单节点失败传播差异，当前发行候选源码固定 `8a2e14609ffaa802ca6ac7dc844017637749430d`；完整验收与公开发行状态以 VERIFICATION.md 为准。
-
-发行门槛中的模拟进程退出夹具改为原子移走目录，避免把普通目录逐文件删除当成 /proc 的退出可见性；仅修改测试，不放宽生产进程身份校验。最终发行候选源码为 `9770f8f29db8e240eff24f774fb32807f2f3e005`。
-
-第三轮发行的 ShellCheck 门槛拦截后，统一清理临时清单的位置，保留写入失败时的整批中止；同步旧测试的生成器调用、语义去重和合法 URL 合同，补齐发布主机的 mksh。当前发行候选固定 `8f6ddbc362bb7059be91b7734061b2c1e5381e56`，完整公开发行结果仍以 VERIFICATION.md 为准。
-
-第四轮发现 jq 版本语法兼容问题，语义聚合改用 jq 1.7.1 与 1.8.2 均可解析的完整表达式绑定，不改变节点身份、去重或冲突拒绝规则。当前发行候选为 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`；基线解释器下完整 105 项主机检查通过，正式发行结果见 VERIFICATION.md。
-
-v1.8.1 / versionCode 10609 已公开，配方/标签提交 `b762b8c54b99c7561914d3a02c3a635636ae6837`、源码 `a5617d6371fe17494fb4b4a6f655a0c8a0f7461e`。第五轮构建、完整质量与 Android 模拟器门槛通过；发布控制的草稿查询 404 已修复，并由独立恢复重新核对同一不可变产物和原 19 个附件后公开。详细 run 与实际验证边界见 VERIFICATION.md；未部署真机。
-
-0.3.13 增加 REWRITE_CONTRACT.md 与 M59：按功能合同覆盖框架、运行时、CLI/MCP、WebUI、安装器和打包链路，固定原版进行差分和资源测量。保留同期联网自愈与一键诊断导出；版本、接口、真实结果与未验证范围分别管理。
+初始观察来源为 MagicNet v1.7.2（`96993ea5c851b8d51cc562c3ca0766a2ca571210`）。来源归属和迭代历史保留于 [PROVENANCE.md](PROVENANCE.md)；旧版本说明可查[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/RECIPE.md)。

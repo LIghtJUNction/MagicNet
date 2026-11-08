@@ -1,41 +1,25 @@
 <div align="center">
   <img src="icon.png" width="112" alt="MagicNet icon">
   <h1>MagicNet</h1>
-  <p><strong>A transparent networking control plane for rooted Android.</strong></p>
-  <p>Subscriptions · app and domain routing · DNS · TUN/eBPF · sing-box-compatible runtime · web console</p>
+  <p>A transparent networking control plane for rooted Android.</p>
 
   [![Android release](https://img.shields.io/badge/Android-v1.8.5%20%2F%2010613-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.17-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
-  [![Last commit](https://img.shields.io/github/last-commit/LIghtJUNction/MagicNet?style=flat-square)](https://github.com/LIghtJUNction/MagicNet/commits/main)
 
-  [English](README.en.md) · [Русский](README.ru.md) · [Download](https://github.com/LIghtJUNction/MagicNet/releases) · [Rebuild](#rebuild-from-the-recipe) · [Evidence](recipes/magicnet/VERIFICATION.md)
+  [English](README.en.md) · [Русский](README.ru.md) · [Download](https://github.com/LIghtJUNction/MagicNet/releases) · [Evidence](recipes/magicnet/VERIFICATION.md)
 </div>
 
-## Pick the path you need
+MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors and Tailscale through a multilingual web console and CLI. It supports explicit `tun|ebpf` modes, defaults to TUN, and packages a sing-box-compatible runtime for Android root/arm64 with Magisk, KernelSU or APatch.
+
+## Start here
 
 | Goal | Entry point |
 | --- | --- |
 | Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.5 installation notes](docs/releases/v1.8.5.md) |
-| Rebuild the product with a code agent | [`recipes/magicnet/`](recipes/magicnet/) and the commands below |
-| Work on the maintained implementation | [`generated/magicnet-android/`](generated/magicnet-android/) or the [source repository](https://github.com/LIghtJUNction/magicnet-android) |
-| Audit claims and limitations | [Verification](recipes/magicnet/VERIFICATION.md), [performance](recipes/magicnet/PERFORMANCE.md) and [provenance](recipes/magicnet/PROVENANCE.md) |
-
-MagicNet separates the **product contract** from the **generated implementation**. The recipe says what must exist and how it is accepted; the source submodule is one concrete implementation; Releases contain the installable Android artifacts.
-
-## What it controls
-
-MagicNet is designed for rooted Android devices that need one place to manage network behavior:
-
-- multiple subscription sources, cached state and per-source diagnostics;
-- app, domain, Wi-Fi and hotspot routing policies;
-- custom groups, selectors, exits and DNS behavior;
-- Tailscale integration and transactional network recovery;
-- TUN/eBPF boundaries with sing-box-compatible behavior;
-- a multilingual web console for configuration and status;
-- signed, verifiable component delivery and root-module packaging.
-
-Changes are previewed before they are applied. Private subscriptions, credentials, device identities and raw local logs are not part of the public recipe or release source.
+| Build the maintained implementation | [Source repository](https://github.com/LIghtJUNction/magicnet-android) and [build guide](generated/magicnet-android/docs/build.md) |
+| Rebuild from requirements | [Product recipe](recipes/magicnet/BUILD_PROMPT.md) and [acceptance](recipes/magicnet/ACCEPTANCE.md) |
+| Publish a version | [Release guide](docs/releasing.md) |
 
 ## Current state
 
@@ -43,91 +27,46 @@ Changes are previewed before they are applied. Private subscriptions, credential
 | --- | --- |
 | Published Android package | [`v1.8.5 / 10613`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5) |
 | Recipe | `0.3.17` |
-| Fixed implementation commit | `af3930bd9860344688efa62684afdd7ba4ba25f5` |
+| Fixed implementation commit | `351b7d7189c057ba88c4da89092e5bc4124989d0` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
-| Unreleased source metadata | `v1.8.5 / 10613` in the pinned tree: process handoff, PID validation, log-memory fixes, frontend refinement, per-source conversion guards, bounded subscription observation, upstream core synchronization, connection lifecycle fixes and mobile navigation/input improvements |
 
-The fixed source commit contains work newer than the published Android package. A successful recipe check proves that the rebuild materials are complete; it does **not** prove that an APK/module was built, installed on a device or validated against real traffic. Those claims are recorded separately in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
+The recipe defines required behavior; the pinned source provides the maintained implementation; Releases provide installable artifacts. [Verification](recipes/magicnet/VERIFICATION.md) records source tests, package checks and Android emulator results separately. Physical-device acceptance, real subscription connectivity and sustained mobile performance remain open; see [performance](recipes/magicnet/PERFORMANCE.md) and [Issue tracking](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md).
 
-Recipe `0.3.17` records the split-repository release entry and the current source pin `af3930bd9860344688efa62684afdd7ba4ba25f5`. That pin includes the Issue recovery work, mksh for the full quality suite, checks for every workflow, an exact submodule trigger path, and a separate timeout budget for the successful ADB test fixture. These CI changes preserve Android runtime behavior and software versions. The [Issue and PR record](recipes/magicnet/ISSUE_TRIAGE_2026-11-06.md) separates fixed mechanisms from remaining device and trusted-source work (#436, #440).
-
-Recipe `0.3.3` adds the [core lifecycle contract](recipes/magicnet-packet-engine/CORE_LIFECYCLE.md): fixed upstream synchronization, handshake failure cleanup, and complete registration cleanup when flow attachment overlaps closure. It retains the subscription and recovery requirements from recipe `0.3.2`. The fixed core passed host tests, Linux amd64 and Android arm64 builds and final Linux configuration/DNS checks. Measured memory results apply to the specific sing-tun lifecycle experiment; Android RSS and device traffic remain unverified. Source identities, exclusions and original evidence are tracked in the verification record.
-
-## Install the published software
-
-Use the [Releases page](https://github.com/LIghtJUNction/MagicNet/releases) for the lightweight installer, offline package, components and checksums. The release notes document the exact scope that was built and tested.
-
-To obtain the repository together with its fixed implementation:
+## Build the maintained implementation
 
 ```bash
 git clone --recurse-submodules https://github.com/LIghtJUNction/MagicNet.git
 cd MagicNet
 git submodule update --init --recursive generated/magicnet-android
-```
-
-A local implementation build currently uses the source repository's pinned Rust, Go, Node, Java and Android toolchain contracts:
-
-```bash
 cd generated/magicnet-android
 kam build -j 2
 ```
 
-See the [implementation build guide](generated/magicnet-android/docs/build.md) before treating a local archive as a release artifact.
+Follow the [build guide](generated/magicnet-android/docs/build.md) for the pinned Rust, Go, Node, Java and Android toolchains. The complete local package is `generated/magicnet-android/dist/MagicNet.zip` relative to the primary repository.
 
 ## Rebuild from the recipe
 
-Requirements: Git, the Recipkg CLI, and a code agent capable of implementing and validating rooted Android software.
+Install Git and the Recipkg CLI, then render the complete requirements for an implementation agent:
 
 ```bash
-recipkg check recipes/magicnet
-
 set -eu
+recipkg check recipes/magicnet
 recipe_tmp="$(mktemp -d)"
 trap 'rm -rf "$recipe_tmp"' EXIT
-
-recipkg pack recipes/magicnet \
-  -o "$recipe_tmp/magicnet-0.3.17.recipe.tar.gz"
-recipkg check "$recipe_tmp/magicnet-0.3.17.recipe.tar.gz"
-recipkg build "$recipe_tmp/magicnet-0.3.17.recipe.tar.gz" --lang zh-CN
+recipkg pack recipes/magicnet -o "$recipe_tmp/magicnet.recipe.tar.gz"
+recipkg check "$recipe_tmp/magicnet.recipe.tar.gz"
+recipkg build "$recipe_tmp/magicnet.recipe.tar.gz" --lang zh-CN
 ```
 
-`recipkg build` produces a complete implementation prompt. It does not call a model or build the software itself. Give the full generated prompt to the implementation agent, then require it to execute every item in [`ACCEPTANCE.md`](recipes/magicnet/ACCEPTANCE.md) and record real results in [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md).
+`recipkg build` renders a prompt. The agent must implement the product and execute [ACCEPTANCE.md](recipes/magicnet/ACCEPTANCE.md). Independent reconstruction starts with an empty implementation directory and the complete Markdown dependency closure; its permitted external assets are defined in the recipe. Keep `.env`, subscriptions, credentials and private device data outside source, archives and prompts.
 
-Do not hand `.env` files, subscriptions, credentials, device state or raw private logs to the agent or include them in a recipe archive.
-
-## Contract map
-
-```text
-recipes/magicnet/                   product requirements and acceptance
-recipes/magicnet-control-plane/     CLI, JSON schema, MCP and file-state contract
-recipes/magicnet-network-runtime/   subscriptions, processes and recovery transactions
-recipes/magicnet-packet-engine/     TUN/eBPF and sing-box compatibility
-recipes/magicnet-routing-policy/    selectors, DNS and routing order
-recipes/magicnet-web-console/       web workflows, i18n and visual requirements
-recipes/magicnet-module-delivery/   root module, components and trusted updates
-recipes/software-quality/           shared design, code and performance bar
-generated/magicnet-android/         fixed implementation submodule
-```
-
-The repository keeps the implementation as a fixed Git submodule so recipe history and generated source history remain independently auditable.
+The eight packages cover the product, control plane, network runtime, packet engine, routing policy, web console, module delivery and shared quality requirements. [DEPENDENCIES.md](recipes/magicnet/DEPENDENCIES.md) maps their responsibilities.
 
 ## Development and release
 
-Product behavior changes begin in the relevant recipe, interface and acceptance documents. The implementation is then changed and verified in its own repository. Only after the source commit is pushed should this repository update the submodule pointer.
+Update affected recipes, interfaces and acceptance cases with behavior changes. Verify and push source changes before updating the primary repository's gitlink. [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml) supports `build`, `verify` and `publish`, version bumping and exact versions; [releasing.md](docs/releasing.md) owns the inputs and recovery procedure.
 
-The release workflow is [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml):
-
-```bash
-# Build artifacts without publishing a release
-gh workflow run release.yml \
-  --repo LIghtJUNction/MagicNet \
-  --ref main \
-  -f mode=build
-```
-
-Choose `mode=verify` to run every release gate without publishing, or `mode=publish` to publish after successful checks. Set `bump=patch/minor/major`, or use `bump=none` with an exact `version` such as `1.9.0`. `version_code` is automatic unless supplied; `source_ref=main` explicitly selects the latest implementation and freezes its SHA. The stable updater changes only after successful publication. See the [release guide](docs/releasing.md) for the complete inputs, examples and recovery procedure.
-
-Local lightweight checks:
+Local checks:
 
 ```bash
 python3 scripts/check-recipes.py
@@ -136,22 +75,6 @@ python3 scripts/test-release-plan.py
 python3 scripts/test-check-recipes.py
 ```
 
-## Evidence and limits
+## Sources and license
 
-- [`SOURCE_AUDIT.md`](recipes/magicnet/SOURCE_AUDIT.md) records which fixed source was inspected.
-- [`PERFORMANCE.md`](recipes/magicnet/PERFORMANCE.md) distinguishes measured baselines from targets and unknowns.
-- [`PROVENANCE.md`](recipes/magicnet/PROVENANCE.md) labels documentation, source evidence, measurements, inference and unknowns.
-- [`VERIFICATION.md`](recipes/magicnet/VERIFICATION.md) separates recipe checks, source tests, package checks and device validation.
-
-<details>
-<summary>Historical source anchors</summary>
-
-The initial observed source was fixed at `96993ea5c851b8d51cc562c3ca0766a2ca571210`. The source state after code PRs #420–#423 and README PR #416 was fixed at `ae4de1ce4d77f1a2a4c8d9656da8101c472fa3a0`. The v1.8.0 import baseline `0dca28dd984d82333707cbf4b222596934b4d847` has the same complete Git tree as the original `f13ca61b9c3477aee3b1380d71815c84b3a2a6bf` source tag.
-
-These anchors preserve auditability; they are not claims that every later recipe requirement has already been independently rebuilt and device-tested.
-
-</details>
-
-## License
-
-MagicNet is released under the [MIT License](LICENSE). Third-party implementations, rules and tools retain their own licenses as recorded by the recipe's provenance and external prerequisite documents.
+[SOURCE_AUDIT.md](recipes/magicnet/SOURCE_AUDIT.md) records inspected source; [PROVENANCE.md](recipes/magicnet/PROVENANCE.md) retains attribution and historical anchors, including the v1.8.0 import. MagicNet uses the [MIT License](LICENSE); third-party components retain their own licenses.
