@@ -4,7 +4,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import stat
@@ -118,28 +117,6 @@ def metadata(root, selection=None):
             require(stable == updater(version, code), "Snapshot update.json differs from release plan")
     return {"source_sha": source_sha, "recipe_sha": git(root, "rev-parse", "HEAD"),
             "version": version, "version_code": str(code)}
-
-
-def plan(root, mode):
-    result = metadata(root)
-    if mode == "publish":
-        require(os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-                and os.environ.get("GITHUB_REF") == "refs/heads/main"
-                and os.environ.get("GITHUB_REPOSITORY") == REPOSITORY,
-                "Publishing requires an explicit dispatch on official main")
-        require(result["recipe_sha"] == os.environ.get("GITHUB_SHA"), "Recipe checkout differs from run")
-        require((root / f"docs/releases/{result['version']}.md").is_file(), "Missing release notes")
-        tags = git(root, "ls-remote", "--tags", "origin", f"refs/tags/{result['version']}")
-        require(not tags, "Version tag already exists; refusing to replace a release")
-        latest = json.loads(subprocess.check_output(
-            ["gh", "api", f"repos/{REPOSITORY}/releases/latest"], text=True))
-        tag = latest["tag_name"]
-        require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag), "Invalid latest release version")
-        previous = json.loads(git(root, "show", f"refs/tags/{tag}:update.json"))
-        require(int(result["version_code"]) > previous["versionCode"], "versionCode must increase")
-        require(tuple(map(int, result["version"][1:].split("."))) > tuple(map(int, tag[1:].split("."))),
-                "Software version must increase")
-    return result
 
 
 def digest(path):
@@ -260,25 +237,14 @@ def verify_uploaded(root, directory, response, *, draft=True):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("plan", "verify", "verify-uploaded"))
-    parser.add_argument("--mode", choices=("build", "publish"), default="build")
+    parser.add_argument("command", choices=("verify",))
     parser.add_argument("--directory", type=Path, default=Path("dist"))
-    parser.add_argument("--response", type=Path)
     parser.add_argument("--plan", type=Path)
     args = parser.parse_args()
     root = Path.cwd()
     try:
-        if args.command == "plan":
-            result = plan(root, args.mode)
-        elif args.command == "verify":
-            selection = json.loads(args.plan.read_text()) if args.plan else None
-            result = verify(root, args.directory, selection)
-        else:
-            require(args.response is not None, "Missing release API response")
-            result = verify_uploaded(root, args.directory, json.loads(args.response.read_text()))
-        if args.command == "plan" and os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
-                stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
+        selection = json.loads(args.plan.read_text()) if args.plan else None
+        result = verify(root, args.directory, selection)
         print(json.dumps(result, sort_keys=True))
     except (ValueError, KeyError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         raise SystemExit(f"::error::{error}") from error

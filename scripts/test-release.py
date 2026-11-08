@@ -5,13 +5,12 @@ import copy
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 import zipfile
 
 SPEC = importlib.util.spec_from_file_location("release", Path(__file__).with_name("release.py"))
@@ -68,7 +67,7 @@ class ReleaseTest(unittest.TestCase):
 
     def test_build_uses_gitlink_without_changing_metadata_or_contacting_remote(self):
         before = self.git(self.root, "status", "--porcelain")
-        result = RELEASE.plan(self.root, "build")
+        result = RELEASE.metadata(self.root)
         self.assertEqual(result["source_sha"], self.source_sha)
         self.assertEqual(result["recipe_sha"], self.environment["GITHUB_SHA"])
         self.assertEqual(self.git(self.root, "status", "--porcelain"), before)
@@ -83,23 +82,23 @@ class ReleaseTest(unittest.TestCase):
             with self.subTest(field=error):
                 self.write(path, original.replace(old, new))
                 with self.assertRaisesRegex(ValueError, error):
-                    RELEASE.plan(self.root, "build")
+                    RELEASE.metadata(self.root)
         self.write(path, original)
         (self.source / "docs/releases/v1.2.3.md").unlink()
         with self.assertRaisesRegex(ValueError, "Missing source release notes"):
-            RELEASE.plan(self.root, "build")
+            RELEASE.metadata(self.root)
 
     def test_stable_updater_can_lag_source_until_publication(self):
         stable = RELEASE.updater("v1.2.2", 122)
         self.write(self.root / "update.json", json.dumps(stable))
-        result = RELEASE.plan(self.root, "build")
+        result = RELEASE.metadata(self.root)
         self.assertEqual(result["version"], "v1.2.3")
         self.assertEqual(json.loads((self.root / "update.json").read_text()), stable)
 
     def test_source_checkout_cannot_follow_newer_main(self):
         self.git(self.source, "commit", "--allow-empty", "-m", "Unselected source commit")
         with self.assertRaisesRegex(ValueError, "gitlink"):
-            RELEASE.plan(self.root, "build")
+            RELEASE.metadata(self.root)
 
     def test_wrong_repository_or_update_metadata_is_rejected(self):
         for key, value in (("version", "v9.0.0"), ("versionCode", 0),
@@ -107,49 +106,18 @@ class ReleaseTest(unittest.TestCase):
             with self.subTest(key=key):
                 self.write(self.root / "update.json", json.dumps(self.update | {key: value}))
                 with self.assertRaises(ValueError):
-                    RELEASE.plan(self.root, "build")
+                    RELEASE.metadata(self.root)
         self.write(self.root / "update.json", json.dumps(self.update))
         self.write(self.root / ".gitmodules", (self.root / ".gitmodules").read_text().replace("magicnet-android.git", "other.git"))
         with self.assertRaisesRegex(ValueError, "repository"):
-            RELEASE.plan(self.root, "build")
+            RELEASE.metadata(self.root)
 
     def test_latest_update_url_is_rejected_even_if_both_repositories_agree(self):
         update = self.update | {"zipUrl": f"https://github.com/{RELEASE.REPOSITORY}/releases/latest/download/magicnet_installer.zip"}
         for root in (self.root, self.source):
             self.write(root / "update.json", json.dumps(update))
         with self.assertRaisesRegex(ValueError, "versioned"):
-            RELEASE.plan(self.root, "build")
-
-    def test_publish_requires_explicit_official_main_dispatch(self):
-        for key, value in (("GITHUB_REF", "refs/heads/feature"), ("GITHUB_EVENT_NAME", "push"),
-                           ("GITHUB_REPOSITORY", "someone/fork"), ("GITHUB_SHA", "0" * 40)):
-            with self.subTest(key=key), patch.dict(os.environ, self.environment | {key: value}):
-                with self.assertRaises(ValueError):
-                    RELEASE.plan(self.root, "publish")
-
-    def test_existing_release_tag_is_rejected_before_querying_latest_release(self):
-        self.git(self.root, "remote", "add", "origin", str(self.root))
-        self.git(self.root, "-c", "tag.gpgsign=false", "tag", "v1.2.3")
-        with patch.dict(os.environ, self.environment), self.assertRaisesRegex(ValueError, "already exists"):
-            RELEASE.plan(self.root, "publish")
-
-    def test_publish_compares_version_and_code_with_previous_release(self):
-        self.git(self.root, "remote", "add", "origin", str(self.root))
-        real = subprocess.check_output
-        for version, code, passes in (("v1.1.0", 122, True), ("v1.1.0", 123, False), ("v2.0.0", 122, False)):
-            with self.subTest(version=version, code=code):
-                def command(args, **kwargs):
-                    if args[:2] == ["gh", "api"]:
-                        return json.dumps({"tag_name": version})
-                    if args[-2:] == ["show", f"refs/tags/{version}:update.json"]:
-                        return json.dumps({"versionCode": code})
-                    return real(args, **kwargs)
-                with patch.dict(os.environ, self.environment), patch.object(subprocess, "check_output", command):
-                    if passes:
-                        self.assertEqual(RELEASE.plan(self.root, "publish")["version"], "v1.2.3")
-                    else:
-                        with self.assertRaises(ValueError):
-                            RELEASE.plan(self.root, "publish")
+            RELEASE.metadata(self.root)
 
     def assets(self, extra_archive=None, extra_path=None, *, curl_enabled=True, curl_missing=None, curl_extra=None):
         # Rebuilding after a negative assertion must not leave a component from
@@ -216,7 +184,13 @@ class ReleaseTest(unittest.TestCase):
 
     def test_valid_assets_are_accepted(self):
         self.assets()
-        self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
+        expected = RELEASE.verify(self.root, self.directory)
+        self.assertEqual(expected["source_sha"], self.source_sha)
+        output = subprocess.check_output(
+            [sys.executable, RELEASE.__file__, "verify", "--directory", str(self.directory)],
+            cwd=self.root, text=True,
+        )
+        self.assertEqual(json.loads(output), expected)
 
     def test_curl_component_missing_or_mixed_files_are_rejected(self):
         self.assets(curl_enabled=False)
