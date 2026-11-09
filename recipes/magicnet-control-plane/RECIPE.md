@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.2.7"
+version = "0.2.8"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"
@@ -15,6 +15,8 @@ source = "../magicnet-network-runtime"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.2.8 在 connectivity.status 增加独立、只读的 tun_auto_route 观察与恢复预算；保留 Google/mixed_proxy 字段语义，诊断导出按字段脱敏。
 
 0.2.7 要求 TUN 数据面判断包含有效配置对应的实时策略路由与转发表证据，区分规则缺失和无法观测；只读、有界且不主动修复。现有 schema-1 字段、configured/effective、未知值与隐私边界保持，实际源码和覆盖范围见根 ISSUE_TRIAGE_2026-11-06.md。
 

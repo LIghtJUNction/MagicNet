@@ -4,7 +4,7 @@
   <p>A transparent networking control plane for rooted Android.</p>
 
   [![Android release](https://img.shields.io/badge/Android-v1.8.5%20%2F%2010613-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5)
-  [![Recipe](https://img.shields.io/badge/recipe-0.3.17-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
+  [![Recipe](https://img.shields.io/badge/recipe-0.3.18-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
 
   [English](README.en.md) · [Русский](README.ru.md) · [Download](https://github.com/LIghtJUNction/MagicNet/releases) · [Evidence](recipes/magicnet/VERIFICATION.md)
@@ -26,7 +26,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 | Layer | Current state |
 | --- | --- |
 | Published Android package | [`v1.8.5 / 10613`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.5) |
-| Recipe | `0.3.17` |
+| Recipe | `0.3.18` |
 | Fixed implementation commit | `351b7d7189c057ba88c4da89092e5bc4124989d0` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
 

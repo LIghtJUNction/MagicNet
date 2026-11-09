@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.8"
+version = "0.1.9"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.9 增加 CON-005/CON-A08–A09：TUN 自动路由有界恢复与真实模拟器故障注入，复用现有 producer 和生命周期。
 
 0.1.8 补齐 #437/#439 的订阅维护进程恢复合同：初始恢复、激活、回滚和中断均在配置锁释放后恢复完整的已配置集合，单独保留 fswatch 原状态。LIFE-007 与 SUB-A22 限定 orphan 候选和订阅重启的热点清理重试；真实归属未知、进程停止失败和 DNS 清理失败继续阻断危险操作。
 

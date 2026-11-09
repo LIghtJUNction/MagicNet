@@ -8,9 +8,13 @@
 | --- | --- |
 | 维护源码 | `351b7d7189c057ba88c4da89092e5bc4124989d0`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
-| 配方 | 0.3.17，八包；验收 M01–M65 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.18，八包；验收 M01–M66 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
 | 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 现场规则消失根因与 #440 可信 NAS 入口；以下真机/公网边界继续保留 |
+
+## 2026-11-09：#436 与模拟器故障回归
+
+新增 CON-005、CON-A08–A09 和 M66，规定有界 TUN 自动路由恢复、真实应用 UID 故障闭环与独立报告门禁。源码实现及本轮 CI 结果待记录；规格更新不构成执行通过，当前维护源码仍以上表固定点为准。
 
 ## 2026-11-08：代码与文档精简
 

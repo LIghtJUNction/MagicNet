@@ -134,3 +134,7 @@ capabilities 的 commands/private_commands 包含 `app.inspect`；features 增�
 ## TUN 实时路由证据（0.2.7）
 
 service.status.readiness.dataplane 与 transparent.status.dataplane_ready 在核心运行时复用 health 的 TUN 观测。接口存在且有效配置的 auto_route 必需 RPDB/FIB 证据完整才为 true；任一必要项已知缺失为 false（即使另项未知），无已知缺失而观测或配置不可确定时为 null，并由既有 overall/lifecycle 组合传播。无新增 schema 字段或公开原始路由标识。检查只读且有界；关闭 auto_route 时不要求自动生成的规则，eBPF 与 stopped/unknown 语义保持。该信号证明必要内核资源，不承诺公网或任意 App UID 的真实连接成功。
+
+## TUN 恢复观察（0.2.8）
+
+connectivity.status 和 service.status.data.connectivity 增加 `tun_auto_route`：status 为 not_required/pending/present/missing/unknown/paused/stale；warning 为布尔；checked_at、next_check_at、last_recovery_at 缺测为 null；retry_in_seconds、consecutive_failures、recovery_attempts、recovery_limit 为有界非负数；recovery_status 为 none/pending/ok/failed/busy/cooldown/exhausted。capabilities 声明对应能力；诊断保留这些规范字段，不携带 PID、boot 或规则。原 schema-1 和命令目录兼容，顶层 Google/mixed_proxy 状态不被路由结论替换。恢复条件与预算以 runtime/CONNECTIVITY_CONTRACT 的 CON-005 为准。

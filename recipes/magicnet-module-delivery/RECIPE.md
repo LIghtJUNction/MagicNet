@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.8"
+version = "0.2.9"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.9 要求 Android 验收报告独立校验精确源码、完整阶段和 TUN 故障/恢复证据；缺失、跳过、畸形或未恢复报告均阻断门禁。
 
 0.2.7 要求新装和升级从本次安装包补入缺失的网页探测目标清单，保留用户已有目录内容及订阅更新历史，不新增运行锁迁移项，当前 subscription-update.lock 不随历史恢复。Android 临时 TLS 证书采用有限时钟容差，失败也保留脱敏证据；就绪等待超时复用既有有界脱敏支持包，采集失败不覆盖原错误；产品信任根与正式发行门槛不变。
 

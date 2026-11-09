@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.17 | 产品集成、M01–M65 与完整验收 |
-| magicnet-control-plane | 0.2.7 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.8 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet | 0.3.18 | 产品集成、M01–M66 与完整验收 |
+| magicnet-control-plane | 0.2.8 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.9 | 订阅事务、生命周期、监督恢复与低频联网检查 |
 | magicnet-web-console | 0.2.4 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.8 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
