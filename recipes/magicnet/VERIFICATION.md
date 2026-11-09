@@ -14,21 +14,17 @@
 
 ## 2026-11-09：#436 与模拟器故障回归
 
-[48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 实现 CON-005、CON-A08–A09 和 M66：独立观察 TUN，同一核心连续两次确认缺规则，经过 90 秒启动宽限和共享 300 秒冷却后走标准重启；每次开机最多恢复 3 次。未知、停止、事务、换代或损坏预算均有拒绝路径，Google/mixed_proxy 状态独立。合并并行修改后，相关 Rust 870 项通过、1 项既有环境忽略，Clippy/格式检查通过；重跑不累计计数。
+[48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 在既有 watchdog 中独立观察 TUN：同一核心连续两次确认缺规则，经过 90 秒启动宽限和共享 300 秒冷却后走标准重启，每次开机最多恢复 3 次。未知、停止、事务、换代和损坏预算均拒绝恢复；Google/mixed_proxy 独立。相关 Rust 曾实际完成 870 项通过、1 项环境忽略，Clippy/格式通过。
 
-必选 `tun-route-recovery` 精确删除自有 lookup，保留其他规则、核心和 TUN/FIB；用同应用 UID 的非 DNS UDP 验证正常→断流→生产恢复，并保留 TCP 控制。动态辅助表以正常停启校准；Android 网络编号变化须由完整 netd、接口/FIB 和两条精确 selector 共同证明。独立门禁核验源码身份、全部 13 阶段及清理证据；缺失、跳过或失败均不得通过。
+必选 `tun-route-recovery` 精确删除自有 RPDB lookup，以同应用 UID 的非 DNS UDP 验证正常→断流→生产恢复，保留 TCP 控制。辅助表归属由正常停启校准；Android 网络编号变化须有完整 netd、接口/FIB 和两条精确 selector 证据。独立门禁核对源码、全部 13 阶段及清理，失败或跳过均不得通过。
 
-[c595 Android 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42664890961) 已完成 RPDB 故障闭环：同 UID UDP 接收 1→0→1，首次 missing 不重启，随后正常生产路径恢复一次；外部规则与 netd 归属核验通过。但上联 down/up 后以 `uplink_reconnect_deadline` 失败，后 7 阶段未执行，原配置已恢复。由于未保存最后一次路由/就绪/TCP 谓词，不能断定超时原因，也不能把这次运行计为完整通过。
+当前 `9163064` 的[质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133634)、[网络](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133240)和[构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133719)均成功；root `4d09d7d` 的[配方 CI](https://github.com/LIghtJUNction/MagicNet/actions/runs/42676938799)成功。Android 宿主合同 427 项通过、1 项跳过，采集器 52 项与门禁 45 项包含在内；网络浏览器子集 312 项通过。Rust 质量项为精确缓存命中，不计新执行。宿主汇总预算由 15 调至 20 分钟，保留 25 分钟作业预算及全部测试；本次实际耗时 805 秒，不能把通过仅归因于预算增加。
 
-后续修正了 CI 宿主差异：TLS 截断响应负例须有服务端实际截断记录和前后正控，接受客户端既有的 EOF/transport 两种失败分类；内存采集测试改用受控 Python 进程，避免 Ubuntu 新版工具按别名拒绝启动。生产探针逻辑不变。553 的 Android 运行在 pending 时被后续提交替换，没有执行模拟器。934 的六个质量组成作业、完整浏览器、网络页面与模块构建已通过；质量汇总作业未创建，GitHub 报内部服务错误且拒绝重试，故完整质量仍记失败。
+[916 Android 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133752) 再次证明 RPDB 恢复：同 UID UDP 接收 1→0→1，首次 missing 不重启，随后正常生产路径恢复一次，外部规则归属核验通过。但上联阶段仍以 `uplink_reconnect_deadline` 失败：共 5 阶段通过、1 失败、7 未运行；重启仅 1/5，独立门禁 exit 1。原配置已恢复，不等于无线已重新关联。
 
-[b89e518](https://github.com/LIghtJUNction/magicnet-android/commit/b89e518f347c296b02278876ad7494f8aca9c7e2) 补齐上联切换前的同 UID TCP 正控及超时末次观测；独立门禁重新核对实际路由、就绪、TCP 与恢复预算，保留原接口条件和 600 秒时限。[Android 本轮](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751712) 的宿主合同作业实际完成 427 项通过、1 项跳过，含第 8 步的原版 KernelSU BusyBox UTF-8 测试。采集器 52 项、门禁 45 项和工作流 27 项已包含在总数中；另有两份完整宿主报告交叉与 lint 通过。
+新诊断确认上联切换前原 `wlan0` 默认路由、ready 和 TCP 均成功；末次原默认路由缺失，ready 与 TCP 因短路未执行，不能称 TCP 失败。完整 guest 日志记录 Wi-Fi 断开关联和 supplicant 退出；接口 UP 位恢复没有证明关联恢复。计划修正独立 guard 的 Android 框架恢复动作，继续要求原接口默认路由、就绪和同 UID TCP。工作环境随后离线，该修正尚未实施或复验。
 
-b89 的完整 Android 验收被 GitHub Actions 平台故障阻塞：b89 的模拟器作业未创建，没有模拟器或路由恢复报告；Build/Network 与 [eff8271 配方运行](https://github.com/LIghtJUNction/MagicNet/actions/runs/42673343331) 均为零作业并报 `Internal server error`。18:25:50 UTC 读取的 [GitHub 官方 Actions 状态](https://www.githubstatus.com/incidents/tp8cghg7tlc4) 为 `major_outage`。934 的 Android 运行已取消，当前仍缺同一源码的完整 13 阶段通过结果；较早的 c595 上联超时原因继续保持未知。
-
-[b89 Quality](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751386) 在 18:35:21 UTC 记录为失败：基础设施和 Rust 作业成功；shell 的宿主回归汇总步骤触及 900 秒上限，末项测试尚未完成，汇总作业失败。同轮页面另报内部服务错误，未创建的作业保留为未执行。宿主步骤超时与平台错误分别记录。 后继 [9163064](https://github.com/LIghtJUNction/magicnet-android/commit/9163064b51ba59cc89ac9a807fceb24573fed725) 只将该步骤总预算改为 20 分钟，保留作业 25 分钟、全部测试及失败传播；按两轮实际耗时留出余量。现有 CI/缓存/发布合同 83 项及工作流 lint 通过。[916 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133752) 与其他三条 CI 已启动，尚未计完整通过。
-
-完整提交、测试范围、历史失败、产物摘要与未验证边界见[证据索引](../../docs/evidence/tun-recovery-ci-2026-11-09.json)。早前失败分别涉及规则快照、TCP 不依赖 RPDB、外部规则归属和构建摘要校验，均保留原结果。模拟器验证规则丢失后的恢复；#436 的 OEM 触发者与物理 ARM64 换网行为仍待定位，Issue 保持 open。
+[证据索引](../../docs/evidence/tun-recovery-ci-2026-11-09.json) 保留精确提交、产物摘要、历史失败和 GitHub 平台故障；较早 c595 无末次观测，不能套用本轮诊断反推它的原因。当前完整 13 阶段未通过，#436 保持 open；OEM 删除规则的触发者、物理 ARM64 与公网行为仍未验证。
 
 ## 2026-11-09：前后端可用性与状态恢复
 

@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "recorded_at_utc": "2026-11-09T18:42:24.226220+00:00",
-  "status": "in_progress",
+  "recorded_at_utc": "2026-11-09T19:24:06Z",
+  "status": "incomplete_environment_unavailable",
   "issue": "https://github.com/LIghtJUNction/MagicNet/issues/436",
   "scope": "Android 15 / KernelSU / x86_64 disposable emulator; host tests are recorded separately",
   "production_fix": {
@@ -25,7 +25,7 @@
     "quality_run_id": 42676133634,
     "network_run_id": 42676133240,
     "build_run_id": 42676133719,
-    "status": "in_progress"
+    "status": "android_failed"
   },
   "host_validation": {
     "rust_after_merge": {
@@ -67,6 +67,16 @@
       "workflow_lint_exit_code": 0,
       "change": "shell step 15 to 20 minutes; job25 and existing per-script timeouts unchanged",
       "android_execution": false
+    },
+    "916_harness": {
+      "job_id": 129357878118,
+      "passed": 427,
+      "skipped": 1,
+      "producer_passed": 52,
+      "gate_passed": 45,
+      "android_execution": false,
+      "log_sha256": "e0ea93b004a933c78a7ac3cb69110ab62a4de0e16049c0c9659a8cd4114c91d3",
+      "boundary": "Producer, gate and workflow cases are included in the total. Rust quality checks used exact cache hits, not fresh executions."
     }
   },
   "earlier_android_failures": [
@@ -426,38 +436,38 @@
     "boundary": "Replaced while pending; no emulator job executed."
   },
   "ordinary_ci_as_of": {
-    "recorded_at_utc": "2026-11-09T18:13:29.888Z",
-    "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
+    "recorded_at_utc": "2026-11-09T19:24:06Z",
+    "source_sha": "9163064b51ba59cc89ac9a807fceb24573fed725",
     "workflows": {
       "quality": {
-        "run_id": 42669730874,
-        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669730874",
+        "run_id": 42676133634,
         "status": "completed",
-        "conclusion": "failure",
+        "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133634",
         "attempt": 1
       },
       "network": {
-        "run_id": 42669731256,
-        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731256",
+        "run_id": 42676133240,
         "status": "completed",
         "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133240",
         "attempt": 1
       },
       "build": {
-        "run_id": 42669731179,
-        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731179",
+        "run_id": 42676133719,
         "status": "completed",
         "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133719",
         "attempt": 1
       }
-    }
+    },
+    "boundary": "These workflows do not substitute for the mandatory Android lifecycle gate."
   },
   "remaining_boundary": [
-    "No full 13-phase result is claimed before every mandatory phase and independent gate pass on the same source commit.",
-    "c595 proves the RPDB application-UID UDP failure and production recovery, but its uplink stage timed out without a last predicate observation.",
-    "No physical ARM64/OEM modem transition or public proxy quality is established.",
-    "The original component removing OEM RPDB rules remains unidentified; issue 436 stays open.",
-    "The current source is blocked by Actions platform failures before emulator execution; c595 uplink_reconnect_deadline remains unresolved independently."
+    "Complete 13-phase acceptance at source 9163064 failed; seven later phases and four required reboots were not executed.",
+    "The uplink fixture restores IFF_UP but does not establish Wi-Fi reassociation. Framework restoration is not implemented or tested.",
+    "Issue #436 remains open: the OEM component that removed rules and physical ARM64 behavior are unknown.",
+    "No new release or phone deployment was performed."
   ],
   "934_android": {
     "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
@@ -614,21 +624,13 @@
     "boundary": "The confirmed shell aggregate timeout and the workflow internal-server-error annotation are recorded separately; uncreated jobs did not execute."
   },
   "root_recipe_ci": {
-    "root_sha": "eff82713cf914734f114031999945619d6dce142",
-    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
-    "run_id": 42673343331,
+    "root_sha": "4d09d7d9a1df1e27d09beb6b76e20dce0f4d73c3",
+    "source_sha": "9163064b51ba59cc89ac9a807fceb24573fed725",
+    "run_id": 42676938799,
     "run_attempt": 1,
-    "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/42673343331",
     "status": "completed",
-    "conclusion": "failure",
-    "jobs_created": 0,
-    "failure_detail": "Internal server error. Correlation ID: eb276a87-c994-4509-b91d-3a83cc7968be",
-    "run_page_sha256": "ea7a7c35eee7e4ac0cb683c7ba86717d9021e3b725d547108113a186cd160c24",
-    "raw_evidence": {
-      "file": "root-eff8271-run.json",
-      "sha256": "3da0f84baf7a38222ff0ddc40780965daf112ff7ae34f5dbea0c2678e91fb8e2"
-    },
-    "boundary": "GitHub internal server error before job creation; recipe checks did not execute in this run."
+    "conclusion": "success",
+    "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/42676938799"
   },
   "previous_candidate": {
     "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
@@ -650,5 +652,228 @@
     "host_script_default_timeout_seconds": 1800,
     "reason": "b89 had103 PASS scripts totaling797.95s before aggregate deadline;934 completed112 PASS scripts totaling699.07s; no individual assertion failure was observed",
     "all_test_commands_preserved": true
+  },
+  "ordinary_ci_history": [
+    {
+      "recorded_at_utc": "2026-11-09T18:13:29.888Z",
+      "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
+      "workflows": {
+        "quality": {
+          "run_id": 42669730874,
+          "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669730874",
+          "status": "completed",
+          "conclusion": "failure",
+          "attempt": 1
+        },
+        "network": {
+          "run_id": 42669731256,
+          "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731256",
+          "status": "completed",
+          "conclusion": "success",
+          "attempt": 1
+        },
+        "build": {
+          "run_id": 42669731179,
+          "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731179",
+          "status": "completed",
+          "conclusion": "success",
+          "attempt": 1
+        }
+      }
+    }
+  ],
+  "root_recipe_ci_history": [
+    {
+      "root_sha": "eff82713cf914734f114031999945619d6dce142",
+      "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+      "run_id": 42673343331,
+      "run_attempt": 1,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/42673343331",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs_created": 0,
+      "failure_detail": "Internal server error. Correlation ID: eb276a87-c994-4509-b91d-3a83cc7968be",
+      "run_page_sha256": "ea7a7c35eee7e4ac0cb683c7ba86717d9021e3b725d547108113a186cd160c24",
+      "raw_evidence": {
+        "file": "root-eff8271-run.json",
+        "sha256": "3da0f84baf7a38222ff0ddc40780965daf112ff7ae34f5dbea0c2678e91fb8e2"
+      },
+      "boundary": "GitHub internal server error before job creation; recipe checks did not execute in this run."
+    }
+  ],
+  "916_android": {
+    "source_sha": "9163064b51ba59cc89ac9a807fceb24573fed725",
+    "tree_sha": "ce5f393cb480f724cb356e44e3146daf4788f588",
+    "run_id": 42676133752,
+    "run_attempt": 1,
+    "android_job_id": 129358230268,
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133752",
+    "status": "completed",
+    "conclusion": "failure",
+    "artifact": {
+      "id": 13701953076,
+      "bytes": 212983,
+      "sha256": "499a6e11ed37512cdb852cdfbf67622318a2f59083ec5a6c49e58aecec4d2fb6",
+      "download_and_digest_verified": true
+    },
+    "lifecycle": {
+      "started_at_utc": "2026-11-09T18:53:57Z",
+      "completed_at_utc": "2026-11-09T19:11:45Z",
+      "seconds": 1068,
+      "cases": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7
+      },
+      "failed_case": "tun-route-recovery",
+      "failed_case_seconds": 896.692,
+      "reason": "uplink_reconnect_deadline",
+      "reboots_passed": 1,
+      "reboots_required": 5,
+      "original_config_restored": true
+    },
+    "independent_gate": {
+      "exit_code": 1,
+      "message": "Android lifecycle report did not pass the required scope",
+      "gate_sha256": "ac17174dd0ff199a8a617d88ea0b4a8c267a72b60baae5f7e9f8964151200740"
+    },
+    "rpdb_loss": {
+      "status": "verified",
+      "stage": "complete",
+      "removed_rules": 2,
+      "uid": 10209,
+      "before_and_fault": {
+        "core_pid": 21369,
+        "core_start_ticks": 10704,
+        "tun_ifindex": 23
+      },
+      "after": {
+        "core_pid": 25863,
+        "core_start_ticks": 30823,
+        "tun_ifindex": 24
+      },
+      "first_missing": {
+        "status": "missing",
+        "consecutive_failures": 1,
+        "recovery_attempts": 0
+      },
+      "recovery_after": {
+        "status": "present",
+        "warning": false,
+        "consecutive_failures": 0,
+        "recovery_status": "ok",
+        "recovery_attempts": 1,
+        "recovery_limit": 3
+      },
+      "udp_controls": [
+        {
+          "phase": "baseline",
+          "complete": true,
+          "ok": true,
+          "reason": "sentinel",
+          "accepted": 1,
+          "elapsed_ms": 4,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        },
+        {
+          "phase": "fault",
+          "complete": true,
+          "ok": false,
+          "reason": "timeout",
+          "accepted": 0,
+          "elapsed_ms": 5000,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        },
+        {
+          "phase": "recovered",
+          "complete": true,
+          "ok": true,
+          "reason": "sentinel",
+          "accepted": 1,
+          "elapsed_ms": 7,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        }
+      ],
+      "helper_table_before": 1831273008,
+      "helper_table_after": 530067716,
+      "previous_helper_fib_empty": true,
+      "eth0_net_id_before": 100,
+      "eth0_net_id_after": 102,
+      "stable_eth0_details": [
+        "Allowed UID ranges: uids{ 0-99999 }",
+        "Required permission: NONE"
+      ],
+      "other_foreign_rules_equal_after_exact_helper_and_netd_pair_subtraction": true
+    },
+    "uplink": {
+      "status": "not_verified",
+      "stage": "reconnect",
+      "interface": "wlan0",
+      "recovery_tick_count": 10,
+      "control_transport_verified": true,
+      "down_observed": true,
+      "up_observed": true,
+      "control_channel_survived": true,
+      "restore_guard_finished": true,
+      "baseline": {
+        "selected_default": true,
+        "tun_status": "present",
+        "ready": true,
+        "tcp": {
+          "called": true,
+          "result": {
+            "complete": true,
+            "ok": true,
+            "uid": 10209,
+            "reason": "sentinel",
+            "accepted": 1,
+            "elapsed_ms": 7
+          }
+        }
+      },
+      "last_observation": {
+        "selected_default": false,
+        "tun_status": "present",
+        "recovery_status": "ok",
+        "recovery_attempts": 1,
+        "recovery_limit": 3,
+        "ready": null,
+        "tcp": {
+          "called": false,
+          "reason": "selected_default_missing"
+        },
+        "remaining_candidate_default_interfaces": [
+          "eth0"
+        ]
+      }
+    },
+    "guest_log": {
+      "wlan0_deauthentication_uptime_seconds": 374.295586,
+      "supplicant_exit_uptime_seconds": 374.487616,
+      "archive_last_uptime_seconds": 996.689824,
+      "reassociation_observed_after_fault": false,
+      "boundary": "No reassociation was observed in the archived guest log. Truncated logcat/dmesg and cleanup-time state cannot establish final fault-window readiness or TCP."
+    },
+    "production_zip_sha256": "d017e96bcf211ecbf6e64c8cc26cef2f226fcff74d3ae641d5ca2e2234dfccbb",
+    "fixture_zip_sha256": "7a210576504a115858bf2cbbbb80bbcc0d424aa868bf0379e1d9b9481b894b55",
+    "google_https_204_observed": false,
+    "boundary": "RPDB recovery was observed, but complete Android acceptance failed. Final readiness/TCP were not called. A remaining eth0 default is not proof of application failover. Original-config restoration does not attest Wi-Fi reassociation."
+  },
+  "work_environment_blocker": {
+    "observed_at_utc": "2026-11-09T19:20:16Z",
+    "status": "unavailable",
+    "message": "No usable execution environment is available",
+    "wifi_restore_fix_implemented": false,
+    "new_guard_tests_executed": false,
+    "next_action": "Restore Wi-Fi through bounded Android framework operations in the disposable guest guard, then verify the original-interface default route, service readiness and same-UID TCP. Keep the 600-second reconnect deadline and independent gate."
   }
 }
