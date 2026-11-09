@@ -22,7 +22,7 @@
 
 [a5c63c4 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937924) 已精确删除两条 lookup，核心/TUN/FIB 与其他规则保持，readiness=false、health 报 RPDB 缺失；但 TCP 应用仍收到 marker，故以 `fault_app_rejection_not_proven` 失败，未执行恢复。固定 Android 核心的 TCP REDIRECT 不依赖该 RPDB 路径；故障负控制改用同 UID 的非 DNS UDP，并核验接收端建立、关闭和实际请求。
 
-[e8b4bb7 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387012) 已通过正常停止/启动的动态辅助表归属校准，故障时其余规则保持一致；仍因 TCP 成功而拒绝，未执行自动恢复。[47d55d2](https://github.com/LIghtJUNction/magicnet-android/commit/47d55d2636de2a386ec5c73c63c5e8b0498c8b88) 新增同应用 UID 的 UDP 正/负/恢复控制，绑定、清理或请求设置失败不得充当网络负例；保留 TCP 控制及辅助表完整核验，未禁用 auto_redirect。[对应 Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649306618) 正在执行，真实故障闭环待核验。
+[e8b4bb7 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387012) 已通过正常停止/启动的动态辅助表归属校准，故障时其余规则保持一致；仍因 TCP 成功而拒绝，未执行自动恢复。[47d55d2](https://github.com/LIghtJUNction/magicnet-android/commit/47d55d2636de2a386ec5c73c63c5e8b0498c8b88) 新增同应用 UID 的 UDP 正/负/恢复控制，绑定、清理或请求设置失败不得充当网络负例；保留 TCP 控制及辅助表完整核验，未禁用 auto_redirect。[对应 Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649306618) 已实测 UDP 正例/故障超时、同核心首次 missing=1、一次正常生产恢复和自有规则恢复；随后因 eth0 两条外部规则的标记从 0x64 变为 0x66，以 `recovery_rule_set_mismatch` 拒绝（275.027s）。缺少独立 netd 归属证据，不能追认通过；恢复后 UDP 与后 7 阶段未执行，原配置已恢复。下一轮补充有界系统网络映射，其他规则继续完整比较。
 
 ## 2026-11-09：前后端可用性与状态恢复
 
@@ -42,7 +42,7 @@ CLI 缺少 selector 参数返回可读用法错误，不再 panic。未知进程
 
 [7c8faf8 的完整六视口 WebUI 门禁](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788178/job/129230822352) 已实际运行 500.47s、exit=0 并成功；[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788275) 成功，其中订阅/Tailscale/页面浏览器子集为 312 passed，不能与完整套件相加。7c8faf8 整体质量运行随后因并行提交取消，未结束的 shell 不计为通过。[该提交模块构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788405) 成功，已上传 artifact `13685705675`（142,307,045 字节）。
 
-后继 a5c63c4 的[完整质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937728)和[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937778)均为 attempt 1 success，含实际执行的 WebUI 全套及 312 项页面子集。e8b4bb7 的[完整质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387026)、[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387033)和[模块构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644386827)也已成功；后继 47d55d2 只调整验收与文档，生产 Rust/WebUI 未变，其 CI 结果另行记录。[较早 CI 快照](../../docs/evidence/usability-ci-2026-11-09.json)保留历史身份与当时状态。现有真机/公网验证边界继续保留。
+后继 a5c63c4 的[完整质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937728)和[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937778)均为 attempt 1 success，含实际执行的 WebUI 全套及 312 项页面子集。e8b4bb7 的[完整质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387026)、[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387033)和[模块构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644386827)也已成功；后继 47d55d2 只调整验收与文档，生产 Rust/WebUI 未变；其[完整质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649305978)、[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649305830)和[模块构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649305916)均首次运行成功，完整浏览器实际执行 606.05s。Android 结果见上节，不能由这三条 CI 代替。[较早 CI 快照](../../docs/evidence/usability-ci-2026-11-09.json)保留历史身份与当时状态。现有真机/公网验证边界继续保留。
 
 ## 2026-11-08：代码与文档精简
 
