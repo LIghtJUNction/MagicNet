@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.18）
+# 重建 MagicNet（配方 0.3.19）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M66；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M68；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@351b7d7189c057ba88c4da89092e5bc4124989d0`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@ebb0b9d98183effdb552be74ede7d81c1de4e3f0`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -28,6 +28,8 @@
 ## 必须保留的行为
 
 - **透明模式与状态：** 仅显式 `tun|ebpf`，默认 tun；不增加 auto、TProxy、Redirect、netd ALLOW_MULTI、CA 注入或已删除 MITM/capture 路径。TUN 使用 `magicnet0`；eBPF 使用 capability/cgroup/TC 证据。意图、观测、事务 phase、ownership 分开，缺证据写 unknown/pending/null。
+- **日常使用（M67）：** 首页按已确认的来源与缓存建议导入、更新或启动检查；cacheCount 仅计远程原始缓存，本地来源上次成功且 cacheCount=0 同样可建议启动，缓存本身不表示节点或配置就绪。保留自定义配置的显式启动入口和内置节点直达。服务未知时主按钮只读刷新。自动引导等到服务与订阅读取成功、服务停止且来源和缓存均为空；不打断已有输入。订阅初始/读取失败、busy、queueDepth>0 或后台 running/timeout 时统一禁用来源、导入、更新和设置写入，保留草稿及重试。基线读取被取代且未投递时返回可识别失败，不报已提交。新前台操作取得反馈后，旧刷新停止后续排队；各异步操作只清理自己拥有的 busy/task。
+- **控制面未知值（M68）：** `api select` 缺参返回用法错误且不选择节点；`service toggle` 遇 unknown 拒绝启停。有效透明配置缺失、损坏或存在多个透明入站时，effective 保持 unknown；事务目录存在但 phase 缺失/空/不可读时同样 unknown。机器状态与 canonical 采用同一判断，不以 configured 填补观测。
 - **公开状态与隐私：** 每个域只有一个 `.state/machines/*.state` canonical 文件，原子发布；跨域使用可恢复事务。机器接口由 schema-1 dispatcher 完整接管，能力、写操作例外及错误语义遵守 control 合同。订阅、SSID/BSSID、节点名、密钥、原始 UID、设备标识及自由错误文本不进入公共状态、MCP 自动资源或发布物。
 - **订阅与恢复（M11–M13、M30–M47）：** 保留多源整批事务、逐源原生数量下界、稳定身份、同名/冲突判断、来源归属、VLESS Encryption、B/C 草稿及回读。等价节点合并忽略显示名并保留来源；身份明确的同源引用随重命名更新。公共/私密来源共用 C-SUB-008 的有界零写入观察。
 - **持久化与幂等：** 暂存目录晋升后，自有规则、缓存、Tailscale 路径和 checkpoint/last-known-good 继续有效，外部路径与停止意图保留。网络策略恢复保留最初完整共享 UID、策略与逐项进度；回执重放也先核对当前 marker、owner 和 journal。模块目录 manifest 及引用资源完整。

@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.4"
+version = "0.2.5"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.5 增加基于已确认来源/缓存的首页下一步、等待读取完成的空设备引导、订阅写入就绪检查与异步 ownership 收尾。状态仅留内存，接口、运行依赖和设备持久字段不增加。
 
 0.2.4 增加概览/诊断页的缓存 Google 连通性、明确警告/退避/恢复结果，以及协商 support.export 能力后的一键单文件导出。界面刷新不增加探测或特权恢复；保留原生桥串行、防重复提交、失败清除旧成功及 zh-CN/en/ru。
 

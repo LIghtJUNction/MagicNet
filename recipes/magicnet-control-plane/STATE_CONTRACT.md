@@ -5,7 +5,7 @@
 
 connectivity 的单调截止时间、退避、失败次数、恢复级别和订阅冷却由监督 producer 原子保存。普通 reconcile 不覆盖此域，状态读取不创建文件或发网络请求。开机 token 只用于预算有效性判断，不进入 JSON/MCP/诊断文件。新鲜度未知或重启后旧观测保持 stale/pending；主目标成功才有 online。
 
-任何状态写入必须先 reconcile 外部事实：准确进程身份、接口、cgroup、TC、路由/防火墙。枚举失败 unknown，等待外部条件 pending，旧观测 stale。驻留 producer 内部状态变动后主动 publish，不能等退出才发布；普通生命周期写操作结束 reconcile。
+任何状态写入必须先 reconcile 外部事实：准确进程身份、接口、cgroup、TC、路由/防火墙。枚举失败 unknown，等待外部条件 pending，旧观测 stale。透明 effective 仅来自可解析且唯一的透明入站；配置缺失、损坏、无匹配或重复时为 unknown，不回填 configured。事务目录存在而 phase 缺失、空或不可读时为 unknown，与机器快照一致。驻留 producer 内部状态变动后主动 publish，不能等退出才发布；普通生命周期写操作结束 reconcile。
 每文件 staged/synced 原子替换。跨域先完整计算、stage/sync，再逐个提交；后续替换失败回滚已替换文件。多个 rename 对无锁读者并不同时可见，需要跨域快照使用机器接口，其底层 OS 探测也不是全系统瞬时原子观察。
 
 canonical 不含订阅 URL、SSID/BSSID、selector/node 名、原始 UID、token/secret/password/auth key、原始 reason、完整配置或命令输出。用布尔、计数、规范化 token。

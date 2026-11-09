@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.9"
+version = "0.1.10"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.10 明确 LIFE-008/LIFE-A13：toggle 遇未知进程不启停，透明 effective 与事务 phase 依据实际观测，缺失和歧义不填成已配置或稳定状态。
 
 0.1.9 增加 CON-005/CON-A08–A09：TUN 自动路由有界恢复与真实模拟器故障注入，复用现有 producer 和生命周期。
 

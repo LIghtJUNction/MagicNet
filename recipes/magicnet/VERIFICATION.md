@@ -6,15 +6,27 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `351b7d7189c057ba88c4da89092e5bc4124989d0`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `ebb0b9d98183effdb552be74ede7d81c1de4e3f0`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
-| 配方 | 0.3.18，八包；验收 M01–M66 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.19，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
 | 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 现场规则消失根因与 #440 可信 NAS 入口；以下真机/公网边界继续保留 |
 
 ## 2026-11-09：#436 与模拟器故障回归
 
 新增 CON-005、CON-A08–A09 和 M66，规定有界 TUN 自动路由恢复、真实应用 UID 故障闭环与独立报告门禁。源码实现及本轮 CI 结果待记录；规格更新不构成执行通过，当前维护源码仍以上表固定点为准。
+
+## 2026-11-09：前后端可用性与状态恢复
+
+源码分三次提交：[08c2dea](https://github.com/LIghtJUNction/magicnet-android/commit/08c2deaab8106d46cb015942a61f1a0832be54b7) 修复异步前台操作恢复与订阅读取跟踪；[cd6055f](https://github.com/LIghtJUNction/magicnet-android/commit/cd6055f3605a53746a657fe8157fc0ac5de523f8) 修正未知运行状态和不完整命令；[ebb0b9d](https://github.com/LIghtJUNction/magicnet-android/commit/ebb0b9d98183effdb552be74ede7d81c1de4e3f0) 增加首页下一步建议、内置节点入口及订阅来源/设置的读取和并发门控。
+
+首页建议区分未读取、空来源、需要更新、可尝试启动；本地文件导入成功且远程缓存为零时仍提供启动检查。建议不把缓存数量当成有效节点数，不限制自定义完整配置的显式启动。服务状态未知时只读取状态。自动引导等到有效观测后出现，不因读取失败误判为新用户。订阅读取失败保留草稿，重试成功才恢复写入；任务占用、队列和未完成后台操作也阻止并发提交。
+
+CLI 缺少 selector 参数返回可读用法错误，不再 panic。未知进程状态不做 toggle，缺失/损坏配置或事务日志保持 unknown；configured 与 effective 分开。机器接口继续使用 schema=1，未增加写 API。
+
+宿主验证：最终源码 `npm run check` 通过，含 **385 项 WebUI 测试**、TypeScript 检查和生产构建；Rust 相关 **84 项通过、1 项既有环境用例忽略**，格式检查通过。忽略项依赖 AOSP mksh，不计为通过。完整前端构建仍提示主 chunk 超过 500 kB；本轮未测量启动速度、内存或续航，不据此宣称性能提升。
+
+本地 Chromium 创建 socket 被宿主阻止，额外权限请求被自动拒绝；共享浏览器未能访问隔离服务，因此本地浏览器交互未记为通过。源码 CI 的浏览器、构建与 Android 结果将按本提交单独记录；现有真机/公网验证边界继续保留。
 
 ## 2026-11-08：代码与文档精简
 

@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.18 | 产品集成、M01–M66 与完整验收 |
-| magicnet-control-plane | 0.2.8 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.9 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.4 | WebUI、订阅草稿、警告与诊断导出 |
+| magicnet | 0.3.19 | 产品集成、M01–M68 与完整验收 |
+| magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.10 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-web-console | 0.2.5 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -15,11 +15,11 @@
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
 
-control 统一公共状态和有界只读订阅观察，runtime 统一 URL/节点身份、来源与恢复，delivery 统一模块 manifest、资产及正式发行身份；WebUI 只提交意图并显示已协商结果。合同入口见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，不得复制第二套状态机或增加无需求的常驻服务。
+control 统一公共状态、参数错误和有界只读订阅观察；runtime 统一 URL/节点身份、来源与恢复，根据已确认进程身份执行启停并保留未知配置与事务状态；delivery 统一模块 manifest、资产及正式发行身份。WebUI 从有效只读快照建立编辑基线和下一步建议，操作 ownership 与订阅读取状态仅留内存。合同入口见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，不得复制第二套状态机或增加无需求的常驻服务。
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `351b7d7189c057ba88c4da89092e5bc4124989d0`，tree `9257c92a5505db6760bfc28c963f2031dbbdfdb7`。本次仅精简内部实现，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `ebb0b9d98183effdb552be74ede7d81c1de4e3f0`，tree `b55666e2008b744f5b6743cbd0311bd91c0abc6d`。本次完善首页操作建议、订阅读取与草稿恢复，并修正未知运行态和参数错误处理，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -34,7 +34,7 @@ control 统一公共状态和有界只读订阅观察，runtime 统一 URL/节�
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
-源码、观察 checkout、宿主测试工具和六个嵌套子模块均不进入配方归档。独立重建可采用自己的依赖结构，但必须遵守 engine、delivery 的复用许可和全部行为合同；不能要求读取旧源码补齐需求。此次精简没有新增运行库。
+源码、观察 checkout、宿主测试工具和六个嵌套子模块均不进入配方归档。独立重建可采用自己的依赖结构，但必须遵守 engine、delivery 的复用许可和全部行为合同；不能要求读取旧源码补齐需求。本次改动没有新增运行库。
 
 ## 外部前提
 

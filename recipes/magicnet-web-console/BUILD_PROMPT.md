@@ -4,7 +4,7 @@
 
 阅读 DESIGN.md、SUBSCRIPTION_FLOW.md、ACCEPTANCE.md；代码 PR #421 合入后的产品有 14 个页面：概览、流量路径、应用、节点与代理组、拦截规则、链式代理、订阅、Tailscale、配置文件、管理面板、健康检查、终端、工具、最近输出。按运行、路由、配置、诊断组织，保持页面可直达、导航状态和快速搜索。
 节点与代理组有独立路由入口、可读的内置名称及原始 tag 搜索；名称翻译只改变显示，选择命令仍使用原始标识。用户提供的 constructor、__proto__、toString、hasOwnProperty 等名称必须当普通数据处理，刷新、测速和确认切换不能崩溃或串组。
-Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字；Esc 关闭并恢复原焦点。首次引导可取消、稍后恢复；开局无订阅不能展示为成功联网。
+Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字；Esc 关闭并恢复原焦点。自动引导等到服务与订阅读取成功，且确认服务停止、来源和缓存均为空；读取失败、已有来源/缓存或用户正在输入时不抢占界面。引导可取消、稍后手动恢复。首页按有效快照建议添加来源、更新订阅或“启动并检查现有配置”。cacheCount 只计远程原始订阅缓存，不表示有效节点或配置就绪；已有缓存，或 sourceMode=local 且 lastResult=success 时均可建议启动检查，后者允许 cacheCount=0。保留自定义配置的显式启动和内置节点直达。服务状态未知时主按钮只刷新状态。
 
 ## 视觉与空间
 
@@ -31,12 +31,12 @@ Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字�
 通过管理器原生 bridge 执行受控 argv/私密 payload 文件，不把订阅/密码写 shell 字符串预览；无 native bridge 时明确只读预览，不模拟已连接设备。
 先协商 JSON 能力，校验 schema/ok/command/data 后更新；不解析人类文本来替代已有 JSON。未知、坏 JSON、多 JSON、非零退出显示失败；失败刷新清除过期 live 指示为 unknown；保存错误保留编辑。
 私密 sub/wifi/override inspector 安静读取，错误显示规范化代码，不捕获原始 payload。诊断使用脱敏 status。用户配置与实际 effective 分开展示。
-串行执行直到 native exit/error，调用者超时不等于取消，不能提前释放执行槽。晚回调、切页、双提交和新操作的 ownership 检查防止旧结果覆盖。
+串行执行直到 native exit/error，调用者超时不等于取消，不能提前释放执行槽。晚回调、切页、双提交和新操作的 ownership 检查防止旧结果覆盖。私密读取、载荷准备和后台投递同样拥有并清理自己的 busy/task；成功、失败和异常都收尾，旧操作不清理新操作的反馈。全量刷新失去 ownership 后停止排入剩余读取，设备后台任务仍按自己的证据继续对账。
 原生输出收集上限 8,388,608 UTF-16 单元及 65,536 事件，两流合计，空事件计入；溢出清空丢弃且等待真实退出，明确 output-limit 错误，不把部分 JSON 当成功；终结路径移除 callback。
 长后台任务通过设备 canonical/机器 status 恢复，关闭 WebUI 不丢失 module-update 工作。任务“接受”“完成”“需重启”和“已生效”分开。
-订阅后台任务按真实、脱敏后保留的操作标识识别：URL 的 `webui payload apply-subscription`、本地文件的 `webui payload apply-subscription-source` 与旧 `sub apply-file` 都进入同次完成检查，不能只识别旧命令或依赖翻译后的按钮文案。当前任务仍 running、error 或 timeout 且无同次完成证据时，旧订阅 success 不能将其改成 done；私密载荷路径和内容仍不进入任务诊断。
+订阅后台任务按真实、脱敏后保留的操作标识识别：URL 的 `webui payload apply-subscription`、本地文件的 `webui payload apply-subscription-source` 与旧 `sub apply-file` 都进入同次完成检查，不能只识别旧命令或依赖翻译后的按钮文案。当前任务仍 running、error 或 timeout 且无同次完成证据时，旧订阅 success 不能将其改成 done；私密载荷路径和内容仍不进入任务诊断。基线读取被新前台操作取代且尚未投递时，返回统一失败判定可识别的错误；调用者保留草稿，不显示已提交。
 
-订阅全流程按 SUBSCRIPTION_FLOW.md 的 UI-SUB-001–UI-SUB-012 实现。多行输入、候选来源数、私密载荷、保存回读和同次激活结果必须对应同一来源集合；2–5 个来源不能在任何边界变成第一个来源。来源总数取已确认配置，不能用带用量的行数或节点总数反推。“检查来源”的 URL 语法检查与域名解析不表示下载、解析、激活或流量成功。URL 身份和合并/回滚行为服从根包提供的 runtime 订阅合同；需要同步的规范化修正必须同时覆盖所有入口，不能让界面和设备各用一套规则。
+订阅读取单独保存内存状态 idle/loading/ready/error，仅最新有效快照进入 ready；已有 ready 的轮询可保留就绪，失败立即转 error。初始、读取失败、busy、queueDepth>0 或后台 running/timeout 时，统一禁用来源、导入、更新及设置写入，保留草稿及重新读取入口；UI 状态不进入设备 canonical。订阅全流程按 SUBSCRIPTION_FLOW.md 的 UI-SUB-001–UI-SUB-012 实现。多行输入、候选来源数、私密载荷、保存回读和同次激活结果必须对应同一来源集合；2–5 个来源不能在任何边界变成第一个来源。来源总数取已确认配置，不能用带用量的行数或节点总数反推。“检查来源”的 URL 语法检查与域名解析不表示下载、解析、激活或流量成功。URL 身份和合并/回滚行为服从根包提供的 runtime 订阅合同；需要同步的规范化修正必须同时覆盖所有入口，不能让界面和设备各用一套规则。
 
 ## 编辑、配置与敏感内容
 

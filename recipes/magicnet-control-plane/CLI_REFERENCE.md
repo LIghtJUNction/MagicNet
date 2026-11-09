@@ -49,3 +49,5 @@
 `connectivity status` 与 `--json connectivity status` 只读缓存；`connectivity tick` 是监督 producer 的有界到期检查，只有人类入口可调用，不支持 `--json tick`。`support export` 与 `--json support export` 是明确的单文件导出，完整语义见 DIAGNOSTIC_CONTRACT.md；`support bundle` 保留文本/MCP 使用。
 
 订阅单源替换与多源列表、私密payload、sub.status/sub.inspect字段和批次能力的精确语义见 SUBSCRIPTION_INTERFACE.md。命令名称包含file不表示允许读取任意用户路径；set-file/apply-file接收base64 URL列表，本地订阅正文使用受控apply-subscription-source。
+
+`api select` 必须同时提供 group 和 node；缺参返回正常用法错误，不触发节点选择或写入 selector 意图。`service toggle sing-box` 只根据已确认的 running/stopped 选择停止/启动；进程状态 unknown 时非零返回，不调用启停或改写 watchdog 意图。既有收尾 canonical 观测发布保留。

@@ -80,3 +80,11 @@ orphan 发现先按目标监督器的真实 loop/worker 命令筛选，再以现
 正常 service stop 的清理门槛保持。订阅重启在确认旧核心停止后，分别处理 worker 停止、热点路由及 DNS 清理；仅热点路由清理独立失败可以保留 owned journal、给出警告，并由既有 post-start/接口 watcher 重试。此时核心 ready 不能代表热点 ready。worker 停止、身份核验和 DNS 清理失败仍阻断新核心，且独立 DNS 清理均应尝试；旧核心归属或终止未知时不改变其策略与监督状态。
 
 LIFE-A12：覆盖无关 CLI/core/其他 loop 的不可读身份、真实候选不可读、ps 部分输出后失败，以及热点清理 1/2、worker 停止 1/2 和 DNS 清理失败。无关目标不误阻断；真实未知不授权；只有热点独立失败允许继续已有重协调路径。保留 TERM/KILL、readiness 和一般 stop 的反例。
+
+## LIFE-008：未知观测不授权启停
+
+`service toggle sing-box` 仅在进程状态已确认为 running 或 stopped 时选择对应操作；unknown 返回错误，不调用 start/stop、不改 watchdog 意图。控制面原有收尾观测发布保留。
+
+透明 effective 来自当前配置中唯一的 TUN/eBPF 入站。配置缺失、坏 JSON、无匹配或重复入站均为 unknown，configured 意图单独保留。事务目录存在但 phase 缺失、空或不可读时为 unknown；目录不存在才表示无事务。机器快照与 canonical 共享该判断。
+
+LIFE-A13：注入 unknown 进程、配置缺失/损坏/重复、事务 phase 缺失/空/不可读。核对启停 helper 调用与 watchdog marker，比较机器快照和 reconcile 后 canonical；未知不授权操作，不伪造 effective 或稳定阶段。

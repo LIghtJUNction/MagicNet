@@ -77,3 +77,7 @@ SUB-A04 另覆盖分享链接形式的 VLESS WebSocket：A/B 各一个名为 `HK
 SUB-A22 / SUB-011–013、LIFE-007：fswatch on/off 各执行三次受控订阅更新，核对 connectivity、refresh、wifi-policy、hotspot 和原先活动的 fswatch 在 config unlock 后恢复；update owner 在恢复期间仍有效，内部标记收尾清除。初始 journal reconcile、失败 rollback 与 TERM 同样验证锁序和原 fswatch 意图。生产 wrapper 加替身更新体只证明锁序，不能记为六次 Android 端到端订阅。
 
 同时执行 LIFE-A12、既有信号/事务/owner 回归和实际固定 kamfw 的宿主进程生命周期检查。精确记录可用 shell；本机 sh/bash 结果不能代替 mksh/BusyBox 或设备结果。维护集合恢复与现场特定 rc=2 的原因归属分别报告。
+
+## 0.1.10 未知状态验收
+
+执行 LIFE-A13：unknown 进程不触发 toggle 启停或改变 watchdog 意图；配置缺失/损坏/无透明入站/重复入站和不完整事务阶段均保持 unknown。对照 running/stopped、唯一有效入站及无事务目录的正常路径；机器与 canonical 结果一致。

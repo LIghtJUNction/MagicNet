@@ -14,7 +14,7 @@ runtime 0.1.6 增加 [CONNECTIVITY_CONTRACT.md](CONNECTIVITY_CONTRACT.md)，须�
 
 runtime 0.1.7 增加 LIFE-006/LIFE-A11。模块与框架两层锁必须使用不同私有文件并按固定顺序获取，不能让父进程持锁等待再次获取同一锁的子进程。用真实固定 kamfw 执行监督器并发、重复启动和停止集成验收，验证长驻 watcher 不持有模块控制锁。同时执行CON-004/CON-A07：正式模块自带受管HTTPS执行器和信任根，在无系统curl的Android中验证真实能力与有界探测；缺执行器与网络失败分开报告。
 
-启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
+启动、ensure、停止、重启、supervisor、开机入口与卸载使用同一归属模型。PID 不是充分身份证据，必须核对可执行文件/命令/启动身份与模块所有权；未知不杀进程；toggle 同样拒绝启停并保留 watchdog 意图。透明 effective 仅取可解析且唯一的实际透明入站，配置缺失/损坏/无匹配/重复为 unknown；事务目录存在但 phase 缺失/空/不可读也为 unknown，按 LIFE-008 与机器/canonical 共享判断。先优雅停止，超时按所有权安全升级，记录失败；无关进程/iptables/路由不能被 flush。
 config apply 对有效配置和规则指纹无变化时不重启；transparent apply 显式重建当前数据面。状态读取无写；写生命周期完成 publish/reconcile。
 周期 hotspot reconcile 使用非阻塞争锁，繁忙时无副作用跳过，不发布当前 owner 的状态；I/O/锁错误仍报告失败。实际尝试后，无论成功或失败都发布新的规范化观测。显式 service start|stop|restart 的锁获取有界等待，保留 startup/disabled/owner/事务恢复检查；参考实现只把服务操作锁预算从 2 秒扩为 10 秒，其他配置操作仍为 2 秒，该预算不代表完整操作耗时。
 模式切换只收 tun|ebpf，先校验候选、记录旧配置和资源、停自有核心、启动并验证目标，再提交。任一步失败可回滚字节与 owned 资源；中断 journal 保留并可恢复。不声称多个 OS 资源更新同时原子。

@@ -22,3 +22,7 @@
 15. 用带私密 canary 的 .cache、旧 .tmp、.local/state、directory-migration 与 symlink 别名测试通用文件读/列举拒绝；私密载荷正常读取消费，原有权限/硬链接/大小限制继续通过。
 
 16. 使用同一 TUN 观测覆盖 auto_route 开/关、IPv4/IPv6、自定义表与优先级、redirect mark、必要规则缺失、仅热点 iif 或 fallback 残留、受限查表规则、错误设备路由及截断/失败/超时。Android 参数不支持、普通命名表及数字外观别名分别验证；RPDB/FIB 必须指向同一真实数字 ID，不能由错误表共同伪装为成功。health 与机器快照共享观测：机器字段在任一必要项已知缺失时为 false，无已知缺失而有未知时为 null；人类 health 用 warning/detail 区分缺失与未知。机器 snapshot 对 stopped/unknown 不执行路由探测，人类 health 可检查残留接口。RPDB/FIB 子命令只读，共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB，不改规则/canonical、不发公网请求；真实 netd 网络切换及 App 流量须另记设备证据。
+
+17. `api select` 分别缺 group、缺 node：非零用法错误、无 panic，不执行选择或创建 selector-selections.json；有效参数仍走既有选择逻辑。
+18. 用 unknown 的进程观测执行 `service toggle sing-box`：非零拒绝，不调用 start/stop，watchdog marker 保留；running/stopped 的已支持分支继续正常。区分既有 canonical 收尾发布与服务写操作。
+19. 固定 configured=tun/ebpf，分别提供缺失、坏 JSON、无透明入站、重复同型和混合透明入站；effective 均为 unknown。事务目录无 phase、空 phase、不可读 phase 同样 unknown，目录不存在仍为 idle。机器快照与显式 reconcile 后 canonical 一致，不泄露配置或原始错误。

@@ -14,7 +14,7 @@ control 0.2.6 要求诊断保留后台监督启动超时与 connectivity watchdo
 
 同版本DIAG-A08要求独立的HTTPS执行器章节：仅用有界版本查询和固定来源文件记录工具版本、TLS/HTTPS/gzip能力及公开构建摘要。缺失、不可执行、损坏来源明确标记，未知字段和私密字符串仍脱敏；不得为证明能力而从诊断导出发起网络请求。探测工具不可用应保留本地原因，不能归因为上游断网。
 
-保留 CLI_REFERENCE.md 的命令族与参数。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
+保留 CLI_REFERENCE.md 的命令族与参数。`api select` 缺 group/node 返回用法错误，不触发节点选择或写 selector 意图；`service toggle sing-box` 仅据已确认的 running/stopped 决定启停，unknown 报错并保留 watchdog 意图。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
 Android 模块根必须由可信可执行路径/固定安装位置确定，不能由调用者 MODDIR 重定向特权代码。宿主夹具可显式使用独立 MODDIR；本地 API 仅允许 loopback HTTP 端口，拒绝远端/userinfo/路径混入。
 privileged 子进程不能执行任意拼接 shell；文件 payload 有界、私有、校验归属与路径。凭据不放 argv，不在输出预览泄露。
 
@@ -22,7 +22,7 @@ privileged 子进程不能执行任意拼接 shell；文件 payload 有界、私
 
 任意位置出现 --json 都由机器 dispatcher 完整接管；恰好一个 flag，未支持命令给结构化错误，禁止回落成人类写路径。stdout 只有一个 JSON，诊断 stderr；错误保留非零退出。
 capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspect 明确私密且用户主动调用。generic MCP 文件读取不得绕过 named inspect：应用 UID/包名、selector/node 名、路由/屏蔽域名清单、block.conf、proxy-chain.json、dns-leak-guard 接口名和 network-access recovery journal 走拒绝或显式私密工具。generic `magicnet_cli` 还拒绝人类 warp/node/route/block 默认清单；named `magicnet_node_list` / `magicnet_node_current` / `magicnet_block_list` 仍是显式路径。显式设计的 override、module-update、network-access 写例外必须保留各自并发、幂等、确认和回滚。
-配置值与运行值用 configured/effective；null/unknown 不等同于 false/stopped/success。状态读取不应偷偷发布 canonical 或更改用户意图。
+配置值与运行值用 configured/effective；null/unknown 不等同于 false/stopped/success。有效配置缺失、损坏或重复透明入站时 effective 为 unknown，不回退 configured；事务目录存在但 phase 缺失、空或不可读时为 unknown。机器快照与 canonical 共用判断；普通失败路径的收尾观测发布不表示执行成功。状态读取不应偷偷发布 canonical 或更改用户意图。
 
 ## 运行资源
 

@@ -2,7 +2,7 @@
 
 成功：schema=1、ok=true、command 为规范化命令名、data 为对象。失败：schema=1、ok=false、command、error.code、error.message；退出非零。输出前后不得有 banner、进度或第二个 JSON。重复 --json、未知命令/尾随参数必须是结构化失败。
 
-service.status 分开报告受控进程 running/stopped/unknown、API.ready、readiness.dataplane 和 readiness.overall；仅两者已证实正常才整体 ready。生命周期包括 stopped/unknown/reconfiguring/ready/not_ready/running_unknown。前端不得自行按 PID 推断绿色状态。
+service.status 分开报告受控进程 running/stopped/unknown、API.ready、readiness.dataplane 和 readiness.overall；仅两者已证实正常才整体 ready。生命周期包括 stopped/unknown/reconfiguring/ready/not_ready/running_unknown。前端不得自行按 PID 推断绿色状态。有效配置缺失、坏 JSON、无透明入站或存在多个 TUN/eBPF 入站时，transparent 的 effective_type/effective_mode 为 unknown，保留独立 configured_mode；不从配置意图推断实际模式。事务目录存在而 phase 缺失、空或不可读时 transition 为 unknown，目录不存在才表示无事务。该判断与 canonical 一致，schema 和命令集合保持。
 tun 核对 sysfs magicnet0，并在 auto_route 启用时按有效配置读取必要 RPDB/FIB 证据，未知不当 ready；ebpf 刷新活动程序并检查当前进程的 cgroup/TC attachment，不拿能力探测冒充实际挂载。
 hybrid 无下游时 local 可 ready，shared_tc=pending、shared_ready=false；配置了下游则必须全部验证。shared-only 缺下游不能 ready。local/shared 信号未知用 null，旧版本能力未协商不猜测。
 
