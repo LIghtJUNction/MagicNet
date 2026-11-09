@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `3736902a645021deb1809cadbe379ef2c56504bb`，tree `27ff25a598d4b30216fe307a62cf296be68ff78e`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `c59502859f4c797e37a8e41d55788fea8a32d5b5`，tree `d7a54f00a0131e14bddf0d3b88b5f7c79c2b5f89`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
