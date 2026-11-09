@@ -1,0 +1,145 @@
+{
+  "recorded_at_utc": "2026-11-09 15:06:39 UTC",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+    "tree": "796dbd1bb5115acaf057b7829b707cda23ec1299",
+    "same_application_sources_as": "7c8faf8327a5249b83f721f0c1a64098ea92f576",
+    "unchanged_paths": [
+      "webui",
+      "crates",
+      "src"
+    ],
+    "equivalence_check": "git diff --exit-code 7c8faf8327a5249b83f721f0c1a64098ea92f576 a5c63c4864c79eea7776c76fa80bc4349b238878 -- crates src webui"
+  },
+  "host_checks": {
+    "webui": {
+      "command": "npm run check",
+      "passed": 390,
+      "failed": 0,
+      "typecheck": "passed",
+      "production_build": "passed",
+      "application_fix_commit": "0a175bcb68bdd514f6db88f975193e4c73120126"
+    },
+    "rust_targeted": {
+      "commit": "cd6055f3605a53746a657fe8157fc0ac5de523f8",
+      "passed": 84,
+      "ignored": 1,
+      "ignored_reason": "existing AOSP mksh-dependent test",
+      "format": "passed"
+    },
+    "recipes": {
+      "version": "0.3.20",
+      "packages": 8,
+      "markdown_files": 61,
+      "checks": [
+        "directory check",
+        "pack",
+        "archive check",
+        "complete build prompt"
+      ]
+    },
+    "release_plan_tests": 37,
+    "live_pin_tests": 4,
+    "workflow_lint": "passed"
+  },
+  "full_browser": {
+    "commit": "7c8faf8327a5249b83f721f0c1a64098ea92f576",
+    "run_id": 42637788178,
+    "job_id": 129230822352,
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788178/job/129230822352",
+    "conclusion": "success",
+    "actual_execution": true,
+    "duration_seconds": 500.47,
+    "viewports": [
+      "320x740",
+      "360x800",
+      "390x844",
+      "430x932",
+      "844x390",
+      "1280x900"
+    ],
+    "individual_test_counts": null,
+    "note": "Successful cache wrapper logs RUN and PASS; raw Playwright counts are not published. Whole workflow later cancelled after a descendant push; this completed job remains successful."
+  },
+  "browser_subset": {
+    "commit": "7c8faf8327a5249b83f721f0c1a64098ea92f576",
+    "run_id": 42637788275,
+    "job_id": 129230462092,
+    "conclusion": "success",
+    "passed": 312,
+    "files": [
+      "e2e/tailscale.spec.mjs",
+      "e2e/page-review.spec.mjs",
+      "e2e/subscription-sources.spec.mjs"
+    ],
+    "note": "Overlaps with the full browser suite; do not add counts."
+  },
+  "module_build": {
+    "commit": "7c8faf8327a5249b83f721f0c1a64098ea92f576",
+    "run_id": 42637788405,
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788405",
+    "status": "completed",
+    "conclusion": "success",
+    "artifact": {
+      "id": 13685705675,
+      "name": "magicnet-module-42637788405-1",
+      "size_bytes": 142307045,
+      "digest": "sha256:b0a750b5f738daceabdd0760927918f64a38fe8a62a5850799aa36bbeae55740",
+      "created_at": "2026-11-09T15:02:57Z",
+      "expires_at": "2026-12-09T15:02:52Z"
+    }
+  },
+  "latest_workflows": [
+    {
+      "name": "Android KernelSU Acceptance",
+      "id": 42639937924,
+      "sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+      "status": "pending",
+      "conclusion": null,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937924"
+    },
+    {
+      "name": "Code Quality",
+      "id": 42639937728,
+      "sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937728"
+    },
+    {
+      "name": "Build MagicNet source",
+      "id": 42639937772,
+      "sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937772"
+    },
+    {
+      "name": "Network Regression Evidence",
+      "id": 42639937778,
+      "sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937778"
+    }
+  ],
+  "initial_browser_failure": {
+    "commit": "ebb0b9d98183effdb552be74ede7d81c1de4e3f0",
+    "run_id": 42630589799,
+    "passed": 715,
+    "failed": 84,
+    "skipped": 5,
+    "causes": [
+      "Tailscale status read self-triggered on busy unlock",
+      "Outdated unknown-service button expectations"
+    ],
+    "fixed_in": "0a175bcb68bdd514f6db88f975193e4c73120126"
+  },
+  "boundaries": [
+    "No physical Android deployment in this task",
+    "No new real subscription or public egress acceptance",
+    "No measured startup-speed, memory, throughput, or battery improvement",
+    "Overall quality and Android acceptance must be read separately from completed browser jobs"
+  ]
+}

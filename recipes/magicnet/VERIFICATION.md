@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `7c8faf8327a5249b83f721f0c1a64098ea92f576`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `a5c63c4864c79eea7776c76fa80bc4349b238878`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -32,7 +32,13 @@ CLI 缺少 selector 参数返回可读用法错误，不再 panic。未知进程
 
 宿主验证：回归修正后的 `npm run check` 通过，含 **390 项 WebUI 测试**、TypeScript 检查和生产构建；后端修复阶段（cd6055f）Rust 相关 **84 项通过、1 项既有环境用例忽略**，格式检查通过。忽略项依赖 AOSP mksh，不计为通过。完整前端构建仍提示主 chunk 超过 500 kB；本轮未测量启动速度、内存或续航，不据此宣称性能提升。
 
-本地 Chromium 创建 socket 被宿主阻止，额外权限请求被自动拒绝；共享浏览器未能访问隔离服务，因此本地浏览器交互未记为通过。初次 [浏览器 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42630589799) 为 715 passed、84 failed、5 skipped；失败集中于 Tailscale 自循环和仍按旧语义查找启动按钮的用例，已修正代码与断言。后续 17f1f59 的[网络证据 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42635923842) 全部通过，含 312 项实际浏览器测试（Tailscale 78 项覆盖 6 种视口）。其全量质量运行因新提交取消；[7c8faf8 质量 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788178) 正在验证。现有真机/公网验证边界继续保留。
+本地 Chromium 创建 socket 被宿主阻止，额外权限请求被自动拒绝；共享浏览器未能访问隔离服务，因此本地浏览器交互未记为通过。
+
+初次 [浏览器 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42630589799) 为 715 passed、84 failed、5 skipped；失败集中于 Tailscale 自循环和仍按旧语义查找启动按钮的用例，已修正代码与断言。0a175bc、ae8632d 与 17f1f59 的质量运行被后续 push 自动取消，不计为通过。17f1f59 的[网络证据 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42635923842) 另有 312 项浏览器测试通过；该子集与后续完整套件重叠，不累计计数。
+
+[7c8faf8 的完整六视口 WebUI 门禁](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788178/job/129230822352) 已实际运行 500.47s、exit=0 并成功；[网络回归](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788275) 成功，其中订阅/Tailscale/页面浏览器子集为 312 passed，不能与完整套件相加。7c8faf8 整体质量运行随后因并行提交取消，未结束的 shell 不计为通过。[该提交模块构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788405) 成功，已上传 artifact `13685705675`（142,307,045 字节）。
+
+后继 a5c63c4 只修改 Android 验收脚本及其测试，完整 webui tree、Rust 与模块业务源码与受测提交相同；截至 2026-11-09 15:06 UTC，其网络回归已成功，整体质量与构建仍运行，Android 验收仍待执行。完整身份与状态见 [CI 快照](../../docs/evidence/usability-ci-2026-11-09.json)。现有真机/公网验证边界继续保留。
 
 ## 2026-11-08：代码与文档精简
 
