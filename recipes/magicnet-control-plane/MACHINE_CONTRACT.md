@@ -137,4 +137,4 @@ service.status.readiness.dataplane 与 transparent.status.dataplane_ready 在核
 
 ## TUN 恢复观察（0.2.8）
 
-connectivity.status 和 service.status.data.connectivity 增加 `tun_auto_route`：status 为 not_required/pending/present/missing/unknown/paused/stale；warning 为布尔；checked_at、next_check_at、last_recovery_at 缺测为 null；retry_in_seconds、consecutive_failures、recovery_attempts、recovery_limit 为有界非负数；recovery_status 为 none/pending/ok/failed/busy/cooldown/exhausted。capabilities 声明对应能力；诊断保留这些规范字段，不携带 PID、boot 或规则。原 schema-1 和命令目录兼容，顶层 Google/mixed_proxy 状态不被路由结论替换。恢复条件与预算以 runtime/CONNECTIVITY_CONTRACT 的 CON-005 为准。
+connectivity.status 和 service.status.data.connectivity 增加 `tun_auto_route`：status 为 not_required/pending/present/missing/unknown/paused/stale；warning 为布尔；checked_at、next_check_at、last_recovery_at 和 retry_in_seconds 缺测为 null；已有时间/间隔及 consecutive_failures、recovery_attempts、recovery_limit 为有界非负数；recovery_status 为 none/pending/ok/failed/busy/cooldown/exhausted。capabilities 声明 bounded_tun_auto_route_recovery；诊断保留这些规范字段，不携带 PID、boot 或规则。原 schema-1 和命令目录兼容，顶层 Google/mixed_proxy 状态不被路由结论替换。恢复条件与预算以 runtime/CONNECTIVITY_CONTRACT 的 CON-005 为准。

@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `ebb0b9d98183effdb552be74ede7d81c1de4e3f0`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `48efc93601ed1bb66871c1274034a372da2ffc06`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.19，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -14,7 +14,11 @@
 
 ## 2026-11-09：#436 与模拟器故障回归
 
-新增 CON-005、CON-A08–A09 和 M66，规定有界 TUN 自动路由恢复、真实应用 UID 故障闭环与独立报告门禁。源码实现及本轮 CI 结果待记录；规格更新不构成执行通过，当前维护源码仍以上表固定点为准。
+源码 [48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 实现 CON-005、CON-A08–A09 和 M66：独立 TUN 观测、同一核心双确认、90 秒启动宽限、共享 300 秒冷却及每次开机最多 3 次恢复。Google/mixed_proxy 结果独立；未知、停止、事务、换代与损坏预算有拒绝路径。模拟器新增必选 `tun-route-recovery`，用自有规则删除和受控上联断续验证真实应用 UID 流量，并独立核验完整报告。
+
+宿主完整 Rust 回归 916 项通过、1 项既有忽略；保留并合入同时到达的 ebb0b9d 后，重新通过 852 unit、9 connectivity_runtime、9 observation_state（共 870）及严格 Clippy/格式检查。Android 注入器/流程/接线 181 项，报告门禁 22 项、验收合同 33 项通过；workflow 语义检查通过。宿主夹具不算真实 Android 流量。
+
+本提交的 [Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42633529047) 已排队，实际故障闭环结果待记录。并行基线 ebb0b9d 的浏览器 CI 暴露 Tailscale 状态读取循环及旧启动夹具，修复和新运行另行记录；不把这些失败标为通过。
 
 ## 2026-11-09：前后端可用性与状态恢复
 
