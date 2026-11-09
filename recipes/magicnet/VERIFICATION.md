@@ -20,6 +20,8 @@
 
 [17f1f59](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42635923874) 与 [7c8faf8](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788199) 的前 5 阶段通过，删规则时以 `invalid_rule_snapshot` 失败；原配置已恢复，自动恢复及后续 7 阶段未执行，报告门禁拒绝。后续修正只删除自有 lookup 规则、保留跳转锚点，并在 tick 前记录后台观测。
 
+[a5c63c4 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937924) 已精确删除两条 lookup，核心/TUN/FIB 与其他规则保持，readiness=false、health 报 RPDB 缺失；但 TCP 应用仍收到 marker，故以 `fault_app_rejection_not_proven` 失败，未执行恢复。固定 Android 核心的 TCP REDIRECT 不依赖该 RPDB 路径；故障负控制改用同 UID 的非 DNS UDP，并核验接收端建立、关闭和实际请求。
+
 [e8b4bb7](https://github.com/LIghtJUNction/magicnet-android/commit/e8b4bb76dcb54e5d242c20ffcebae96d588c98a8) 复用首次正常停止/启动，证明核心动态辅助表的归属；故障保持该表不变，自动恢复后完整核验新旧表，其余非自有规则仍须一致。未知读取、空快照和旧表残留均拒绝；未禁用 auto_redirect。[新版 Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387012) 已排队，真实故障闭环待核验。
 
 ## 2026-11-09：前后端可用性与状态恢复

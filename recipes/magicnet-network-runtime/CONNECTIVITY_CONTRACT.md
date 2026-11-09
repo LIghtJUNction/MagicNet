@@ -54,4 +54,4 @@ WebUI 概览、诊断页和 health 显示明确 ⚠️，包括失败、重试�
 | CON-A06 | 真实发行核心与 CLI，固定合成配置，TUN/eBPF/应用流量 | 分别记录配置 check、受控进程模拟、回环请求、公网请求和真机结果；权限阻断保留原错误，不能把模拟数字当真实吞吐 |
 | CON-A07 | 无系统curl的真实Android；正式组件安装/复用、TLS正确/错误证书、嵌入CA、一次到期或已执行的产品探测 | 受管curl及信任根真实可执行；经过当前mixed入口保留TLS与204判定；有界请求/缓存结果有实际证据，非probe_unavailable；私密订阅无须注入，外网失败不伪装成功；缺执行器单独报告且不盲目恢复 |
 | CON-A08 | TUN 缺失/恢复/未知、启动宽限、busy、stop、事务、ebpf、auto_route=false、时钟及 worker 重跑 | 独立观测不改变 Google 结论；双确认、共享冷却和同 boot 3 次预算准确；未知和停止零恢复，锁内重新确认 |
-| CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 本地流量，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新连接；原配置/测试资源恢复，缺少或跳过任一步不能通过 |
+| CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
