@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `553eaf9e9d83aa0c3ffa26a84f56d1123612c86e`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `b89e518f347c296b02278876ad7494f8aca9c7e2`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -14,19 +14,17 @@
 
 ## 2026-11-09：#436 与模拟器故障回归
 
-源码 [48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 实现 CON-005、CON-A08–A09 和 M66：独立 TUN 观测、同一核心双确认、90 秒启动宽限、共享 300 秒冷却及每次开机最多 3 次恢复。Google/mixed_proxy 结果独立；未知、停止、事务、换代与损坏预算有拒绝路径。模拟器新增必选 `tun-route-recovery`，用自有规则删除和受控上联断续验证真实应用 UID 流量，并独立核验完整报告。
+[48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 实现 CON-005、CON-A08–A09 和 M66：独立观察 TUN，同一核心连续两次确认缺规则，经过 90 秒启动宽限和共享 300 秒冷却后走标准重启；每次开机最多恢复 3 次。未知、停止、事务、换代或损坏预算均有拒绝路径，Google/mixed_proxy 状态独立。合并并行修改后，相关 Rust 870 项通过、1 项既有环境忽略，Clippy/格式检查通过；重跑不累计计数。
 
-宿主完整 Rust 回归 916 项通过、1 项既有忽略；保留并合入同时到达的 ebb0b9d 后，重新通过 852 unit、9 connectivity_runtime、9 observation_state（共 870）及严格 Clippy/格式检查。3736902 的网络归属采集器 43 项、门禁 38 项及其他流程/接线 203 项，共 284 项宿主回归通过；稳定编号及两次编号更替的 producer→gate 交叉通过。UDP Java 请求/清理 15 项、解码 28 项已在 47d55d2 对应 CI 实际通过，本次相关源码未变。宿主回环不算真实 Android UID/RPDB 流量。
+必选 `tun-route-recovery` 精确删除自有 lookup，保留其他规则、核心和 TUN/FIB；用同应用 UID 的非 DNS UDP 验证正常→断流→生产恢复，并保留 TCP 控制。动态辅助表以正常停启校准；Android 网络编号变化须由完整 netd、接口/FIB 和两条精确 selector 共同证明。独立门禁核验源码身份、全部 13 阶段及清理证据；缺失、跳过或失败均不得通过。
 
-[17f1f59](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42635923874) 与 [7c8faf8](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42637788199) 的前 5 阶段通过，删规则时以 `invalid_rule_snapshot` 失败；原配置已恢复，自动恢复及后续 7 阶段未执行，报告门禁拒绝。后续修正只删除自有 lookup 规则、保留跳转锚点，并在 tick 前记录后台观测。
+[c595 Android 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42664890961) 已完成 RPDB 故障闭环：同 UID UDP 接收 1→0→1，首次 missing 不重启，随后正常生产路径恢复一次；外部规则与 netd 归属核验通过。但上联 down/up 后以 `uplink_reconnect_deadline` 失败，后 7 阶段未执行，原配置已恢复。由于未保存最后一次路由/就绪/TCP 谓词，不能断定超时原因，也不能把这次运行计为完整通过。
 
-[a5c63c4 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42639937924) 已精确删除两条 lookup，核心/TUN/FIB 与其他规则保持，readiness=false、health 报 RPDB 缺失；但 TCP 应用仍收到 marker，故以 `fault_app_rejection_not_proven` 失败，未执行恢复。固定 Android 核心的 TCP REDIRECT 不依赖该 RPDB 路径；故障负控制改用同 UID 的非 DNS UDP，并核验接收端建立、关闭和实际请求。
+后续修正了 CI 宿主差异：TLS 截断响应负例须有服务端实际截断记录和前后正控，接受客户端既有的 EOF/transport 两种失败分类；内存采集测试改用受控 Python 进程，避免 Ubuntu 新版工具按别名拒绝启动。生产探针逻辑不变。553 的 Android 运行在 pending 时被后续提交替换，没有执行模拟器。934 的六个质量组成作业、完整浏览器、网络页面与模块构建已通过；质量汇总作业未创建，GitHub 报内部服务错误且拒绝重试，故完整质量仍记失败。
 
-[e8b4bb7 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387012) 已通过正常停止/启动的动态辅助表归属校准，故障时其余规则保持一致；仍因 TCP 成功而拒绝，未执行自动恢复。[47d55d2](https://github.com/LIghtJUNction/magicnet-android/commit/47d55d2636de2a386ec5c73c63c5e8b0498c8b88) 新增同应用 UID 的 UDP 正/负/恢复控制，绑定、清理或请求设置失败不得充当网络负例；保留 TCP 控制及辅助表完整核验，未禁用 auto_redirect。[对应 Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649306618) 已实测 UDP 正例/故障超时、同核心首次 missing=1、一次正常生产恢复和自有规则恢复；随后因 eth0 两条外部规则的标记从 0x64 变为 0x66，以 `recovery_rule_set_mismatch` 拒绝（275.027s）。缺少独立 netd 归属证据，不能追认通过；恢复后 UDP 与后 7 阶段未执行，原配置已恢复。后继 [3736902](https://github.com/LIghtJUNction/magicnet-android/commit/3736902a645021deb1809cadbe379ef2c56504bb) 补充有界 netd 完整网络记录、接口/FIB 与两条精确 selector 的交叉验证；未知、旧编号残留、权限或其他规则变化仍拒绝。恢复后 UDP 在最终规则断言前采集。[373 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42657055983) 首轮在 zlib 源码摘要校验时停止，未进入生命周期；同提交第二轮通过构建，但在首个校准快照以 `netd_eth0_ownership_unavailable` 拒绝（12.515s）。前 5 阶段通过、后 7 未执行，原配置已恢复；当时未保存被拒绝的 netd 结构，不能确定哪项归属条件不符。两次失败均保留，未追认通过。
+[b89e518](https://github.com/LIghtJUNction/magicnet-android/commit/b89e518f347c296b02278876ad7494f8aca9c7e2) 补齐上联切换前的同 UID TCP 正控及超时末次观测；独立门禁重新核对实际路由、就绪、TCP 与恢复预算，不改变原接口条件或 600 秒时限。采集器 52 项、门禁 45 项、工作流 27 项及 lint 通过，两份完整宿主报告交叉通过；[Android 新轮](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751712) 尚待结果。新主线 push 可替换过时模拟器运行，固定源码的发布调用继续执行。934 已取消；b89 的 Build/Network 在创建作业前报内部服务错误，未执行测试。GitHub 官方同期确认 [Actions 服务中断](https://www.githubstatus.com/incidents/tp8cghg7tlc4)，完整验收仍未计通过。
 
-[c595028](https://github.com/LIghtJUNction/magicnet-android/commit/c59502859f4c797e37a8e41d55788fea8a32d5b5) 保留 NONE 权限与两条精确 selector，支持固定 AOSP 可输出的合法 UID 元数据；跨编号变化时完整 eth0 记录仅允许 net_id 不同，UID、优先级与其他字段仍须完全一致。归属拒绝现在保存有界的解析结果和失败阶段。采集器 49 项、独立门禁 41 项及固定/重新编号两份完整宿主报告交叉通过；[c595 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42664890961) 正在执行，尚未计为通过。
-
-c595 的两个质量作业均在本地 TLS 截断响应负例中正确返回失败，但错误分类为 `transport`，不满足原测试唯一接受 `short_body` 的断言。已有客户端允许提前 EOF 返回或抛出 I/O 异常；[553eaf9](https://github.com/LIghtJUNction/magicnet-android/commit/553eaf9e9d83aa0c3ffa26a84f56d1123612c86e) 增加服务端实际发送截断 HTTP 200 的记录、前后完整响应正控，保留失败和完成状态检查，接受这两种合法分类。Java 15 项、工作流 27 项及 lint 通过；Android 两 ABI 构建共用本次已验证的源码归档，读取仍严格校验固定摘要。[最新 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42667027111) 等待执行，完整验收仍未计为通过。
+完整提交、测试范围、历史失败、产物摘要与未验证边界见[证据索引](../../docs/evidence/tun-recovery-ci-2026-11-09.json)。早前失败分别涉及规则快照、TCP 不依赖 RPDB、外部规则归属和构建摘要校验，均保留原结果。模拟器验证规则丢失后的恢复；#436 的 OEM 触发者与物理 ARM64 换网行为仍待定位，Issue 保持 open。
 
 ## 2026-11-09：前后端可用性与状态恢复
 

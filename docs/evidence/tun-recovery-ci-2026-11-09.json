@@ -1,0 +1,495 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-09T18:18:54.082176+00:00",
+  "status": "in_progress",
+  "issue": "https://github.com/LIghtJUNction/MagicNet/issues/436",
+  "scope": "Android 15 / KernelSU / x86_64 disposable emulator; host tests are recorded separately",
+  "production_fix": {
+    "source_sha": "48efc93601ed1bb66871c1274034a372da2ffc06",
+    "startup_grace_seconds": 90,
+    "missing_confirmations": 2,
+    "observation_interval_seconds": 60,
+    "shared_action_cooldown_seconds": 300,
+    "recovery_limit_per_boot": 3,
+    "backoff_seconds": [
+      300,
+      600,
+      1200
+    ],
+    "entry": "existing connectivity tick and normal locked core restart"
+  },
+  "candidate": {
+    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "tree_sha": "53c8e486ec9b9fc67e6d9741255aa94ef46437c5",
+    "android_run_id": 42672751712,
+    "status": "in_progress",
+    "quality_run_id": 42672751386,
+    "network_run_id": 42672751398,
+    "build_run_id": 42672751721
+  },
+  "host_validation": {
+    "rust_after_merge": {
+      "unit_passed": 852,
+      "connectivity_runtime_passed": 9,
+      "observation_state_passed": 9,
+      "ignored": 1,
+      "clippy_exit_code": 0,
+      "fmt_exit_code": 0,
+      "rust_tree": "224d0046eaf5f5c606c28ee713973d0c3a11854a",
+      "boundary": "Historical production validation; overlapping earlier runs are not added."
+    },
+    "c595_route_producer_passed": 49,
+    "c595_independent_gate_passed": 41,
+    "c595_producer_to_gate": [
+      "stable network ID",
+      "independently proven network-ID replacements"
+    ],
+    "553_java_probe_passed": 15,
+    "553_workflow_contracts_passed": 27,
+    "553_workflow_lint_exit_code": 0,
+    "934_owned_process_fixture_passed": 2,
+    "b89_uplink_evidence": {
+      "producer_tests_passed": 52,
+      "gate_tests_passed": 45,
+      "workflow_tests_passed": 27,
+      "workflow_lint_exit_code": 0,
+      "producer_to_gate": [
+        "stable network ID",
+        "independently proven network-ID replacements"
+      ],
+      "android_execution": false
+    }
+  },
+  "earlier_android_failures": [
+    {
+      "revision": "17f",
+      "source_sha": "17f1f591fb29ae74eec221b78e3a6fa3a571a87a",
+      "run_id": 42635923874,
+      "attempt": 1,
+      "status": "failed",
+      "reason": "invalid_rule_snapshot",
+      "boundary": "规则删除阶段解析失败，未形成fault快照，自动恢复未得到验证。",
+      "zip": {
+        "file": "android-42635923874-failed.zip",
+        "bytes": 200762,
+        "sha256": "8a92fa66557ee7c5dfd1e604b1b24ca3b29b16898007565a36f1eb61a01ae071"
+      }
+    },
+    {
+      "revision": "7c8",
+      "source_sha": "7c8faf8327a5249b83f721f0c1a64098ea92f576",
+      "run_id": 42637788199,
+      "attempt": 1,
+      "status": "failed",
+      "reason": "invalid_rule_snapshot",
+      "boundary": "仍在规则删除阶段解析失败，没有fault/after/first_missing/recovery_after证据。",
+      "zip": {
+        "file": "android-42637788199-failed.zip",
+        "bytes": 200709,
+        "sha256": "5fe8c33768f4501bf893d9806d1be3612ccee819a6e2e66f6fdb9a1113caeb41"
+      }
+    },
+    {
+      "revision": "a5c",
+      "source_sha": "a5c63c4864c79eea7776c76fa80bc4349b238878",
+      "run_id": 42639937924,
+      "attempt": 1,
+      "status": "failed",
+      "reason": "fault_app_rejection_not_proven",
+      "boundary": "两条lookup规则已删除，但app负控制仍返回sentinel；未进入自动恢复。",
+      "zip": {
+        "file": "android-42639937924-failed.zip",
+        "bytes": 195457,
+        "sha256": "0c3a3f0963d0c850b816d789203c15c866dcb7ac4a55a202df19a44def69322d"
+      }
+    },
+    {
+      "revision": "e8b",
+      "source_sha": "e8b4bb76dcb54e5d242c20ffcebae96d588c98a8",
+      "run_id": 42644387012,
+      "attempt": 1,
+      "status": "failed",
+      "reason": "fault_app_rejection_not_proven",
+      "boundary": "helper停启归属校准已成立；app负控制仍成功，未进入自动恢复。",
+      "zip": {
+        "file": "android-e8b-42644387012.zip",
+        "bytes": 195988,
+        "sha256": "11e87d46a58776bf68b7054507bcac0e346a5e73962c5666a56edb7e776c4f32"
+      }
+    },
+    {
+      "revision": "47d",
+      "source_sha": "47d55d2636de2a386ec5c73c63c5e8b0498c8b88",
+      "run_id": 42649306618,
+      "attempt": 1,
+      "status": "failed",
+      "reason": "recovery_rule_set_mismatch",
+      "boundary": "实际观察到生产恢复attempts 0→1、present/ok；eth0外部规则差分被拒绝，恢复后UDP/uplink未执行，整轮未通过。",
+      "zip": {
+        "file": "android-47d-42649306618.zip",
+        "bytes": 199232,
+        "sha256": "6642023226cf3046a701b3606d0a8c39e515a0ffbcca8aa3eab529403097a3fd"
+      }
+    }
+  ],
+  "373_android_attempts": [
+    {
+      "source_sha": "3736902a645021deb1809cadbe379ef2c56504bb",
+      "run_id": 42657055983,
+      "attempt": 1,
+      "job_id": 129298660141,
+      "status": "failed",
+      "metadata": {
+        "file": "373-attempt1-failure-metadata.json",
+        "bytes": 1989,
+        "sha256": "1ad76d73510cf46a3e056d7caa13c77aa1864be232478e7d76d0ab3309c0ff06"
+      },
+      "zip": {
+        "file": "android-373-42657055983-attempt1.zip",
+        "bytes": 317,
+        "sha256": "42b8776443bf830d5d7d5e81f683b522bfdc049a3fba44114f50fb1cfab42312"
+      },
+      "zip_matches_recorded_digest": true,
+      "reason": "zlib-1.3.2.tar.gz checksum mismatch",
+      "failed_step": {
+        "number": 22,
+        "name": "Build production Android curl for AVD",
+        "observed": "zlib-1.3.2.tar.gz checksum mismatch",
+        "exit_code": 1,
+        "at": "2026-11-09T16:50:33.7550471Z"
+      },
+      "lifecycle_started": false,
+      "simulation_report_present": false,
+      "boundary": "失败下载字节未保留，具体下载原因未知；同URL独立重取通过没有解释原失败。预期digest未更改，同SHA后续重跑单独记录。"
+    },
+    {
+      "source_sha": "3736902a645021deb1809cadbe379ef2c56504bb",
+      "run_id": 42657055983,
+      "attempt": 2,
+      "job_id": 129305875182,
+      "status": "failed",
+      "metadata": {
+        "file": "373-attempt2-failure-metadata.json",
+        "bytes": 4146,
+        "sha256": "e4f57ebcdfae90a0d1f54bd3f9e90a90f5b227900e46d3aafe5ffda622a7fd28"
+      },
+      "zip": {
+        "file": "android-373-42657055983-attempt2.zip",
+        "bytes": 190902,
+        "sha256": "9c69651fb2274a83eb651f4705b2b25fd0fe048b51570e88f47c8b9e751e8b77"
+      },
+      "zip_matches_recorded_digest": true,
+      "reason": "netd_eth0_ownership_unavailable",
+      "stage": "helper_before_stop",
+      "netd_snapshot_saved": false,
+      "recovery_tick_count": 0,
+      "original_config_restored_reported": true,
+      "raw_reports_verified": true,
+      "boundary": "helper_before_stop即拒绝，尚未注入RPDB故障或执行自动恢复；没有实际netd内容，不能推断权限或UID值。"
+    }
+  ],
+  "c595_android": {
+    "source_sha": "c59502859f4c797e37a8e41d55788fea8a32d5b5",
+    "run_id": 42664890961,
+    "run_attempt": 1,
+    "android_job_id": 129326220077,
+    "artifact_id": 13698445927,
+    "artifact_bytes": 207565,
+    "artifact_sha256": "c3adefe3edc70c2f8abc70a539585b6f390a18f86bec5e9553bd87d2cf7180f6",
+    "status": "failed",
+    "cases": [
+      {
+        "name": "environment",
+        "status": "passed",
+        "seconds": 37.662
+      },
+      {
+        "name": "kernelsu-bootstrap",
+        "status": "passed",
+        "seconds": 3.148
+      },
+      {
+        "name": "install-before-first-boot",
+        "status": "passed",
+        "seconds": 18.554
+      },
+      {
+        "name": "cold-boot",
+        "status": "passed",
+        "seconds": 49.732
+      },
+      {
+        "name": "app-uid-tun-controls",
+        "status": "passed",
+        "seconds": 36.928
+      },
+      {
+        "name": "tun-route-recovery",
+        "status": "failed",
+        "reason": "RuntimeError: app-UID TUN route recovery failed",
+        "seconds": 878.054
+      },
+      {
+        "name": "invalid-config-rollback",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "stop-cleanup",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "restart-idempotence",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "upgrade-preservation",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "disable-reboot",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "enable-reboot",
+        "status": "not_run",
+        "seconds": 0
+      },
+      {
+        "name": "uninstall-reboot",
+        "status": "not_run",
+        "seconds": 0
+      }
+    ],
+    "route_status": "not_verified",
+    "route_reason": "uplink_reconnect_deadline",
+    "restored": true,
+    "rpdb_status": "verified",
+    "rpdb_stage": "complete",
+    "recovery_tick_count": 4,
+    "first_missing": {
+      "status": "missing",
+      "warning": true,
+      "checked_at": 1794246348,
+      "next_check_at": 1794246408,
+      "retry_in_seconds": 58,
+      "consecutive_failures": 1,
+      "recovery_attempts": 0,
+      "recovery_limit": 3,
+      "recovery_status": "none",
+      "last_recovery_at": null
+    },
+    "recovery_after": {
+      "status": "present",
+      "warning": false,
+      "checked_at": 1794246476,
+      "next_check_at": 1794246537,
+      "retry_in_seconds": 60,
+      "consecutive_failures": 0,
+      "recovery_attempts": 1,
+      "recovery_limit": 3,
+      "recovery_status": "ok",
+      "last_recovery_at": 1794246408
+    },
+    "udp_controls": {
+      "baseline_app": {
+        "complete": true,
+        "ok": true,
+        "uid": 10209,
+        "reason": "sentinel",
+        "accepted": 1,
+        "elapsed_ms": 4,
+        "transport": "udp",
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      },
+      "fault_app": {
+        "complete": true,
+        "ok": false,
+        "uid": 10209,
+        "reason": "timeout",
+        "accepted": 0,
+        "elapsed_ms": 5000,
+        "transport": "udp",
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      },
+      "recovered_app": {
+        "complete": true,
+        "ok": true,
+        "uid": 10209,
+        "reason": "sentinel",
+        "accepted": 1,
+        "elapsed_ms": 4,
+        "transport": "udp",
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      }
+    },
+    "uplink": {
+      "recovery_tick_count": 10,
+      "status": "not_verified",
+      "stage": "reconnect",
+      "interface": "wlan0",
+      "default_interfaces": [
+        "eth0",
+        "wlan0"
+      ],
+      "control_transport_verified": true,
+      "restore_guard_pid": 28147,
+      "restore_guard_start_ticks": 33947,
+      "down_flags": 4098,
+      "down_observed": true,
+      "control_channel_survived": true,
+      "restore_guard_finished": true,
+      "up_flags": 4099,
+      "up_observed": true
+    },
+    "production_zip_sha256": "af297eb0ce278ebfbed483de1ecc97fc1f4a32aa9474612e342170eae3fa8908",
+    "fixture_zip_sha256": "8b309cfc34b4b16409a7aabddf735f5590e167925e8db1d198bfef1b0de54f5b",
+    "payload_sha256": {
+      "bin/magicnet-cli": "1bd2853fe81d7763b3ac7bcdb6d3a191c59b9b20813a8c48437b57ec9027d45e",
+      "bin/sing-box": "4c31c2c0fd4ef65a5d86f6467ee869a272e29896f6a91e6031db29f76ddd180f",
+      "bin/jq": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f",
+      "bin/yq": "17cf42d3429dc60b589e7d60dba13f2a26735f70c1420ebf2cf18f1958edba2f",
+      "bin/curl": "019c8588ab7a5386d9ccbec79933ef7e524c352cef382e97c7986f85acb81430",
+      "bin/ecapture": "82f5b7a2dfd8630fcf51a1f453311b1ae1a454ea6a3dd41b29566d4e0d9a9ab3",
+      "bin/proxylink": "ebfa5522c96bc5c704b1df711131615ca53874b63b374a6577013338451b84b9"
+    },
+    "metadata_sha256": {
+      "licenses/curl/build-provenance.json": "d34b09c17924dcb3a88cabcf068ab2e08c7c2f9fbe875f8f5746bce9e41db97a"
+    },
+    "reboot_checks": [
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      }
+    ],
+    "google_https_204_observed": false,
+    "not_tested": [
+      "stock-kernel KernelSU LKM injection",
+      "ARM64 execution",
+      "OEM kernels",
+      "Play/GMS login/download",
+      "public proxy quality",
+      "eBPF dataplane",
+      "IPv6 packet forwarding",
+      "eCapture execution",
+      "proxylink subscription parsing"
+    ],
+    "independent_gate": {
+      "exit_code": 1,
+      "stderr": "::error::Android lifecycle report did not pass the required scope"
+    },
+    "raw_sha256": {
+      "c595-simulation.json": "7b9cbb7e3f48e9e30d2af05b544cd395a9dbb850508377e6fad2df5543818242",
+      "c595-route-recovery.json": "3ba5a576e0b53de8e4eb709c083959a9c45b06ba157a5f7d55902b35a9251d78"
+    }
+  },
+  "553_android": {
+    "source_sha": "553eaf9e9d83aa0c3ffa26a84f56d1123612c86e",
+    "run_id": 42667027111,
+    "conclusion": "cancelled",
+    "boundary": "Replaced while pending; no emulator job executed."
+  },
+  "ordinary_ci_as_of": {
+    "recorded_at_utc": "2026-11-09T18:13:29.888Z",
+    "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
+    "workflows": {
+      "quality": {
+        "run_id": 42669730874,
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669730874",
+        "status": "completed",
+        "conclusion": "failure",
+        "attempt": 1
+      },
+      "network": {
+        "run_id": 42669731256,
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731256",
+        "status": "completed",
+        "conclusion": "success",
+        "attempt": 1
+      },
+      "build": {
+        "run_id": 42669731179,
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42669731179",
+        "status": "completed",
+        "conclusion": "success",
+        "attempt": 1
+      }
+    }
+  },
+  "remaining_boundary": [
+    "No full 13-phase result is claimed before every mandatory phase and independent gate pass on the same source commit.",
+    "c595 proves the RPDB application-UID UDP failure and production recovery, but its uplink stage timed out without a last predicate observation.",
+    "No physical ARM64/OEM modem transition or public proxy quality is established.",
+    "The original component removing OEM RPDB rules remains unidentified; issue 436 stays open."
+  ],
+  "934_android": {
+    "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
+    "run_id": 42669731010,
+    "status_as_observed": "completed",
+    "superseded_by": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "counted_as_passed": false,
+    "conclusion": "cancelled",
+    "boundary": "Superseded main push; lifecycle interrupted. No completed recovery acceptance claimed."
+  },
+  "934_quality_failure": {
+    "reason": "GitHub internal server error; all six component jobs succeeded; aggregate gate never created",
+    "correlation_id": "a794236e-3a0d-4487-9fb8-952b01bd6bb2",
+    "retry_failed_jobs": {
+      "status": 403,
+      "message": "This workflow run cannot be retried"
+    },
+    "page_sha256": "3a4a42c93b0bd75a0ba9d001c2921468ca15db8516df74053dd6e7635bd5351b"
+  },
+  "platform_incident": {
+    "url": "https://www.githubstatus.com/incidents/tp8cghg7tlc4",
+    "component": "Actions",
+    "status": "partial_outage",
+    "started_at_utc": "2026-11-09T18:12:37.232Z",
+    "observed_at_utc": "2026-11-09T18:19:16Z"
+  },
+  "b89_platform_failures": [
+    {
+      "workflow": "Build",
+      "run_id": 42672751721,
+      "jobs_executed": 0,
+      "conclusion": "failure",
+      "reason": "Internal server error",
+      "correlation_id": "719ab63c-386c-4a7c-be17-3634649ee105"
+    },
+    {
+      "workflow": "Network",
+      "run_id": 42672751398,
+      "jobs_executed": 0,
+      "conclusion": "failure",
+      "reason": "Internal server error",
+      "correlation_id": "75278806-5e94-43fc-9661-dbddb1e87d0f"
+    }
+  ]
+}
