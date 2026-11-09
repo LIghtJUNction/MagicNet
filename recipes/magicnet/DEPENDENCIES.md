@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.19 | 产品集成、M01–M68 与完整验收 |
+| magicnet | 0.3.20 | 产品集成、M01–M68 与完整验收 |
 | magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
 | magicnet-network-runtime | 0.1.10 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.5 | WebUI、订阅草稿、警告与诊断导出 |
+| magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `48efc93601ed1bb66871c1274034a372da2ffc06`，tree `3f853e2818e54e6ad2eed8a095267d1d657f1cec`。本次在既有可用性修正上增加 TUN 路由有界恢复与真实模拟器故障门禁，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `0a175bcb68bdd514f6db88f975193e4c73120126`，tree `e77e205a664fc436b148e0c11f7c50c040053142`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
