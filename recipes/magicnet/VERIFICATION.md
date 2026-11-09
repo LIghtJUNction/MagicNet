@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `c59502859f4c797e37a8e41d55788fea8a32d5b5`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `553eaf9e9d83aa0c3ffa26a84f56d1123612c86e`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -24,7 +24,9 @@
 
 [e8b4bb7 实测](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42644387012) 已通过正常停止/启动的动态辅助表归属校准，故障时其余规则保持一致；仍因 TCP 成功而拒绝，未执行自动恢复。[47d55d2](https://github.com/LIghtJUNction/magicnet-android/commit/47d55d2636de2a386ec5c73c63c5e8b0498c8b88) 新增同应用 UID 的 UDP 正/负/恢复控制，绑定、清理或请求设置失败不得充当网络负例；保留 TCP 控制及辅助表完整核验，未禁用 auto_redirect。[对应 Android CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42649306618) 已实测 UDP 正例/故障超时、同核心首次 missing=1、一次正常生产恢复和自有规则恢复；随后因 eth0 两条外部规则的标记从 0x64 变为 0x66，以 `recovery_rule_set_mismatch` 拒绝（275.027s）。缺少独立 netd 归属证据，不能追认通过；恢复后 UDP 与后 7 阶段未执行，原配置已恢复。后继 [3736902](https://github.com/LIghtJUNction/magicnet-android/commit/3736902a645021deb1809cadbe379ef2c56504bb) 补充有界 netd 完整网络记录、接口/FIB 与两条精确 selector 的交叉验证；未知、旧编号残留、权限或其他规则变化仍拒绝。恢复后 UDP 在最终规则断言前采集。[373 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42657055983) 首轮在 zlib 源码摘要校验时停止，未进入生命周期；同提交第二轮通过构建，但在首个校准快照以 `netd_eth0_ownership_unavailable` 拒绝（12.515s）。前 5 阶段通过、后 7 未执行，原配置已恢复；当时未保存被拒绝的 netd 结构，不能确定哪项归属条件不符。两次失败均保留，未追认通过。
 
-[c595028](https://github.com/LIghtJUNction/magicnet-android/commit/c59502859f4c797e37a8e41d55788fea8a32d5b5) 保留 NONE 权限与两条精确 selector，支持固定 AOSP 可输出的合法 UID 元数据；跨编号变化时完整 eth0 记录仅允许 net_id 不同，UID、优先级与其他字段仍须完全一致。归属拒绝现在保存有界的解析结果和失败阶段。采集器 49 项、独立门禁 41 项及固定/重新编号两份完整宿主报告交叉通过；[本轮 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42664890961) 正在执行，尚未计为通过。
+[c595028](https://github.com/LIghtJUNction/magicnet-android/commit/c59502859f4c797e37a8e41d55788fea8a32d5b5) 保留 NONE 权限与两条精确 selector，支持固定 AOSP 可输出的合法 UID 元数据；跨编号变化时完整 eth0 记录仅允许 net_id 不同，UID、优先级与其他字段仍须完全一致。归属拒绝现在保存有界的解析结果和失败阶段。采集器 49 项、独立门禁 41 项及固定/重新编号两份完整宿主报告交叉通过；[c595 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42664890961) 正在执行，尚未计为通过。
+
+c595 的两个质量作业均在本地 TLS 截断响应负例中正确返回失败，但错误分类为 `transport`，不满足原测试唯一接受 `short_body` 的断言。已有客户端允许提前 EOF 返回或抛出 I/O 异常；[553eaf9](https://github.com/LIghtJUNction/magicnet-android/commit/553eaf9e9d83aa0c3ffa26a84f56d1123612c86e) 增加服务端实际发送截断 HTTP 200 的记录、前后完整响应正控，保留失败和完成状态检查，接受这两种合法分类。Java 15 项、工作流 27 项及 lint 通过；Android 两 ABI 构建共用本次已验证的源码归档，读取仍严格校验固定摘要。[最新 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42667027111) 等待执行，完整验收仍未计为通过。
 
 ## 2026-11-09：前后端可用性与状态恢复
 
