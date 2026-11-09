@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "recorded_at_utc": "2026-11-09T18:18:54.082176+00:00",
+  "recorded_at_utc": "2026-11-09T18:42:24.226220+00:00",
   "status": "in_progress",
   "issue": "https://github.com/LIghtJUNction/MagicNet/issues/436",
   "scope": "Android 15 / KernelSU / x86_64 disposable emulator; host tests are recorded separately",
@@ -19,13 +19,13 @@
     "entry": "existing connectivity tick and normal locked core restart"
   },
   "candidate": {
-    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
-    "tree_sha": "53c8e486ec9b9fc67e6d9741255aa94ef46437c5",
-    "android_run_id": 42672751712,
-    "status": "in_progress",
-    "quality_run_id": 42672751386,
-    "network_run_id": 42672751398,
-    "build_run_id": 42672751721
+    "source_sha": "9163064b51ba59cc89ac9a807fceb24573fed725",
+    "tree_sha": "ce5f393cb480f724cb356e44e3146daf4788f588",
+    "android_run_id": 42676133752,
+    "quality_run_id": 42676133634,
+    "network_run_id": 42676133240,
+    "build_run_id": 42676133719,
+    "status": "in_progress"
   },
   "host_validation": {
     "rust_after_merge": {
@@ -57,6 +57,15 @@
         "stable network ID",
         "independently proven network-ID replacements"
       ],
+      "android_execution": false
+    },
+    "916_budget_contracts": {
+      "ci_quality_tests_passed": 20,
+      "ci_test_cache_tests_passed": 21,
+      "release_workflow_tests_passed": 42,
+      "total_passed": 83,
+      "workflow_lint_exit_code": 0,
+      "change": "shell step 15 to 20 minutes; job25 and existing per-script timeouts unchanged",
       "android_execution": false
     }
   },
@@ -447,7 +456,8 @@
     "No full 13-phase result is claimed before every mandatory phase and independent gate pass on the same source commit.",
     "c595 proves the RPDB application-UID UDP failure and production recovery, but its uplink stage timed out without a last predicate observation.",
     "No physical ARM64/OEM modem transition or public proxy quality is established.",
-    "The original component removing OEM RPDB rules remains unidentified; issue 436 stays open."
+    "The original component removing OEM RPDB rules remains unidentified; issue 436 stays open.",
+    "The current source is blocked by Actions platform failures before emulator execution; c595 uplink_reconnect_deadline remains unresolved independently."
   ],
   "934_android": {
     "source_sha": "93490713d3a516f950ff52108bcd4c7555f769e9",
@@ -470,9 +480,10 @@
   "platform_incident": {
     "url": "https://www.githubstatus.com/incidents/tp8cghg7tlc4",
     "component": "Actions",
-    "status": "partial_outage",
+    "status": "major_outage",
     "started_at_utc": "2026-11-09T18:12:37.232Z",
-    "observed_at_utc": "2026-11-09T18:19:16Z"
+    "observed_at_utc": "2026-11-09T18:25:50Z",
+    "boundary": "This later Actions outage is not attributed as the cause of the earlier c595 uplink timeout."
   },
   "b89_platform_failures": [
     {
@@ -491,5 +502,153 @@
       "reason": "Internal server error",
       "correlation_id": "75278806-5e94-43fc-9661-dbddb1e87d0f"
     }
-  ]
+  ],
+  "b89_android": {
+    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "run_id": 42672751712,
+    "run_attempt": 1,
+    "run_url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751712",
+    "status": "completed",
+    "conclusion": "failure",
+    "updated_at_utc": "2026-11-09T18:21:30Z",
+    "failure_detail": "Android KernelSU Acceptance Internal server error. Correlation ID: e3ee84d6-08b6-4ea8-8300-72fc1cc7fba7",
+    "android_job_created": false,
+    "android_execution": false,
+    "simulation_report_present": false,
+    "route_report_present": false,
+    "artifacts": [],
+    "independent_android_gate": "not_run_no_report",
+    "harness": {
+      "job_id": 129349830826,
+      "job_name": "Simulation harness contracts",
+      "conclusion": "success",
+      "tests_reported": 428,
+      "passed": 427,
+      "skipped": 1,
+      "step_7": {
+        "suite_count": 14,
+        "tests_reported": 427,
+        "passed": 426,
+        "skipped": 1
+      },
+      "step_8": {
+        "name": "Test UTF-8 parsers with the unmodified KernelSU BusyBox",
+        "tests_reported": 1,
+        "passed": 1,
+        "skipped": 0
+      },
+      "included_subsets_passed": {
+        "route_producer": 52,
+        "independent_gate": 45,
+        "workflow_contracts": 27
+      },
+      "counting_boundary": "The 52 producer, 45 gate and 27 workflow tests are included in 427 passed; historical host suites are not added.",
+      "log_file": "b89-harness-job-129349830826.log",
+      "log_sha256": "bd3c6e93c5520308dc988de12a46e2f59da7731e597bb9428dfe4c23a3fcaf7b"
+    },
+    "raw_evidence": [
+      {
+        "file": "b89-attempt1-workflow-failure.json",
+        "sha256": "820156eb9774e655ca5916d780746aabca260fc729101336fd952680d7c53f12"
+      },
+      {
+        "file": "b89-harness-results.json",
+        "sha256": "93dd19b4ff216997803b17d18d0ad2d4da45fbda53088ecbaf712a9a7881dfc9"
+      }
+    ],
+    "boundary": "Only the host harness executed. The workflow failed with an internal server error before creating the emulator job; no full 13-phase result exists."
+  },
+  "b89_quality_as_of": {
+    "recorded_at_utc": "2026-11-09T18:35:21.310Z",
+    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "run_id": 42672751386,
+    "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751386",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "jobs": [
+      {
+        "id": 129349530965,
+        "name": "CI infrastructure",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129349762451,
+        "name": "rust",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129349762776,
+        "name": "shell",
+        "status": "completed",
+        "conclusion": "failure"
+      },
+      {
+        "id": 129354871174,
+        "name": "CI Quality Gate",
+        "status": "completed",
+        "conclusion": "failure"
+      }
+    ],
+    "shell_failure": {
+      "job_id": 129349762776,
+      "step_number": 6,
+      "step_name": "Check shell code and host regressions",
+      "started_at_utc": "2026-11-09T18:19:42Z",
+      "completed_at_utc": "2026-11-09T18:34:55Z",
+      "configured_step_timeout_seconds": 900,
+      "step_metadata_elapsed_seconds": 913,
+      "reason": "aggregate host regression step timed out after 15 minutes",
+      "timeout_observed_at_utc": "2026-11-09T18:34:55.3557053Z",
+      "last_observed_test": "test-release-workflow.py",
+      "last_test_started_at_utc": "2026-11-09T18:34:52.389Z",
+      "boundary": "The 913-second step metadata includes preparation and termination; the enforced aggregate budget was 900 seconds. Unfinished tests are not counted as passed.",
+      "log_file": "webui-b89e518/job-129349762776.log",
+      "log_sha256": "32b8c8a0c543821b22a6d16217a188b393766f35264ca3969a5a11c0d1e74bce",
+      "step_metadata_file": "webui-b89e518/quality-jobs-attempt1.json"
+    },
+    "platform_failure_annotation": "Code Quality Internal server error. Correlation ID: fd0ac910-4901-4530-94e6-4f04f406f8cb",
+    "run_page_sha256": "1e5c2e2f3b87df25b36f9d9c4a4f103501abd939742ea83a8886f8c987f6443b",
+    "boundary": "The confirmed shell aggregate timeout and the workflow internal-server-error annotation are recorded separately; uncreated jobs did not execute."
+  },
+  "root_recipe_ci": {
+    "root_sha": "eff82713cf914734f114031999945619d6dce142",
+    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "run_id": 42673343331,
+    "run_attempt": 1,
+    "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/42673343331",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs_created": 0,
+    "failure_detail": "Internal server error. Correlation ID: eb276a87-c994-4509-b91d-3a83cc7968be",
+    "run_page_sha256": "ea7a7c35eee7e4ac0cb683c7ba86717d9021e3b725d547108113a186cd160c24",
+    "raw_evidence": {
+      "file": "root-eff8271-run.json",
+      "sha256": "3da0f84baf7a38222ff0ddc40780965daf112ff7ae34f5dbea0c2678e91fb8e2"
+    },
+    "boundary": "GitHub internal server error before job creation; recipe checks did not execute in this run."
+  },
+  "previous_candidate": {
+    "source_sha": "b89e518f347c296b02278876ad7494f8aca9c7e2",
+    "tree_sha": "53c8e486ec9b9fc67e6d9741255aa94ef46437c5",
+    "android_run_id": 42672751712,
+    "status": "blocked",
+    "quality_run_id": 42672751386,
+    "network_run_id": 42672751398,
+    "build_run_id": 42672751721,
+    "root_sha": "eff82713cf914734f114031999945619d6dce142",
+    "root_recipe_run_id": 42673343331
+  },
+  "budget_fix": {
+    "source_sha": "9163064b51ba59cc89ac9a807fceb24573fed725",
+    "path": ".github/workflows/quality.yml",
+    "previous_step_minutes": 15,
+    "step_minutes": 20,
+    "job_minutes": 25,
+    "host_script_default_timeout_seconds": 1800,
+    "reason": "b89 had103 PASS scripts totaling797.95s before aggregate deadline;934 completed112 PASS scripts totaling699.07s; no individual assertion failure was observed",
+    "all_test_commands_preserved": true
+  }
 }

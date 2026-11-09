@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `b89e518f347c296b02278876ad7494f8aca9c7e2`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `9163064b51ba59cc89ac9a807fceb24573fed725`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -22,7 +22,11 @@
 
 后续修正了 CI 宿主差异：TLS 截断响应负例须有服务端实际截断记录和前后正控，接受客户端既有的 EOF/transport 两种失败分类；内存采集测试改用受控 Python 进程，避免 Ubuntu 新版工具按别名拒绝启动。生产探针逻辑不变。553 的 Android 运行在 pending 时被后续提交替换，没有执行模拟器。934 的六个质量组成作业、完整浏览器、网络页面与模块构建已通过；质量汇总作业未创建，GitHub 报内部服务错误且拒绝重试，故完整质量仍记失败。
 
-[b89e518](https://github.com/LIghtJUNction/magicnet-android/commit/b89e518f347c296b02278876ad7494f8aca9c7e2) 补齐上联切换前的同 UID TCP 正控及超时末次观测；独立门禁重新核对实际路由、就绪、TCP 与恢复预算，不改变原接口条件或 600 秒时限。采集器 52 项、门禁 45 项、工作流 27 项及 lint 通过，两份完整宿主报告交叉通过；[Android 新轮](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751712) 尚待结果。新主线 push 可替换过时模拟器运行，固定源码的发布调用继续执行。934 已取消；b89 的 Build/Network 在创建作业前报内部服务错误，未执行测试。GitHub 官方同期确认 [Actions 服务中断](https://www.githubstatus.com/incidents/tp8cghg7tlc4)，完整验收仍未计通过。
+[b89e518](https://github.com/LIghtJUNction/magicnet-android/commit/b89e518f347c296b02278876ad7494f8aca9c7e2) 补齐上联切换前的同 UID TCP 正控及超时末次观测；独立门禁重新核对实际路由、就绪、TCP 与恢复预算，保留原接口条件和 600 秒时限。[Android 本轮](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751712) 的宿主合同作业实际完成 427 项通过、1 项跳过，含第 8 步的原版 KernelSU BusyBox UTF-8 测试。采集器 52 项、门禁 45 项和工作流 27 项已包含在总数中；另有两份完整宿主报告交叉与 lint 通过。
+
+b89 的完整 Android 验收被 GitHub Actions 平台故障阻塞：b89 的模拟器作业未创建，没有模拟器或路由恢复报告；Build/Network 与 [eff8271 配方运行](https://github.com/LIghtJUNction/MagicNet/actions/runs/42673343331) 均为零作业并报 `Internal server error`。18:25:50 UTC 读取的 [GitHub 官方 Actions 状态](https://www.githubstatus.com/incidents/tp8cghg7tlc4) 为 `major_outage`。934 的 Android 运行已取消，当前仍缺同一源码的完整 13 阶段通过结果；较早的 c595 上联超时原因继续保持未知。
+
+[b89 Quality](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42672751386) 在 18:35:21 UTC 记录为失败：基础设施和 Rust 作业成功；shell 的宿主回归汇总步骤触及 900 秒上限，末项测试尚未完成，汇总作业失败。同轮页面另报内部服务错误，未创建的作业保留为未执行。宿主步骤超时与平台错误分别记录。 后继 [9163064](https://github.com/LIghtJUNction/magicnet-android/commit/9163064b51ba59cc89ac9a807fceb24573fed725) 只将该步骤总预算改为 20 分钟，保留作业 25 分钟、全部测试及失败传播；按两轮实际耗时留出余量。现有 CI/缓存/发布合同 83 项及工作流 lint 通过。[916 Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133752) 与其他三条 CI 已启动，尚未计完整通过。
 
 完整提交、测试范围、历史失败、产物摘要与未验证边界见[证据索引](../../docs/evidence/tun-recovery-ci-2026-11-09.json)。早前失败分别涉及规则快照、TCP 不依赖 RPDB、外部规则归属和构建摘要校验，均保留原结果。模拟器验证规则丢失后的恢复；#436 的 OEM 触发者与物理 ARM64 换网行为仍待定位，Issue 保持 open。
 
