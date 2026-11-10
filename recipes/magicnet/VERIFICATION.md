@@ -136,3 +136,9 @@ bash scripts/check-workflows.sh
 Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/apply 幂等、restore/apply 持久还原通过；未修改真实信任目录。隔离测试临时文件已清理。正式开机和模块管理器卸载尚未实机执行。
 
 证书策略已单独整合并推送源码 main `406938e3e396676770a5a9b4911006f19db1c338`；原有 TUN 工作保留在源码 stash，不纳入此次提交。正式 v1.8.6 发布门禁结果待回读。
+
+### v1.8.6 正式发布受阻
+
+主仓库 `41aefcf742f4b8cfcaa481d221f21c56c571fa4a`，固定源码 `406938e3e396676770a5a9b4911006f19db1c338`。正式发布 [42796283786](https://github.com/LIghtJUNction/MagicNet/actions/runs/42796283786) 的构建、完整 release quality gate、发行资产校验通过。源码独立 Code Quality、构建、Android KernelSU、网络回归/证据及卸载检查均通过。已检查源码构建的在线/核心/离线包均包含 certificate-policy、默认 rules 和含 CertificatePolicy 的 dex，以及 boot apply/uninstall restore 调用。
+
+发布 Android attempt 1 在 tun-route-recovery 的上联重连期限失败：uplink_reconnect_deadline，默认网络没有恢复到原 Wi-Fi。attempt 2 保持相同源码重跑，规则恢复成功，但 netd 的 eth0 PHYSICAL 网络为 Required permission: NETWORK，触发 netd_eth0_ownership_unavailable。两次均保留失败，不将独立源码工作流成功替代正式发布门禁；publish 被跳过，未公开 v1.8.6，稳定发行仍为 v1.8.5。未安装到用户手机。
