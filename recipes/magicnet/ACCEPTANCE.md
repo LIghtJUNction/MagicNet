@@ -86,3 +86,5 @@ M30–M39 来自本轮 #426 与固定 v1.8.0 源码提取；证据和修正边�
 - 集成人员按当前 `.gitmodules` 和 Git tree 逐项核对共享技能的上游 URL、mode `160000`、完整提交、SKILL.md 入口及引用资源，不硬编码历史技能数量或依赖不存在的清单路径；原项目自定义技能保留。技能不进入运行时或配方归档。
 - `recipkg check` 通过，临时 pack 归档再次 check 通过；归档只含普通 UTF-8 `.md`，无链接、源码、Git 元数据、私密文件或执行钩子。完整 build 提示词包含所有递归 Markdown 材料。未明确要求交付归档时，验证后清理临时文件。
 - 发布后回读主仓库 gitlink、独立源码提交和原仓库 topics；保留已有 topics 并包含 `recipkg`。这项结构验收与 Android 构建、设备、网络和独立重建验收分别报告。
+
+证书策略：匹配、持久意图、幂等、ownership、失败恢复和卸载恢复遵守 runtime/CERTIFICATE_POLICY.md；不把证书机构归属当作监控证据。

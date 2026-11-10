@@ -4,9 +4,9 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.20 | 产品集成、M01–M68 与完整验收 |
+| magicnet | 0.3.21 | 产品集成、M01–M68 与完整验收 |
 | magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.10 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-network-runtime | 0.1.11 | 订阅事务、生命周期、监督恢复与低频联网检查 |
 | magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `9163064b51ba59cc89ac9a807fceb24573fed725`，tree `ce5f393cb480f724cb356e44e3146daf4788f588`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `406938e3e396676770a5a9b4911006f19db1c338`，tree `a8ae5755691b27f2f474fbf520db8ef5262cf29b`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -50,3 +50,5 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 先推送已授权源码，再更新主仓库 gitlink 与可复用工作流到同一 SHA。主仓库选择版本并固定发行快照；构建和模拟器只读，稳定索引在公开成功后更新。操作见主仓库 [发布指南](../../docs/releasing.md)，完整重建语义见 delivery/RELEASE_CONTRACT。
 
 项目名保持 MagicNet。配方发布保留原 topics 并添加 recipkg、回读核对；发现标签不构成验收证据。来源归属见 [PROVENANCE.md](PROVENANCE.md)，历史依赖变更见[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/DEPENDENCIES.md)，实际结果与限制见 [VERIFICATION.md](VERIFICATION.md)。
+
+证书禁用增加 runtime/CERTIFICATE_POLICY.md 合同；实现复用已有 Android app_process/Java bridge 构建链，无新增网络依赖或 CA 注入。

@@ -65,3 +65,7 @@
 M65 与 delivery/RELEASE_CONTRACT 规定：主仓库选择 bump 或自定义 version/code、冻结源码与发行快照；源码仓库提供同版本构建与 Android 验收。主仓库静态权限分离只读/发布规划，计划、构建、Android、资产验证全部成功后才公开。稳定版公开后同步 updater 与 README；预发布保留稳定索引；同一 run 的恢复绑定原 artifact。操作见主仓库 docs/releasing.md。
 
 日常迭代使用本地检查，不主动触发远程 CI。分别记录本地、模拟、真实网络、物理设备、正式发布和独立重建结果到 [VERIFICATION.md](VERIFICATION.md)。未获授权不重启用户设备、更改订阅、启用 MCP 或抓包。交付完整源码、依赖、安装物和实际验收证据；配方/提示词生成只完成材料检查。
+
+## 系统证书策略
+
+接入 runtime/CERTIFICATE_POLICY.md 的可恢复证书禁用脚本；默认大陆公共 CA 关键词策略，用户随时预览、禁用、恢复。此功能不添加受信任 CA，不解密流量。

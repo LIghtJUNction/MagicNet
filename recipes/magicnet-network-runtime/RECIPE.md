@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.10"
+version = "0.1.11"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"

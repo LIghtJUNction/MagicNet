@@ -63,3 +63,7 @@ repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确�
 按 SUB-011、SUB-012 与 LIFE-007 恢复完整的已配置维护集合：connectivity、计划 refresh、wifi-policy、hotspot watchdog 与原先活动的 fswatch。初始 journal 恢复、激活、回滚和信号清理在配置锁内仅记录恢复意图，锁释放后再启动 worker；订阅更新 wrapper 保留其 update owner 直至恢复结束。独立 common 入口不获取 update owner，继承外层锁/恢复上下文时按 LIFE-007 返回 2 并保留原状态。fswatch 关闭不能跳过其余维护，stopped/unknown 核心不能据此派生 worker。
 
 订阅重启把 worker 停止与热点路由清理分开。仅热点路由清理未完成时保留归属证据并明确警告，交由既有 post-start 和 watcher 重试；热点是否就绪继续单独判断。真正 worker 停止失败、未知身份和 DNS 清理失败继续阻断启动。orphan 先筛对应 loop/worker 命令，再按精确 PID/argv 身份授权；不把无关 CLI 的不可读身份当成该目标未知，也不把真实目标未知当成已停止。
+
+## 系统证书禁用
+
+实现 [CERTIFICATE_POLICY.md](CERTIFICATE_POLICY.md)：默认开启的 user-0 系统 CA 禁用策略，精确 SHA-256/完整主体和大小写无关字面关键词匹配；禁用、恢复、预览与开机重应用。仅恢复自身 ownership，卸载恢复，不注入 CA。
