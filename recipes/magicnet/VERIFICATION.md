@@ -142,3 +142,7 @@ Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/ap
 主仓库 `41aefcf742f4b8cfcaa481d221f21c56c571fa4a`，固定源码 `406938e3e396676770a5a9b4911006f19db1c338`。正式发布 [42796283786](https://github.com/LIghtJUNction/MagicNet/actions/runs/42796283786) 的构建、完整 release quality gate、发行资产校验通过。源码独立 Code Quality、构建、Android KernelSU、网络回归/证据及卸载检查均通过。已检查源码构建的在线/核心/离线包均包含 certificate-policy、默认 rules 和含 CertificatePolicy 的 dex，以及 boot apply/uninstall restore 调用。
 
 发布 Android attempt 1 在 tun-route-recovery 的上联重连期限失败：uplink_reconnect_deadline，默认网络没有恢复到原 Wi-Fi。attempt 2 保持相同源码重跑，规则恢复成功，但 netd 的 eth0 PHYSICAL 网络为 Required permission: NETWORK，触发 netd_eth0_ownership_unavailable。两次均保留失败，不将独立源码工作流成功替代正式发布门禁；publish 被跳过，未公开 v1.8.6，稳定发行仍为 v1.8.5。未安装到用户手机。
+
+### v1.8.6 按维护者授权直接公开
+
+维护者明确授权在 Android 门禁失败后直接发布。复用 run 42796283786 artifact 13756203637 的原始构建产物，20 项本地 SHA-256 和服务端名称/大小/digest 全部核对一致后公开 v1.8.6 / 10614。发行说明保留两次 Android 失败及授权跳过，不更改 CI 结论，不声称手机已安装。稳定 updater、README 和发行说明随本记录同步。
