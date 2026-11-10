@@ -156,3 +156,39 @@ TLS 安装后二进制摘要核验通过，local_tls_diagnostics 为 verified，
 CI 审计将当前源码指针前进至 [`af3930bd9860344688efa62684afdd7ba4ba25f5`](https://github.com/LIghtJUNction/magicnet-android/commit/af3930bd9860344688efa62684afdd7ba4ba25f5)，tree `60a573d8a4d7e349f70801edbf3b3882e8a9dd8a`，由主仓库 [PR #445](https://github.com/LIghtJUNction/MagicNet/pull/445) 接入。新增源码提交仅涉及工作流门禁、gitlink 触发路径与 ADB 成功测试预算；本记录原 Issue 验收提交 `8ff1242817038dfe220a68b75934d6b127bea4b1` 及此前 b989 验证记录保留原身份。
 
 这些 CI 修订不改变 #436 的真机网络证据缺口或 #440 的可信来源设计范围，也不新增 Android 软件发行。逐工作流结果及本轮真实 CI 见主仓库 docs/workflow-audit-2026-11-07.md。
+
+
+## 2026-11-10 日常 Issue / 安全 / 冗余扫描
+
+公开 GitHub 仍只有两个开放 Issue：[#436](https://github.com/LIghtJUNction/MagicNet/issues/436)、[#440](https://github.com/LIghtJUNction/MagicNet/issues/440)。主仓库与源码仓库均无开放 PR；源码仓库无开放 Issue。本轮只改配方仓跟踪记录，不向 `magicnet-android` 推送，也不关闭上述 Issue。
+
+当前 live pin：gitlink `9163064b51ba59cc89ac9a807fceb24573fed725`（tree `ce5f393cb480f724cb356e44e3146daf4788f588`），配方 0.3.20，公开稳定包 v1.8.5 / 10613。11-07 节中的 b989 / af3930bd / v1.8.4 仍是当时身份，不是当前指针。
+
+### Issue 现状
+
+| Issue | 已合入源码（相对 11-07） | 仍开放的原因 |
+| --- | --- | --- |
+| #436 | [48efc93](https://github.com/LIghtJUNction/magicnet-android/commit/48efc93601ed1bb66871c1274034a372da2ffc06) 已在既有 watchdog 中独立观察 TUN，连续两次缺规则、90 秒宽限、共享 300 秒冷却后走标准重启，每开机最多 3 次。9163064 的 Android 运行 [42676133752](https://github.com/LIghtJUNction/magicnet-android/actions/runs/42676133752) 已证明 RPDB 恢复（同 UID UDP 1→0→1） | 完整 13 阶段未通过：上联阶段 `uplink_reconnect_deadline`，guest 日志为 Wi-Fi 断开关联/supplicant 退出，接口 UP 不能当作关联恢复。独立 guard 的 Android 框架恢复动作尚未实施。OEM 删除规则的触发者、物理 ARM64 与公网行为仍未验证。11-07 所写“本配方仓库不能新增自动重启守护”已被后续源码合入取代，不再作为当前缺口 |
+| #440 | 订阅历史 `last_phase`/`last_result` 迁移仍以 8ff12428 / PR #3 为准 | 可信 NAS/私网入口仍未实现。公网订阅继续强制 HTTPS、拒绝私网/CGNAT/元数据、每跳校验、禁止环境代理。不得靠全局放宽 SUB-003 宣称支持 |
+
+### 代码漏洞扫描（只读，固定源码 9163064）
+
+未发现可在本配方仓修复的新生产漏洞。抽查结论：
+
+- 订阅抓取仍 fail-closed：仅 HTTPS、`--max-redirs` 受控、公网地址策略含 CGNAT/`::ffff:` 映射、禁止 `MAGICNET_SUB_PROXY` 与用户 curlrc。#440 所需的显式信任范围不存在，这是功能缺口而不是保护被绕过。
+- MCP 默认关闭，空 secret 拒绝授权，Bearer / 自定义头使用恒定时间比较，连接数有上限，请求头/体有界。
+- 安装迁移、ZIP 成员路径、订阅事务 generation、规则 `local` 路径均有拒绝 `../` 与非普通文件的回归。
+- WebUI JSON 高亮走 highlight.js 转义后再 `v-html`，编辑器内容是用户本机配置，不是远程 HTML。
+- 主仓库工作流：可复用源码工作流与 gitlink 同为 9163064；第三方 action 使用 40 字符 SHA；`recipe-check` 权限 `contents: read`；发布写权限仍限 `workflow_dispatch` + `mode=publish`。`check-workflows.sh` 用固定 SHA-256 校验 actionlint 1.7.12。
+
+未把静态抽查写成渗透测试或真机攻击面证明。若发现可利用的 root/MCP/订阅绕过，应按源码 `SECURITY.md` 私下报告，不在公开 Issue 贴复现步骤。
+
+### 冗余代码扫描
+
+对 `src/MagicNet/**/*.sh` 提取 411 个函数名后，仅定义处出现的名称与 11-02 扫描一致，继续保留：
+
+- `kamfw_phase_action` / `kamfw_phase_service`：kamfw 阶段钩子，由框架按名调用。
+- `magicnet_kernel_route_rule_start` / `end` / `fallback_rule` 与 `magicnet_ip6tables_nat_ensure`：生命周期与 IPv6 NAT 入口，动态或按合同保留。
+- `_launch_run`：farewell/onboarding 里覆盖 launcher 的局部函数（SC2317），不是死代码。
+
+此前删除的 `magicnet_prepare_singbox_nodes` 包装在当前树中已不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用，没有可删的平行入口。本轮不删除产品测试或降低验收。
