@@ -7,10 +7,10 @@
 | 对象 | 事实源 |
 | --- | --- |
 | 维护源码 | `dc4433d1cfbeade114d51f3f3c429378d3d7b68d`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
-| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
-| 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
-| 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 已在 9163064 合入有界 TUN 恢复，模拟器 RPDB 已证明，上联关联恢复与真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；以下真机/公网边界继续保留 |
+| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
+| 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
+| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；以下真机/公网边界继续保留 |
 
 ## 2026-11-09：#436 与模拟器故障回归
 
@@ -158,3 +158,11 @@ Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/ap
 首轮计划因 README 源码指针未同步失败，已同步三种语言 README 并通过完整 check-recipes。随后发布 run 42977712801 的构建、完整 release quality gate 和发行资产检查成功；Android RPDB 故障恢复通过，但 wlan0 原始 down/up 后默认路由未恢复，uplink_reconnect_deadline 导致生命周期未完成，未公开发行。维护者要求先修复模拟器再发布。
 
 修复前台与独立延迟 guard 的 wlan0 恢复动作，增加 Android Wi-Fi 服务关闭/开启和 30 秒接口重建等待；eth0 保持 link_up。报告增加 restore_method 并在门禁核对。宿主恢复回归 56 项、报告门禁 45 项、生命周期合同 109 项、工作流 27 项与 Android 验收合同 33 项通过；完整真实模拟器结果待新运行回读。
+
+### v1.8.7 正式发行完成
+
+[发布运行 42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016) 最终成功，固定源码 dc4433d1cfbeade114d51f3f3c429378d3d7b68d，发行快照 ebbefe01bd29680faf21d000860c606638f56ee1。构建、完整 release quality gate、Android 15 / KernelSU / x86_64 和独立门禁、最终资产校验全部通过。Android 生命周期 13/13 阶段通过，RPDB 与 wlan0 重连实测均 verified；报告包含 android_wifi_toggle、guard 退出、真实默认路由、就绪和同 UID 应用流量证据。已下载报告并用本地门禁再次核验源码身份及全部阶段。
+
+首次 publish 创建草稿后遇到 GitHub 短暂回读不可见（Created draft could not be found），回读确认原草稿身份后仅重跑失败发布 job，复用 artifact 13840432313，随后上传、公开和稳定索引同步成功。公开 v1.8.7 / 10615，非草稿、非预发布，发布时间 2026-11-11T08:37:59Z。20 项服务端资产名称与 SHA256SUMS 摘要集合一致，下载的校验清单、build-source.json、update.json 和核心 ZIP 字节摘要逐项一致。核心 ZIP 含默认关闭的包装器、规则和正确版本，未包含 enabled=true 意图文件。在线 ZIP 三个别名服务端摘要相同。完整/组件 ZIP 的本地再下载未执行，发布工作流的全包校验已通过。
+
+主仓库稳定 update.json 与三种语言 README 已同步至 v1.8.7 / 10615，自动索引提交 c528e7b5。物理手机先前已完成证书恢复；本次新版安装包的设备生命周期验收范围为 Android 模拟器。
