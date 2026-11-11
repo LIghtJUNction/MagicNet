@@ -42,10 +42,20 @@ def verify_live_pins(root):
     version, code = published_updater(root)
     dependencies = (root / "recipes/magicnet/DEPENDENCIES.md").read_text()
     readme = (root / "README.md").read_text()
+    prompt = (root / "recipes/magicnet/BUILD_PROMPT.md").read_text()
+    workflow = (root / ".github/workflows/release.yml").read_text()
     if gitlink not in dependencies:
         raise ValueError("DEPENDENCIES.md does not record the current source gitlink")
     if gitlink not in readme:
         raise ValueError("README.md does not record the current source gitlink")
+    if gitlink not in prompt:
+        raise ValueError("BUILD_PROMPT.md does not record the current source gitlink")
+    for workflow_name in ("exec.yml", "android-kernelsu-acceptance.yml"):
+        pin = f"LIghtJUNction/magicnet-android/.github/workflows/{workflow_name}@{gitlink}"
+        if pin not in workflow:
+            raise ValueError(
+                f"release.yml reusable {workflow_name} is not pinned to the current source gitlink"
+            )
     if version not in readme or str(code) not in readme:
         raise ValueError("README.md does not record the published updater version")
     return gitlink, version, code

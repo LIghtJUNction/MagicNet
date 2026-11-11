@@ -154,6 +154,20 @@ class ReleasePlanTest(unittest.TestCase):
                 f"[{version} / {code}]({tag}). [Установка и изменения]({notes}).\n" + history),
         }
 
+    def live_pin_files(self, source_sha=None):
+        source_sha = source_sha or self.source_sha
+        return {
+            "recipes/magicnet/BUILD_PROMPT.md": (
+                f"当前维护实现为 LIghtJUNction/magicnet-android@{source_sha}\n"
+            ),
+            ".github/workflows/release.yml": (
+                "uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
+                f"{source_sha}\n"
+                "uses: LIghtJUNction/magicnet-android/.github/workflows/"
+                f"android-kernelsu-acceptance.yml@{source_sha}\n"
+            ),
+        }
+
     def main_readmes(self):
         return {path: subprocess.check_output(
             ["git", "-C", str(self.origin), "show", f"main:{path}"],
@@ -174,7 +188,9 @@ class ReleasePlanTest(unittest.TestCase):
         for path, text in self.readmes().items():
             self.write(self.root / path, text)
         self.write(self.root / "recipes/magicnet/DEPENDENCIES.md", f"Current source: {self.source_sha}\n")
-        self.git(self.root, "add", "update.json", *self.readmes(), "recipes")
+        for path, text in self.live_pin_files().items():
+            self.write(self.root / path, text)
+        self.git(self.root, "add", "update.json", *self.readmes(), "recipes", ".github")
         self.git(self.root, "commit", "-m", "Index previous stable release")
         self.git(self.root, "push", "origin", "main")
         self.base = self.git(self.root, "rev-parse", "HEAD")
@@ -554,6 +570,7 @@ class ReleasePlanTest(unittest.TestCase):
         concurrent = "Concurrent documentation change: keep v1.2.2 / 122 as historical evidence.\n\n"
         files = {path: text + concurrent for path, text in self.readmes(source_sha=source_sha).items()}
         files["recipes/magicnet/DEPENDENCIES.md"] = f"Current source: {source_sha}\n"
+        files.update(self.live_pin_files(source_sha))
         files["CONTRIBUTING.md"] = "A concurrent document must remain untouched.\n"
         newer_main = self.set_remote_main(files=files, source_sha=source_sha)
         self.git(self.source, "checkout", "--detach", self.source_sha)
