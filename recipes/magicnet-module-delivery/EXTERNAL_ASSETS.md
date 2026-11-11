@@ -9,6 +9,8 @@
 | ecapture | gojue/ecapture | v2.5.2 | ecapture-v2.5.2-android-arm64.tar.gz | 3531f47f60a45c02662188fb151fa8bbf9c40e5c245ff293e5a50477b99df2d1 |
 | zashboard | Zephyruso/zashboard | v3.16.0 | dist-no-fonts.zip | 1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9 |
 
+[#447](https://github.com/LIghtJUNction/MagicNet/issues/447) 申请内置 zashboard。上表锁定的 `v3.16.0` `dist-no-fonts.zip` 已是审核过的默认 sing-box 本地面板；对同一资产再次申请不适配新产品。更换面板须重新审核并更新本表与源码 `hooks/lib/release_locks.sh`。
+
 ## 正式HTTPS执行器输入
 
 delivery 0.2.6要求从同一锁定来源构建Android API21的arm64-v8a生产版与x86_64模拟器版。OpenSSL与zlib静态链接，CA内嵌；最终`bin-curl`组件包含`bin/curl`以及固定`licenses/curl/`下的构建来源和四份许可/通知。源码压缩包、测试、开发目录和独立证书测试副本不进入模块。两种ABI的实际编译与运行结果必须绑定相同源码提交，不能用构建参数代替设备执行证据。

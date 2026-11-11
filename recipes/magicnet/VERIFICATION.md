@@ -6,11 +6,11 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `9163064b51ba59cc89ac9a807fceb24573fed725`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
-| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
-| 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 维护源码 | `406938e3e396676770a5a9b4911006f19db1c338`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.6 / 10614 |
+| 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 已在 9163064 合入有界 TUN 恢复，模拟器 RPDB 已证明，上联关联恢复与真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；以下真机/公网边界继续保留 |
+| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 已在 9163064 合入有界 TUN 恢复，模拟器 RPDB 已证明，上联关联恢复与真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447 申请的 zashboard 已是锁定默认面板，无需新产品；以下真机/公网边界继续保留 |
 
 ## 2026-11-09：#436 与模拟器故障回归
 

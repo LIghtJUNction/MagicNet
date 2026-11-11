@@ -28,6 +28,17 @@ class LivePinTest(unittest.TestCase):
         recipes = self.root / "recipes" / "magicnet"
         recipes.mkdir(parents=True)
         (recipes / "DEPENDENCIES.md").write_text(f"当前固定 {GITLINK}\n")
+        (recipes / "BUILD_PROMPT.md").write_text(
+            f"当前维护实现为 LIghtJUNction/magicnet-android@{GITLINK}\n"
+        )
+        workflows = self.root / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "release.yml").write_text(
+            "uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
+            f"{GITLINK}\n"
+            "uses: LIghtJUNction/magicnet-android/.github/workflows/"
+            f"android-kernelsu-acceptance.yml@{GITLINK}\n"
+        )
         (self.root / "README.md").write_text(
             f"Fixed implementation commit `{GITLINK}`\nPublished Android package v1.8.4 / 10612\n"
         )
@@ -37,7 +48,7 @@ class LivePinTest(unittest.TestCase):
             "versionCode": 10612,
             "zipUrl": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.8.4/magicnet_installer.zip",
         }))
-        self.git("add", "recipes", "README.md", "update.json")
+        self.git("add", "recipes", "README.md", "update.json", ".github")
         self.git("update-index", "--add", "--cacheinfo", f"160000,{GITLINK},generated/magicnet-android")
         self.git("commit", "-m", "Synthetic pins")
 
@@ -57,6 +68,18 @@ class LivePinTest(unittest.TestCase):
         path = self.root / "README.md"
         path.write_text(path.read_text().replace(GITLINK, OTHER))
         with self.assertRaisesRegex(ValueError, "README.md does not record the current source gitlink"):
+            CHECK.verify_live_pins(self.root)
+
+    def test_stale_build_prompt_gitlink_is_rejected(self):
+        path = self.root / "recipes" / "magicnet" / "BUILD_PROMPT.md"
+        path.write_text(path.read_text().replace(GITLINK, OTHER))
+        with self.assertRaisesRegex(ValueError, "BUILD_PROMPT.md"):
+            CHECK.verify_live_pins(self.root)
+
+    def test_stale_reusable_workflow_pin_is_rejected(self):
+        path = self.root / ".github" / "workflows" / "release.yml"
+        path.write_text(path.read_text().replace(GITLINK, OTHER))
+        with self.assertRaisesRegex(ValueError, "release.yml reusable exec.yml"):
             CHECK.verify_live_pins(self.root)
 
     def test_stale_published_version_is_rejected(self):
