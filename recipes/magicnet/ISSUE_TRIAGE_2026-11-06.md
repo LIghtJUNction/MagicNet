@@ -198,13 +198,13 @@ CI 审计将当前源码指针前进至 [`af3930bd9860344688efa62684afdd7ba4ba25
 
 公开 GitHub 现有三个开放 Issue：[#436](https://github.com/LIghtJUNction/MagicNet/issues/436)、[#440](https://github.com/LIghtJUNction/MagicNet/issues/440)、[#447](https://github.com/LIghtJUNction/MagicNet/issues/447)。主仓库无开放 PR。源码仓库无开放 Issue；有开放 PR [#5](https://github.com/LIghtJUNction/magicnet-android/pull/5)（仅 Android CI 证据，不改产品路由）。本轮只改配方仓：对齐 live pin、记录 #447 审核结论，并补上可复用工作流与 gitlink 不一致的回归检查。不向 `magicnet-android` 推送，也不关闭上述 Issue。
 
-当前 live pin：gitlink `406938e3e396676770a5a9b4911006f19db1c338`（tree `a8ae5755691b27f2f474fbf520db8ef5262cf29b`），配方 0.3.21，公开稳定包 v1.8.6 / 10614。11-10 节中的 9163064 / v1.8.5 仍是当时身份。
+本 PR 候选 live pin：gitlink `da5cc77d031c154d321f33ee7060b1a118a32764`（tree `a046460a44c8bad10b9f9822edb24c9e61df81f5`），配方 0.3.21；公开稳定包仍为 v1.8.6 / 10614。以下 11-11 原始审计记录使用当时的 `406938e3`，11-10 节使用当时的 `9163064`。
 
 ### Issue 现状
 
 | Issue | 已合入源码（相对 11-10） | 仍开放的原因 |
 | --- | --- | --- |
-| #436 | 产品侧仍以 48efc93 有界 TUN 恢复为准，固定在 406938e3。源码 PR #5 只让验收证据跟随内核选定的 wlan0 或 eth0 上联，不改变 watchdog 或 RPDB 安装 | 完整 13 阶段仍缺上联关联恢复；OEM 删除规则的触发者、物理 ARM64 与公网行为未验证。PR #5 未合入，也不能单独关闭本 Issue |
+| #436 | 产品侧仍以 48efc93 有界 TUN 恢复为准；源码 PR #5 只让验收证据跟随内核选定的 wlan0 或 eth0 上联，不改变 watchdog 或 RPDB 安装 | 完整 13 阶段仍缺上联关联恢复；OEM 删除规则的触发者、物理 ARM64 与公网行为未验证。PR #5 未合入，也不能单独关闭本 Issue |
 | #440 | 订阅历史迁移仍以 8ff12428 / PR #3 为准 | 可信 NAS/私网入口仍未实现。公网订阅继续强制 HTTPS、拒绝私网/CGNAT/元数据、每跳校验、禁止环境代理 |
 | #447 | 无新实现。WebUI「申请适配」对默认表单提交了 zashboard / local-download | 已是审核锁定的默认面板：`Zephyruso/zashboard` v3.16.0 `dist-no-fonts.zip`，SHA-256 `1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9`。构建钩子、`external_ui=zashboard` 与 WebUI 预填均指向该锁。审核结论：不另做内置。保持 open 直至维护者关闭 |
 

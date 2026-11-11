@@ -4,7 +4,7 @@ A transparent networking control plane for Android root/arm64: subscriptions, ap
 
 [Main guide](README.md) · [Русский](README.ru.md) · [Source](https://github.com/LIghtJUNction/magicnet-android)
 
-Recipe version: 0.3.21; current gitlink: `406938e3e396676770a5a9b4911006f19db1c338`; current Android release: [v1.8.6 / 10614](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.6). [Release and installation notes](docs/releases/v1.8.6.md).
+Recipe version: 0.3.21; current gitlink: `da5cc77d031c154d321f33ee7060b1a118a32764`; current Android release: [v1.8.6 / 10614](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.6). [Release and installation notes](docs/releases/v1.8.6.md).
 
 The primary repository stores Markdown product contracts; `generated/magicnet-android/` pins the maintained implementation. Start with [requirements](recipes/magicnet/BUILD_PROMPT.md), [acceptance](recipes/magicnet/ACCEPTANCE.md) and [verification](recipes/magicnet/VERIFICATION.md). Independent reconstruction uses an empty implementation directory and the full recipe closure. Source, secrets and device state stay outside recipe archives.
 
