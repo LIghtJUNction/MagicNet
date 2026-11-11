@@ -71,3 +71,5 @@
 | 正式发行成功、预发布、索引同步冲突、main 已有更高版本 | 同步 main metadata | 正式发行才更新稳定 updater；预发布补入 notes；保留其他文件和 gitlink；不回退稳定版本 |
 
 主仓库隔离 Git/API 回归、源码 metadata 注入回归和真实 Actions 运行分别记录；测试文件保留在开发树，仍禁止进入最终模块。
+
+上联恢复覆盖 wlan0 的 Android Wi-Fi 重建（前台与独立 guard 一致）、eth0 不触碰 Wi-Fi、恢复命令失败、guard 未退出、无实际默认路由及无应用流量均拒绝。恢复方法必须与接口相符。

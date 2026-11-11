@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `03eb32ef53290ccefdb8997e938a8ff416a0ee9b`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `dc4433d1cfbeade114d51f3f3c429378d3d7b68d`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -152,3 +152,9 @@ Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/ap
 缺少 enabled 的默认值改为 false；开机包装器遇 absent/false 直接返回，不调用 Java 桥或发送信任库广播。显式 disable、restore 与 ownership 行为保留。主机真实 X.509 回归通过，新增缺省关闭和开机无操作覆盖。recipkg check、pack、归档 check、完整 build 提示词生成及归档 62 个 UTF-8 Markdown 文件检查通过。
 
 通过 adb/root 逐张核对设备 user-0 的 10 个中国相关 CA 禁用标记主体及与系统源文件的字节一致性后，按用户授权删除标记；设备 enabled 原子写入 false，SELinux 标签刷新与 TRUST_STORE_CHANGED 广播成功。回读配置 false，cacerts-removed 普通文件数为 0。设备未安装证书策略脚本，因此本次恢复直接操作已核验标记。应用内信任缓存刷新仍取决于应用自身生命周期。
+
+### v1.8.7 发布前模拟器恢复修复
+
+首轮计划因 README 源码指针未同步失败，已同步三种语言 README 并通过完整 check-recipes。随后发布 run 42977712801 的构建、完整 release quality gate 和发行资产检查成功；Android RPDB 故障恢复通过，但 wlan0 原始 down/up 后默认路由未恢复，uplink_reconnect_deadline 导致生命周期未完成，未公开发行。维护者要求先修复模拟器再发布。
+
+修复前台与独立延迟 guard 的 wlan0 恢复动作，增加 Android Wi-Fi 服务关闭/开启和 30 秒接口重建等待；eth0 保持 link_up。报告增加 restore_method 并在门禁核对。宿主恢复回归 56 项、报告门禁 45 项、生命周期合同 109 项、工作流 27 项与 Android 验收合同 33 项通过；完整真实模拟器结果待新运行回读。

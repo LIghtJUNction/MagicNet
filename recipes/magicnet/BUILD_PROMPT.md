@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@03eb32ef53290ccefdb8997e938a8ff416a0ee9b`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@dc4433d1cfbeade114d51f3f3c429378d3d7b68d`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -69,3 +69,5 @@ M65 与 delivery/RELEASE_CONTRACT 规定：主仓库选择 bump 或自定义 ver
 ## 系统证书策略
 
 接入 runtime/CERTIFICATE_POLICY.md 的可恢复证书禁用脚本；默认关闭、开机不执行证书操作；显式启用时使用大陆公共 CA 关键词策略，用户随时预览、禁用、恢复。此功能不添加受信任 CA，不解密流量。
+
+模拟器上联故障测试在 wlan0 down/up 后通过 Android Wi-Fi 服务关闭再开启以恢复 supplicant、关联和系统路由，独立延迟恢复 guard 使用相同动作；eth0 只恢复链路。恢复命令成功仅记录动作，最终仍要求该上联实际默认路由、TUN 状态、就绪与同应用 UID TCP 实测通过。报告记录 restore_method，门禁拒绝缺失或与上联不符的方法。
