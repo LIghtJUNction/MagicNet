@@ -3,7 +3,7 @@
   <h1>MagicNet</h1>
   <p>A transparent networking control plane for rooted Android.</p>
 
-  [![Android release](https://img.shields.io/badge/Android-v1.8.6%20%2F%2010614-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.6)
+  [![Android release](https://img.shields.io/badge/Android-v1.8.7%20%2F%2010615-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.21-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
 
@@ -16,7 +16,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Goal | Entry point |
 | --- | --- |
-| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.6 installation notes](docs/releases/v1.8.6.md) |
+| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.7 installation notes](docs/releases/v1.8.7.md) |
 | Build the maintained implementation | [Source repository](https://github.com/LIghtJUNction/magicnet-android) and [build guide](generated/magicnet-android/docs/build.md) |
 | Rebuild from requirements | [Product recipe](recipes/magicnet/BUILD_PROMPT.md) and [acceptance](recipes/magicnet/ACCEPTANCE.md) |
 | Publish a version | [Release guide](docs/releasing.md) |
@@ -25,7 +25,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Layer | Current state |
 | --- | --- |
-| Published Android package | [`v1.8.6 / 10614`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.6) |
+| Published Android package | [`v1.8.7 / 10615`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7) |
 | Recipe | `0.3.21` |
 | Fixed implementation commit | `dc4433d1cfbeade114d51f3f3c429378d3d7b68d` |
 | Fixed sing-box core | `d850ff0ff68e11a71aa8207627e0a826cb52808f` / `1.15.0-alpha.13` |
