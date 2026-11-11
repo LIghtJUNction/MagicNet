@@ -3,11 +3,12 @@
 Root-only script: `./certificate-policy preview|disable|restore|apply|status`.
 `preview` lists matching public certificate metadata without changing trust. `disable`
 persists enabled intent and applies policy; `restore` persists disabled intent and
-restores only owned markers. `apply` obeys intent; boot-completed invokes it.
+restores only owned markers. `apply` obeys intent; boot-completed invokes it. The boot wrapper returns immediately
+when intent is absent or false, without touching trust markers or broadcasting changes.
 Uninstall invokes restore before other teardown. No CA/private key is installed.
 
 Configuration: `.config/magicnet/certificate-policy/enabled` (`true`/`false`, absent
-means true), and `rules`. One literal rule per line; blank lines and `#` comments
+means false), and `rules`. One literal rule per line; blank lines and `#` comments
 ignored. Rules combine with OR:
 
 ```

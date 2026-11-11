@@ -88,3 +88,5 @@ M30–M39 来自本轮 #426 与固定 v1.8.0 源码提取；证据和修正边�
 - 发布后回读主仓库 gitlink、独立源码提交和原仓库 topics；保留已有 topics 并包含 `recipkg`。这项结构验收与 Android 构建、设备、网络和独立重建验收分别报告。
 
 证书策略：匹配、持久意图、幂等、ownership、失败恢复和卸载恢复遵守 runtime/CERTIFICATE_POLICY.md；不把证书机构归属当作监控证据。
+
+证书禁用默认关闭，缺少意图等同 false；开机 apply 无证书操作，显式 disable 才启用。

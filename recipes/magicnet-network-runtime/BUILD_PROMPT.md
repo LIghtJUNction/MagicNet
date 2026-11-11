@@ -66,4 +66,4 @@ repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确�
 
 ## 系统证书禁用
 
-实现 [CERTIFICATE_POLICY.md](CERTIFICATE_POLICY.md)：默认开启的 user-0 系统 CA 禁用策略，精确 SHA-256/完整主体和大小写无关字面关键词匹配；禁用、恢复、预览与开机重应用。仅恢复自身 ownership，卸载恢复，不注入 CA。
+实现 [CERTIFICATE_POLICY.md](CERTIFICATE_POLICY.md)：默认关闭的 user-0 系统 CA 禁用策略（缺少 enabled 等同 false，开机 apply 直接返回、不改证书或广播；只有显式 disable 才启用），精确 SHA-256/完整主体和大小写无关字面关键词匹配；禁用、恢复、预览与开机重应用。仅恢复自身 ownership，卸载恢复，不注入 CA。

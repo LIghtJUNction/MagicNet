@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `406938e3e396676770a5a9b4911006f19db1c338`，tree `a8ae5755691b27f2f474fbf520db8ef5262cf29b`。本固定点合并可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `03eb32ef53290ccefdb8997e938a8ff416a0ee9b`，tree `a87ee2611f799e4affab84d3a4439dcf655b8016`。本固定点将证书禁用改为默认关闭，并保留可用性修正、TUN 路由有界恢复与真实模拟器故障门禁，并修复 Tailscale 读取自循环，源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -51,4 +51,4 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 项目名保持 MagicNet。配方发布保留原 topics 并添加 recipkg、回读核对；发现标签不构成验收证据。来源归属见 [PROVENANCE.md](PROVENANCE.md)，历史依赖变更见[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/DEPENDENCIES.md)，实际结果与限制见 [VERIFICATION.md](VERIFICATION.md)。
 
-证书禁用增加 runtime/CERTIFICATE_POLICY.md 合同；实现复用已有 Android app_process/Java bridge 构建链，无新增网络依赖或 CA 注入。
+证书禁用默认关闭且开机无操作，接口与依赖继续遵守 runtime/CERTIFICATE_POLICY.md 合同；实现复用已有 Android app_process/Java bridge 构建链，无新增网络依赖或 CA 注入。

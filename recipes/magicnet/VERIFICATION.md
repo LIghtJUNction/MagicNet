@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `9163064b51ba59cc89ac9a807fceb24573fed725`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `03eb32ef53290ccefdb8997e938a8ff416a0ee9b`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.5 / 10613 |
 | 配方 | 0.3.20，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布预览 | 2026-11-07，[42330606044](https://github.com/LIghtJUNction/MagicNet/actions/runs/42330606044)，对 af3930bd 注入 v1.8.6 / 10614；构建、完整质量、Android 与资产核验通过，公开发布按 PR 条件跳过 |
@@ -146,3 +146,9 @@ Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/ap
 ### v1.8.6 按维护者授权直接公开
 
 维护者明确授权在 Android 门禁失败后直接发布。复用 run 42796283786 artifact 13756203637 的原始构建产物，20 项本地 SHA-256 和服务端名称/大小/digest 全部核对一致后公开 v1.8.6 / 10614。发行说明保留两次 Android 失败及授权跳过，不更改 CI 结论，不声称手机已安装。稳定 updater、README 和发行说明随本记录同步。
+
+## 2026-11-11 证书禁用默认关闭与设备恢复
+
+缺少 enabled 的默认值改为 false；开机包装器遇 absent/false 直接返回，不调用 Java 桥或发送信任库广播。显式 disable、restore 与 ownership 行为保留。主机真实 X.509 回归通过，新增缺省关闭和开机无操作覆盖。recipkg check、pack、归档 check、完整 build 提示词生成及归档 62 个 UTF-8 Markdown 文件检查通过。
+
+通过 adb/root 逐张核对设备 user-0 的 10 个中国相关 CA 禁用标记主体及与系统源文件的字节一致性后，按用户授权删除标记；设备 enabled 原子写入 false，SELinux 标签刷新与 TRUST_STORE_CHANGED 广播成功。回读配置 false，cacerts-removed 普通文件数为 0。设备未安装证书策略脚本，因此本次恢复直接操作已核验标记。应用内信任缓存刷新仍取决于应用自身生命周期。
