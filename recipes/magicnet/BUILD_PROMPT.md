@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.20）
+# 重建 MagicNet（配方 0.3.21）
 
 为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M68；交付可运行产品。
 

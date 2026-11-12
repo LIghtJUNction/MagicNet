@@ -192,3 +192,52 @@ CI 审计将当前源码指针前进至 [`af3930bd9860344688efa62684afdd7ba4ba25
 - `_launch_run`：farewell/onboarding 里覆盖 launcher 的局部函数（SC2317），不是死代码。
 
 此前删除的 `magicnet_prepare_singbox_nodes` 包装在当前树中已不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用，没有可删的平行入口。本轮不删除产品测试或降低验收。
+
+
+## 2026-11-12 日常 Issue / 安全 / 冗余扫描
+
+公开 GitHub 现有四个开放 Issue：[#436](https://github.com/LIghtJUNction/MagicNet/issues/436)、[#440](https://github.com/LIghtJUNction/MagicNet/issues/440)、[#447](https://github.com/LIghtJUNction/MagicNet/issues/447)、[#449](https://github.com/LIghtJUNction/MagicNet/issues/449)。主仓库开放 PR [#448](https://github.com/LIghtJUNction/MagicNet/pull/448) 已与 main 冲突且会把 gitlink 从 `dc4433d1` 回退，不得合并。源码仓库无开放 Issue；开放 PR [#5](https://github.com/LIghtJUNction/magicnet-android/pull/5) 仍只改 Android CI 上联证据。本轮只改配方仓：修正 BUILD_PROMPT 配方版本标题、把未合入的 live-pin 门禁接到当前 gitlink，并记录 #449。不向 `magicnet-android` 推送，也不关闭上述 Issue。
+
+当前 live pin：gitlink `dc4433d1cfbeade114d51f3f3c429378d3d7b68d`（tree `75337165f18b87a02d34de7ee0039b902257e48c`），配方 0.3.21，公开稳定包 v1.8.7 / 10615。11-10 节使用当时的 `9163064` / v1.8.5；未合并的 #448 审计使用当时的 `406938e3` / v1.8.6。
+
+### Issue 现状
+
+| Issue | 已合入源码（相对 11-10） | 仍开放的原因 |
+| --- | --- | --- |
+| #436 | 有界 TUN watchdog 仍以 48efc93 为准。v1.8.7 / dc4433d1 已在模拟器完成 RPDB 删除与 wlan0 关联恢复：Android 13/13 阶段通过，报告含 `android_wifi_toggle`、guard 退出、真实默认路由、就绪和同 UID TCP | 真机 OEM/netd 删除规则的触发者、物理 ARM64 与公网行为仍未验证。源码 PR #5 未合入，也不能单独关闭本 Issue |
+| #440 | 订阅历史迁移仍以 8ff12428 / PR #3 为准 | 可信 NAS/私网入口仍未实现。公网订阅继续强制 HTTPS、拒绝私网/CGNAT/元数据、每跳校验、禁止环境代理 |
+| #447 | 无新实现。WebUI「申请适配」提交 zashboard / local-download | 已是审核锁定的默认面板：`Zephyruso/zashboard` v3.16.0 `dist-no-fonts.zip`。保持 open 直至维护者关闭 |
+| #449 | 与 #447 相同正文，提交者 `pwj123-bot` | 重复申请，不另做内置。保持 open 直至维护者关闭 |
+
+### 本轮配方仓修复
+
+v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流对齐到 `dc4433d1`，但留下两处配方仓缺口：
+
+- 根 `BUILD_PROMPT.md` 标题仍写配方 0.3.20，而 `RECIPE.md` / README / DEPENDENCIES 已是 0.3.21
+- 昨日 [#448](https://github.com/LIghtJUNction/MagicNet/pull/448) 拟增加的 `check-recipes.py` live-pin 门禁从未合入；该 PR 现与 main 冲突，且会把 gitlink 从已发布的 `dc4433d1` 回退，不能合并
+
+本轮把标题改为 0.3.21，并让 `scripts/check-recipes.py` 拒绝 BUILD_PROMPT gitlink、配方版本或 `release.yml` 可复用工作流与当前 gitlink 漂移。
+
+### 代码漏洞扫描（只读，固定源码 dc4433d1）
+
+未发现可在本配方仓修复的新生产漏洞。抽查结论：
+
+- 订阅抓取仍 fail-closed：仅 HTTPS、`-q` 忽略 curlrc、`--max-redirs 0`、公网地址策略含 CGNAT/`::ffff:` 映射、禁止 `MAGICNET_SUB_PROXY` 与环境代理。重定向逐跳再校验。#440 仍是功能缺口而不是保护被绕过。
+- MCP 默认关闭，空 secret 拒绝授权，Bearer / 自定义头使用恒定时间比较。
+- 安装迁移、ZIP 成员路径、订阅事务 generation、规则 `local` 路径均有拒绝 `../` 与非普通文件的回归。
+- WebUI JSON 高亮走 highlight.js 转义后再 `v-html`，编辑器内容是用户本机配置，不是远程 HTML。
+- 主仓库工作流：可复用源码工作流与 gitlink 同为 dc4433d1；第三方 action 使用 40 字符 SHA；`recipe-check` 权限 `contents: read`；发布写权限仍限 `workflow_dispatch` + `mode=publish`。`check-workflows.sh` 用固定 SHA-256 校验 actionlint 1.7.12。
+
+未把静态抽查写成渗透测试或真机攻击面证明。若发现可利用的 root/MCP/订阅绕过，应按源码 `SECURITY.md` 私下报告，不在公开 Issue 贴复现步骤。
+
+### 冗余代码扫描
+
+对 `src/MagicNet/**/*.sh` 提取 411 个定义 / 407 个唯一函数名。仅在定义处出现的名称继续保留，不删除：
+
+- `kamfw_phase_action` / `kamfw_phase_service`：kamfw 阶段钩子。
+- `magicnet_*_apply` 加锁包装由 Rust `run_magicnet_function` 按名调用。
+- `magicnet_kernel_route_rule_start` / `end` / `fallback_rule` 与 `magicnet_ip6tables_nat_ensure`：生命周期与 IPv6 NAT 入口。
+- `_launch_run`：farewell/onboarding 覆盖 launcher 的局部函数（缩进定义，SC2317）。
+- `magicnet_hotspot_watchdog_start_unlocked`：由 `magicnet_hotspot_watchdog_${action}_unlocked` 动态调用。
+
+此前删除的 `magicnet_prepare_singbox_nodes` 包装仍不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用。本轮不删除产品测试或降低验收。

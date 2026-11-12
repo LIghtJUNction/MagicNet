@@ -10,7 +10,7 @@
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；以下真机/公网边界继续保留 |
+| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板；以下真机/公网边界继续保留 |
 
 ## 2026-11-09：#436 与模拟器故障回归
 
