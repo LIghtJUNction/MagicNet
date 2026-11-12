@@ -157,13 +157,14 @@ class ReleasePlanTest(unittest.TestCase):
     def live_pin_files(self, source_sha=None):
         source_sha = source_sha or self.source_sha
         return {
+            "recipes/magicnet/RECIPE.md": '~~~toml\n[package]\nname = "magicnet"\nversion = "0.3.21"\n~~~\n',
             "recipes/magicnet/BUILD_PROMPT.md": (
-                f"当前维护实现为 LIghtJUNction/magicnet-android@{source_sha}\n"
+                f"# 重建 MagicNet（配方 0.3.21）\n\n- 当前维护实现为 `LIghtJUNction/magicnet-android@{source_sha}`；\n"
             ),
             ".github/workflows/release.yml": (
-                "uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
+                "jobs:\n  build:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
                 f"{source_sha}\n"
-                "uses: LIghtJUNction/magicnet-android/.github/workflows/"
+                "  android:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/"
                 f"android-kernelsu-acceptance.yml@{source_sha}\n"
             ),
         }
@@ -360,8 +361,7 @@ class ReleasePlanTest(unittest.TestCase):
                 PLANNER.prepare(self.root, mode, prerelease=True)
 
     def test_snapshot_is_immutable_and_same_run_retry_preserves_selected_source(self):
-        chosen = self.advance_source("Selected implementation")
-        self.git(self.source, "checkout", "--detach", self.source_sha)
+        chosen = self.source_sha
         selected, expected = self.prepare_publish(source_ref="main")
         snapshot = expected["recipe_sha"]
         self.assertNotEqual(snapshot, self.base)
@@ -378,6 +378,53 @@ class ReleasePlanTest(unittest.TestCase):
             resumed, resumed_expected = PLANNER.prepare(self.root, "publish", source_ref="main")
         self.assertEqual((resumed, resumed_expected), (selected, expected))
         self.assertEqual(self.git(self.source, "rev-parse", "HEAD"), chosen)
+        self.assertEqual(self.refs(), before)
+
+    def test_publish_alternate_source_fails_before_snapshot_write(self):
+        self.advance_source("Unreviewed source")
+        self.git(self.source, "checkout", "--detach", self.source_sha)
+        before = self.refs()
+        with self.assertRaisesRegex(ValueError, "Publishing alternate source"):
+            self.prepare_publish(source_ref="main")
+        self.assertEqual(self.refs(), before)
+        self.assertEqual(self.github.writes, [])
+
+    def test_invalid_final_snapshot_is_not_pushed(self):
+        before = self.refs()
+        snapshot_commit = PLANNER.snapshot_commit
+        def corrupt(root, parent, files, message, source_sha=None):
+            files = dict(files, **{"recipes/magicnet/BUILD_PROMPT.md": "stale snapshot"})
+            return snapshot_commit(root, parent, files, message, source_sha)
+        with patch.object(PLANNER, "snapshot_commit", side_effect=corrupt):
+            with self.assertRaisesRegex(ValueError, "BUILD_PROMPT.md"):
+                self.prepare_publish()
+        self.assertEqual(self.refs(), before)
+        self.assertEqual(self.github.writes, [])
+
+    def test_retry_revalidates_committed_snapshot_pins(self):
+        selected, expected = self.prepare_publish()
+        forged = PLANNER.snapshot_commit(self.root, self.base,
+            {RELEASE.PLAN_FILE: PLANNER.json_text(selected),
+             "recipes/magicnet/BUILD_PROMPT.md": "stale snapshot"}, "Invalid snapshot")
+        self.git(self.root, "push", "--force", "origin", f"{forged}:refs/heads/release/run-8001")
+        self.restart_plan()
+        before = self.refs()
+        with self.assertRaisesRegex(ValueError, "BUILD_PROMPT.md"):
+            self.prepare_publish()
+        self.assertEqual(self.refs(), before)
+
+    def test_retry_rejects_alternate_source_even_with_consistent_snapshot_pins(self):
+        selected, _ = self.prepare_publish()
+        chosen = self.advance_source("Alternate implementation")
+        selected = dict(selected, source_sha=chosen)
+        files = self.live_pin_files(chosen)
+        files[RELEASE.PLAN_FILE] = PLANNER.json_text(selected)
+        forged = PLANNER.snapshot_commit(self.root, self.base, files, "Alternate snapshot", chosen)
+        self.git(self.root, "push", "--force", "origin", f"{forged}:refs/heads/release/run-8001")
+        self.restart_plan()
+        before = self.refs()
+        with self.assertRaisesRegex(ValueError, "dispatched recipe gitlink"):
+            self.prepare_publish()
         self.assertEqual(self.refs(), before)
 
     def test_snapshot_ref_cannot_be_reused_with_changed_inputs(self):

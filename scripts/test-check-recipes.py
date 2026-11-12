@@ -29,7 +29,7 @@ class LivePinTest(unittest.TestCase):
         recipes.mkdir(parents=True)
         (recipes / "DEPENDENCIES.md").write_text(f"当前固定 {GITLINK}\n")
         (recipes / "BUILD_PROMPT.md").write_text(
-            f"当前维护实现为 LIghtJUNction/magicnet-android@{GITLINK}\n配方 0.3.21\n"
+            f"# 重建 MagicNet（配方 0.3.21）\n\n- 当前维护实现为 `LIghtJUNction/magicnet-android@{GITLINK}`；\n"
         )
         (recipes / "RECIPE.md").write_text(
             "~~~toml\n[package]\nname = \"magicnet\"\nversion = \"0.3.21\"\n~~~\n"
@@ -37,9 +37,9 @@ class LivePinTest(unittest.TestCase):
         workflows = self.root / ".github" / "workflows"
         workflows.mkdir(parents=True)
         (workflows / "release.yml").write_text(
-            "uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
+            "jobs:\n  build:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@"
             f"{GITLINK}\n"
-            "uses: LIghtJUNction/magicnet-android/.github/workflows/"
+            "  android:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/"
             f"android-kernelsu-acceptance.yml@{GITLINK}\n"
         )
         (self.root / "README.md").write_text(
@@ -90,6 +90,78 @@ class LivePinTest(unittest.TestCase):
         path.write_text(path.read_text().replace("0.3.21", "0.3.20"))
         with self.assertRaisesRegex(ValueError, "BUILD_PROMPT.md does not record the current recipe version"):
             CHECK.verify_live_pins(self.root)
+
+    def test_historical_correct_values_do_not_hide_stale_active_fields(self):
+        for name, old, new, historical in (
+            ("recipes/magicnet/BUILD_PROMPT.md", GITLINK, OTHER, f"History: {GITLINK}"),
+            ("recipes/magicnet/BUILD_PROMPT.md", "0.3.21", "0.3.20", "History: 0.3.21"),
+            (".github/workflows/release.yml", GITLINK, OTHER,
+             f"# uses: LIghtJUNction/magicnet-android/.github/workflows/exec.yml@{GITLINK}"),
+        ):
+            path = self.root / name
+            original = path.read_text()
+            with self.subTest(name=name, value=old):
+                path.write_text(original.replace(old, new) + historical + "\n")
+                with self.assertRaises(ValueError):
+                    CHECK.verify_live_pins(self.root)
+            path.write_text(original)
+
+    def test_example_or_comment_only_source_is_rejected(self):
+        path = self.root / "recipes/magicnet/BUILD_PROMPT.md"
+        original = path.read_text()
+        source = next(line for line in original.splitlines() if line.startswith("- 当前维护实现为"))
+        for opening, closing in (("```markdown", "```"), ("~~~~", "~~~~"), ("<!--", "-->"), ("<!--", "")):
+            with self.subTest(opening=opening):
+                path.write_text(original.replace(source, opening + "\n" + source + "\n" + closing))
+                with self.assertRaisesRegex(ValueError, "active source"):
+                    CHECK.verify_live_pins(self.root)
+
+    def test_malformed_source_plus_valid_example_does_not_pass(self):
+        path = self.root / "recipes/magicnet/BUILD_PROMPT.md"
+        original = path.read_text()
+        path.write_text(original.replace(GITLINK, "main") + "```markdown\n" + original + "```\n")
+        with self.assertRaisesRegex(ValueError, "source gitlink"):
+            CHECK.verify_live_pins(self.root)
+
+    def test_every_required_workflow_ref_is_checked(self):
+        path = self.root / ".github/workflows/release.yml"
+        original = path.read_text()
+        path.write_text(original.replace(f"android-kernelsu-acceptance.yml@{GITLINK}",
+                                        f"android-kernelsu-acceptance.yml@{OTHER}"))
+        with self.assertRaisesRegex(ValueError, "android-kernelsu-acceptance.yml"):
+            CHECK.verify_live_pins(self.root)
+
+    def test_version_prefix_match_is_not_enough(self):
+        path = self.root / "recipes/magicnet/BUILD_PROMPT.md"
+        path.write_text(path.read_text().replace("0.3.21", "0.3.210"))
+        with self.assertRaisesRegex(ValueError, "current recipe version"):
+            CHECK.verify_live_pins(self.root)
+
+    def test_historical_examples_do_not_override_active_fields(self):
+        path = self.root / "recipes/magicnet/BUILD_PROMPT.md"
+        original = path.read_text()
+        path.write_text(original + "\n```markdown\n" + original.replace(GITLINK, OTHER) + "```\n")
+        CHECK.verify_live_pins(self.root)
+
+    def test_quoted_refs_and_comments_are_supported(self):
+        path = self.root / ".github/workflows/release.yml"
+        original = path.read_text()
+        for quote in ("'", '"'):
+            with self.subTest(quote=quote):
+                path.write_text("\n".join(
+                    line.replace("uses: ", "uses: " + quote) + quote + " # pinned"
+                    if "uses: " in line else line for line in original.splitlines()) + "\n")
+                CHECK.verify_live_pins(self.root)
+
+    def test_duplicate_or_comment_only_job_ref_is_rejected(self):
+        path = self.root / ".github/workflows/release.yml"
+        original = path.read_text()
+        for workflow in (original.replace("    uses:", "    # uses:"),
+                         original.replace("  build:", "  build:\n    uses: other/workflow@main")):
+            with self.subTest(workflow=workflow):
+                path.write_text(workflow)
+                with self.assertRaises(ValueError):
+                    CHECK.verify_live_pins(self.root)
 
     def test_stale_published_version_is_rejected(self):
         path = self.root / "README.md"
