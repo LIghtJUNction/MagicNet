@@ -249,3 +249,6 @@ v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流
 生产有界 TUN 恢复已随 v1.8.7 发行。最新源码 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173) 记录了 UDP 1→0→1、readiness false→true 和一次成功恢复，随后因 `recovery_rule_set_mismatch` 失败。现场差异为 eth0 netId 100→101 时同步更新的全局和逐应用规则；其余 netd 网络信息、接口/FIB 和 UID 范围保持。
 
 [`58ccae52`](https://github.com/LIghtJUNction/magicnet-android/commit/58ccae52677fa95843eb2c0566c095385afbae49) 在采集器与独立门禁中补齐由 netd 元数据派生的逐应用 selectors，核对完整字段及重复次数，保留外部规则保护、既有恢复预算和证据 schema。源码 PR [#7](https://github.com/LIghtJUNction/magicnet-android/pull/7) 承载本轮候选；已完成的宿主回归与新 Android CI 状态分别见 VERIFICATION。#436 原报告的物理设备/OEM 触发原因仍需独立证据，本轮保持 Issue 开放。
+
+
+后继 [`9dba9425`](https://github.com/LIghtJUNction/magicnet-android/commit/9dba94254780fb0a1a84a003608d5919a97de4f2) 根据新失败证据补入可恢复的单 eth0 AVD 夹具，避免 hosts-only 离线 DNS 实验期间 Android 在 Wi-Fi/Ethernet 之间另行选择默认网络；严格外部规则比较保持。源码运行 43385059168 的默认网络迁移与整合运行 43385469784 的故障前 UDP 超时分别保留，均为 5/1/7 阶段结果。UDP 超时原因尚未确定，后继只增加清理前的有界脱敏支持采集，仍要求全新的 UDP 正反控制。当前新候选 Android [43390671015](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43390671015) 待完成，实际结果以 VERIFICATION 更新为准。

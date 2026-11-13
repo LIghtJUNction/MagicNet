@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@58ccae52677fa95843eb2c0566c095385afbae49`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@9dba94254780fb0a1a84a003608d5919a97de4f2`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -40,7 +40,9 @@
 - **原生 TUN（M53）：** 按 sing-box 1.15 省略弃用 stack，生成器、模板、旧快照恢复与健康状态一致；更新 M29 的默认栈要求。native_tun_stack 与 effective.stack=default 表示配置。Android CLI 选择系统路由且无显式接口/网络绑定时，监控为空仍允许系统路由尝试；依赖真实接口的配置继续等待。失网取消旧异步更新，恢复后重置，不伪造接口或联网状态。
 - **联网、诊断、打包（M56–M58）：** 低频 Google 检查、明确警告、持久指数退避及按证据恢复遵守 CONNECTIVITY_CONTRACT，界面只读缓存。正式包提供固定 curl/OpenSSL/zlib、内嵌 CA、许可和来源，在无系统 curl 的 Android 验证执行器及 TLS 正负控制。单文件诊断有界、脱敏、关联路由/核心/订阅，含 detached supervisor 日志与 HTTPS 能力；保留可解析 JSON 和真实阶段，只用已支持的只读入口。最终 core/full/别名/全部组件 ZIP 独立拒绝测试开发目录，夹具遵守 sanitize→split 次序。
 - **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的未完成范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
-- **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定 Android/KernelSU 模拟器主动删除精确自有 RPDB 规则并切换受控上联，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。netd 网络重编号须由不变的网络元数据与接口/FIB 派生权限对应的全局规则和逐应用 UID selectors，逐项核对完整字段和重复次数，仅替换 netId；其余规则变化仍失败。现场 OEM 触发原因与模拟器可复现恢复分开记录。
+- **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定的一次性 x86_64 Android/KernelSU AVD 在稳定的单 eth0 上联下主动删除精确自有 RPDB 规则，并执行 eth0 down/up，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。netd 网络重编号须由不变的网络元数据与接口/FIB 派生权限对应的全局规则和逐应用 UID selectors，逐项核对完整字段和重复次数，仅替换 netId；其余规则变化仍失败。现场 OEM 触发原因与模拟器可复现恢复分开记录。
+
+CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状态并通过 Android 服务临时关闭 Wi-Fi；在有界等待内取得连续两次相同的单 eth0 netd/RPDB/出口基线后才允许注入。eth0 故障前再次确认控制链路独立，保留延迟恢复 guard 并核对 `restore_method=link_up`，恢复后仍须实际路由、就绪与应用 TCP 成功。finally 恢复并核对原 Wi-Fi 启用布尔值，准备或恢复证据缺失即失败。报告保留夹具与故障证据；受控 Ethernet 重连与 Wi-Fi 切换恢复分别验收，临时 Wi-Fi 开关不证明后者。
 
 ## 视觉与资源约束
 
@@ -69,5 +71,3 @@ M65 与 delivery/RELEASE_CONTRACT 规定：主仓库选择 bump 或自定义 ver
 ## 系统证书策略
 
 接入 runtime/CERTIFICATE_POLICY.md 的可恢复证书禁用脚本；默认关闭、开机不执行证书操作；显式启用时使用大陆公共 CA 关键词策略，用户随时预览、禁用、恢复。此功能不添加受信任 CA，不解密流量。
-
-模拟器上联故障测试在 wlan0 down/up 后通过 Android Wi-Fi 服务关闭再开启以恢复 supplicant、关联和系统路由，独立延迟恢复 guard 使用相同动作；eth0 只恢复链路。恢复命令成功仅记录动作，最终仍要求该上联实际默认路由、TUN 状态、就绪与同应用 UID TCP 实测通过。报告记录 restore_method，门禁拒绝缺失或与上联不符的方法。

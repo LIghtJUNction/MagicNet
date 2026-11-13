@@ -54,7 +54,11 @@ WebUI 概览、诊断页和 health 显示明确 ⚠️，包括失败、重试�
 | CON-A06 | 真实发行核心与 CLI，固定合成配置，TUN/eBPF/应用流量 | 分别记录配置 check、受控进程模拟、回环请求、公网请求和真机结果；权限阻断保留原错误，不能把模拟数字当真实吞吐 |
 | CON-A07 | 无系统curl的真实Android；正式组件安装/复用、TLS正确/错误证书、嵌入CA、一次到期或已执行的产品探测 | 受管curl及信任根真实可执行；经过当前mixed入口保留TLS与204判定；有界请求/缓存结果有实际证据，非probe_unavailable；私密订阅无须注入，外网失败不伪装成功；缺执行器单独报告且不盲目恢复 |
 | CON-A08 | TUN 缺失/恢复/未知、启动宽限、busy、stop、事务、ebpf、auto_route=false、时钟及 worker 重跑 | 独立观测不改变 Google 结论；双确认、共享冷却和同 boot 3 次预算准确；未知和停止零恢复，锁内重新确认 |
-| CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须核对独立 netd 元数据、接口/权限/FIB，并精确派生全局和逐应用 selectors，仅替换 netId，其余规则及重复次数相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
+| CON-A09 | 固定生产 CLI/core 的一次性 x86_64 Android/KernelSU AVD，稳定的单 eth0 上联，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及 eth0 down/up | 夹具身份、控制链路、稳定基线及 Wi-Fi 启用状态恢复均验证；注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须核对独立 netd 元数据、接口/权限/FIB，并精确派生全局和逐应用 selectors，仅替换 netId，其余规则及重复次数相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
+
+故障注入前必须确认 qemu/x86_64 模拟器身份，读取并保存 Android Wi-Fi 启用状态，验证 adb 控制链路不依赖即将关闭的接口，再通过 Android Wi-Fi 服务临时关闭 Wi-Fi。在有界等待内连续两个采样周期观察到相同的 netd 清单、RPDB 规则及 eth0 出口：唯一 PHYSICAL 网络只含 eth0，清单中没有 wlan0，Wi-Fi 确为关闭。准备不完整不得注入，RPDB 故障与恢复中的 netd 快照也须保持单 eth0 上联。eth0 down/up 前再次核对控制链路，保留独立延迟恢复 guard；报告的 `restore_method` 必须为 `link_up`。恢复后仍要求该上联实际路由、TUN 状态、就绪与同应用 UID TCP 实测通过，不能用链路恢复命令代替流量证据。
+
+夹具收尾通过 finally 恢复并在有界等待内核对原 Wi-Fi 启用布尔值；准备、故障或恢复失败均保留失败，缺少恢复证据不得通过。schema=1 报告的 `network_fixture` 保留夹具身份、控制链路检查、两次完整稳定观测和 Wi-Fi 初始/最终状态，由独立门禁核验。本场景覆盖受控 Ethernet 断续与 RPDB 丢失恢复；Wi-Fi 开关用于隔离模拟器上联，不构成 Wi-Fi 切换恢复证据。
 
 CON-A09 的 schema=1 证据保留前后 netd 网络清单、完整 metadata、eth0 接口索引/FIB 与 RPDB 规则。只在同一 PHYSICAL 网络的权限为已知 NONE、NETWORK 或 SYSTEM 且前后一致，接口/索引/FIB、Allowed UID ranges、Per-app UID ranges 及其他网络均不变时，接受该网络的 netId 变化。采集器与独立报告门禁分别从这些已核验字段派生选择器。
 
