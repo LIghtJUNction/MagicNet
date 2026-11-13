@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `eca9ac8ee240782e575d20ee38e3c9348971de6c`，tree `2e4d946593904a4d77f2d3889f79053b1ce62ea8`。本候选在已发布基线 dc4433d1 上增加 supervisor 停止失败的固定枚举诊断，并为长 JSON 逐键输入设置独立预算，保留全部停止身份校验和编辑器断言；Android stop-cleanup 根因及完整 CI 尚待复验，不表示已修复或已发布。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `7b6a2a61aff3dc495a10f5010464118ed65907db`，tree `0fc8e2dec8fda08b80cdb7b14843c1b82c78cbf6`。本候选修正 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号的误拒绝，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；生产恢复流程及预算保持。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -35,6 +35,8 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
 源码、观察 checkout、宿主测试工具和六个嵌套子模块均不进入配方归档。独立重建可采用自己的依赖结构，但必须遵守 engine、delivery 的复用许可和全部行为合同；不能要求读取旧源码补齐需求。本次改动没有新增运行库。
+
+Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及逐应用 UID selectors 从已核验的网络元数据派生，采集器与独立报告门禁各自验证完整规则和重复次数；沿用 schema=1 证据、现有工具及生产恢复接口。
 
 ## 外部前提
 

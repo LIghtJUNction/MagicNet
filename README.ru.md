@@ -4,7 +4,7 @@
 
 [Основное руководство](README.md) · [English](README.en.md) · [Исходники](https://github.com/LIghtJUNction/magicnet-android)
 
-Версия рецепта: 0.3.21; текущий gitlink: `eca9ac8ee240782e575d20ee38e3c9348971de6c`; текущий выпуск Android: [v1.8.7 / 10615](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7). [Установка и изменения](docs/releases/v1.8.7.md).
+Версия рецепта: 0.3.21; текущий gitlink: `7b6a2a61aff3dc495a10f5010464118ed65907db`; текущий выпуск Android: [v1.8.7 / 10615](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7). [Установка и изменения](docs/releases/v1.8.7.md).
 
 Основной репозиторий хранит Markdown-контракты продукта; `generated/magicnet-android/` закрепляет реализацию отдельным Git-подмодулем. Начните с [требований](recipes/magicnet/BUILD_PROMPT.md), [приёмки](recipes/magicnet/ACCEPTANCE.md) и [проверок](recipes/magicnet/VERIFICATION.md). Независимое восстановление начинается в пустом каталоге и использует полный набор рецептов. Исходники, секреты и данные устройства не входят в архив рецептов.
 

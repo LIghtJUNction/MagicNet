@@ -1,5 +1,7 @@
 # MagicNet Issue 与 PR 处理记录（2026-11-06）
 
+#436 的最新修订见文末 2026-11-13 节及 [VERIFICATION.md](VERIFICATION.md)。以下各日期保留当时的源码、发行与验收身份。
+
 ## 范围与结论状态
 
 用户授权直接合并并处理 Issue/PR。源码 PR #3 与主仓库 PR #442 已合并到各自 main；最终源码的七条工作流均在 attempt 1 成功。#437、#438、#439 已关闭，#436 与 #440 已记录完成部分并保持开放。以下分别记录本地、实际 Android 模拟器和物理设备的证据边界。
@@ -241,3 +243,9 @@ v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流
 - `magicnet_hotspot_watchdog_start_unlocked`：由 `magicnet_hotspot_watchdog_${action}_unlocked` 动态调用。
 
 此前删除的 `magicnet_prepare_singbox_nodes` 包装仍不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用。本轮不删除产品测试或降低验收。
+
+## 2026-11-13：#436 路由恢复验收的逐应用规则归属
+
+生产有界 TUN 恢复已随 v1.8.7 发行。最新源码 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173) 记录了 UDP 1→0→1、readiness false→true 和一次成功恢复，随后因 `recovery_rule_set_mismatch` 失败。现场差异为 eth0 netId 100→101 时同步更新的全局和逐应用规则；其余 netd 网络信息、接口/FIB 和 UID 范围保持。
+
+[`7b6a2a61`](https://github.com/LIghtJUNction/magicnet-android/commit/7b6a2a61aff3dc495a10f5010464118ed65907db) 在采集器与独立门禁中补齐由 netd 元数据派生的逐应用 selectors，核对完整字段及重复次数，保留外部规则保护、既有恢复预算和证据 schema。源码 PR [#7](https://github.com/LIghtJUNction/magicnet-android/pull/7) 承载本轮候选；已完成的宿主回归与新 Android CI 状态分别见 VERIFICATION。#436 原报告的物理设备/OEM 触发原因仍需独立证据，本轮保持 Issue 开放。

@@ -6,11 +6,28 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `eca9ac8ee240782e575d20ee38e3c9348971de6c`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `7b6a2a61aff3dc495a10f5010464118ed65907db`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板；以下真机/公网边界继续保留 |
+| 待完成工作 | #436 的生产恢复已随 v1.8.7 发行；本轮修正逐应用规则重编号的验收误报，候选完整 Android CI 见下节。真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) |
+
+## 2026-11-13：#436 逐应用路由规则的恢复证据
+
+候选 [`7b6a2a61`](https://github.com/LIghtJUNction/magicnet-android/commit/7b6a2a61aff3dc495a10f5010464118ed65907db)（tree `0fc8e2dec8fda08b80cdb7b14843c1b82c78cbf6`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正 Android 验收对 netd 逐应用 UID 规则的误拒绝。整合同时保留源码主线的 Action 升级和配方此前固定 eca9ac8 的停止诊断、编辑器输入预算。
+
+失败基线为源码 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173)。原始报告记录同 UID UDP 接收计数 1→0→1、readiness false→true、一次成功的生产恢复；最终以 `recovery_rule_set_mismatch` 失败。netd 的 eth0 网络仅从 100 重编号为 101，接口/FIB、权限和逐应用 UID 范围保持；原比较器只处理 16000/23000 全局规则，遗漏对应的 15040/22040 逐应用规则。
+
+修订后，采集器与独立报告门禁分别依据已核验的 netd 元数据派生全局和逐应用 selectors，仅替换 netId，并逐项比较完整字段和重复次数。范围重叠保留独立规则；元数据变化、缺失/多余规则及无关外部规则变化继续失败。CON-A09 与 M66 同步这些要求，证据 schema=1、生产机器接口及自动恢复预算保持。
+
+| 验证层 | 本轮实际结果 |
+| --- | --- |
+| 源码宿主回归 | 恢复采集器 59、独立门禁 49、模拟器合同 110、验收合同 33、工作流合同 27 项通过；Rust connectivity 22 项单元与 9 项集成、supervisor 20 项通过；source lint 与 diff-check 通过 |
+| 配方宿主回归 | 固定值 15、发布计划 41、发布资产 16 项通过 |
+| 历史报告兼容复验 | 新独立门禁接受原始 dc4433d1 的 13/13 完整报告；下载 artifact 13838939681 并核验 SHA-256 `a557eb9279a49125ef97450024cde3c108cbe0139e811e2d124054089e251be5`，报告内容未修改 |
+| 新候选完整 Android 验收 | [43383360596](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43383360596) 进行中；本记录尚无完整成功结果。另有[构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43383360042)、[质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43383359958)和[网络证据](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43383359953)运行 |
+
+已发布 v1.8.7 / 10615 及其 dc4433d1 的完整 Android 13/13 证据保持原身份。本轮未发布安装包或部署设备；物理 ARM64、OEM 删除规则的触发者与公网代理行为继续单列为未验证。
 
 ## 2026-11-09：#436 与模拟器故障回归
 

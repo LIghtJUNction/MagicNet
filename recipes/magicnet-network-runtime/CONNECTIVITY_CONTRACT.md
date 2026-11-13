@@ -54,4 +54,6 @@ WebUI 概览、诊断页和 health 显示明确 ⚠️，包括失败、重试�
 | CON-A06 | 真实发行核心与 CLI，固定合成配置，TUN/eBPF/应用流量 | 分别记录配置 check、受控进程模拟、回环请求、公网请求和真机结果；权限阻断保留原错误，不能把模拟数字当真实吞吐 |
 | CON-A07 | 无系统curl的真实Android；正式组件安装/复用、TLS正确/错误证书、嵌入CA、一次到期或已执行的产品探测 | 受管curl及信任根真实可执行；经过当前mixed入口保留TLS与204判定；有界请求/缓存结果有实际证据，非probe_unavailable；私密订阅无须注入，外网失败不伪装成功；缺执行器单独报告且不盲目恢复 |
 | CON-A08 | TUN 缺失/恢复/未知、启动宽限、busy、stop、事务、ebpf、auto_route=false、时钟及 worker 重跑 | 独立观测不改变 Google 结论；双确认、共享冷却和同 boot 3 次预算准确；未知和停止零恢复，锁内重新确认 |
-| CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须由独立 netd 记录证明同一接口/权限/FIB，仅对应完整 selectors 可变，其余规则相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
+| CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须核对独立 netd 元数据、接口/权限/FIB，并精确派生全局和逐应用 selectors，仅替换 netId，其余规则及重复次数相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
+
+CON-A09 的 schema=1 证据保留前后 netd 网络清单、完整 metadata、eth0 接口索引/FIB 与 RPDB 规则。只在同一 PHYSICAL 网络的权限为 NONE、接口/索引/FIB、Allowed UID ranges、Per-app UID ranges 及其他网络均不变时，接受该网络的 netId 变化。采集器与独立报告门禁分别从这些已核验字段派生全局 16000/23000 规则及每个逐应用范围的 15000+prio/22000+prio 规则；逐项核对 mark/mask、iif、UID 范围、lookup 和重复次数。重复或重叠的元数据范围保留各自规则，不按集合去重；无法完整解析、缺项、多项、字段变化或无关规则变化均失败。该扩展沿用证据 schema 与生产机器接口。
