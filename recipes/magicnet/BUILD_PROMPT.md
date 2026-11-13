@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.21）
+# 重建 MagicNet（配方 0.3.22）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M68；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M69；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@eca9ac8ee240782e575d20ee38e3c9348971de6c`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@86828c8ae6c56e12f23330f551e6f2d9b41f8a38`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -32,6 +32,7 @@
 - **控制面未知值（M68）：** `api select` 缺参返回用法错误且不选择节点；`service toggle` 遇 unknown 拒绝启停。有效透明配置缺失、损坏或存在多个透明入站时，effective 保持 unknown；事务目录存在但 phase 缺失/空/不可读时同样 unknown。机器状态与 canonical 采用同一判断，不以 configured 填补观测。
 - **公开状态与隐私：** 每个域只有一个 `.state/machines/*.state` canonical 文件，原子发布；跨域使用可恢复事务。机器接口由 schema-1 dispatcher 完整接管，能力、写操作例外及错误语义遵守 control 合同。订阅、SSID/BSSID、节点名、密钥、原始 UID、设备标识及自由错误文本不进入公共状态、MCP 自动资源或发布物。
 - **订阅与恢复（M11–M13、M30–M47）：** 保留多源整批事务、逐源原生数量下界、稳定身份、同名/冲突判断、来源归属、VLESS Encryption、B/C 草稿及回读。等价节点合并忽略显示名并保留来源；身份明确的同源引用随重命名更新。公共/私密来源共用 C-SUB-008 的有界零写入观察。
+- **受信任订阅（M69）：** 默认公网 HTTPS 策略保持。设备 CLI 可在私有 `subscription-trust.list` 授权精确 scheme、主机、端口和本地 CIDR；每次请求、重试和跳转检查全部解析地址并钉选。受信任链只允许同源跳转，公网链不得借信任清单取得私网权限。接口、迁移与验收分别见 runtime/SUB-016、control/C-SUB-009 和 delivery 合同。
 - **持久化与幂等：** 暂存目录晋升后，自有规则、缓存、Tailscale 路径和 checkpoint/last-known-good 继续有效，外部路径与停止意图保留。网络策略恢复保留最初完整共享 UID、策略与逐项进度；回执重放也先核对当前 marker、owner 和 journal。模块目录 manifest 及引用资源完整。
 - **核心生命周期（M41–M43、M48）：** 启动超时不传入长期守护；核心就绪前由启动者回收，就绪后脱离旧命令组超时。Android mksh 32 位 PID 校验准确；日志尾读索引按请求行数分配。同步固定上游并保留 fork 协议和生产 tags；握手失败清理连接/回调，流挂接与关闭共享一致并发状态。
 - **路由与 DNS（M49、M50、M55、M60）：** 保留 POLICY_INVENTORY 的五个指定拒绝目标及端口边界、16 个教育后缀和完整优先级。删除 Voice 专用脚本、Sukka 数据及 IP/端口规则，保留普通 ChatGPT 域名/应用、meta-openai、ai-chatgpt 和 DNS。受管未知域名使用经 proxy 的 doh-cloudflare；代理不可用时失败。缺失的 default_domain_resolver 使用 bootstrap-local-dns；已有 resolver、显式 profile、独立配置 DNS 图、国内/Direct/LAN/Tailnet 规则保留。只迁移精确旧官方模板 pin，保留自定义 repo/ref/digest。
@@ -39,7 +40,7 @@
 - **锁与监督（M52）：** 配置锁记录实际执行 shell PID 和启动身份，活/暂停/未知 owner 保留互斥。停止先清理自有热点路由/DNS，再结束核心。fswatch 在有界锁内重查，重复启动保留健康 PID；长期进程不继承锁 FD。controller 与框架 lifecycle 锁分离、顺序固定；生成文件相对路径排除保留。用真实固定框架验证首次/重复/并发启停、忙锁与排除规则。
 - **原生 TUN（M53）：** 按 sing-box 1.15 省略弃用 stack，生成器、模板、旧快照恢复与健康状态一致；更新 M29 的默认栈要求。native_tun_stack 与 effective.stack=default 表示配置。Android CLI 选择系统路由且无显式接口/网络绑定时，监控为空仍允许系统路由尝试；依赖真实接口的配置继续等待。失网取消旧异步更新，恢复后重置，不伪造接口或联网状态。
 - **联网、诊断、打包（M56–M58）：** 低频 Google 检查、明确警告、持久指数退避及按证据恢复遵守 CONNECTIVITY_CONTRACT，界面只读缓存。正式包提供固定 curl/OpenSSL/zlib、内嵌 CA、许可和来源，在无系统 curl 的 Android 验证执行器及 TLS 正负控制。单文件诊断有界、脱敏、关联路由/核心/订阅，含 detached supervisor 日志与 HTTPS 能力；保留可解析 JSON 和真实阶段，只用已支持的只读入口。最终 core/full/别名/全部组件 ZIP 独立拒绝测试开发目录，夹具遵守 sanitize→split 次序。
-- **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的未完成范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
+- **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因及历史修复范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)；#440 的新增可信来源按 M69 验收。
 - **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定 Android/KernelSU 模拟器主动删除精确自有 RPDB 规则并切换受控上联，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。现场 OEM 触发原因与模拟器可复现恢复分开记录。
 
 ## 视觉与资源约束

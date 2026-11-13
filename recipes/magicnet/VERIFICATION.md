@@ -6,11 +6,17 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `eca9ac8ee240782e575d20ee38e3c9348971de6c`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `86828c8ae6c56e12f23330f551e6f2d9b41f8a38`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
-| 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.22，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板；以下真机/公网边界继续保留 |
+| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 的来源授权与 loopback SOCKS5 已实现，本地验收见 [专门报告](ISSUE_440_VALIDATION_2026-11-13.md)；#447/#449 申请的 zashboard 已是锁定默认面板；以下真机/公网边界继续保留 |
+
+## 2026-11-13：#440 受信任 NAS 订阅
+
+源码 [6d9586d](https://github.com/LIghtJUNction/magicnet-android/commit/86828c8ae6c56e12f23330f551e6f2d9b41f8a38) 增加精确 origin/CIDR 的私有授权，可明确选择 loopback SOCKS5 连接 userspace Tailnet；每次解析、重试和同源跳转验证所有目标并钉选，公网链保持原权限。源码 [PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 已建立；本记录不将 CI 进行中或 PR 未合并记为已完成。
+
+本地 Rust 864 项通过、1 项既有 Android 专项忽略；Clippy 全目标零警告。可信来源集成 15 项、既有 TLS/network 10 项及 fetch-policy 通过；WebUI 390 项通过，类型检查和生产构建通过。真实 core/full/installer 三个 ZIP 的宿主升级链保留 trust/history 原字节和 0600 权限，当前更新锁不恢复。完整命令、网络夹具与设备边界见 [验证报告](ISSUE_440_VALIDATION_2026-11-13.md)。
 
 ## 2026-11-09：#436 与模拟器故障回归
 

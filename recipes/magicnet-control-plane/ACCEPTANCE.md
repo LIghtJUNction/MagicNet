@@ -26,3 +26,5 @@
 17. `api select` 分别缺 group、缺 node：非零用法错误、无 panic，不执行选择或创建 selector-selections.json；有效参数仍走既有选择逻辑。
 18. 用 unknown 的进程观测执行 `service toggle sing-box`：非零拒绝，不调用 start/stop，watchdog marker 保留；running/stopped 的已支持分支继续正常。区分既有 canonical 收尾发布与服务写操作。
 19. 固定 configured=tun/ebpf，分别提供缺失、坏 JSON、无透明入站、重复同型和混合透明入站；effective 均为 unknown。事务目录无 phase、空 phase、不可读 phase 同样 unknown，目录不存在仍为 idle。机器快照与显式 reconcile 后 canonical 一致，不泄露配置或原始错误。
+
+20. 执行 C-SUB-009：trust set/clear 的合法、坏输入、并发和原子保存，HTTP/私网候选的默认拒绝与准确授权；setup、列表、payload、安装入口一致。check-source 零来源输出，resolve-source 仅在全部地址通过后输出固定格式；所有 trust 命令带 --json 均结构化拒绝且零写入，canary 不进入公共状态、MCP 自动资源、错误或支持包。
