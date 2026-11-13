@@ -6,11 +6,11 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `dc4433d1cfbeade114d51f3f3c429378d3d7b68d`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `eca9ac8ee240782e575d20ee38e3c9348971de6c`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.21，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；以下真机/公网边界继续保留 |
+| 待完成工作 | [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md)：#436 的模拟器 RPDB 与上联关联恢复已在 dc4433d1 完整验证；真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板；以下真机/公网边界继续保留 |
 
 ## 2026-11-09：#436 与模拟器故障回归
 
@@ -166,3 +166,10 @@ Android 16 真机隔离目录运行 dex：默认规则命中 10 张、disable/ap
 首次 publish 创建草稿后遇到 GitHub 短暂回读不可见（Created draft could not be found），回读确认原草稿身份后仅重跑失败发布 job，复用 artifact 13840432313，随后上传、公开和稳定索引同步成功。公开 v1.8.7 / 10615，非草稿、非预发布，发布时间 2026-11-11T08:37:59Z。20 项服务端资产名称与 SHA256SUMS 摘要集合一致，下载的校验清单、build-source.json、update.json 和核心 ZIP 字节摘要逐项一致。核心 ZIP 含默认关闭的包装器、规则和正确版本，未包含 enabled=true 意图文件。在线 ZIP 三个别名服务端摘要相同。完整/组件 ZIP 的本地再下载未执行，发布工作流的全包校验已通过。
 
 主仓库稳定 update.json 与三种语言 README 已同步至 v1.8.7 / 10615，自动索引提交 c528e7b5。物理手机先前已完成证书恢复；本次新版安装包的设备生命周期验收范围为 Android 模拟器。
+
+
+## 2026-11-12：PR #450 修订候选（未发布）
+
+活动 BUILD_PROMPT 标题/源码与 build、android reusable workflow 固定值改为精确校验，排除历史示例和注释。发布快照推送前及同 run 恢复时重复验证；publish 备用源码必须先同步审核配方 gitlink 与 workflow pins，build/verify 的源码选择仍保留。
+
+本地配方验证：15 项固定值回归、41 项发布计划回归、16 项资产验证回归通过；actionlint、diff-check 与完整 check/pack/归档/build（八包、62 Markdown）通过。源码候选 eca9ac8 增加停止失败固定枚举诊断并保留所有身份检查；长 JSON 逐键输入单独使用 15 秒预算，断言不变。尚未获得该候选的完整 Android 与浏览器 CI 结果，不把诊断增强写成 stop-cleanup 已解决，也未发布或合并。

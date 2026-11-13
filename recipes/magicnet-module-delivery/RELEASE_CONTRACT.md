@@ -7,8 +7,8 @@
 - 主仓库 `.github/workflows/release.yml` 提供手动 `build / verify / publish`，默认 `build`。`verify` 执行完整发布门禁；仅显式 `publish` 可创建发行。工作流、发布脚本和源码指针 PR 执行下一补丁版的完整验收预览，普通 main push 执行轻量配方和发布脚本检查。
 - 版本可选择 `none / patch / minor / major`，或指定 `X.Y.Z / vX.Y.Z`；自定义版本与非 none bump 互斥。递增以源码与已公开版本中较新者为基准；改变版本时默认 code 为两者较大 code 加一，也可显式指定合法整数。发行时版本和 code 均须高于已公开版本，包括已经公开的预发布。
 - 主仓库 `main/update.json` 表示已发布稳定版，允许落后于源码声明版本。源码 kam、module.prop、update.json 仍须内部一致；发布前统一写入目标版本/code、官方版本化安装器 URL、KAM changelog URL 与同版说明，再执行实际构建验证。
-- 默认使用主仓库的 mode-160000 gitlink；可通过 `source_ref` 明确选择源码分支、标签或 SHA，解析后固定完整提交。reusable workflow 代码固定完整 SHA；构建与 Android 验收检出同一源码并调用相同的版本注入脚本。
-- `publish` 在主仓库创建 `release/run-<run_id>` 固定快照，其父提交为触发 main 提交，包含所选源码 gitlink、release-plan.json、目标 update.json 和发行说明。重跑同一 run 复用并验证原快照及输入，不移动快照分支。build/verify 不写远端。
+- 默认使用主仓库的 mode-160000 gitlink；build/verify 可通过 `source_ref` 明确选择源码分支、标签或 SHA，解析后固定完整提交。publish 的解析结果必须等于已审核 gitlink；新源码须先同步配方、BUILD_PROMPT 与 reusable workflow 固定值。reusable workflow 代码固定完整 SHA；构建与 Android 验收检出同一源码并调用相同的版本注入脚本。
+- `publish` 在主仓库创建 `release/run-<run_id>` 固定快照，其父提交为触发 main 提交，包含所选源码 gitlink、release-plan.json、目标 update.json 和发行说明。快照推送前与重跑同一 run 时均校验活动 BUILD_PROMPT 标题、源码及工作流固定值；复用并验证原快照及输入，不移动快照分支。build/verify 不写远端。
 - `release-plan.json` schema=1 记录 base_sha、source_sha、目标 version/code、run_id、prerelease 和输入；`build-source.json` schema=1 保留 repository、source_repository、recipe_sha、source_sha、version、version_code。recipe_sha 为发布快照（预览时为触发提交），source_sha 为版本注入前的源码基线，version_code 为十进制字符串。目标版本与固定基线共同定义构建，不能称作未经修改的源码提交。build-submodules.txt 记录完整且未偏离的嵌套依赖快照。
 
 ## 模块目录元数据

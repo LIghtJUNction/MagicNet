@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 import release
+from recipe_pins import verify_source_pins
 
 REPO = release.REPOSITORY
 SOURCE = release.SOURCE
@@ -205,12 +206,22 @@ def prepare(root, mode, bump="none", version="", code="", source_ref="", prerele
             require(saved["base_sha"] == base and saved["run_id"] == run_id and saved["inputs"] == inputs,
                     "Existing release snapshot belongs to another request")
             require(git(root, "rev-parse", f"{existing[0]}^") == base, "Release snapshot parent differs")
+            require(git(root, "ls-tree", base, "--", SOURCE).split()[2] == saved["source_sha"],
+                    "Saved release source differs from the dispatched recipe gitlink")
+            verify_source_pins(lambda path: tree_text(root, base, path), saved["source_sha"])
+            verify_source_pins(lambda path: tree_text(root, existing[0], path), saved["source_sha"])
             checkout_source(root, saved["source_sha"])
             git(root, "checkout", "--detach", existing[0])
             return saved, release.metadata(root)
 
     current = release.metadata(root)
     selected_sha = checkout_source(root, source_ref) if source_ref else current["source_sha"]
+    if mode == "publish":
+        # GitHub resolves reusable workflows from the dispatched recipe, not
+        # from a later snapshot. Advance and review the recipe pins first.
+        require(selected_sha == current["source_sha"],
+                "Publishing alternate source requires updating the recipe gitlink and workflow pins first")
+        verify_source_pins(lambda path: tree_text(root, base, path), selected_sha)
     # Read and validate the selected source independently of the stable updater.
     selected = {"schema": 1, "repository": REPO, "source_repository": release.SOURCE_REPOSITORY,
                 "base_sha": base, "source_sha": selected_sha, "version": current["version"],
@@ -243,6 +254,7 @@ def prepare(root, mode, bump="none", version="", code="", source_ref="", prerele
         files = {PLAN: json_text(selected), "update.json": json_text(release.updater(target, target_code)),
                  notes_path: notes}
         commit = snapshot_commit(root, base, files, f"chore(release): prepare {target} (run {run_id})", selected_sha)
+        verify_source_pins(lambda path: tree_text(root, commit, path), selected_sha)
         git(root, "push", "origin", f"{commit}:{branch}")
         git(root, "checkout", "--detach", commit)
         return selected, release.metadata(root)

@@ -4,7 +4,7 @@
 
 ## 选择版本并运行
 
-在入口点击 **Run workflow**，选择 **main**。常规发布使用`mode=publish`、`bump=patch`；需要源码最新提交时加`source_ref=main`。精确版本使用`bump=none`和`version=1.9.0`；源码版本尚未公开时，`bump=none`且version留空即可沿用。
+在入口点击 **Run workflow**，选择 **main**。常规发布使用`mode=publish`、`bump=patch`；需要发布新源码时，先通过 PR 同步 gitlink、BUILD_PROMPT 与 reusable workflow 的完整 SHA 固定值。精确版本使用`bump=none`和`version=1.9.0`；源码版本尚未公开时，`bump=none`且version留空即可沿用。
 
 | 参数 | 作用 |
 | --- | --- |
@@ -14,7 +14,7 @@
 | `bump` | `none / patch / minor / major`；以源码声明与已公开版本中较新者递增 |
 | `version` | `X.Y.Z`或`vX.Y.Z`，要求bump=none；拒绝前导零、版本后缀及更旧源码版本 |
 | `version_code` | 可选整数`1..2147483647`；发布时高于已公开版本 |
-| `source_ref` | 留空用主仓库gitlink；分支、标签或完整SHA解析一次后固定 |
+| `source_ref` | 留空用主仓库gitlink；build/verify 可选择分支、标签或完整 SHA；publish 要求解析结果仍等于已审核 gitlink |
 | `prerelease` | 仅publish；标记预发布并保留稳定update.json和README |
 
 版本不变默认沿用源码code；版本变化默认取源码与已公开code的较大值加一。build/verify使用主仓库稳定索引作预览基线，publish另查GitHub全部已公开版本（含预发布）；已有版本不覆盖。
@@ -28,11 +28,11 @@ gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main \
 
 # 发布下一个补丁版
 gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main \
-  -f mode=publish -f bump=patch -f source_ref=main
+  -f mode=publish -f bump=patch
 
 # 发布精确版本，自动计算versionCode
 gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main \
-  -f mode=publish -f bump=none -f version=1.9.0 -f source_ref=main
+  -f mode=publish -f bump=none -f version=1.9.0
 
 # 先构建精确版本与code
 gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main \
@@ -41,7 +41,7 @@ gh workflow run release.yml --repo LIghtJUNction/MagicNet --ref main \
 
 ## 固定来源与门禁
 
-publish保存`release/run-<run_id>`快照，包含release-plan.json、目标updater、发行说明和源码gitlink；版本标签指向该快照。构建与Android检出同一SHA，用同一脚本注入版本/code/官方URL/KAM说明；build-source.json区分版本注入前的源码基线与目标版本。source_ref只改变本次快照，不移动main的gitlink；原run重跑保留原快照。旧源码必须具备`scripts/stamp-release.py`和新版构建接口。
+publish保存`release/run-<run_id>`快照，包含release-plan.json、目标updater、发行说明和源码gitlink；版本标签指向该快照。构建与Android检出同一SHA，用同一脚本注入版本/code/官方URL/KAM说明；build-source.json区分版本注入前的源码基线与目标版本。build/verify 的 source_ref 不移动 main 的 gitlink；publish 禁止未同步配方固定值的备用源码，因为 GitHub 在 dispatch 时解析 reusable workflow，不能靠后写快照替换已选择的工作流。快照推送前及原 run 恢复时再次验证实际固定值，原 run 重跑保留原快照。旧源码必须具备`scripts/stamp-release.py`和新版构建接口。
 
 产物含MagicNet.zip、MagicNet-core.zip、magicnet_installer.zip、MagicNet-full.zip、所有组件、清单、来源、updater和SHA256SUMS。前三者字节相同，full可离线安装；最终ZIP门禁拒绝测试、fixture、benchmark、coverage和node_modules目录。
 
