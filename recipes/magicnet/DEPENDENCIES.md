@@ -4,9 +4,9 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.21 | 产品集成、M01–M68 与完整验收 |
+| magicnet | 0.3.22 | 产品集成、M01–M68 与完整验收 |
 | magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.11 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
 | magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `eca9ac8ee240782e575d20ee38e3c9348971de6c`，tree `2e4d946593904a4d77f2d3889f79053b1ce62ea8`。本候选在已发布基线 dc4433d1 上增加 supervisor 停止失败的固定枚举诊断，并为长 JSON 逐键输入设置独立预算，保留全部停止身份校验和编辑器断言；Android stop-cleanup 根因及完整 CI 尚待复验，不表示已修复或已发布。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`，tree `f477642021d129ae9b5a64d87436f678db06d62f`。本固定点保留 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号误拒绝的修正，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，通过 Android 移动数据服务控制实际 WWAN/eth0 连接，关闭后核对用户/有效状态、当前连接、接口和 netd 销毁证据，再启用；逐应用元数据只允许精确迁移到 UNREACHABLE 并在恢复后返回；保留失败清理前的有界脱敏支持包。相对已记录的 668 候选，本次增量仅增加宿主诊断观察器，用于保留启动失败时的观察；未知的 boot 失败根因尚未修复。runtime 恢复流程、预算与独立门禁保持，新候选完整 CI 待验证。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -35,6 +35,8 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
 源码、观察 checkout、宿主测试工具和六个嵌套子模块均不进入配方归档。独立重建可采用自己的依赖结构，但必须遵守 engine、delivery 的复用许可和全部行为合同；不能要求读取旧源码补齐需求。本次改动没有新增运行库。
+
+Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及逐应用 UID selectors 从已核验的网络元数据派生，采集器与独立报告门禁各自验证完整规则和重复次数；沿用 schema=1 证据、现有工具及生产恢复接口。
 
 ## 外部前提
 

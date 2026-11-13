@@ -1,5 +1,7 @@
 # MagicNet Issue 与 PR 处理记录（2026-11-06）
 
+#436 的最新修订见文末 2026-11-13 节及 [VERIFICATION.md](VERIFICATION.md)。以下各日期保留当时的源码、发行与验收身份。
+
 ## 范围与结论状态
 
 用户授权直接合并并处理 Issue/PR。源码 PR #3 与主仓库 PR #442 已合并到各自 main；最终源码的七条工作流均在 attempt 1 成功。#437、#438、#439 已关闭，#436 与 #440 已记录完成部分并保持开放。以下分别记录本地、实际 Android 模拟器和物理设备的证据边界。
@@ -241,3 +243,23 @@ v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流
 - `magicnet_hotspot_watchdog_start_unlocked`：由 `magicnet_hotspot_watchdog_${action}_unlocked` 动态调用。
 
 此前删除的 `magicnet_prepare_singbox_nodes` 包装仍不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用。本轮不删除产品测试或降低验收。
+
+## 2026-11-13：#436 路由恢复验收的逐应用规则归属
+
+生产有界 TUN 恢复已随 v1.8.7 发行。最新源码 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173) 记录了 UDP 1→0→1、readiness false→true 和一次成功恢复，随后因 `recovery_rule_set_mismatch` 失败。现场差异为 eth0 netId 100→101 时同步更新的全局和逐应用规则；其余 netd 网络信息、接口/FIB 和 UID 范围保持。
+
+[`58ccae52`](https://github.com/LIghtJUNction/magicnet-android/commit/58ccae52677fa95843eb2c0566c095385afbae49) 在采集器与独立门禁中补齐由 netd 元数据派生的逐应用 selectors，核对完整字段及重复次数，保留外部规则保护、既有恢复预算和证据 schema。源码 PR [#7](https://github.com/LIghtJUNction/magicnet-android/pull/7) 承载本轮候选；已完成的宿主回归与新 Android CI 状态分别见 VERIFICATION。#436 原报告的物理设备/OEM 触发原因仍需独立证据，本轮保持 Issue 开放。
+
+
+后继 [`9dba9425`](https://github.com/LIghtJUNction/magicnet-android/commit/9dba94254780fb0a1a84a003608d5919a97de4f2) 根据新失败证据补入可恢复的单 eth0 AVD 夹具，避免 hosts-only 离线 DNS 实验期间 Android 在 Wi-Fi/eth0 之间另行选择默认网络（后续诊断确认eth0为模拟蜂窝接口）；严格外部规则比较保持。源码运行 43385059168 的默认网络迁移与整合运行 43385469784 的故障前 UDP 超时分别保留，均为 5/1/7 阶段结果。UDP 超时原因尚未确定，后继只增加清理前的有界脱敏支持采集，仍要求全新的 UDP 正反控制。9dba 的[整合43391099744](https://github.com/LIghtJUNction/MagicNet/actions/runs/43391099744)完整13/13、5次重启及发布质量门禁通过，实际覆盖netId100→102；但同树[源码43390671015](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43390671015)在RPDB恢复成功后，因eth0 IPv4默认路由600秒未恢复而失败，仍为5/1/7。清理前支持包捕获了UP链路、保留地址/TUN与缺失的Android IPv4路由。成功整合不覆盖此失败。
+
+
+候选 [`5f96a190`](https://github.com/LIghtJUNction/magicnet-android/commit/5f96a190a08e50ea6654ef52117d5a730d044e05) 尝试观察Ethernet服务停止，但[源码43399092150](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092150)与[整合43399411108](https://github.com/LIghtJUNction/MagicNet/actions/runs/43399411108)的Android均在baseline报 `incomplete_ethernet_dump`，尚未down；RPDB恢复与UDP正负正通过，总计仍为5/1/7、1次重启。旧门禁复验均exit1。实际[服务诊断43403995584](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43403995584)证明镜像没有ethernet服务，不能继续把EthernetFactory竞态当作该接口的解释。
+
+[模拟蜂窝诊断43404505529](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43404505529)确认eth0属于CELLULAR/WWAN/sub1，经Android移动数据服务关闭/开启完成netId101→无→102、接口UP→DOWN→UP、数据状态启用→禁用→启用。后继 `668701523f52959f2daf5113ee11b716aa7ecddb` 改用实际蜂窝生命周期，独立核对当前registry/默认订阅、netd旧网络销毁与逐应用UID元数据仅迁移至UNREACHABLE并返回；恢复仍要求原路由/就绪/应用TCP。独立enable guard与600秒预算保留。stock kernel 诊断不替代完整 KernelSU 故障闭环，实际 668 结果分别记录如下。
+
+`66870152` 的[源码 Android 43407220745](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43407220745)保留 9 passed /1 failed /3 not_run：路由恢复阶段已通过（325.799 秒），但 `upgrade-preservation` 的第二次重启报 `Android boot deadline exceeded`，命令退出码 124，`new_boot_observed=false`。实际报告源码为同树合成测试提交 `053a11d134f3177fa94e917828245a2dfce81a36`；完整原始报告经 668 门禁复验仍 exit 1，单独路由证据通过不改变该失败。
+
+固定 668 的[配方整合 43407837059](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407837059)及 [Recipe checks 43407835916](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407835916)成功：原始 Android 报告 13/13、5 次真实重启，精确 668 独立门禁 exit 0，完整构建、实际发布质量门禁和远端资产检查通过。RPDB UDP 为 1→0→1，cellular 记录 netId100→无→103、UID 元数据精确迁移至 UNREACHABLE52 并返回，最终默认路由/readiness/TCP 与 Wi-Fi 启用状态恢复通过。构建 artifact `14031630631` 的 digest 为 `2aa89ecb49c7b63bfadf99e4c11817da5f11549b51154ffb4b4b87bcd8478706`，由远端 CI 下载与清单校验核对；工作环境中断后没有本地独立复算。配方成功不覆盖源码升级重启失败，publish 被跳过。
+
+当前后继固定点为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`），增量仅为宿主诊断观察器，用于保留启动失败现场的观察，未修复未知的 boot 失败根因。runtime 恢复预算与独立门禁不变，配方仍为 0.3.22 / runtime 0.1.12。[隔离短测试 43417860968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968)完成 host 观察器27、重启6、工作流合同29、gate72项检查并通过；其五个已审查源码 blob 进入当前候选，临时 workflow 未合入。新候选完整 CI 待验证。全部历史失败继续保留，#436 原设备/OEM 触发原因仍开放；当前验证边界见 [VERIFICATION.md](VERIFICATION.md)。
