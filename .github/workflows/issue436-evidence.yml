@@ -1,0 +1,50 @@
+name: Original Android evidence verification
+on:
+  push:
+    branches: [diagnostic/issue-436-evidence-20261113]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Read diagnostic verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 1
+      - name: Read pinned unchanged source gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: LIghtJUNction/magicnet-android
+          ref: a4135d5edc39af4895968359bf16e8aefefdaeac
+          path: validator
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 1
+      - name: Verify original artifact and retain the full gate result
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: LIghtJUNction/MagicNet
+          TARGET_RUN_ID: '43418588448'
+          TARGET_ARTIFACT_ID: '14034686656'
+          EXPECTED_ARTIFACT_NAME: android-kernelsu-acceptance-43418588448-1
+          EXPECTED_ARTIFACT_SIZE: '523992'
+          EXPECTED_ARTIFACT_SHA256: 2087d7d3d0231f7108102cdf0532cd19b8010648d0cf51526b491f151ada26c3
+          EXPECTED_RUN_HEAD_SHA: 284248b6d4c4913e064de69d6ee7cdebe5045e03
+          VALIDATOR_SOURCE_SHA: a4135d5edc39af4895968359bf16e8aefefdaeac
+          VALIDATOR_TREE_SHA: f477642021d129ae9b5a64d87436f678db06d62f
+          EXPECTED_REPORT_SOURCE_SHA: a4135d5edc39af4895968359bf16e8aefefdaeac
+          EXPECTED_GATE_SHA256: 22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046
+        run: python3 scripts/issue436-evidence.py
+      - name: Preserve normalized verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: original-android-evidence-${{ github.run_id }}
+          path: evidence/summary.json
+          if-no-files-found: warn
+          retention-days: 14
