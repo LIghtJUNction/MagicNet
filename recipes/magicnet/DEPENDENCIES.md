@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.21 | 产品集成、M01–M68 与完整验收 |
-| magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.11 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
+| magicnet | 0.3.22 | 产品集成、M01–M69 与完整验收 |
+| magicnet-control-plane | 0.2.10 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-web-console | 0.2.7 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-module-delivery | 0.2.10 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `eca9ac8ee240782e575d20ee38e3c9348971de6c`，tree `2e4d946593904a4d77f2d3889f79053b1ce62ea8`。本候选在已发布基线 dc4433d1 上增加 supervisor 停止失败的固定枚举诊断，并为长 JSON 逐键输入设置独立预算，保留全部停止身份校验和编辑器断言；Android stop-cleanup 根因及完整 CI 尚待复验，不表示已修复或已发布。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `86828c8ae6c56e12f23330f551e6f2d9b41f8a38`，tree `706defefc0e51481f10c82c8149c1fc02ee836f5`。本候选保留 eca9ac8 的 supervisor 停止失败枚举诊断及长 JSON 输入预算，并实现 #440 的精确本地来源授权与 loopback SOCKS5 路线；本地 Rust、真实受控网络、WebUI 和打包升级结果见 [#440 验证报告](ISSUE_440_VALIDATION_2026-11-13.md)。Android stop-cleanup 根因与对应完整 CI 仍沿用各自验证范围。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
@@ -52,3 +52,5 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 项目名保持 MagicNet。配方发布保留原 topics 并添加 recipkg、回读核对；发现标签不构成验收证据。来源归属见 [PROVENANCE.md](PROVENANCE.md)，历史依赖变更见[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/DEPENDENCIES.md)，实际结果与限制见 [VERIFICATION.md](VERIFICATION.md)。
 
 证书禁用默认关闭且开机无操作，接口与依赖继续遵守 runtime/CERTIFICATE_POLICY.md 合同；实现复用已有 Android app_process/Java bridge 构建链，无新增网络依赖或 CA 注入。
+
+受信任订阅的设备 CLI 共用 Rust 地址与 CIDR 校验，下载复用随包 curl 的直连或 SOCKS5 能力，不新增运行库。可选代理限定为操作员明确配置的 loopback SOCKS5 监听地址；访问 userspace Tailnet 时它承担路由，本机仍先验证并固定数值目的地址。默认公网 HTTPS 策略及模块/组件下载合同保持独立。

@@ -76,6 +76,15 @@ SUB-A04 另覆盖分享链接形式的 VLESS WebSocket：A/B 各一个名为 `HK
 
 SUB-A22 / SUB-011–013、LIFE-007：fswatch on/off 各执行三次受控订阅更新，核对 connectivity、refresh、wifi-policy、hotspot 和原先活动的 fswatch 在 config unlock 后恢复；update owner 在恢复期间仍有效，内部标记收尾清除。初始 journal reconcile、失败 rollback 与 TERM 同样验证锁序和原 fswatch 意图。生产 wrapper 加替身更新体只证明锁序，不能记为六次 Android 端到端订阅。
 
+## 0.1.12 受信任订阅来源
+
+| 编号 | 输入与动作 | 必须观察 |
+| --- | --- | --- |
+| SUB-A23 | 缺失/空/坏信任清单；精确 HTTP/HTTPS origin 与 RFC1918/CGNAT/ULA/loopback CIDR；错主机/端口/协议、过宽/非规范/禁用 CIDR | 默认拒绝 HTTP/私网；仅准确授权可通过；坏清单零部分应用，原授权与有效配置保留；HTTPS 仍验证证书 |
+| SUB-A24 | 同源相对跳转、跨源跳转、端口或协议改变；公网链跳向已授权本地来源；混合 DNS 与重试时地址变化 | 每次解析全部地址并钉选；未授权目标零请求；公网链不升权、受信任链不扩张；5 跳、期限和正文上限保持 |
+| SUB-A25 | loopback SOCKS5 将已授权 CGNAT 目标连接到受控服务；SOCKS5h/HTTP/远端代理、认证或路径注入；curlrc/环境代理污染 | 使用明确指定的 loopback 代理且 SOCKS5 目的为已核对数值 IP，Host/TLS 身份保持；危险代理与环境旁路不生效，URL/query/token 不进入日志、公共状态或支持包 |
+| SUB-A26 | CLI/WebUI/安装向导导入、定时刷新、撤销授权、升级恢复；有/无历史与活更新锁 | 各入口遵循同一策略，失败保留原代；升级保留授权和历史的私有字节，缺失历史不造成功，更新锁不随历史恢复；真实 TCP/SOCKS5 夹具、模拟解析和 Android 结果分别记录 |
+
 同时执行 LIFE-A12、既有信号/事务/owner 回归和实际固定 kamfw 的宿主进程生命周期检查。精确记录可用 shell；本机 sh/bash 结果不能代替 mksh/BusyBox 或设备结果。维护集合恢复与现场特定 rc=2 的原因归属分别报告。
 
 ## 0.1.10 未知状态验收

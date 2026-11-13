@@ -12,6 +12,9 @@
 | cli sub update sing-box / all / cli sub update-all | 更新已保存的来源，不能把其中第一个 URL 当作整批。 |
 | cli sub clear | 清除订阅来源，保留当前已验证内核配置及工作的网络；存在未恢复事务时拒绝清除。 |
 | cli sub resolve-host <hostname> <port> | 校验主机名与端口，解析全部地址并检查公网策略，成功逐行输出排序后的 IP；仅检查解析及地址策略，不下载内容，不证明 URL、令牌、TLS、订阅格式、转换、合并或代理连接可用。 |
+| cli sub trust set <base64-lines> / clear | 私密来源授权写入，替换或清空完整清单；规则见 C-SUB-009。 |
+| cli sub check-source <scheme> <host> <port> | 只检查来源授权，不接收完整 URL、不下载，成功不输出来源信息。 |
+| cli sub resolve-source <scheme> <host> <port> <origin-scheme> <origin-host> <origin-port> | 核对下载链、解析并验证全部地址；成功每行输出 `IP\|direct` 或 `IP\|socks5://127.0.0.1:port`，仅供私密下载执行器消费。 |
 | cli webui payload create/append/remove | 私有文件传输入口，命名空间 tmp 或 subscription；每块独立 base64 解码，累计上限 8 MiB。文件名 1–128 个 ASCII 字节，只允许字母、数字、点、下划线、连字符，首字节不能为点。拒绝路径、链接及错误归属，私有权限。 |
 | cli webui payload apply-subscription <safe-basename> | 一次消费 UTF-8 URL 换行列表；受控消费即去除重放入口，读取、校验或应用失败均不得遗留可被再次执行的私有 payload。 |
 | cli webui payload apply-subscription-source <safe-basename> | 一次消费本地订阅正文（可以是 JSON/YAML/分享文本等），不是 URL 列表，也不是聚合配置的 JSON envelope；同样在受控消费时去除重放入口。 |
@@ -116,3 +119,11 @@ canonical producer 与支持包复用同一观测语义。来源不可读时，s
 验收分别覆盖两种来源模式的合法边界、边界加 1 字节、坏 UTF-8、NUL、链接、目录/FIFO、权限错误、文件与父目录缺失、观察中改写，以及含唯一 canary 的失败输入。比较 status、inspect、canonical producer、service.status 与支持包：缺失允许未配置；坏数据结构化失败或明确 unknown；所有只读调用前后目录树及文件摘要不变，公共输出无 canary。
 
 以上是重建与维护验收，不是本轮对旧版全部接口的运行结果。实际提取/探针结果统一记于根 VERIFICATION.md。
+
+## C-SUB-009：私密来源授权
+
+`sub trust set <base64-lines>` 按 runtime/SUB-016 校验完整 UTF-8 清单并原子替换私有 `.config/sing-box/subscription-trust.list`；`sub trust clear` 撤销全部例外。两者与订阅来源写入共享现有并发边界，不触发下载、重启或清空有效配置。失败保留旧清单，日志只给固定错误，不回显原始行。
+
+`check-source` 与 `resolve-source` 只接收 scheme、host、port；完整 path/query/token 不进入检查命令参数。解析器输出属于私密执行器输入，只有在整个地址集合通过同一策略后才能输出，不能先输出合法前缀再失败。公网 `resolve-host` 继续维持原约束。配置的显式 SOCKS5 路线不得由环境变量覆盖。
+
+setup、set、set-file、apply-file、WebUI payload、安装向导与定时更新均共用后端授权。人类 trust 写命令不新增 schema-1 写例外；带 `--json` 时由机器 dispatcher 返回结构化 unsupported 且零写入。公共 sub.status、canonical、MCP 自动资源与支持包不返回信任清单，也不新增第二套订阅状态。
