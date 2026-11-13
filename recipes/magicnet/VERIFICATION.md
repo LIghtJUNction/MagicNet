@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `5f96a190a08e50ea6654ef52117d5a730d044e05`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `668701523f52959f2daf5113ee11b716aa7ecddb`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.22，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
@@ -14,7 +14,7 @@
 
 ## 2026-11-13：#436 逐应用路由规则与可控网络验收
 
-候选 [`5f96a190`](https://github.com/LIghtJUNction/magicnet-android/commit/5f96a190a08e50ea6654ef52117d5a730d044e05)（tree `fa540978e3feef6f6f01a9b5bdf6422916f48bb7`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正逐应用规则归属比较，并为恢复实验建立单 eth0 夹具与 Ethernet 清理屏障。整合保留源码主线 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。
+候选 [`66870152`](https://github.com/LIghtJUNction/magicnet-android/commit/668701523f52959f2daf5113ee11b716aa7ecddb)（tree `e6b0d68c74703a68ad0b662f6618ac6165271818`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正逐应用规则归属比较，并为恢复实验建立单 eth0 夹具，通过实际管理 eth0 的模拟蜂窝服务完成断开与重建。整合保留源码主线 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。
 
 原始基线为源码 `5edd36ba` 的[失败运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173)：同 UID UDP 1→0→1、readiness false→true、一次成功的生产恢复，最终却报 `recovery_rule_set_mismatch`。eth0 仅从 netId100 变为101，接口/FIB、权限和逐应用 UID 范围不变；旧比较器遗漏优先级15040/22040的逐应用规则。当前采集器与独立门禁按已核验的 netd 元数据推导完整全局/逐应用 selectors，支持不变的 NONE/NETWORK/SYSTEM 权限，精确比较字段与重复次数。真实权限、UID、接口/FIB或其他规则变化仍失败。
 
@@ -24,21 +24,25 @@
 
 同树的[源码运行 43390671015](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43390671015)仍为5/1/7：RPDB恢复与UDP1→0→1通过，但随后eth0 down/up后IPv4默认路由在600秒、10次tick后仍未恢复。末次 `selected_default=false`，readiness/TCP未调用。清理前支持包已捕获：eth0 UP/LOWER_UP、IPv4地址、TUN规则与IPv6 RA仍在，Android IPv4静态/default路由缺失。整合成功不覆盖源码失败。报告源码为测试合并 `eee288a83fb18eb30223b0e0b7ad0431a2486f6f`，与9dba同tree；包沿用源码v1.8.5/10613 metadata，与整合预览标识分别记录。
 
-固定 [Android15r23 EthernetNetworkFactory](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-15.0.0_r23/service-t/src/com/android/server/ethernet/EthernetNetworkFactory.java) 说明旧网络异步销毁可能晚于新IpClient启动并删除新路由。当前把此机制记为有源码依据的推断，未取得对应事件窗口的完整日志。5f96修正为 down 后有界确认 Ethernet 服务 link-down、NetworkAgent/IpClient 均停止，再确认 netd 清单精确删除旧eth0网络、其他网络保持，才 up。保留独立恢复guard与原600秒恢复预算。`ethernet_lifecycle`由独立门禁核验；缺失的sysfs读取不能合成为down状态，dump超时/缺字段也失败。旧9dba报告不补造新字段。
+`5f96a190` 的[源码 Android 43399092150](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092150)与[整合 Android 43399411108](https://github.com/LIghtJUNction/MagicNet/actions/runs/43399411108)均在 `incomplete_ethernet_dump` 失败，分别保留5/1/7阶段、1次重启和原始失败门禁。两者RPDB恢复均通过，UDP分别为8→5001→4 ms和4→5001→5 ms；上联还在baseline，未执行down。源码实际受测为 `b60d1b90aaec75a9fa60f1c534c71e4375aed8f0`（与5f96同tree），整合实际源码为5f96。不能把宿主86/67通过写成设备清理屏障通过。
+
+独立[服务诊断43403995584](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43403995584)确认固定Google API35/r9镜像没有 `ethernet` Binder服务，命令返回rc0、空stdout和 `Can't find service: ethernet`。因此此前依据EthernetFactory停止机制解释eth0的假设不适用于本镜像。固定[r23模拟无线电实现](https://android.googlesource.com/device/google/cuttlefish/+/refs/tags/android-15.0.0_r23/guest/hals/ril/reference-ril/reference-ril.c)把模拟器蜂窝接口定义为eth0；实际[三阶段诊断43404505529](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43404505529)观察到CELLULAR/WWAN/eth0/sub1，移动数据关闭/开启后netId101→无→102，flags0x1003→0x1002→0x1003，用户/有效数据状态true→false→true，连接状态2→0→2。该诊断使用同一用户空间镜像与stock kernel，不含MagicNet；它证明控制与观测机制，不能替代完整KernelSU验收。
+
+后继修订改用 `cmd phone data disable/enable`：从PhoneGlobals默认数据订阅及telephony.registry明确当前段，绑定唯一phone/subId、两种数据启用状态和当前WWAN/eth0/netId；关闭后有界取得连接清空、实际DOWN与netd旧网络销毁证据，再启用。实际down期间原逐应用UID元数据迁移至UNREACHABLE52，校验只允许这一精确推导的迁移，恢复后原元数据返回，仅eth0 netId可变。`cellular_lifecycle`由独立门禁重验。30秒enable guard和原600秒恢复预算保持，仍需默认路由、TUN就绪与同UID TCP；未手工补写外部路由。原9dba缺省路由失败与绕过Telephony的raw down/up机制相符，但没有完整原事件窗口，仍不把机制推断写成原设备根因。旧报告不补造新字段。
 
 单上联夹具仍先验证一次性x86_64 AVD身份与安全控制通道，保存并临时关闭Wi-Fi，取得两次一致的eth0 netd/RPDB/出口基线；finally恢复并回读原Wi-Fi启用布尔值。RPDB/上联失败时在配置清理前采集既有脱敏支持包，保持25秒预算及原失败原因。CON-A09/M66已同步；生产恢复流程、预算和机器schema=1保持。
 
 | 验证层 | 本轮实际结果 |
 | --- | --- |
-| 当前源码宿主回归 | 恢复采集器86、独立门禁67、模拟器合同114、验收合同33、工作流合同27项通过；source lint837跟踪文本、diff-check通过；独立交叉复核无剩余阻断 |
+| 当前源码宿主回归 | 恢复采集器91、独立门禁72、模拟器合同114、验收合同33、工作流合同27项通过；source lint838跟踪文本、diff-check通过；实际三阶段诊断与原始失败分别记录 |
 | 未改动的生产代码 | 此前定向Rust connectivity22项单元、9项集成与supervisor20项通过；当前修订未修改生产Rust |
 | 配方材料 | 固定值15、发布计划41、发布资产16项此前通过；当前固定点的八包检查/打包/归档/build prompt随本次整合记录 |
 | 历史完整结果 | 9dba/e36整合43391099744成功；其源码运行43390671015失败，二者各保留原始身份和结果。更早dc4433d1发布13/13只适用于其对应版本门禁 |
-| 当前候选完整 Android | 5f96的[Android43399092150](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092150)进行中；另有[构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092138)、[质量](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092204)、[网络](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092195)。固定源码整合以[主仓库PR检查](https://github.com/LIghtJUNction/MagicNet/pull/451/checks)为入口；不以旧候选结果替代 |
-| 审查边界 | 9dba的Sourcery检查因服务额度skipped，不计为新审查通过；5f96有独立producer/gate交叉复核，新服务审查状态随CI单列 |
+| 当前候选完整 Android | 使用真实蜂窝控制的后继完整CI待回读；以[源码PR检查](https://github.com/LIghtJUNction/magicnet-android/pull/7/checks)和[主仓库PR检查](https://github.com/LIghtJUNction/MagicNet/pull/451/checks)为入口。5f96两份Android失败继续保留，不以历史成功替代 |
+| 审查边界 | 5f96源码Sourcery因PR差分超过150,000字符skipped，配方Sourcery成功；不外推为后继源码服务审查通过。当前修订由producer/gate交叉复核，服务结果按新SHA单列 |
 | 独立重建 | 本轮未执行M37；配方材料检查与独立软件重建分别记录 |
 
-当前待验证的是带Ethernet清理屏障的完整故障闭环。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；本轮没有正式发布或部署用户设备。物理ARM64、OEM删除规则的触发者、真实订阅与公网代理仍未取得新的成功证据。
+当前待验证的是通过真实蜂窝数据服务完成的完整故障闭环。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；本轮没有正式发布或部署用户设备。物理ARM64、OEM删除规则的触发者、真实订阅与公网代理仍未取得新的成功证据。
 
 ## 2026-11-09：#436 与模拟器故障回归
 

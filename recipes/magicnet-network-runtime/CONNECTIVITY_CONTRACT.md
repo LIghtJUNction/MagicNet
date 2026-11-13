@@ -56,11 +56,11 @@ WebUI 概览、诊断页和 health 显示明确 ⚠️，包括失败、重试�
 | CON-A08 | TUN 缺失/恢复/未知、启动宽限、busy、stop、事务、ebpf、auto_route=false、时钟及 worker 重跑 | 独立观测不改变 Google 结论；双确认、共享冷却和同 boot 3 次预算准确；未知和停止零恢复，锁内重新确认 |
 | CON-A09 | 固定生产 CLI/core 的一次性 x86_64 Android/KernelSU AVD，稳定的单 eth0 上联，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及 eth0 down/up | 夹具身份、控制链路、稳定基线及 Wi-Fi 启用状态恢复均验证；注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须核对独立 netd 元数据、接口/权限/FIB，并精确派生全局和逐应用 selectors，仅替换 netId，其余规则及重复次数相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
 
-故障注入前必须确认 qemu/x86_64 模拟器身份，读取并保存 Android Wi-Fi 启用状态，验证 adb 控制链路不依赖即将关闭的接口，再通过 Android Wi-Fi 服务临时关闭 Wi-Fi。在有界等待内连续两个采样周期观察到相同的 netd 清单、RPDB 规则及 eth0 出口：唯一 PHYSICAL 网络只含 eth0，清单中没有 wlan0，Wi-Fi 确为关闭。准备不完整不得注入，RPDB 故障与恢复中的 netd 快照也须保持单 eth0 上联。eth0 down/up 前再次核对控制链路，保留独立延迟恢复 guard；报告的 `restore_method` 必须为 `link_up`。恢复后仍要求该上联实际路由、TUN 状态、就绪与同应用 UID TCP 实测通过，不能用链路恢复命令代替流量证据。
+故障注入前必须确认 qemu/x86_64 模拟器身份，读取并保存 Android Wi-Fi 启用状态，验证 adb 控制链路不依赖即将关闭的接口，再通过 Android Wi-Fi 服务临时关闭 Wi-Fi。在有界等待内连续两个采样周期观察到相同的 netd 清单、RPDB 规则及 eth0 出口：唯一 PHYSICAL 网络只含 eth0，清单中没有 wlan0，Wi-Fi 确为关闭。准备不完整不得注入，RPDB 故障与恢复中的 netd 快照也须保持单 eth0 上联。eth0 的移动数据关闭/开启前再次核对控制链路，保留独立延迟 enable guard；报告的 `restore_method` 必须为 `android_mobile_data_toggle`。恢复后仍要求该上联实际路由、TUN 状态、就绪与同应用 UID TCP 实测通过，不能用链路恢复命令代替流量证据。
 
-eth0 的接口标志与 Android 服务清理分别观察。down 前须证明 Ethernet 全局开关启用，唯一 eth0 的链路、NetworkAgent 和 IpClient 均活动；down 后全局开关保持，且 EthernetFactory 已观察 link-down、NetworkAgent/IpClient 均为空，netd 清单严格等于原清单去掉唯一 eth0 PHYSICAL 网络，旧 netId 完全消失。该清理屏障及实际 down 标志在有界时间内完整取得后才 up；缺字段、超时、重复网络或任何其他网络变化均拒绝。`ethernet_lifecycle` 保存 before/down 的规范化服务状态、完整 netd 清单和 down flags，由独立报告门禁核验。观察超时仍执行接口恢复与失败采集，不以手工写外部路由代替 Android 网络组件的清理和重建。
+固定镜像的 eth0 由模拟蜂窝数据栈管理。关闭前须绑定唯一默认 phone/数据订阅、用户与有效数据启用状态、当前唯一 CONNECTED/WWAN/eth0 连接及 netd 的同一 netId。通过 `cmd phone data disable` 发起断开；命令和观测共用 15 秒截止时间，须取得两个数据启用状态均为 false、连接状态 0、当前精确连接为空和真实接口 DOWN。netd 须完全销毁旧 eth0 网络；仅允许原逐应用 UID 元数据精确迁移到唯一 netId52/UNREACHABLE，其他记录不变，若基线 UNREACHABLE 已有逐应用元数据则拒绝。此后通过 enable 重新建立连接；同一 phone/订阅恢复启用、连接状态 2、唯一 CONNECTED/WWAN/eth0 与 netd 一致，全部原元数据返回，仅 eth0 netId 可变。`cellular_lifecycle` 保存 before/down/after 的规范化 owner、完整 netd 清单及 down flags，由独立门禁核验；数据源只使用明确的当前段，历史日志不计为当前状态。独立 30 秒 enable guard、失败恢复和原 600 秒路由/就绪/TCP 预算保持，不手工写 Android 外部路由。
 
-夹具收尾通过 finally 恢复并在有界等待内核对原 Wi-Fi 启用布尔值；准备、故障或恢复失败均保留失败，缺少恢复证据不得通过。schema=1 报告的 `network_fixture` 保留夹具身份、控制链路检查、两次完整稳定观测和 Wi-Fi 初始/最终状态，由独立门禁核验。本场景覆盖受控 Ethernet 断续与 RPDB 丢失恢复；Wi-Fi 开关用于隔离模拟器上联，不构成 Wi-Fi 切换恢复证据。
+夹具收尾通过 finally 恢复并在有界等待内核对原 Wi-Fi 启用布尔值；准备、故障或恢复失败均保留失败，缺少恢复证据不得通过。schema=1 报告的 `network_fixture` 保留夹具身份、控制链路检查、两次完整稳定观测和 Wi-Fi 初始/最终状态，由独立门禁核验。本场景覆盖受控模拟蜂窝断续与 RPDB 丢失恢复；Wi-Fi 开关用于隔离模拟器上联，不构成 Wi-Fi 切换恢复证据。
 
 CON-A09 的 schema=1 证据保留前后 netd 网络清单、完整 metadata、eth0 接口索引/FIB 与 RPDB 规则。只在同一 PHYSICAL 网络的权限为已知 NONE、NETWORK 或 SYSTEM 且前后一致，接口/索引/FIB、Allowed UID ranges、Per-app UID ranges 及其他网络均不变时，接受该网络的 netId 变化。采集器与独立报告门禁分别从这些已核验字段派生选择器。
 

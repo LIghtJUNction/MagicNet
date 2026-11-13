@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@5f96a190a08e50ea6654ef52117d5a730d044e05`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@668701523f52959f2daf5113ee11b716aa7ecddb`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -42,7 +42,7 @@
 - **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的未完成范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
 - **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定的一次性 x86_64 Android/KernelSU AVD 在稳定的单 eth0 上联下主动删除精确自有 RPDB 规则，并执行 eth0 down/up，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。netd 网络重编号须由不变的网络元数据与接口/FIB 派生权限对应的全局规则和逐应用 UID selectors，逐项核对完整字段和重复次数，仅替换 netId；其余规则变化仍失败。现场 OEM 触发原因与模拟器可复现恢复分开记录。
 
-CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状态并通过 Android 服务临时关闭 Wi-Fi；在有界等待内取得连续两次相同的单 eth0 netd/RPDB/出口基线后才允许注入。eth0 故障前再次确认控制链路独立，并观察 Ethernet 服务拥有活动的链路、NetworkAgent 与 IpClient。down 后须在有界时间内确认该服务已处理断链、NetworkAgent/IpClient 均停止，且 netd 的旧 eth0 网络完全销毁、其他网络保持，才能 up。保留独立延迟恢复 guard 并核对 `restore_method=link_up`，恢复后仍须实际路由、就绪与应用 TCP 成功。finally 恢复并核对原 Wi-Fi 启用布尔值，准备、服务清理或恢复证据缺失即失败。报告保留夹具与故障证据；受控 Ethernet 重连与 Wi-Fi 切换恢复分别验收，临时 Wi-Fi 开关不证明后者。
+CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状态并通过 Android 服务临时关闭 Wi-Fi；在有界等待内取得连续两次相同的单 eth0 netd/RPDB/出口基线后才允许注入。固定镜像的 eth0 是模拟蜂窝接口，故障前须将唯一默认 phone/数据订阅、启用状态与当前 CONNECTED/WWAN/eth0 连接及 netd 网络编号对齐。使用 `cmd phone data disable/enable` 控制其真实生命周期；关闭后须有界确认用户/有效数据均关闭、连接状态断开、当前精确连接为空、接口 DOWN，且 netd 旧 eth0 网络已销毁。仅允许原逐应用 UID 元数据精确转移到 UNREACHABLE，其余元数据不变；重新启用后原归属恢复，只允许 eth0 netId 更新。保留独立延迟 enable guard 并核对 `restore_method=android_mobile_data_toggle`，恢复后仍须实际路由、就绪与应用 TCP 成功。finally 恢复并核对原 Wi-Fi 启用布尔值，准备、关闭或恢复证据缺失即失败。报告保留 `cellular_lifecycle` 三阶段证据；受控蜂窝重连与 Wi-Fi 切换恢复分别验收，临时 Wi-Fi 开关不证明后者。
 
 ## 视觉与资源约束
 
