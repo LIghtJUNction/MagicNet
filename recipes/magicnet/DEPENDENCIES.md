@@ -4,9 +4,9 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.21 | 产品集成、M01–M68 与完整验收 |
+| magicnet | 0.3.22 | 产品集成、M01–M68 与完整验收 |
 | magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.11 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
 | magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `7b6a2a61aff3dc495a10f5010464118ed65907db`，tree `0fc8e2dec8fda08b80cdb7b14843c1b82c78cbf6`。本候选修正 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号的误拒绝，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；生产恢复流程及预算保持。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `58ccae52677fa95843eb2c0566c095385afbae49`，tree `f87ab2329b5b5b9295928aed89319bd4264a2aeb`。本候选修正 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号的误拒绝，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；生产恢复流程及预算保持。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |

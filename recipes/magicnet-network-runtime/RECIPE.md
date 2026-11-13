@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.11"
+version = "0.1.12"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.12 补齐 CON-A09 的 netd 规则归属证据：采集器与独立门禁分别从网络元数据派生全局和逐应用 UID selectors，核对完整字段和重复次数，仅接受已证明归属的 netId 变化。证据 schema 与生产恢复预算保持。
 
 0.1.10 明确 LIFE-008/LIFE-A13：toggle 遇未知进程不启停，透明 effective 与事务 phase 依据实际观测，缺失和歧义不填成已配置或稳定状态。
 

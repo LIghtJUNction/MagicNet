@@ -56,4 +56,14 @@ WebUI 概览、诊断页和 health 显示明确 ⚠️，包括失败、重试�
 | CON-A08 | TUN 缺失/恢复/未知、启动宽限、busy、stop、事务、ebpf、auto_route=false、时钟及 worker 重跑 | 独立观测不改变 Google 结论；双确认、共享冷却和同 boot 3 次预算准确；未知和停止零恢复，锁内重新确认 |
 | CON-A09 | 固定生产 CLI/core 的 Android/KernelSU 模拟器，真实应用 UID 非 DNS UDP，精确删除自有 RPDB 规则及受控上联 down/up | 注入前成功；故障时核心启动身份、TUN、FIB 保留而 readiness=false、应用失败；正常 tick 恢复规则和同应用新 UDP 请求；三次探针均证明接收端绑定/关闭和实际请求，绑定或清理失败不算断流；注入期间外部规则不变，跨恢复的系统网络编号变化须核对独立 netd 元数据、接口/权限/FIB，并精确派生全局和逐应用 selectors，仅替换 netId，其余规则及重复次数相同；保留 TCP 正反控制，原配置/测试资源恢复，缺少或跳过任一步不能通过 |
 
-CON-A09 的 schema=1 证据保留前后 netd 网络清单、完整 metadata、eth0 接口索引/FIB 与 RPDB 规则。只在同一 PHYSICAL 网络的权限为 NONE、接口/索引/FIB、Allowed UID ranges、Per-app UID ranges 及其他网络均不变时，接受该网络的 netId 变化。采集器与独立报告门禁分别从这些已核验字段派生全局 16000/23000 规则及每个逐应用范围的 15000+prio/22000+prio 规则；逐项核对 mark/mask、iif、UID 范围、lookup 和重复次数。重复或重叠的元数据范围保留各自规则，不按集合去重；无法完整解析、缺项、多项、字段变化或无关规则变化均失败。该扩展沿用证据 schema 与生产机器接口。
+CON-A09 的 schema=1 证据保留前后 netd 网络清单、完整 metadata、eth0 接口索引/FIB 与 RPDB 规则。只在同一 PHYSICAL 网络的权限为已知 NONE、NETWORK 或 SYSTEM 且前后一致，接口/索引/FIB、Allowed UID ranges、Per-app UID ranges 及其他网络均不变时，接受该网络的 netId 变化。采集器与独立报告门禁分别从这些已核验字段派生选择器。
+
+全局规则按该网络的实际权限核对 mark/mask；所有这些规则均要求 `from all`、`iif lo` 和 `lookup eth0`：
+
+| Required permission | 优先级 16000 的 mark/mask | 优先级 23000 的 mark/mask |
+| --- | --- | --- |
+| NONE | `(0x10000 \| netId) / 0x1ffff` | `netId / 0x1ffff` |
+| NETWORK | `(0x50000 \| netId) / 0x5ffff` | 必须不存在 |
+| SYSTEM | `(0xd0000 \| netId) / 0xdffff` | 必须不存在 |
+
+逐应用规则不随上述权限改变：每个元数据范围须有 `15000+prio`、`22000+prio` 两条，mark 分别为 `0x10000 | netId`、`netId`，mask 均为 `0x1ffff`，并匹配精确 `uidrange`、`iif lo`、`lookup eth0`。逐项核对完整字段和重复次数；重复或重叠的元数据范围保留各自规则。无法完整解析、缺项、多项、权限变化或无关规则变化均失败。该扩展沿用证据 schema 与生产机器接口。
