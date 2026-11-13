@@ -1,0 +1,646 @@
+{
+  "schema": "magicnet.issue436.evidence.v1",
+  "updated_utc": "2026-11-13T11:36:55Z",
+  "issue": "https://github.com/LIghtJUNction/MagicNet/issues/436",
+  "status": {
+    "source_pr": 7,
+    "recipe_pr": 451,
+    "merged": false,
+    "released": false,
+    "issue_closed": false,
+    "device_deployed": false,
+    "latest_full_android_source": "pending a413",
+    "latest_full_android_recipe": "pending exact a413 pin",
+    "host_diagnostic_successor": "isolated validation and independent review passed; integrated into source a413"
+  },
+  "current_candidate": {
+    "source": {
+      "repository": "LIghtJUNction/magicnet-android",
+      "sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+      "tree": "f477642021d129ae9b5a64d87436f678db06d62f",
+      "parent": "668701523f52959f2daf5113ee11b716aa7ecddb",
+      "full_ci": "pending",
+      "observed_pr_merge_commit": "d54889c75f1d8aaa530cc3f4455744c4ae997581",
+      "observed_pr_merge_tree_equals_candidate": true,
+      "actual_report_sha": null,
+      "ci_runs": {
+        "android": 43418093071,
+        "build": 43418093060,
+        "quality": 43418093053,
+        "network": 43418093190
+      },
+      "automated_review": {
+        "check_run_id": 131860947840,
+        "conclusion": "skipped",
+        "reason": "PR diff exceeds150000 characters",
+        "current_commit_approval": false
+      }
+    },
+    "recipe": {
+      "repository": "LIghtJUNction/MagicNet",
+      "base_sha": "02369b3c8f7152a1464cedf27783183d2e4a326f",
+      "head_sha": null,
+      "full_ci": "pending",
+      "identity_note": "The final tested recipe commit is filled after full CI; this working report is included in that recipe update.",
+      "pre_report_tree": "8652b957964c88b93fc05318938ff5f196922473"
+    },
+    "gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
+    "producer_sha256": "964dde89bc81a1ecaff95bd8a72e963ba19c8674260ff58adcda1c39e1a71772",
+    "root_recipe_version": "0.3.22",
+    "runtime_recipe_version": "0.1.12",
+    "public_release": {
+      "version": "v1.8.7",
+      "version_code": 10615
+    },
+    "recipe_preview": {
+      "version": "v1.8.8",
+      "version_code": 10616,
+      "released": false
+    },
+    "diagnostic_code_source": "96101fa7473ce641c60cb8e18ca5cb4775ad4dcf",
+    "reviewed_blobs": {
+      "scripts/android-host-observer.py": "1390a8eb41431ef68cb303ddbc3cb5c79d266f32",
+      "scripts/test-android-host-observer.py": "3c836c1d21e5abb6c3ff5fd7318f4b699c112157",
+      ".github/workflows/android-kernelsu-acceptance.yml": "0546aacea3225463c419e8dedc0fbb6fab4dfdac",
+      "scripts/test-android-simulation-workflow.py": "c7b7ed0e501819c6f94e7ad71eaf78cdf338366d",
+      "docs/android-kernelsu-ci.md": "20b97ec8cd73113ea665321b49410b34935e2b3e"
+    },
+    "temporary_validation_workflow_included": false
+  },
+  "scope": {
+    "original_device": "APatch / ARM64; MagicNet v1.8.2 locally repacked with official sing-box 1.14.3, not the bundled fork",
+    "controlled_acceptance": "Android 15 / KernelSU / x86_64 AVD with pinned bundled core",
+    "original_rule_deletion_trigger": "unknown; no physical-device controlled A/B with bundled core",
+    "production_recovery": "already shipped in v1.8.7; no runtime change in the 668 candidate",
+    "no_claims": [
+      "unknown source upgrade-reboot root cause fixed",
+      "physical Wi-Fi or OEM handover reproduced",
+      "Wi-Fi enabled-state restoration proves Wi-Fi handover recovery",
+      "new public-network or subscription testing",
+      "M37 independent software reconstruction completed"
+    ],
+    "artifacts_after_environment_loss": "New artifacts were checked through GitHub metadata and CI verifier logs; no additional local byte rehash claimed.",
+    "archive_retention": "Raw ZIPs remain GitHub Actions artifacts subject to their own expiry. This index records provenance and digests; it is not a raw-artifact mirror."
+  },
+  "local_pre_outage_tests": {
+    "producer": 91,
+    "gate": 72,
+    "simulation": 114,
+    "acceptance": 33,
+    "workflow_contract": 27,
+    "source_lint_text_files": 838,
+    "recipe_packages": 8,
+    "recipe_markdown_files": 62,
+    "independent_reviews": 2
+  },
+  "runs": [
+    {
+      "key": "original_5edd",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43253655173,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173",
+      "source_sha": "5edd36babcb3f1072c264015659d7e0ad45a575f",
+      "conclusion": "failure",
+      "reason": "recovery_rule_set_mismatch: UDP and production recovery succeeded, but the validator omitted per-app selectors during netId100→101",
+      "udp_accepted": [
+        1,
+        0,
+        1
+      ],
+      "rpdb_net_ids": [
+        100,
+        101
+      ],
+      "artifacts": [
+        {
+          "artifact_id": 13962475632,
+          "size_bytes": 200286,
+          "sha256": "80d8702ce418d107108bc64cd3cb7baf66a2774ac2c13359280a85b8f9a12a69",
+          "verification": "downloaded ZIP digest matched GitHub; original member bytes read before environment loss",
+          "members": {
+            "simulation.json": "1135a6731d65e80c770e7fc5b3fa2681550049cbb7ae4ad69fffb847aa8ff100",
+            "route-recovery.json": "461d2365b1ea52001a7ae0e567e91b4b06e18821282dab134d7bb1440e5044d7"
+          }
+        }
+      ]
+    },
+    {
+      "key": "published_v1_8_7",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 42982936016,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016",
+      "source_sha": "dc4433d1cfbeade114d51f3f3c429378d3d7b68d",
+      "conclusion": "success",
+      "android": {
+        "passed": 13,
+        "failed": 0,
+        "not_run": 0,
+        "successful_real_reboots": 5
+      },
+      "contract": "historical matching validator; wlan0/android_wifi_toggle. New cellular evidence is not fabricated for this old report.",
+      "artifacts": [
+        {
+          "artifact_id": 13838939681,
+          "size_bytes": 525278,
+          "sha256": "a557eb9279a49125ef97450024cde3c108cbe0139e811e2d124054089e251be5",
+          "verification": "redownloaded ZIP and original member hashes verified before environment loss",
+          "members": {
+            "simulation.json": "54c3c18258b1b15382786770b7f82496803ede8ab4ab7dd54076036f953de05f",
+            "route-recovery.json": "dc62db6409f63a4e61497ac7be25060fa2b0d2aa309360f50c14efbeb598ab5c"
+          }
+        }
+      ]
+    },
+    {
+      "key": "58cc_source",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43385059168,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43385059168",
+      "source_sha": "58ccae52677fa95843eb2c0566c095385afbae49",
+      "actual_test_sha": "427a6216ec8b3fede3f945ea69fc4b2b8307b8e8",
+      "test_tree_equals_candidate": true,
+      "conclusion": "failure",
+      "android": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7,
+        "successful_real_reboots": 1
+      },
+      "reason": "Real default-network and UID policy migration wlan0→eth0; strict comparator correctly rejected it.",
+      "artifact_sha256": "0c9a11a249a4ca09b6b119153713c1f0015f89f8ec12973e8b49d2f6e0ba5ed3"
+    },
+    {
+      "key": "58cc_recipe",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43385469784,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43385469784",
+      "source_sha": "58ccae52677fa95843eb2c0566c095385afbae49",
+      "conclusion": "failure",
+      "android": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7,
+        "successful_real_reboots": 1
+      },
+      "reason": "UDP baseline timed out before fault injection; bound receiver/request observed, zero packets accepted; cause unresolved.",
+      "build_and_release_quality": "success",
+      "artifact_sha256": "f5b2ff5985eb3fd6ff02b9ef1b35e9a6af304c1d79ca894cfbd62ed4e45b9f86"
+    },
+    {
+      "key": "9dba_source",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43390671015,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43390671015",
+      "source_sha": "9dba94254780fb0a1a84a003608d5919a97de4f2",
+      "tree": "a0ebac755493dcd9c95f381cb1352c4f44f07d76",
+      "actual_test_sha": "eee288a83fb18eb30223b0e0b7ad0431a2486f6f",
+      "test_tree_equals_candidate": true,
+      "conclusion": "failure",
+      "android": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7,
+        "successful_real_reboots": 1
+      },
+      "reason": "After successful RPDB/UDP recovery, raw eth0 down/up did not restore the IPv4 default within 600 seconds; readiness/TCP were not invoked.",
+      "udp_elapsed_ms": [
+        7,
+        5001,
+        5
+      ],
+      "artifact_sha256": "ac57346554ac627f49848dd8f5260e2fb219729688ea3079bc789b2a4d9019cd",
+      "support_sha256": "d00809cb79b51d6fb3530ad39589b4a8c0bc380c8b967e09cb75417366954900",
+      "matching_gate_sha256": "0f244a222cce10f5552ccd2f9c88142f356e312d0a56be7ba74db10067160ead",
+      "matching_full_gate_exit": 1
+    },
+    {
+      "key": "9dba_recipe",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43391099744,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43391099744",
+      "source_sha": "9dba94254780fb0a1a84a003608d5919a97de4f2",
+      "recipe_sha": "e36ed435fdafba6118e25ee1d0c6e19ee7f604f2",
+      "actual_recipe_test_sha": "beba98cac301bd887822d44b6bd1a88edd54c764",
+      "conclusion": "success",
+      "android": {
+        "passed": 13,
+        "failed": 0,
+        "not_run": 0,
+        "successful_real_reboots": 5
+      },
+      "udp_accepted": [
+        1,
+        0,
+        1
+      ],
+      "udp_elapsed_ms": [
+        4,
+        5000,
+        6
+      ],
+      "rpdb_net_ids": [
+        100,
+        102
+      ],
+      "rpdb_net_id_renumbering_dynamically_exercised": true,
+      "build_and_release_quality": "success",
+      "android_artifact_sha256": "ae6e305f822c13038e4b78128c3f221167d3b63ba37dfd94a020082dd060e383",
+      "build_artifact": {
+        "size_bytes": 142419694,
+        "sha256": "19210fb9dd307423124c8485adb056dfb18504f6070c56eeab6238efe89f06a1"
+      }
+    },
+    {
+      "key": "5f96_source",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43399092150,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43399092150",
+      "source_sha": "5f96a190a08e50ea6654ef52117d5a730d044e05",
+      "tree": "fa540978e3feef6f6f01a9b5bdf6422916f48bb7",
+      "actual_test_sha": "b60d1b90aaec75a9fa60f1c534c71e4375aed8f0",
+      "test_tree_equals_candidate": true,
+      "conclusion": "failure",
+      "android": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7,
+        "successful_real_reboots": 1
+      },
+      "reason": "incomplete_ethernet_dump at baseline, before down. This image's eth0 is not owned by EthernetFactory.",
+      "udp_elapsed_ms": [
+        8,
+        5001,
+        4
+      ],
+      "artifact_sha256": "5cc73b7cf9a4d49cae53e35c648b53e0df6c662a80663d84cb4707ea40380286",
+      "route_sha256": "86b11af17b398f533811a187ef4048a154b816af7a7d31e95a0dabd0f0d8e3e0",
+      "support_sha256": "ab974c861956115e3eae5804c7c764fbe0173196f92880c5f2c6c98d548aa86c",
+      "matching_full_gate_exit": 1
+    },
+    {
+      "key": "5f96_recipe",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43399411108,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43399411108",
+      "source_sha": "5f96a190a08e50ea6654ef52117d5a730d044e05",
+      "recipe_sha": "5fb716547625c7dc1a814688c52fe4d44ef17e81",
+      "actual_recipe_test_sha": "7a4551f7de262498465971956fad2251bae2ed32",
+      "conclusion": "failure",
+      "android": {
+        "passed": 5,
+        "failed": 1,
+        "not_run": 7,
+        "successful_real_reboots": 1
+      },
+      "reason": "incomplete_ethernet_dump at baseline, before down.",
+      "udp_elapsed_ms": [
+        4,
+        5001,
+        5
+      ],
+      "build_and_release_quality": "success",
+      "publish": "skipped",
+      "matching_gate_sha256": "b362e1dbc5d45fa8dd1157b6b24e74e1c7f5672961b8cc6f37dd56657bf9bf33",
+      "matching_full_gate_exit": 1,
+      "artifacts": [
+        {
+          "artifact_id": 14025861687,
+          "size_bytes": 215281,
+          "sha256": "322a2bf5a5226a7dcffc5525423787c5b613ec58e4e4278cbf74278035ef97cf",
+          "verification": "downloaded and locally verified before environment loss",
+          "members": {
+            "route-recovery.json": "c26d0f34ddc2402dbdf2be7f9021f31f6f9684bf06ab2dfa3d8baf8e2ba7fbba",
+            "failure-support": "97f45bf470e9e31cde64738e8d0c7b4e6c1cfd5af224f56ae491da93d601bea5"
+          }
+        },
+        {
+          "artifact_id": 14026978666,
+          "size_bytes": 142419883,
+          "sha256": "0ecc358a8e42ad37e5f3a6f5d5327e11fcb3e9ed167ef4777aee828de2d870a1",
+          "verification": "downloaded and locally verified before environment loss",
+          "members": {}
+        }
+      ]
+    },
+    {
+      "key": "668_source",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43407220745,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43407220745",
+      "source_sha": "668701523f52959f2daf5113ee11b716aa7ecddb",
+      "actual_test_sha": "053a11d134f3177fa94e917828245a2dfce81a36",
+      "test_tree_equals_candidate": true,
+      "conclusion": "failure",
+      "android": {
+        "passed": 9,
+        "failed": 1,
+        "not_run": 3,
+        "successful_real_reboots": 1,
+        "failed_reboot_index": 2
+      },
+      "reason": "upgrade-preservation: Android boot deadline exceeded after 341.252s; no completed new boot observed. Actual host-process outcome unknown.",
+      "route_stage": {
+        "status": "passed",
+        "elapsed_seconds": 325.799,
+        "uid": 10209,
+        "udp_accepted": [
+          1,
+          0,
+          1
+        ],
+        "udp_elapsed_ms": [
+          6,
+          5001,
+          5
+        ],
+        "recovery_attempt": [
+          0,
+          1
+        ],
+        "core_fault_identity": {
+          "pid": 21903,
+          "starttime": 9816
+        },
+        "core_recovered_identity": {
+          "pid": 26282,
+          "starttime": 29347
+        },
+        "unchanged_fib_rows": 50,
+        "rpdb_net_ids": [
+          100,
+          100,
+          100
+        ],
+        "rpdb_net_id_renumbering_dynamically_exercised": false,
+        "cellular_net_ids": [
+          100,
+          null,
+          103
+        ],
+        "cellular_owner": {
+          "phone": 0,
+          "subscription": 1,
+          "uid": 10136,
+          "prio": 40
+        },
+        "uid_transfer_through_unreachable52": "exact then returned",
+        "uplink_ready": true,
+        "uplink_tcp_elapsed_ms": 5,
+        "wifi_restored": true
+      },
+      "matching_full_gate_exit": 1,
+      "matching_route_component": "passed",
+      "artifacts": [
+        {
+          "artifact_id": 14029607559,
+          "size_bytes": 198132,
+          "sha256": "6cf959af6d17f61bfbc8c83ea18caa626f184f1c755047dd9365e9b62b5ea759",
+          "verification": "downloaded ZIP/member bytes independently verified before environment loss",
+          "members": {
+            "simulation.json": "a597fb1abefbe1d14aace5c487ae828c21b28a45e1f08ee0f42422fab5b58215",
+            "route-recovery.json": "c081ec7fbddc7fd2799540eeae9e24960f1d29ed5311fe965eb038782ffaff81",
+            "emulator.log": "333fa7a3a7493a02cb12604664b68c45178eb6efe82d94e4ea06b8cc376f13ce"
+          }
+        }
+      ],
+      "companion_runs": [
+        {
+          "run_id": 43407220787,
+          "workflow": "build",
+          "conclusion": "success",
+          "actual_release_quality_step": "skipped by normal input"
+        },
+        {
+          "run_id": 43407220754,
+          "workflow": "quality",
+          "conclusion": "success",
+          "jobs": 7
+        },
+        {
+          "run_id": 43407220299,
+          "workflow": "network",
+          "conclusion": "success",
+          "jobs": 3
+        }
+      ],
+      "build_artifact": {
+        "artifact_id": 14028298504,
+        "size_bytes": 142418558,
+        "sha256": "be7cc14df396a36d0965b36b423a787fd6978726e01c64642e75d4e7e75161dd",
+        "verification": "downloaded ZIP/build-source/update metadata verified before environment loss",
+        "members": {}
+      }
+    },
+    {
+      "key": "668_recipe",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43407837059,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43407837059",
+      "source_sha": "668701523f52959f2daf5113ee11b716aa7ecddb",
+      "recipe_sha": "02369b3c8f7152a1464cedf27783183d2e4a326f",
+      "actual_recipe_test_sha": "53087b92330bf6b6ac7885d0951217e90ca7d786",
+      "test_tree_equals_candidate": true,
+      "conclusion": "success",
+      "android": {
+        "passed": 13,
+        "failed": 0,
+        "not_run": 0,
+        "successful_real_reboots": 5
+      },
+      "route_stage": {
+        "status": "passed",
+        "uid": 10209,
+        "udp_accepted": [
+          1,
+          0,
+          1
+        ],
+        "udp_elapsed_ms": [
+          5,
+          5001,
+          6
+        ],
+        "recovery_attempt": [
+          0,
+          1
+        ],
+        "rpdb_net_ids": [
+          100,
+          100,
+          100
+        ],
+        "rpdb_net_id_renumbering_dynamically_exercised": false,
+        "cellular_net_ids": [
+          100,
+          null,
+          103
+        ],
+        "cellular_owner": {
+          "phone": 0,
+          "subscription": 1,
+          "uid": 10134,
+          "prio": 40
+        },
+        "uid_transfer_through_unreachable52": "exact then returned",
+        "uplink_ready": true,
+        "uplink_tcp_elapsed_ms": 5,
+        "wifi_restored": true
+      },
+      "matching_full_gate_exit": 0,
+      "build_and_release_quality": "success",
+      "release_assets": "success",
+      "publish": "skipped",
+      "companion_run": {
+        "run_id": 43407835916,
+        "workflow": "recipe checks",
+        "conclusion": "success"
+      },
+      "artifacts": [
+        {
+          "artifact_id": 14029563278,
+          "size_bytes": 523771,
+          "sha256": "7eaf37fbe80284a909348399c4bc619cb7109909b6407243ac9ce0bf580f7749",
+          "verification": "downloaded ZIP/member bytes independently verified before environment loss",
+          "members": {
+            "simulation.json": "8245b3d3cac1ff046e5ef779033cd55c7b6e077263793359b07af0da5fdd5dc6",
+            "route-recovery.json": "1d1300a8df86859fafbfc8adf543f8a84262e54d2357fd3c8f4643937fb70288"
+          }
+        },
+        {
+          "artifact_id": 14031630631,
+          "size_bytes": 142419552,
+          "sha256": "2aa89ecb49c7b63bfadf99e4c11817da5f11549b51154ffb4b4b87bcd8478706",
+          "verification": "GitHub artifact metadata + CI download digest + complete release verifier job131849105682; no local rehash after environment outage",
+          "members": {}
+        }
+      ],
+      "module_zip_sha256": "be2c203b0978590e9b15ef1447b53d82593b05de97538f8aeb0de6d7f4eef251",
+      "acceptance_fixture_zip_sha256": "28a233515a334d07494db54fe9288a2e7b3f3592cd31151448a8aba30bde62de"
+    }
+  ],
+  "diagnostics": [
+    {
+      "run_id": 43403426630,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43403426630",
+      "sha": "d274f845a79caef35891c60b96cdb4bf77bc49a8",
+      "conclusion": "success",
+      "finding": "Ethernet dumpsys stdout was empty at both 2s and 5s",
+      "artifact": {
+        "artifact_id": 14025792888,
+        "size_bytes": 6595,
+        "sha256": "b1698a6bd63c02d584e875c96101e3eb8e7449635974665c29aa82e764b1a8af",
+        "verification": "downloaded and verified before environment outage",
+        "members": {}
+      }
+    },
+    {
+      "run_id": 43403995584,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43403995584",
+      "sha": "d2f9a2c88f978b56f275787e4ac97f7060569714",
+      "conclusion": "success",
+      "finding": "No Ethernet Binder service/feature; telephony.data feature exists. Command rc0 with stderr Can't find service: ethernet, so rc alone does not establish service.",
+      "artifact": {
+        "artifact_id": 14025898662,
+        "size_bytes": 34206,
+        "sha256": "f35de833455f384e9ab293ac5ae16f3e38501ad77313c599a97f4660ae625379",
+        "verification": "downloaded and verified before environment outage",
+        "members": {}
+      }
+    },
+    {
+      "run_id": 43404505529,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43404505529",
+      "sha": "b30ef19c7f3c90c6cb4f07323eee0b79f7909c8a",
+      "conclusion": "success",
+      "scope": "same API35/r9 userspace, stock kernel, no MagicNet; not full acceptance",
+      "finding": "mobile-data service controls WWAN/eth0, netId101→none→102, link UP→DOWN→UP, current connection present→absent→present, exact UID10134/prio40 transfer via52",
+      "artifact": {
+        "artifact_id": 14026582041,
+        "size_bytes": 83072,
+        "sha256": "ecd0f944c21b59b21a2fc375ac645b9a1bc3081077ecec062e4dc50474c16f26",
+        "verification": "downloaded and verified before environment outage",
+        "members": {}
+      },
+      "producer_and_independent_gate_replay": "passed on unmodified three-stage diagnostic output"
+    },
+    {
+      "run_id": 43416502788,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43416502788",
+      "sha": "93f0093d91b889f9aeeab72fd3455ec955e22e4b",
+      "tree": "6c38c6befdb2b5ea18fc44bf939b9ea849d08ef5",
+      "conclusion": "success",
+      "attempt": 1,
+      "scope": "host-process and contract validation only; no Android emulator or full acceptance",
+      "tests": {
+        "host_observer": 24,
+        "existing_reboot": 6,
+        "workflow": 29,
+        "independent_gate": 72
+      },
+      "protected_device_files": "git diff with668 passed; Device.reboot/wait_boot, producer, gate and cellular fixture unchanged",
+      "review": "Not integrated: independent review found cleanup accepted incomplete launch receipts without observer-parent ownership. A specific fix and unrelated-process regression were requested.",
+      "artifact": {
+        "artifact_id": 14032635220,
+        "size_bytes": 5891,
+        "sha256": "7eda5ec571ceca945de76a5dc9e679a507daf9bb1fc185f7fae091d9bde22481",
+        "verification": "GitHub artifact metadata and actual unit job log131855630722 read; no local ZIP rehash after environment outage"
+      }
+    },
+    {
+      "run_id": 43417860968,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968",
+      "sha": "96101fa7473ce641c60cb8e18ca5cb4775ad4dcf",
+      "tree": "6c6aec155ecc8e7853f69e3de9682cdeabd78fdf",
+      "conclusion": "success",
+      "attempt": 1,
+      "scope": "host process and contract validation only; no new full Android acceptance",
+      "tests": {
+        "host_observer": 27,
+        "existing_reboot": 6,
+        "workflow": 29,
+        "independent_gate": 72
+      },
+      "review": "Cleanup ownership finding fixed; real observer-owned and unrelated live-process tests passed without skips. Missing cgroup state preserves process/exit evidence. Independent review found no remaining blocker in this change.",
+      "protected_device_files": "Device, reboot/wait_boot, route producer, independent gate and cellular fixture byte-identical to668",
+      "artifact": {
+        "artifact_id": 14033051277,
+        "size_bytes": 5981,
+        "sha256": "3377013273c6b877d4f349810ad3ff15bc5f372e778508a583aa2f877794a665",
+        "verification": "GitHub artifact metadata and actual job131860185965 log read independently; no local ZIP rehash after environment outage"
+      }
+    }
+  ],
+  "reports": {
+    "google_doc": "https://docs.google.com/document/d/1hIKrBtM8nyhB9knCV32SoLvLTFZbyEhgyeRl0D0VKto",
+    "google_drive_folder": "https://drive.google.com/drive/folders/1l506lcpZnJS-42-bpKHdk4W8yiAZenrc"
+  },
+  "historical_checkpoint_668": {
+    "source": {
+      "repository": "LIghtJUNction/magicnet-android",
+      "sha": "668701523f52959f2daf5113ee11b716aa7ecddb",
+      "tree": "e6b0d68c74703a68ad0b662f6618ac6165271818",
+      "synthetic_test_merge": "053a11d134f3177fa94e917828245a2dfce81a36",
+      "synthetic_tree_equals_candidate": true
+    },
+    "recipe": {
+      "repository": "LIghtJUNction/MagicNet",
+      "sha": "02369b3c8f7152a1464cedf27783183d2e4a326f",
+      "tree": "5c9cfad147138e62b74c04df3b8209399f1e4cbd",
+      "synthetic_test_merge": "53087b92330bf6b6ac7885d0951217e90ca7d786",
+      "synthetic_tree_equals_candidate": true
+    },
+    "gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
+    "producer_sha256": "964dde89bc81a1ecaff95bd8a72e963ba19c8674260ff58adcda1c39e1a71772",
+    "root_recipe_version": "0.3.22",
+    "runtime_recipe_version": "0.1.12",
+    "public_release": {
+      "version": "v1.8.7",
+      "version_code": 10615
+    },
+    "recipe_preview": {
+      "version": "v1.8.8",
+      "version_code": 10616,
+      "released": false
+    }
+  }
+}

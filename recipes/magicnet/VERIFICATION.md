@@ -6,15 +6,17 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `668701523f52959f2daf5113ee11b716aa7ecddb`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `a4135d5edc39af4895968359bf16e8aefefdaeac`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.22，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | #436 的生产恢复已随 v1.8.7 发行；本轮修正逐应用规则重编号的验收误报，候选完整 Android CI 见下节。真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) |
+| 待完成工作 | #436 的生产恢复已随 v1.8.7 发行；668 配方完整验收通过，但其源码验收仍在升级重启阶段失败；后继诊断观察器的完整 CI 待验证，见下节。真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) |
 
 ## 2026-11-13：#436 逐应用路由规则与可控网络验收
 
-候选 [`66870152`](https://github.com/LIghtJUNction/magicnet-android/commit/668701523f52959f2daf5113ee11b716aa7ecddb)（tree `e6b0d68c74703a68ad0b662f6618ac6165271818`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正逐应用规则归属比较，并为恢复实验建立单 eth0 夹具，通过实际管理 eth0 的模拟蜂窝服务完成断开与重建。整合保留源码主线 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。
+当前后继候选固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`）。本次增量仅为宿主诊断观察器，用于保留启动失败时的事实；尚未修复未知的 boot 失败根因，也不改变 runtime 恢复流程、预算或独立门禁。新候选完整 CI 待验证，下面的 668 及更早结果继续绑定各自原始提交。
+
+已测试候选 [`66870152`](https://github.com/LIghtJUNction/magicnet-android/commit/668701523f52959f2daf5113ee11b716aa7ecddb)（tree `e6b0d68c74703a68ad0b662f6618ac6165271818`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正逐应用规则归属比较，并为恢复实验建立单 eth0 夹具，通过实际管理 eth0 的模拟蜂窝服务完成断开与重建。整合保留源码主线 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。
 
 原始基线为源码 `5edd36ba` 的[失败运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173)：同 UID UDP 1→0→1、readiness false→true、一次成功的生产恢复，最终却报 `recovery_rule_set_mismatch`。eth0 仅从 netId100 变为101，接口/FIB、权限和逐应用 UID 范围不变；旧比较器遗漏优先级15040/22040的逐应用规则。当前采集器与独立门禁按已核验的 netd 元数据推导完整全局/逐应用 selectors，支持不变的 NONE/NETWORK/SYSTEM 权限，精确比较字段与重复次数。真实权限、UID、接口/FIB或其他规则变化仍失败。
 
@@ -32,17 +34,25 @@
 
 单上联夹具仍先验证一次性x86_64 AVD身份与安全控制通道，保存并临时关闭Wi-Fi，取得两次一致的eth0 netd/RPDB/出口基线；finally恢复并回读原Wi-Fi启用布尔值。RPDB/上联失败时在配置清理前采集既有脱敏支持包，保持25秒预算及原失败原因。CON-A09/M66已同步；生产恢复流程、预算和机器schema=1保持。
 
-| 验证层 | 本轮实际结果 |
+`66870152` 的[源码 Android 43407220745](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43407220745)保留失败：9 passed、1 failed、3 not_run。`tun-route-recovery` 已通过，耗时 325.799 秒；随后 `upgrade-preservation` 报 `Android boot deadline exceeded`，第二次重启命令退出码为 124，未观察到新 boot。原始报告实际源码为 PR 合成测试提交 `053a11d134f3177fa94e917828245a2dfce81a36`，tree 与 668 相同。使用精确 668 门禁复验完整原始报告仍为 exit 1；单独路由证据通过不能覆盖完整生命周期失败。boot 失败原因尚未确定。
+
+同一固定源码的[配方整合 43407837059](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407837059)完整成功，[Recipe checks 43407835916](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407835916)也通过。Android 原始报告实际 source 为 `668701523f52959f2daf5113ee11b716aa7ecddb`，13/13 阶段、5 次真实重启全部通过，精确 668 独立门禁复验 exit 0。RPDB 同 UID 10209 的 UDP 接收为 1→0→1，耗时 5/5001/6 ms；readiness false→true，恢复尝试 0→1。蜂窝三阶段证明 netId100→无→103、数据状态2→0→2，prio40/UID10134 仅在关闭期间迁入 UNREACHABLE52 后返回；最终默认路由、readiness、同 UID TCP（5 ms）和 Wi-Fi 启用状态恢复均通过。该配方成功不覆盖上述源码升级重启失败。
+
+配方 Android artifact `14029563278` 为 523,771 字节，下载后独立计算的 SHA-256 为 `7eaf37fbe80284a909348399c4bc619cb7109909b6407243ac9ce0bf580f7749`，与 GitHub digest 相同。完整构建实际执行发布质量门禁并成功，资产作业 `131849105682` 验证 build-source 为 source=`668701523f52959f2daf5113ee11b716aa7ecddb`、recipe 合成测试提交=`53087b92330bf6b6ac7885d0951217e90ca7d786`、CI 预览 v1.8.8 /10616；对应 recipe head=`02369b3c8f7152a1464cedf27783183d2e4a326f`，两者 tree 均为 `5c9cfad147138e62b74c04df3b8209399f1e4cbd`。构建 artifact `14031630631` 为 142,419,552 字节，GitHub digest 为 `2aa89ecb49c7b63bfadf99e4c11817da5f11549b51154ffb4b4b87bcd8478706`；远端资产作业下载后核对同一摘要，并通过完整清单、19 个文件校验和及产物来源检查。工作环境在该构建结束前中断，未再进行本地独立 ZIP/manifest 复算；这里记录的是远端 CI 核验。publish 被跳过，未正式发布。
+
+| 验证层 | 实际结果与提交范围 |
 | --- | --- |
-| 当前源码宿主回归 | 恢复采集器91、独立门禁72、模拟器合同114、验收合同33、工作流合同27项通过；source lint838跟踪文本、diff-check通过；实际三阶段诊断与原始失败分别记录 |
+| a413 宿主诊断定向检查 | [隔离短测试 43417860968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968)在诊断提交 `96101fa7473ce641c60cb8e18ca5cb4775ad4dcf` 完成 host 观察器27、重启6、工作流合同29、独立门禁72项检查并通过；当前候选使用相同的五个已审查源码 blob，临时短测试 workflow 未合入。该结果不替代完整 Android CI |
+| 668 宿主检查点 | 恢复采集器91、独立门禁72、模拟器合同114、验收合同33、工作流合同27项通过；source lint838跟踪文本、diff-check通过；实际三阶段诊断与原始失败分别记录 |
 | 未改动的生产代码 | 此前定向Rust connectivity22项单元、9项集成与supervisor20项通过；当前修订未修改生产Rust |
-| 配方材料 | 固定值15、发布计划41、发布资产16项此前通过；当前固定点的八包检查/打包/归档/build prompt随本次整合记录 |
+| 配方材料 | 固定值15、发布计划41、发布资产16项此前通过；02369b3 同树提交的八包/62 Markdown 检查、打包、归档检查和 build prompt 通过；后继固定点材料检查待执行 |
 | 历史完整结果 | 9dba/e36整合43391099744成功；其源码运行43390671015失败，二者各保留原始身份和结果。更早dc4433d1发布13/13只适用于其对应版本门禁 |
-| 当前候选完整 Android | 使用真实蜂窝控制的后继完整CI待回读；以[源码PR检查](https://github.com/LIghtJUNction/magicnet-android/pull/7/checks)和[主仓库PR检查](https://github.com/LIghtJUNction/MagicNet/pull/451/checks)为入口。5f96两份Android失败继续保留，不以历史成功替代 |
-| 审查边界 | 5f96源码Sourcery因PR差分超过150,000字符skipped，配方Sourcery成功；不外推为后继源码服务审查通过。当前修订由producer/gate交叉复核，服务结果按新SHA单列 |
+| 668 完整 Android | 源码 43407220745 为 9/1/3，升级重启失败；配方 43407837059 为 13/13、5 次重启及完整构建/质量/资产检查成功，两份原始报告及门禁结果分别保留 |
+| 当前候选完整 Android | 新增宿主诊断观察器的后继候选待验证；[源码 Android 43418093071](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43418093071)仍进行中，以[源码 PR 检查](https://github.com/LIghtJUNction/magicnet-android/pull/7/checks)和[主仓库 PR 检查](https://github.com/LIghtJUNction/MagicNet/pull/451/checks)为入口，不以 668 配方成功替代新候选结果 |
+| 审查边界 | 5f96源码Sourcery因PR差分超过150,000字符skipped，配方Sourcery成功；不外推为后继源码服务审查通过。668 修订完成 producer/gate 交叉复核；后继宿主观察器的审查及服务结果按新 SHA 单列 |
 | 独立重建 | 本轮未执行M37；配方材料检查与独立软件重建分别记录 |
 
-当前待验证的是通过真实蜂窝数据服务完成的完整故障闭环。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；本轮没有正式发布或部署用户设备。物理ARM64、OEM删除规则的触发者、真实订阅与公网代理仍未取得新的成功证据。
+668 配方已取得完整故障闭环成功，668 源码的升级 boot 失败仍未解决；当前待验证的是只增加宿主诊断观察器的后继候选。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；本轮没有正式发布或部署用户设备。物理ARM64、OEM删除规则的触发者、真实订阅与公网代理仍未取得新的成功证据。
 
 ## 2026-11-09：#436 与模拟器故障回归
 
