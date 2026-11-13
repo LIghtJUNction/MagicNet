@@ -1,0 +1,815 @@
+{
+  "schema": 1,
+  "scope": "original-android-artifact-read-only",
+  "gate": {
+    "invoked": true,
+    "exit_code": 0,
+    "original_report_unchanged": true,
+    "output": "Android lifecycle and route recovery evidence verified for a4135d5edc39af4895968359bf16e8aefefdaeac\n",
+    "output_truncated": false
+  },
+  "host_scope": "diagnostics-only; no causal inference or acceptance substitution",
+  "run": {
+    "id": 43418588448,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "284248b6d4c4913e064de69d6ee7cdebe5045e03",
+    "event": "pull_request"
+  },
+  "repository": "LIghtJUNction/MagicNet",
+  "artifact": {
+    "id": 14034686656,
+    "name": "android-kernelsu-acceptance-43418588448-1",
+    "bytes": 523992,
+    "sha256": "2087d7d3d0231f7108102cdf0532cd19b8010648d0cf51526b491f151ada26c3",
+    "download_verified": true
+  },
+  "validator": {
+    "source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+    "tree_sha": "f477642021d129ae9b5a64d87436f678db06d62f",
+    "gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
+    "expected_report_source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+    "report_source_tree_verified": true
+  },
+  "files": {
+    "emulator-host-before-stop.json": {
+      "bytes": 1657,
+      "sha256": "06f6f2e10ec623634125198f97a8d1f0a2a16f5ee9e4b8074d0e5ed94233e305"
+    },
+    "emulator-host-cleanup.json": {
+      "bytes": 177,
+      "sha256": "1d34a9c9106d31abd03ff378246a6adfacb73a0ccbeb7c28b41f5448a1d17b51"
+    },
+    "emulator-host-launch.json": {
+      "bytes": 1117,
+      "sha256": "c0211e3340e44a8eff49af6addb2a12e1aa42e79ffde02b8196f10e63f408eb8"
+    },
+    "emulator-host-stop-request.json": {
+      "bytes": 150,
+      "sha256": "95689a29985d0943162eae01fdd2092482aa8d3ad57bd9274cdc4cf6f9718d2d"
+    },
+    "route-recovery.json": {
+      "bytes": 49319,
+      "sha256": "a9a243c2ce4ad5bdde246ff571a05c7832480e8019415c3634cbe7002b9536a1"
+    },
+    "simulation.json": {
+      "bytes": 89689,
+      "sha256": "6c7d82a0ce8e634919f5138c6a8e4adab132815b0e95790bf4cc76972fb1894a"
+    }
+  },
+  "host": {
+    "launch": {
+      "availability": "parsed",
+      "observation": {
+        "schema": 1,
+        "scope": "host-diagnostics-only",
+        "launch_status": "spawned",
+        "argv_sha256": "f39496cef5852e0238965fccde9b6e2910f2afa290388b08a757d52512cdd79d",
+        "started": {
+          "monotonic_ns": 871514829509,
+          "unix_ns": 1794570804904863530
+        },
+        "emulator": {
+          "status": "observed",
+          "pid": 127881,
+          "start_ticks": 87151,
+          "state": "D",
+          "ppid": 127878,
+          "cpu_ticks": 0,
+          "threads": 1,
+          "rss_pages": 0
+        },
+        "observer": {
+          "pid": 127878,
+          "start_ticks": 87110
+        },
+        "cgroup": {
+          "status": "observed",
+          "identity_sha256": "9427d57c24ce834bffb0948c663d4fa0be5d8b1b086a64df2b40ae83bb1ea723",
+          "values": {
+            "memory.events": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "memory.events.local": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "memory.current": 13734039552,
+            "memory.peak": 15724269568,
+            "memory.max": "max"
+          }
+        }
+      }
+    },
+    "exit": {
+      "availability": "missing"
+    },
+    "before-stop": {
+      "availability": "parsed",
+      "observation": {
+        "schema": 1,
+        "scope": "host-diagnostics-only",
+        "launch": "observed",
+        "observer_lost": false,
+        "budget_seconds": 12,
+        "captured": {
+          "monotonic_ns": 1710676728820,
+          "unix_ns": 1794571644066762961
+        },
+        "finished": {
+          "monotonic_ns": 1710726563844,
+          "unix_ns": 1794571644116598396
+        },
+        "emulator": {
+          "status": "observed",
+          "pid": 127881,
+          "start_ticks": 87151,
+          "state": "S",
+          "ppid": 127878,
+          "cpu_ticks": 137465,
+          "threads": 88,
+          "rss_pages": 1005418
+        },
+        "observer": {
+          "status": "observed",
+          "pid": 127878,
+          "start_ticks": 87110,
+          "state": "S",
+          "ppid": 1,
+          "cpu_ticks": 5,
+          "threads": 1,
+          "rss_pages": 4663
+        },
+        "cgroup": {
+          "status": "observed",
+          "identity_sha256": "9427d57c24ce834bffb0948c663d4fa0be5d8b1b086a64df2b40ae83bb1ea723",
+          "values": {
+            "memory.events": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "memory.events.local": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "memory.current": 15581229056,
+            "memory.peak": 15773462528,
+            "memory.max": "max"
+          }
+        },
+        "exit": {
+          "status": "not_recorded"
+        },
+        "adb": {
+          "status": "observed",
+          "device_count": 1,
+          "target_state": "device"
+        },
+        "kernel_oom": {
+          "scope": "observations_only_not_process_causation",
+          "read_status": "complete",
+          "oom_line_count": 0,
+          "matching_pid_events": []
+        }
+      }
+    },
+    "stop-request": {
+      "availability": "parsed",
+      "observation": {
+        "schema": 1,
+        "scope": "explicit-workflow-cleanup",
+        "requested": {
+          "monotonic_ns": 1710904513880,
+          "unix_ns": 1794571644294548021
+        }
+      }
+    },
+    "cleanup": {
+      "availability": "parsed",
+      "observation": {
+        "schema": 1,
+        "scope": "explicit-workflow-cleanup",
+        "status": "sigterm_sent",
+        "observed": {
+          "monotonic_ns": 1711001194044,
+          "unix_ns": 1794571644391228847
+        }
+      }
+    }
+  },
+  "simulation": {
+    "schema": 1,
+    "status": "passed",
+    "scope": "Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture",
+    "cases": [
+      {
+        "name": "environment",
+        "status": "passed",
+        "seconds": 38.289
+      },
+      {
+        "name": "kernelsu-bootstrap",
+        "status": "passed",
+        "seconds": 4.038
+      },
+      {
+        "name": "install-before-first-boot",
+        "status": "passed",
+        "seconds": 19.843
+      },
+      {
+        "name": "cold-boot",
+        "status": "passed",
+        "seconds": 56.769
+      },
+      {
+        "name": "app-uid-tun-controls",
+        "status": "passed",
+        "seconds": 36.476
+      },
+      {
+        "name": "tun-route-recovery",
+        "status": "passed",
+        "seconds": 333.473
+      },
+      {
+        "name": "invalid-config-rollback",
+        "status": "passed",
+        "seconds": 0.748
+      },
+      {
+        "name": "stop-cleanup",
+        "status": "passed",
+        "seconds": 2.62
+      },
+      {
+        "name": "restart-idempotence",
+        "status": "passed",
+        "seconds": 52.961
+      },
+      {
+        "name": "upgrade-preservation",
+        "status": "passed",
+        "seconds": 115.204
+      },
+      {
+        "name": "disable-reboot",
+        "status": "passed",
+        "seconds": 41.036
+      },
+      {
+        "name": "enable-reboot",
+        "status": "passed",
+        "seconds": 93.884
+      },
+      {
+        "name": "uninstall-reboot",
+        "status": "passed",
+        "seconds": 42.989
+      }
+    ],
+    "case_record_count": 13,
+    "case_counts": {
+      "passed": 13,
+      "failed": 0,
+      "not_run": 0
+    }
+  },
+  "provenance": {
+    "schema": 1,
+    "scope": "disposable-x86_64-avd-only",
+    "source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+    "production_zip_sha256": "02ff82a0e8cf2c3037273fedd72edd578e6fdcdb978e51ab287680319f926452",
+    "fixture_zip_sha256": "c28686b5ab3df1d558fbb969cdfac5877ec87dc6be92ab74ae7430af95e6fb72"
+  },
+  "reboots": {
+    "record_count": 5,
+    "passed_count": 5,
+    "new_boot_observed_count": 5,
+    "observations": [
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init"
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init"
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init"
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init"
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init"
+      }
+    ]
+  },
+  "route_equivalence": {
+    "embedded_present": true,
+    "standalone_present": true,
+    "equal": true,
+    "method": "sorted-key canonical JSON preserving scalar types",
+    "standalone_parsed": true,
+    "embedded_canonical_sha256": "7d92b4a0e93935e5c66089f4693993a508b22b24ac23cc616564d513a59e5bd6",
+    "standalone_canonical_sha256": "7d92b4a0e93935e5c66089f4693993a508b22b24ac23cc616564d513a59e5bd6"
+  },
+  "route_location": "simulation.provenance.route_recovery",
+  "route": {
+    "schema": 1,
+    "status": "verified",
+    "scope": "disposable-android-app-uid-tun",
+    "app_uid": 10209,
+    "positive": true,
+    "reject": true,
+    "positive_after": true,
+    "restored": true,
+    "network_fixture": {
+      "scope": "disposable-single-eth0",
+      "qemu": true,
+      "abi": "x86_64",
+      "control_transport_verified": true,
+      "wifi_initial_enabled": true,
+      "wifi_disabled": true,
+      "prepared": true,
+      "wifi_final_enabled": true,
+      "restored": true
+    },
+    "rpdb_loss": {
+      "status": "verified",
+      "recovery_entry": "connectivity.tick",
+      "recovery_tick_count": 5,
+      "removed_rule_count": 2,
+      "ready_after_fault": false,
+      "ready_after_recovery": true,
+      "core_identity_unchanged": true,
+      "tun_unchanged": true,
+      "fib_unchanged": true,
+      "unowned_rules_unchanged": true,
+      "baseline_app": {
+        "complete": true,
+        "ok": true,
+        "uid": 10209,
+        "accepted": 1,
+        "transport": "udp",
+        "reason": "sentinel",
+        "elapsed_ms": 7,
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      },
+      "fault_app": {
+        "complete": true,
+        "ok": false,
+        "uid": 10209,
+        "accepted": 0,
+        "transport": "udp",
+        "reason": "timeout",
+        "elapsed_ms": 5001,
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      },
+      "recovered_app": {
+        "complete": true,
+        "ok": true,
+        "uid": 10209,
+        "accepted": 1,
+        "transport": "udp",
+        "reason": "sentinel",
+        "elapsed_ms": 5,
+        "receiver_bound": true,
+        "receiver_closed": true,
+        "request_attempted": true
+      },
+      "recovery_before": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "none",
+        "recovery_limit": 3,
+        "recovery_attempts": 0,
+        "consecutive_failures": 0,
+        "checked_at": 1794570917,
+        "last_recovery_at": null,
+        "next_check_at": 1794570977,
+        "retry_in_seconds": 2
+      },
+      "recovery_after": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "ok",
+        "recovery_limit": 3,
+        "recovery_attempts": 1,
+        "consecutive_failures": 0,
+        "checked_at": 1794571234,
+        "last_recovery_at": 1794571164,
+        "next_check_at": 1794571294,
+        "retry_in_seconds": 60
+      },
+      "before": {
+        "core_pid": 21829,
+        "core_start_ticks": 9831,
+        "tun_name": "magicnet0",
+        "tun_ifindex": 23,
+        "rules": {
+          "row_count": 23,
+          "availability": "observed",
+          "sorted_rows_sha256": "72f54514dd3f93b0898f76927750f6d24d804f8dd850fc026bcfcf04c6ff8ec6"
+        },
+        "fib": {
+          "row_count": 50,
+          "availability": "observed",
+          "sorted_rows_sha256": "5dea4068efa3ee85a1dfa64ca0ce756e6f0ba076f4a6870c0a9862d4757c50a4"
+        },
+        "netd": {
+          "eth0_ifindex": 15,
+          "total_network_count": 4,
+          "eth0_network_count": 1,
+          "eth0_networks": [
+            {
+              "net_id": 100,
+              "type": "PHYSICAL",
+              "interfaces": [
+                "eth0"
+              ],
+              "details": [
+                "Allowed UID ranges: uids{ 0-99999 }",
+                "Per-app UID ranges: prio 40 uids{ 10135 }",
+                "Required permission: NONE"
+              ]
+            }
+          ],
+          "eth0_networks_truncated": false,
+          "eth0_fib": {
+            "row_count": 2,
+            "availability": "observed",
+            "sorted_rows_sha256": "e68bf5a78ac9192249ac54c4e110f8ae8743a1d7a8a57f6288457b80986644cf"
+          }
+        }
+      },
+      "fault": {
+        "core_pid": 21829,
+        "core_start_ticks": 9831,
+        "tun_name": "magicnet0",
+        "tun_ifindex": 23,
+        "rules": {
+          "row_count": 21,
+          "availability": "observed",
+          "sorted_rows_sha256": "30d62bd948a4d98dca66bb963cb1fb617b22f727ae5b297fc51994c1adc4ae49"
+        },
+        "fib": {
+          "row_count": 50,
+          "availability": "observed",
+          "sorted_rows_sha256": "5dea4068efa3ee85a1dfa64ca0ce756e6f0ba076f4a6870c0a9862d4757c50a4"
+        },
+        "netd": {
+          "eth0_ifindex": 15,
+          "total_network_count": 4,
+          "eth0_network_count": 1,
+          "eth0_networks": [
+            {
+              "net_id": 100,
+              "type": "PHYSICAL",
+              "interfaces": [
+                "eth0"
+              ],
+              "details": [
+                "Allowed UID ranges: uids{ 0-99999 }",
+                "Per-app UID ranges: prio 40 uids{ 10135 }",
+                "Required permission: NONE"
+              ]
+            }
+          ],
+          "eth0_networks_truncated": false,
+          "eth0_fib": {
+            "row_count": 2,
+            "availability": "observed",
+            "sorted_rows_sha256": "e68bf5a78ac9192249ac54c4e110f8ae8743a1d7a8a57f6288457b80986644cf"
+          }
+        }
+      },
+      "after": {
+        "core_pid": 26222,
+        "core_start_ticks": 29737,
+        "tun_name": "magicnet0",
+        "tun_ifindex": 24,
+        "rules": {
+          "row_count": 23,
+          "availability": "observed",
+          "sorted_rows_sha256": "30ebfbf388150fcbf4d64490f36c6ef74eefc79695007e6b9a48409d4f727687"
+        },
+        "fib": {
+          "row_count": 50,
+          "availability": "observed",
+          "sorted_rows_sha256": "5dea4068efa3ee85a1dfa64ca0ce756e6f0ba076f4a6870c0a9862d4757c50a4"
+        },
+        "netd": {
+          "eth0_ifindex": 15,
+          "total_network_count": 4,
+          "eth0_network_count": 1,
+          "eth0_networks": [
+            {
+              "net_id": 101,
+              "type": "PHYSICAL",
+              "interfaces": [
+                "eth0"
+              ],
+              "details": [
+                "Allowed UID ranges: uids{ 0-99999 }",
+                "Per-app UID ranges: prio 40 uids{ 10135 }",
+                "Required permission: NONE"
+              ]
+            }
+          ],
+          "eth0_networks_truncated": false,
+          "eth0_fib": {
+            "row_count": 2,
+            "availability": "observed",
+            "sorted_rows_sha256": "e68bf5a78ac9192249ac54c4e110f8ae8743a1d7a8a57f6288457b80986644cf"
+          }
+        }
+      }
+    },
+    "uplink_reconnect": {
+      "status": "verified",
+      "stage": "complete",
+      "interface": "eth0",
+      "default_interfaces": [
+        "eth0"
+      ],
+      "restore_method": "android_mobile_data_toggle",
+      "down_observed": true,
+      "up_observed": true,
+      "down_flags": 4098,
+      "up_flags": 4099,
+      "control_transport_verified": true,
+      "control_channel_survived": true,
+      "restore_guard_finished": true,
+      "recovery_tick_count": 1,
+      "ready_after_recovery": true,
+      "app_after_recovery": true,
+      "cellular_lifecycle": {
+        "acknowledged": true,
+        "before": {
+          "owner": {
+            "phone_id": 0,
+            "sub_id": 1,
+            "user_data_enabled": true,
+            "data_enabled": true,
+            "data_state": 2,
+            "connections": [
+              {
+                "state": "CONNECTED",
+                "transport": "WWAN",
+                "net_id": 101,
+                "interface": "eth0"
+              }
+            ]
+          },
+          "networks": [
+            {
+              "net_id": 51,
+              "type": "DUMMY",
+              "interfaces": [
+                "dummy0"
+              ],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 52,
+              "type": "UNREACHABLE",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 99,
+              "type": "LOCAL",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 101,
+              "type": "PHYSICAL",
+              "interfaces": [
+                "eth0"
+              ],
+              "details": [
+                "Allowed UID ranges: uids{ 0-99999 }",
+                "Per-app UID ranges: prio 40 uids{ 10135 }",
+                "Required permission: NONE"
+              ]
+            }
+          ]
+        },
+        "down": {
+          "owner": {
+            "phone_id": 0,
+            "sub_id": 1,
+            "user_data_enabled": false,
+            "data_enabled": false,
+            "data_state": 0,
+            "connections": []
+          },
+          "networks": [
+            {
+              "net_id": 51,
+              "type": "DUMMY",
+              "interfaces": [
+                "dummy0"
+              ],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 52,
+              "type": "UNREACHABLE",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted",
+                "Per-app UID ranges: prio 40 uids{ 10135 }"
+              ]
+            },
+            {
+              "net_id": 99,
+              "type": "LOCAL",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            }
+          ],
+          "flags": 4098
+        },
+        "after": {
+          "owner": {
+            "phone_id": 0,
+            "sub_id": 1,
+            "user_data_enabled": true,
+            "data_enabled": true,
+            "data_state": 2,
+            "connections": [
+              {
+                "state": "CONNECTED",
+                "transport": "WWAN",
+                "net_id": 102,
+                "interface": "eth0"
+              }
+            ]
+          },
+          "networks": [
+            {
+              "net_id": 51,
+              "type": "DUMMY",
+              "interfaces": [
+                "dummy0"
+              ],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 52,
+              "type": "UNREACHABLE",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 99,
+              "type": "LOCAL",
+              "interfaces": [],
+              "details": [
+                "Allowed UID ranges: unrestricted"
+              ]
+            },
+            {
+              "net_id": 102,
+              "type": "PHYSICAL",
+              "interfaces": [
+                "eth0"
+              ],
+              "details": [
+                "Allowed UID ranges: uids{ 0-99999 }",
+                "Per-app UID ranges: prio 40 uids{ 10135 }",
+                "Required permission: NONE"
+              ]
+            }
+          ]
+        }
+      },
+      "last_observation": {
+        "ready": true,
+        "selected_default": true,
+        "routes": [
+          "10.0.2.0/24 dev eth0 table eth0_local proto static scope link",
+          "224.0.0.0/24 dev eth0 table eth0_local proto static scope link",
+          "0.0.0.0/5 dev magicnet0 table 2022",
+          "8.0.0.0/7 dev magicnet0 table 2022",
+          "11.0.0.0/8 dev magicnet0 table 2022",
+          "12.0.0.0/6 dev magicnet0 table 2022",
+          "16.0.0.0/4 dev magicnet0 table 2022",
+          "32.0.0.0/3 dev magicnet0 table 2022",
+          "64.0.0.0/3 dev magicnet0 table 2022",
+          "96.0.0.0/6 dev magicnet0 table 2022",
+          "100.0.0.0/10 dev magicnet0 table 2022",
+          "100.128.0.0/9 dev magicnet0 table 2022",
+          "101.0.0.0/8 dev magicnet0 table 2022",
+          "102.0.0.0/7 dev magicnet0 table 2022",
+          "104.0.0.0/5 dev magicnet0 table 2022",
+          "112.0.0.0/5 dev magicnet0 table 2022"
+        ],
+        "state": {
+          "status": "present",
+          "warning": false,
+          "recovery_status": "ok",
+          "recovery_limit": 3,
+          "recovery_attempts": 1,
+          "consecutive_failures": 0,
+          "checked_at": 1794571234,
+          "last_recovery_at": 1794571164,
+          "next_check_at": 1794571293,
+          "retry_in_seconds": 27
+        },
+        "tcp": {
+          "called": true,
+          "result": {
+            "complete": true,
+            "ok": true,
+            "uid": 10209,
+            "accepted": 1,
+            "reason": "sentinel",
+            "elapsed_ms": 6
+          }
+        }
+      },
+      "recovery_after": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "ok",
+        "recovery_limit": 3,
+        "recovery_attempts": 1,
+        "consecutive_failures": 0,
+        "checked_at": 1794571234,
+        "last_recovery_at": 1794571164,
+        "next_check_at": 1794571293,
+        "retry_in_seconds": 27
+      }
+    }
+  },
+  "job_exit_code": 0
+}

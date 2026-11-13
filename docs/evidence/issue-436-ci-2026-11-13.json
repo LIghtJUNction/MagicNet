@@ -1,17 +1,19 @@
 {
   "schema": "magicnet.issue436.evidence.v1",
-  "updated_utc": "2026-11-13T11:36:55Z",
+  "updated_utc": "2026-11-13T12:39:39Z",
   "issue": "https://github.com/LIghtJUNction/MagicNet/issues/436",
   "status": {
     "source_pr": 7,
     "recipe_pr": 451,
-    "merged": false,
+    "merged": true,
     "released": false,
     "issue_closed": false,
     "device_deployed": false,
-    "latest_full_android_source": "pending a413",
-    "latest_full_android_recipe": "pending exact a413 pin",
-    "host_diagnostic_successor": "isolated validation and independent review passed; integrated into source a413"
+    "latest_full_android_source": "success13/13 and5realreboots; independent original gate0",
+    "latest_full_android_recipe": "success 13/13 and 5 real reboots; actual release quality/assets and independent original gate0 passed",
+    "host_diagnostic_successor": "isolated validation and independent review passed; integrated into source a413",
+    "merge_verification": "Both actual merge commit trees equal the immutable tested candidate trees. No source or pinned workflow mutation was added during merge.",
+    "post_merge_ci": "At 12:39:39 UTC recipe merge checks succeeded; four source main-push workflows were in progress. These automatic executions are separate from the completed identical-tree PR evidence; no cancellation, dispatch or manual rerun was used."
   },
   "current_candidate": {
     "source": {
@@ -19,10 +21,10 @@
       "sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
       "tree": "f477642021d129ae9b5a64d87436f678db06d62f",
       "parent": "668701523f52959f2daf5113ee11b716aa7ecddb",
-      "full_ci": "pending",
+      "full_ci": "success",
       "observed_pr_merge_commit": "d54889c75f1d8aaa530cc3f4455744c4ae997581",
       "observed_pr_merge_tree_equals_candidate": true,
-      "actual_report_sha": null,
+      "actual_report_sha": "d54889c75f1d8aaa530cc3f4455744c4ae997581",
       "ci_runs": {
         "android": 43418093071,
         "build": 43418093060,
@@ -34,15 +36,86 @@
         "conclusion": "skipped",
         "reason": "PR diff exceeds150000 characters",
         "current_commit_approval": false
-      }
+      },
+      "completed_companion_runs": [
+        {
+          "run_id": 43418093053,
+          "workflow": "quality",
+          "conclusion": "success",
+          "jobs": 7
+        },
+        {
+          "run_id": 43418093190,
+          "workflow": "network",
+          "conclusion": "success",
+          "jobs": 3
+        },
+        {
+          "run_id": 43418093060,
+          "workflow": "build",
+          "conclusion": "success"
+        }
+      ],
+      "build_artifact": {
+        "artifact_id": 14033616848,
+        "name": "magicnet-module-43418093060-1",
+        "size_bytes": 142418015,
+        "sha256": "1638251f73961cf57cbc72a09f82e486b347102034bb598e85952ebdf408a1cd",
+        "verification": "Completed source build artifact metadata reread directly through GitHub API by root after successful run. No local download or rehash after environment outage."
+      },
+      "harness_checkout": {
+        "job_id": 131860947246,
+        "source_sha": "d54889c75f1d8aaa530cc3f4455744c4ae997581",
+        "evidence": "Actual workflow log records checkout ref, git log -1, SOURCE_SHA/MAGICNET_SOURCE_SHA and passed HEAD equality assertion.",
+        "source_report_sha_still_pending": false
+      },
+      "raw_original_verification": "success in GitHub runner43422960113",
+      "pr_base_sha": "5edd36babcb3f1072c264015659d7e0ad45a575f",
+      "actual_merge_sha": "83582a9490312e6a84bbc3f63695aedfc9250576"
     },
     "recipe": {
       "repository": "LIghtJUNction/MagicNet",
-      "base_sha": "02369b3c8f7152a1464cedf27783183d2e4a326f",
-      "head_sha": null,
-      "full_ci": "pending",
-      "identity_note": "The final tested recipe commit is filled after full CI; this working report is included in that recipe update.",
-      "pre_report_tree": "8652b957964c88b93fc05318938ff5f196922473"
+      "head_sha": "284248b6d4c4913e064de69d6ee7cdebe5045e03",
+      "full_ci": "success",
+      "identity_note": "Frozen candidate284; actual recipe build-source uses synthetic PR merge309b with identical tree. Android report pins sourcea413 exactly.",
+      "pre_report_tree": "8652b957964c88b93fc05318938ff5f196922473",
+      "tree": "55793abdef24d23e97629d5b2894e75db49b3fcd",
+      "ci_runs": {
+        "checks": 43418587798,
+        "verify": 43418588448
+      },
+      "checks_conclusion": "success",
+      "android_artifact": {
+        "artifact_id": 14034686656,
+        "name": "android-kernelsu-acceptance-43418588448-1",
+        "size_bytes": 523992,
+        "sha256": "2087d7d3d0231f7108102cdf0532cd19b8010648d0cf51526b491f151ada26c3",
+        "verification": "Original ZIP downloaded and independently rehashed on GitHub runner43425532180; unmodified report passed fixed full gate exit0; no local rehash after environment outage."
+      },
+      "actual_recipe_test_sha": "309b2046e56dda296be2e7992eac1558166ab978",
+      "test_tree_equals_candidate": true,
+      "actual_report_source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+      "build_and_release_quality": "success; actual quality-gate.sh all executed; 19 checksum entries OK",
+      "release_assets": {
+        "job_id": 131883310318,
+        "conclusion": "success",
+        "actual_recipe_sha": "309b2046e56dda296be2e7992eac1558166ab978",
+        "actual_source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+        "version": "v1.8.8",
+        "version_code": "10616"
+      },
+      "build_artifact": {
+        "artifact_id": 14036735683,
+        "name": "magicnet-module-43418588448-1",
+        "size_bytes": 142419756,
+        "sha256": "f77a21cad25a36d5764494119e288a60be0b54646e73b49445496038085ee2f0",
+        "verification": "Downloaded and rehashed in CI release-asset job131883310318; full manifest and embedded provenance verification passed. No local rehash after environment outage."
+      },
+      "publish": "skipped",
+      "raw_original_verification": "success in GitHub runner43425532180",
+      "parent_sha": "02369b3c8f7152a1464cedf27783183d2e4a326f",
+      "pr_base_sha": "0ca295da653853d4600204c7aace40c978d303c9",
+      "actual_merge_sha": "dbd05dd419654dfd2a47b3e263953416d7109efe"
     },
     "gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
     "producer_sha256": "964dde89bc81a1ecaff95bd8a72e963ba19c8674260ff58adcda1c39e1a71772",
@@ -516,6 +589,461 @@
       ],
       "module_zip_sha256": "be2c203b0978590e9b15ef1447b53d82593b05de97538f8aeb0de6d7f4eef251",
       "acceptance_fixture_zip_sha256": "28a233515a334d07494db54fe9288a2e7b3f3592cd31151448a8aba30bde62de"
+    },
+    {
+      "key": "a413_source",
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43418093071,
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43418093071",
+      "source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+      "tree": "f477642021d129ae9b5a64d87436f678db06d62f",
+      "actual_test_sha": "d54889c75f1d8aaa530cc3f4455744c4ae997581",
+      "test_tree_equals_candidate": true,
+      "conclusion": "success",
+      "attempt": 1,
+      "android": {
+        "passed": 13,
+        "failed": 0,
+        "not_run": 0,
+        "successful_real_reboots": 5,
+        "new_boot_observed": 5
+      },
+      "stage_seconds": {
+        "environment": 41.707,
+        "kernelsu-bootstrap": 2.991,
+        "install-before-first-boot": 18.501,
+        "cold-boot": 48.023,
+        "app-uid-tun-controls": 43.783,
+        "tun-route-recovery": 329.031,
+        "invalid-config-rollback": 0.603,
+        "stop-cleanup": 3.334,
+        "restart-idempotence": 44.831,
+        "upgrade-preservation": 90.283,
+        "disable-reboot": 35.247,
+        "enable-reboot": 92.425,
+        "uninstall-reboot": 42.9
+      },
+      "matching_gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
+      "matching_full_gate_exit": 0,
+      "original_report_unchanged": true,
+      "route_stage": {
+        "status": "verified",
+        "uid": 10209,
+        "udp_accepted": [
+          1,
+          0,
+          1
+        ],
+        "udp_elapsed_ms": [
+          4,
+          5000,
+          4
+        ],
+        "readiness": [
+          false,
+          true
+        ],
+        "recovery_attempt": [
+          0,
+          1
+        ],
+        "tick_count": 5,
+        "removed_rule_count": 2,
+        "core_before": {
+          "pid": 22237,
+          "start_ticks": 10111
+        },
+        "core_fault": {
+          "pid": 22237,
+          "start_ticks": 10111
+        },
+        "core_after": {
+          "pid": 26543,
+          "start_ticks": 29709
+        },
+        "tun_ifindices": [
+          23,
+          23,
+          24
+        ],
+        "fib_row_count": 50,
+        "fib_all_three_same": true,
+        "rpdb_net_ids": [
+          100,
+          100,
+          100
+        ],
+        "rpdb_net_id_renumbering_dynamically_exercised": false,
+        "cellular_net_ids": [
+          100,
+          null,
+          103
+        ],
+        "cellular_owner": {
+          "phone": 0,
+          "subscription": 1,
+          "uid": 10137,
+          "prio": 40
+        },
+        "uid_transfer_through_unreachable52": "exact then returned",
+        "interface_flags": [
+          4098,
+          4099
+        ],
+        "uplink_ready": true,
+        "default_selected": true,
+        "uplink_tcp_elapsed_ms": 5,
+        "wifi_restored": true,
+        "embedded_standalone_route_equal": true
+      },
+      "artifacts": [
+        {
+          "artifact_id": 14034922287,
+          "name": "android-kernelsu-acceptance-43418093071-1",
+          "size_bytes": 529146,
+          "sha256": "79b37ab909347ef348669a83fc9770719828cfec6dfd0329ac8dd544a1863f56",
+          "verification": "Downloaded bytes independently rehashed in same-repository GitHub runner verifier43422960113; exact original report passed unmodifieda413 gate; not a local rehash.",
+          "members": {
+            "emulator-host-before-stop.json": "99127dc3e2a95421dae3c1a4df7637205c190a18017a34943c0cff80cabcd616",
+            "emulator-host-cleanup.json": "8fda69a8d5a06bfd59381075633e13a8fe310c397b57d1eb1538dc937e1f0f9d",
+            "emulator-host-launch.json": "277e9679366696f8e38fda7d1dd40deb5378a9e0beb1b430fd29ccf4ff83647a",
+            "emulator-host-stop-request.json": "dce41765c706cbbc799d3132a99a1350715f1ac61721b3fa4207596e0bc79297",
+            "route-recovery.json": "adf8aee3c7be409a1cda4ab7d660fddf2dbadf336ddf1cb41b4b7295509e41d3",
+            "simulation.json": "3abdce957d83ad6320e6114453b3e60655695c9aae3c6a7742f71a0b2a2b80a0"
+          },
+          "member_sizes": {
+            "emulator-host-before-stop.json": 1659,
+            "emulator-host-cleanup.json": 177,
+            "emulator-host-launch.json": 1120,
+            "emulator-host-stop-request.json": 150,
+            "route-recovery.json": 49317,
+            "simulation.json": 89670
+          }
+        }
+      ],
+      "module_zip_sha256": "e3a468f3b2461d5a9dca553b524e38af5e5a0ae6ae529d825cf522fa55df5810",
+      "fixture_zip_sha256": "79074e02217eee67a9115efe28505bf4d8fc9d6c036d629ab6bd1b9dd0a79f93",
+      "remote_original_verification": {
+        "run_id": 43422960113,
+        "job_id": 131877212925,
+        "sha": "0e019bd6a1cdb7c63b2329ae1342162002d8be90",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43422960113",
+        "conclusion": "success",
+        "normalized_summary_file": "issue-436-source-a413-2026-11-13.json",
+        "summary_scope": "Whitelist projection; list fields may be limited to16 items. Full gate reads unmodified complete originalsimulation. Complete raw ZIP remains in Actions."
+      },
+      "host_diagnostics": {
+        "pre_stop": {
+          "emulator": {
+            "status": "observed",
+            "pid": 156267,
+            "start_ticks": 123624,
+            "state": "S",
+            "ppid": 156264,
+            "cpu_ticks": 122121,
+            "threads": 99,
+            "rss_pages": 1025045
+          },
+          "observer": {
+            "status": "observed",
+            "pid": 156264,
+            "start_ticks": 123617,
+            "state": "S",
+            "ppid": 1,
+            "cpu_ticks": 3,
+            "threads": 1,
+            "rss_pages": 4745
+          },
+          "observer_lost": false,
+          "adb": {
+            "status": "observed",
+            "device_count": 1,
+            "target_state": "device"
+          },
+          "memory": {
+            "status": "observed",
+            "identity_sha256": "f866a73d2578cb6ee8145587a0186e366ab0d4622d983c6ec7e667fd6e8298f0",
+            "values": {
+              "memory.events": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              },
+              "memory.events.local": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              },
+              "memory.current": 15473418240,
+              "memory.peak": 15703076864,
+              "memory.max": "max"
+            }
+          },
+          "kernel_oom": {
+            "scope": "observations_only_not_process_causation",
+            "read_status": "complete",
+            "oom_line_count": 0,
+            "matching_pid_events": []
+          },
+          "finished_monotonic_ns": 2030929163461
+        },
+        "stop_requested_monotonic_ns": 2031024353820,
+        "cleanup": {
+          "status": "sigterm_sent",
+          "observed_monotonic_ns": 2031089601353
+        },
+        "exit_receipt_available": false,
+        "final_exit_code": null,
+        "final_exit_signal": null,
+        "cleanup_completed": null,
+        "limit": "Exit receipt absent in originalZIP. SIGTERM_sent does not establish process exit or cleanup completion. Current memory observations do not explain668 failure."
+      }
+    },
+    {
+      "key": "a413_recipe",
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43418588448,
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43418588448",
+      "source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+      "recipe_sha": "284248b6d4c4913e064de69d6ee7cdebe5045e03",
+      "tree": "55793abdef24d23e97629d5b2894e75db49b3fcd",
+      "actual_recipe_test_sha": "309b2046e56dda296be2e7992eac1558166ab978",
+      "test_tree_equals_candidate": true,
+      "actual_report_source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+      "conclusion": "success",
+      "attempt": 1,
+      "android": {
+        "passed": 13,
+        "failed": 0,
+        "not_run": 0,
+        "successful_real_reboots": 5,
+        "new_boot_observed": 5
+      },
+      "stage_seconds": {
+        "environment": 38.289,
+        "kernelsu-bootstrap": 4.038,
+        "install-before-first-boot": 19.843,
+        "cold-boot": 56.769,
+        "app-uid-tun-controls": 36.476,
+        "tun-route-recovery": 333.473,
+        "invalid-config-rollback": 0.748,
+        "stop-cleanup": 2.62,
+        "restart-idempotence": 52.961,
+        "upgrade-preservation": 115.204,
+        "disable-reboot": 41.036,
+        "enable-reboot": 93.884,
+        "uninstall-reboot": 42.989
+      },
+      "matching_gate_sha256": "22d4516b8905381b41c5644d471991e454e1f3842e6275454003083a1c23a046",
+      "matching_full_gate_exit": 0,
+      "original_report_unchanged": true,
+      "route_stage": {
+        "status": "verified",
+        "uid": 10209,
+        "udp_accepted": [
+          1,
+          0,
+          1
+        ],
+        "udp_elapsed_ms": [
+          7,
+          5001,
+          5
+        ],
+        "readiness": [
+          false,
+          true
+        ],
+        "recovery_attempt": [
+          0,
+          1
+        ],
+        "tick_count": 5,
+        "removed_rule_count": 2,
+        "core_before": {
+          "pid": 21829,
+          "start_ticks": 9831
+        },
+        "core_fault": {
+          "pid": 21829,
+          "start_ticks": 9831
+        },
+        "core_after": {
+          "pid": 26222,
+          "start_ticks": 29737
+        },
+        "tun_ifindices": [
+          23,
+          23,
+          24
+        ],
+        "fib_row_count": 50,
+        "fib_all_three_same": true,
+        "rpdb_net_ids": [
+          100,
+          100,
+          101
+        ],
+        "rpdb_net_id_renumbering_dynamically_exercised": true,
+        "cellular_net_ids": [
+          101,
+          null,
+          102
+        ],
+        "cellular_owner": {
+          "phone": 0,
+          "subscription": 1,
+          "uid": 10135,
+          "prio": 40
+        },
+        "uid_transfer_through_unreachable52": "exact then returned",
+        "interface_flags": [
+          4098,
+          4099
+        ],
+        "uplink_ready": true,
+        "default_selected": true,
+        "uplink_tcp_elapsed_ms": 6,
+        "wifi_restored": true,
+        "embedded_standalone_route_equal": true
+      },
+      "artifacts": [
+        {
+          "artifact_id": 14034686656,
+          "name": "android-kernelsu-acceptance-43418588448-1",
+          "size_bytes": 523992,
+          "sha256": "2087d7d3d0231f7108102cdf0532cd19b8010648d0cf51526b491f151ada26c3",
+          "verification": "Original ZIP downloaded and independently rehashed on GitHub runner43425532180; unmodified report passed fixed full gate exit0; no local rehash after environment outage.",
+          "members": {
+            "emulator-host-before-stop.json": "06f6f2e10ec623634125198f97a8d1f0a2a16f5ee9e4b8074d0e5ed94233e305",
+            "emulator-host-cleanup.json": "1d34a9c9106d31abd03ff378246a6adfacb73a0ccbeb7c28b41f5448a1d17b51",
+            "emulator-host-launch.json": "c0211e3340e44a8eff49af6addb2a12e1aa42e79ffde02b8196f10e63f408eb8",
+            "emulator-host-stop-request.json": "95689a29985d0943162eae01fdd2092482aa8d3ad57bd9274cdc4cf6f9718d2d",
+            "route-recovery.json": "a9a243c2ce4ad5bdde246ff571a05c7832480e8019415c3634cbe7002b9536a1",
+            "simulation.json": "6c7d82a0ce8e634919f5138c6a8e4adab132815b0e95790bf4cc76972fb1894a"
+          },
+          "member_sizes": {
+            "emulator-host-before-stop.json": 1657,
+            "emulator-host-cleanup.json": 177,
+            "emulator-host-launch.json": 1117,
+            "emulator-host-stop-request.json": 150,
+            "route-recovery.json": 49319,
+            "simulation.json": 89689
+          }
+        }
+      ],
+      "build_artifact": {
+        "artifact_id": 14036735683,
+        "name": "magicnet-module-43418588448-1",
+        "size_bytes": 142419756,
+        "sha256": "f77a21cad25a36d5764494119e288a60be0b54646e73b49445496038085ee2f0",
+        "verification": "Downloaded and rehashed in CI release-asset job131883310318; full manifest and embedded provenance verification passed. No local rehash after environment outage."
+      },
+      "build_and_release_quality": "success; actual quality-gate.sh all executed; 19 checksum entries OK",
+      "release_assets": {
+        "job_id": 131883310318,
+        "conclusion": "success",
+        "actual_recipe_sha": "309b2046e56dda296be2e7992eac1558166ab978",
+        "actual_source_sha": "a4135d5edc39af4895968359bf16e8aefefdaeac",
+        "version": "v1.8.8",
+        "version_code": "10616"
+      },
+      "publish": "skipped",
+      "module_zip_sha256": "02ff82a0e8cf2c3037273fedd72edd578e6fdcdb978e51ab287680319f926452",
+      "fixture_zip_sha256": "c28686b5ab3df1d558fbb969cdfac5877ec87dc6be92ab74ae7430af95e6fb72",
+      "remote_original_verification": {
+        "run_id": 43425532180,
+        "job_id": 131885903305,
+        "sha": "cfcd7050b10c036661eadcecdd87652711d53af8",
+        "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43425532180",
+        "conclusion": "success",
+        "normalized_summary_file": "issue-436-recipe-a413-2026-11-13.json",
+        "summary_scope": "Whitelist projection; list fields may be limited to16 items. Full gate reads unmodified complete originalsimulation. Complete raw ZIP remains in Actions.",
+        "summary_artifact": {
+          "artifact_id": 14036661605,
+          "size_bytes": 4440,
+          "sha256": "98ed411833132fea219a6e0314100b83a9bd9391a42abe095ac0a24d708f8f19",
+          "verification": "GitHub API digest only; no local rehash"
+        }
+      },
+      "host_diagnostics": {
+        "pre_stop": {
+          "emulator": {
+            "status": "observed",
+            "pid": 127881,
+            "start_ticks": 87151,
+            "state": "S",
+            "ppid": 127878,
+            "cpu_ticks": 137465,
+            "threads": 88,
+            "rss_pages": 1005418
+          },
+          "observer": {
+            "status": "observed",
+            "pid": 127878,
+            "start_ticks": 87110,
+            "state": "S",
+            "ppid": 1,
+            "cpu_ticks": 5,
+            "threads": 1,
+            "rss_pages": 4663
+          },
+          "observer_lost": false,
+          "adb": {
+            "status": "observed",
+            "device_count": 1,
+            "target_state": "device"
+          },
+          "memory": {
+            "status": "observed",
+            "identity_sha256": "9427d57c24ce834bffb0948c663d4fa0be5d8b1b086a64df2b40ae83bb1ea723",
+            "values": {
+              "memory.events": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              },
+              "memory.events.local": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              },
+              "memory.current": 15581229056,
+              "memory.peak": 15773462528,
+              "memory.max": "max"
+            }
+          },
+          "kernel_oom": {
+            "scope": "observations_only_not_process_causation",
+            "read_status": "complete",
+            "oom_line_count": 0,
+            "matching_pid_events": []
+          },
+          "finished_monotonic_ns": 1710726563844
+        },
+        "stop_requested_monotonic_ns": 1710904513880,
+        "cleanup": {
+          "status": "sigterm_sent",
+          "observed_monotonic_ns": 1711001194044
+        },
+        "exit_receipt_available": false,
+        "final_exit_code": null,
+        "final_exit_signal": null,
+        "cleanup_completed": null,
+        "limit": "Exit receipt absent in originalZIP. SIGTERM_sent does not establish process exit or cleanup completion. Current memory observations do not explain668 failure."
+      }
     }
   ],
   "diagnostics": [
@@ -612,7 +1140,10 @@
   ],
   "reports": {
     "google_doc": "https://docs.google.com/document/d/1hIKrBtM8nyhB9knCV32SoLvLTFZbyEhgyeRl0D0VKto",
-    "google_drive_folder": "https://drive.google.com/drive/folders/1l506lcpZnJS-42-bpKHdk4W8yiAZenrc"
+    "google_drive_folder": "https://drive.google.com/drive/folders/1l506lcpZnJS-42-bpKHdk4W8yiAZenrc",
+    "normalized_source": "docs/evidence/issue-436-source-a413-2026-11-13.json",
+    "normalized_recipe": "docs/evidence/issue-436-recipe-a413-2026-11-13.json",
+    "normalized_scope": "Whitelist summaries copied directly as original JSON text from verifier logs, preserving exact large integer timestamp lexemes. Full validation ran on the original complete simulation bytes. No raw ZIP mirror is implied."
   },
   "historical_checkpoint_668": {
     "source": {
@@ -642,5 +1173,52 @@
       "version_code": 10616,
       "released": false
     }
+  },
+  "post_merge_automatic_runs": {
+    "observed_utc": "2026-11-13T12:39:39Z",
+    "source": [
+      {
+        "run_id": 43426538595,
+        "name": "Network Regression Evidence",
+        "status": "in_progress",
+        "conclusion": null,
+        "head_sha": "83582a9490312e6a84bbc3f63695aedfc9250576",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43426538595"
+      },
+      {
+        "run_id": 43426538790,
+        "name": "Build MagicNet source",
+        "status": "in_progress",
+        "conclusion": null,
+        "head_sha": "83582a9490312e6a84bbc3f63695aedfc9250576",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43426538790"
+      },
+      {
+        "run_id": 43426538630,
+        "name": "Code Quality",
+        "status": "in_progress",
+        "conclusion": null,
+        "head_sha": "83582a9490312e6a84bbc3f63695aedfc9250576",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43426538630"
+      },
+      {
+        "run_id": 43426538566,
+        "name": "Android KernelSU Acceptance",
+        "status": "in_progress",
+        "conclusion": null,
+        "head_sha": "83582a9490312e6a84bbc3f63695aedfc9250576",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43426538566"
+      }
+    ],
+    "recipe": [
+      {
+        "run_id": 43426572672,
+        "name": "Recipe checks",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "dbd05dd419654dfd2a47b3e263953416d7109efe",
+        "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43426572672"
+      }
+    ]
   }
 }

@@ -10,11 +10,11 @@
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.22，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 待完成工作 | #436 的生产恢复已随 v1.8.7 发行；668 配方完整验收通过，但其源码验收仍在升级重启阶段失败；后继诊断观察器的完整 CI 待验证，见下节。真机 OEM 触发仍开放；#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) |
+| 当前完成与开放项 | #436 的生产恢复已随 v1.8.7 发行；本次 a413 源码与284配方完整验收及原件复验均通过，PR #7/#451已合并。历史668源码升级重启失败仍保留、根因未知；真机 OEM 触发仍开放。#440 可信 NAS 入口未实现；#447/#449 申请的 zashboard 已是锁定默认面板。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) |
 
 ## 2026-11-13：#436 逐应用路由规则与可控网络验收
 
-当前后继候选固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`）。本次增量仅为宿主诊断观察器，用于保留启动失败时的事实；尚未修复未知的 boot 失败根因，也不改变 runtime 恢复流程、预算或独立门禁。新候选完整 CI 待验证，下面的 668 及更早结果继续绑定各自原始提交。
+已验证固定点为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`），配方受测head为 `284248b6d4c4913e064de69d6ee7cdebe5045e03`（tree `55793abdef24d23e97629d5b2894e75db49b3fcd`）。[源码PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)与[配方PR #451](https://github.com/LIghtJUNction/MagicNet/pull/451)已合并，实际merge分别为 `83582a9490312e6a84bbc3f63695aedfc9250576`、`dbd05dd419654dfd2a47b3e263953416d7109efe`；两棵合并tree均与对应受测候选相同。a413相对668仅增加宿主诊断，不改变生产恢复、预算或独立门禁；未知boot失败根因未被本次成功证明已修复。完整报告与摘要见[最终修复记录](../../docs/issue-436-recovery-verification-2026-11-13.md)和[证据索引](../../docs/evidence/issue-436-ci-2026-11-13.json)。下面的668及更早结果仍绑定各自原始提交。
 
 已测试候选 [`66870152`](https://github.com/LIghtJUNction/magicnet-android/commit/668701523f52959f2daf5113ee11b716aa7ecddb)（tree `e6b0d68c74703a68ad0b662f6618ac6165271818`，[源码 PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)）修正逐应用规则归属比较，并为恢复实验建立单 eth0 夹具，通过实际管理 eth0 的模拟蜂窝服务完成断开与重建。整合保留源码主线 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。
 
@@ -45,14 +45,14 @@
 | a413 宿主诊断定向检查 | [隔离短测试 43417860968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968)在诊断提交 `96101fa7473ce641c60cb8e18ca5cb4775ad4dcf` 完成 host 观察器27、重启6、工作流合同29、独立门禁72项检查并通过；当前候选使用相同的五个已审查源码 blob，临时短测试 workflow 未合入。该结果不替代完整 Android CI |
 | 668 宿主检查点 | 恢复采集器91、独立门禁72、模拟器合同114、验收合同33、工作流合同27项通过；source lint838跟踪文本、diff-check通过；实际三阶段诊断与原始失败分别记录 |
 | 未改动的生产代码 | 此前定向Rust connectivity22项单元、9项集成与supervisor20项通过；当前修订未修改生产Rust |
-| 配方材料 | 固定值15、发布计划41、发布资产16项此前通过；02369b3 同树提交的八包/62 Markdown 检查、打包、归档检查和 build prompt 通过；后继固定点材料检查待执行 |
+| 配方材料 | 固定值15、发布计划41、发布资产16项此前通过；02369b3同树提交的八包/62 Markdown 检查、打包、归档检查和 build prompt 通过。当前284的 [Recipe checks43418587798](https://github.com/LIghtJUNction/MagicNet/actions/runs/43418587798)也已成功；M37独立重建另列 |
 | 历史完整结果 | 9dba/e36整合43391099744成功；其源码运行43390671015失败，二者各保留原始身份和结果。更早dc4433d1发布13/13只适用于其对应版本门禁 |
 | 668 完整 Android | 源码 43407220745 为 9/1/3，升级重启失败；配方 43407837059 为 13/13、5 次重启及完整构建/质量/资产检查成功，两份原始报告及门禁结果分别保留 |
-| 当前候选完整 Android | 新增宿主诊断观察器的后继候选待验证；[源码 Android 43418093071](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43418093071)仍进行中，以[源码 PR 检查](https://github.com/LIghtJUNction/magicnet-android/pull/7/checks)和[主仓库 PR 检查](https://github.com/LIghtJUNction/MagicNet/pull/451/checks)为入口，不以 668 配方成功替代新候选结果 |
-| 审查边界 | 5f96源码Sourcery因PR差分超过150,000字符skipped，配方Sourcery成功；不外推为后继源码服务审查通过。668 修订完成 producer/gate 交叉复核；后继宿主观察器的审查及服务结果按新 SHA 单列 |
+| 当前候选完整 Android | a413[源码43418093071](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43418093071)及284[配方43418588448](https://github.com/LIghtJUNction/MagicNet/actions/runs/43418588448)均成功，各13/13阶段、5次真实新启动。原ZIP经[源码43422960113](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43422960113)与[配方43425532180](https://github.com/LIghtJUNction/MagicNet/actions/runs/43425532180)独立runner下载实算摘要，原simulation字节保持，固定完整gate均exit0 |
+| 审查边界 | a413源码Sourcery因差分超过150,000字符skipped；284配方Sourcery成功。旧58cc的APPROVED不算a413新批准，配方成功check也不等同新的APPROVED review。producer/gate、宿主观察器及两份原件复验完成独立交叉复核；两PR无未解决审查线程 |
 | 独立重建 | 本轮未执行M37；配方材料检查与独立软件重建分别记录 |
 
-668 配方已取得完整故障闭环成功，668 源码的升级 boot 失败仍未解决；当前待验证的是只增加宿主诊断观察器的后继候选。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；本轮没有正式发布或部署用户设备。物理ARM64、OEM删除规则的触发者、真实订阅与公网代理仍未取得新的成功证据。
+当前a413源码与284配方均取得完整成功；668源码升级boot失败仍是未查明原因的历史失败。当前源码RPDB netId100保持，后续cellular100→无→103；当前配方RPDB实际100→101且权限/UID10135-prio40/eth0/FIB保持，动态覆盖合法重编号，随后cellular另为101→无→102。两份UDP均1→0→1、生产恢复尝试0→1；清理前child/observer与ADB均可见，但均缺少EXIT回执，SIGTERM_sent不能证明最终退出或清理完成。Wi-Fi启用状态恢复不等于关联或切换恢复。公开稳定版保持v1.8.7/10615；配方实际发布质量与资产核验通过的v1.8.8/10616仅为预览，publish跳过，没有正式发布或设备部署。物理ARM64/OEM规则删除触发者、真实订阅与公网代理仍无新的成功证据。
 
 ## 2026-11-09：#436 与模拟器故障回归
 

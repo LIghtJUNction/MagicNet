@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`，tree `f477642021d129ae9b5a64d87436f678db06d62f`。本固定点保留 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号误拒绝的修正，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，通过 Android 移动数据服务控制实际 WWAN/eth0 连接，关闭后核对用户/有效状态、当前连接、接口和 netd 销毁证据，再启用；逐应用元数据只允许精确迁移到 UNREACHABLE 并在恢复后返回；保留失败清理前的有界脱敏支持包。相对已记录的 668 候选，本次增量仅增加宿主诊断观察器，用于保留启动失败时的观察；未知的 boot 失败根因尚未修复。runtime 恢复流程、预算与独立门禁保持，新候选完整 CI 待验证。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`，tree `f477642021d129ae9b5a64d87436f678db06d62f`。本固定点保留 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号误拒绝的修正，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，通过 Android 移动数据服务控制实际 WWAN/eth0 连接，关闭后核对用户/有效状态、当前连接、接口和 netd 销毁证据，再启用；逐应用元数据只允许精确迁移到 UNREACHABLE 并在恢复后返回；保留失败清理前的有界脱敏支持包。相对已记录的 668 候选，本次增量仅增加宿主诊断观察器，用于保留启动失败时的观察；未知的 boot 失败根因尚未修复。runtime 恢复流程、预算与独立门禁保持；a413源码与固定它的284配方完整CI均通过，各13/13阶段、5次真实新启动，两个原ZIP经独立runner实算摘要及原始完整gate复验通过。源码PR #7和配方PR #451已合并，实际merge tree与受测候选相同；当前配方原件还实际覆盖RPDB netId100→101，结果见[VERIFICATION.md](VERIFICATION.md)。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本固定点没有新的正式发布。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |

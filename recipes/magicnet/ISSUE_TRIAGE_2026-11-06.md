@@ -1,6 +1,6 @@
 # MagicNet Issue 与 PR 处理记录（2026-11-06）
 
-#436 的最新修订见文末 2026-11-13 节及 [VERIFICATION.md](VERIFICATION.md)。以下各日期保留当时的源码、发行与验收身份。
+#436 的最新修订见文末 2026-11-13 节及 [VERIFICATION.md](VERIFICATION.md)。以下各日期保留当时的源码、发行与验收身份。 当前状态以最新日期章节及验证页当前索引为准。
 
 ## 范围与结论状态
 
@@ -246,9 +246,9 @@ v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流
 
 ## 2026-11-13：#436 路由恢复验收的逐应用规则归属
 
-生产有界 TUN 恢复已随 v1.8.7 发行。最新源码 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173) 记录了 UDP 1→0→1、readiness false→true 和一次成功恢复，随后因 `recovery_rule_set_mismatch` 失败。现场差异为 eth0 netId 100→101 时同步更新的全局和逐应用规则；其余 netd 网络信息、接口/FIB 和 UID 范围保持。
+生产有界 TUN 恢复已随 v1.8.7 发行。本轮原始基线 `5edd36ba` 的 [Android 运行 43253655173](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43253655173) 记录了 UDP 1→0→1、readiness false→true 和一次成功恢复，随后因 `recovery_rule_set_mismatch` 失败。现场差异为 eth0 netId 100→101 时同步更新的全局和逐应用规则；其余 netd 网络信息、接口/FIB 和 UID 范围保持。
 
-[`58ccae52`](https://github.com/LIghtJUNction/magicnet-android/commit/58ccae52677fa95843eb2c0566c095385afbae49) 在采集器与独立门禁中补齐由 netd 元数据派生的逐应用 selectors，核对完整字段及重复次数，保留外部规则保护、既有恢复预算和证据 schema。源码 PR [#7](https://github.com/LIghtJUNction/magicnet-android/pull/7) 承载本轮候选；已完成的宿主回归与新 Android CI 状态分别见 VERIFICATION。#436 原报告的物理设备/OEM 触发原因仍需独立证据，本轮保持 Issue 开放。
+[`58ccae52`](https://github.com/LIghtJUNction/magicnet-android/commit/58ccae52677fa95843eb2c0566c095385afbae49) 在采集器与独立门禁中补齐由 netd 元数据派生的逐应用 selectors，核对完整字段及重复次数，保留外部规则保护、既有恢复预算和证据 schema。源码 PR [#7](https://github.com/LIghtJUNction/magicnet-android/pull/7) 承载本轮修订；最终受测固定点与合并结果见本节末，完整验证见 VERIFICATION。#436 原报告的物理设备/OEM 触发原因仍需独立证据，本轮保持 Issue 开放。
 
 
 后继 [`9dba9425`](https://github.com/LIghtJUNction/magicnet-android/commit/9dba94254780fb0a1a84a003608d5919a97de4f2) 根据新失败证据补入可恢复的单 eth0 AVD 夹具，避免 hosts-only 离线 DNS 实验期间 Android 在 Wi-Fi/eth0 之间另行选择默认网络（后续诊断确认eth0为模拟蜂窝接口）；严格外部规则比较保持。源码运行 43385059168 的默认网络迁移与整合运行 43385469784 的故障前 UDP 超时分别保留，均为 5/1/7 阶段结果。UDP 超时原因尚未确定，后继只增加清理前的有界脱敏支持采集，仍要求全新的 UDP 正反控制。9dba 的[整合43391099744](https://github.com/LIghtJUNction/MagicNet/actions/runs/43391099744)完整13/13、5次重启及发布质量门禁通过，实际覆盖netId100→102；但同树[源码43390671015](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43390671015)在RPDB恢复成功后，因eth0 IPv4默认路由600秒未恢复而失败，仍为5/1/7。清理前支持包捕获了UP链路、保留地址/TUN与缺失的Android IPv4路由。成功整合不覆盖此失败。
@@ -262,4 +262,10 @@ v1.8.7 已把 gitlink、README、DEPENDENCIES、`release.yml` 可复用工作流
 
 固定 668 的[配方整合 43407837059](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407837059)及 [Recipe checks 43407835916](https://github.com/LIghtJUNction/MagicNet/actions/runs/43407835916)成功：原始 Android 报告 13/13、5 次真实重启，精确 668 独立门禁 exit 0，完整构建、实际发布质量门禁和远端资产检查通过。RPDB UDP 为 1→0→1，cellular 记录 netId100→无→103、UID 元数据精确迁移至 UNREACHABLE52 并返回，最终默认路由/readiness/TCP 与 Wi-Fi 启用状态恢复通过。构建 artifact `14031630631` 的 digest 为 `2aa89ecb49c7b63bfadf99e4c11817da5f11549b51154ffb4b4b87bcd8478706`，由远端 CI 下载与清单校验核对；工作环境中断后没有本地独立复算。配方成功不覆盖源码升级重启失败，publish 被跳过。
 
-当前后继固定点为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`），增量仅为宿主诊断观察器，用于保留启动失败现场的观察，未修复未知的 boot 失败根因。runtime 恢复预算与独立门禁不变，配方仍为 0.3.22 / runtime 0.1.12。[隔离短测试 43417860968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968)完成 host 观察器27、重启6、工作流合同29、gate72项检查并通过；其五个已审查源码 blob 进入当前候选，临时 workflow 未合入。新候选完整 CI 待验证。全部历史失败继续保留，#436 原设备/OEM 触发原因仍开放；当前验证边界见 [VERIFICATION.md](VERIFICATION.md)。
+最终固定点为 `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`），配方受测head `284248b6d4c4913e064de69d6ee7cdebe5045e03`（tree `55793abdef24d23e97629d5b2894e75db49b3fcd`）。相对668的增量仅为宿主诊断；runtime恢复预算、生产源码与独立门禁不变。冻结诊断[43417860968](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43417860968)的host27、重启6、workflow29、gate72均通过，五个已审blob进入a413，临时workflow未合入。
+
+a413[源码Android43418093071](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43418093071)与284[完整整合43418588448](https://github.com/LIghtJUNction/MagicNet/actions/runs/43418588448)均通过13/13阶段与5次真实新启动；源码构建/质量/网络及配方检查、实际发布质量、资产验证均成功。原件由独立runner[源码43422960113](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43422960113)和[配方43425532180](https://github.com/LIghtJUNction/MagicNet/actions/runs/43425532180)下载核对SHA256，以完整原simulation运行未改gate，均exit0且字节不变。源码实际报告为同tree的d548合成提交，配方报告固定a413。
+
+当前源码RPDB为100/100/100、cellular100→无→103；配方RPDB为100/100/101，UID10135/prio40、权限及eth0/FIB均保持，实际动态覆盖合法重编号；其随后cellular另为101→无→102。UDP均1→0→1，耗时源码4/5000/4ms、配方7/5001/5ms，生产恢复0→1，最终TCP分别5/6ms。两份host清理前child/observer存活、ADBdevice，均有SIGTERM_sent而无EXIT文件；最终退出码、信号与清理完成保持unknown。
+
+[源码PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)合并为 `83582a9490312e6a84bbc3f63695aedfc9250576`，[配方PR #451](https://github.com/LIghtJUNction/MagicNet/pull/451)合并为 `dbd05dd419654dfd2a47b3e263953416d7109efe`，实际合并tree与上述受测候选相同。配方仍为0.3.22/runtime0.1.12；v1.8.8/10616为已核验预览，publish跳过，稳定版仍v1.8.7/10615。全部历史失败保留，新成功不证明668未知boot原因已修复；#436原物理设备/OEM触发原因继续开放。M37本轮未执行，完整证据与边界见[最终报告](../../docs/issue-436-recovery-verification-2026-11-13.md)、[索引](../../docs/evidence/issue-436-ci-2026-11-13.json)和[VERIFICATION.md](VERIFICATION.md)。
