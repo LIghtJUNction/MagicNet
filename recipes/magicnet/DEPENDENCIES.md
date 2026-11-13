@@ -19,7 +19,7 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `9dba94254780fb0a1a84a003608d5919a97de4f2`，tree `a0ebac755493dcd9c95f381cb1352c4f44f07d76`。本候选修正 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号的误拒绝，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，保留失败清理前的有界脱敏支持包。生产恢复流程及预算保持。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
+`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `5f96a190a08e50ea6654ef52117d5a730d044e05`，tree `fa540978e3feef6f6f01a9b5bdf6422916f48bb7`。本候选修正 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号的误拒绝，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，down 后须确认 Ethernet 服务停止 IP 客户端并由 netd 完全销毁旧网络，再 up；保留失败清理前的有界脱敏支持包。生产恢复流程及预算保持。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本候选未发布。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
