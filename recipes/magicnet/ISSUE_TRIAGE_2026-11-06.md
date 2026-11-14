@@ -269,3 +269,50 @@ a413[源码Android43418093071](https://github.com/LIghtJUNction/magicnet-android
 当前源码RPDB为100/100/100、cellular100→无→103；配方RPDB为100/100/101，UID10135/prio40、权限及eth0/FIB均保持，实际动态覆盖合法重编号；其随后cellular另为101→无→102。UDP均1→0→1，耗时源码4/5000/4ms、配方7/5001/5ms，生产恢复0→1，最终TCP分别5/6ms。两份host清理前child/observer存活、ADBdevice，均有SIGTERM_sent而无EXIT文件；最终退出码、信号与清理完成保持unknown。
 
 [源码PR #7](https://github.com/LIghtJUNction/magicnet-android/pull/7)合并为 `83582a9490312e6a84bbc3f63695aedfc9250576`，[配方PR #451](https://github.com/LIghtJUNction/MagicNet/pull/451)合并为 `dbd05dd419654dfd2a47b3e263953416d7109efe`，实际合并tree与上述受测候选相同。配方仍为0.3.22/runtime0.1.12；v1.8.8/10616为已核验预览，publish跳过，稳定版仍v1.8.7/10615。全部历史失败保留，新成功不证明668未知boot原因已修复；#436原物理设备/OEM触发原因继续开放。M37本轮未执行，完整证据与边界见[最终报告](../../docs/issue-436-recovery-verification-2026-11-13.md)、[索引](../../docs/evidence/issue-436-ci-2026-11-13.json)和[VERIFICATION.md](VERIFICATION.md)。
+
+## 2026-11-14 日常 Issue / 安全 / 冗余扫描
+
+公开 GitHub 仍只有两个开放 Issue：[#436](https://github.com/LIghtJUNction/MagicNet/issues/436)、[#440](https://github.com/LIghtJUNction/MagicNet/issues/440)。[#447](https://github.com/LIghtJUNction/MagicNet/issues/447) 与 [#449](https://github.com/LIghtJUNction/MagicNet/issues/449) 已于 2026-11-13 以 completed 关闭，仍为已锁定的 zashboard v3.16.0 默认面板，不另做内置。
+
+主仓库开放 PR：[#452](https://github.com/LIghtJUNction/MagicNet/pull/452) 承载 #440 可信 NAS 入口，mergeable_state=dirty（基于 #451 之前的 main，现会与 a413 固定点冲突），本轮不合并、不改 gitlink。[#448](https://github.com/LIghtJUNction/MagicNet/pull/448) 仍 dirty，且会把 gitlink 回退到 `406938e3` / v1.8.6，继续不得合并。源码仓库无开放 Issue；开放 PR [#8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 为 #440 实现（head `86828c8ae6c56e12f23330f551e6f2d9b41f8a38`，mergeable_state=clean），[#5](https://github.com/LIghtJUNction/magicnet-android/pull/5) 仍只改旧 Android CI 上联证据且基线已过期。本轮不向 `magicnet-android` 推送，也不关闭上述 Issue。
+
+当前 live pin：gitlink `a4135d5edc39af4895968359bf16e8aefefdaeac`（tree `f477642021d129ae9b5a64d87436f678db06d62f`），配方 0.3.22，公开稳定包 v1.8.7 / 10615。11-12 节使用当时的 `dc4433d1` / v1.8.7；11-13 节的 a413 仍是当前指针。
+
+### Issue 现状
+
+| Issue | 已合入源码（相对 11-13） | 仍开放的原因 |
+| --- | --- | --- |
+| #436 | 生产有界 TUN 恢复与 a413 模拟器 RPDB/cellular 验收仍以 PR #7/#451 为准 | 真机 OEM/netd 删除规则的触发者、物理 ARM64 与公网行为仍未验证。历史 668 升级重启失败根因未知。源码 PR #5 未合入，也不能单独关闭本 Issue |
+| #440 | 订阅历史迁移仍以 8ff12428 / PR #3 为准。NAS 入口实现在未合入的源码 PR #8 / 配方 PR #452 | 当前 pin a413 仍无 `subscription-trust` / `cli sub trust`。公网订阅继续强制 HTTPS、拒绝私网/CGNAT/元数据、每跳校验、禁止环境代理。不得把未合入 PR 写成已发布能力 |
+| #447 / #449 | 无新实现 | 已关闭 completed；保持既有锁定默认面板 |
+
+### 本轮配方仓修复
+
+`verify_live_pins` 原先只检查中文 `README.md` 的 gitlink 与已发布版本。`README.en.md` / `README.ru.md` 同样对外声明当前 gitlink 与 v1.8.7 / 10615，发布流程也会改这两份文件，但配方检查漏检。本轮让三份 README 都拒绝 gitlink 或 updater 漂移，并补回归。
+
+本地验证：`test-check-recipes.py` 15 passed，`test-release-plan.py` 41 passed，`test-release.py` 16 passed，`check-recipes.py` 8 packages / 62 Markdown，live pin `a4135d5e` / v1.8.7 10615，`check-workflows.sh` 通过。未运行 Android、真机或 recipkg 独立重建（M37）。
+
+### 代码漏洞扫描（只读，固定源码 a4135d5e）
+
+未发现可在本配方仓修复的新生产漏洞。抽查结论：
+
+- 订阅抓取仍 fail-closed：仅 HTTPS、`-q` 忽略 curlrc、`--max-redirs 0`、公网地址策略含 CGNAT/`::ffff:` 映射、禁止 `MAGICNET_SUB_PROXY` 与环境代理。重定向逐跳再校验。#440 仍是功能缺口而不是保护被绕过。
+- MCP 默认关闭，空 secret 拒绝授权，Bearer / 自定义头使用恒定时间比较。
+- 安装迁移、ZIP 成员路径、订阅事务 generation、规则 `local` 路径均有拒绝 `../` 与非普通文件的回归。
+- WebUI JSON 高亮走 highlight.js 转义后再 `v-html`，编辑器内容是用户本机配置，不是远程 HTML。
+- 主仓库工作流：可复用源码工作流与 gitlink 同为 a4135d5e；第三方 action 使用 40 字符 SHA；`recipe-check` 权限 `contents: read`；发布写权限仍限 `workflow_dispatch` + `mode=publish`。`check-workflows.sh` 用固定 SHA-256 校验 actionlint 1.7.12。
+- 源码第三方 action 同样使用 40 字符 SHA（含 `MemDeco-WG/setup-kam` 与 `dtolnay/rust-toolchain`）。
+
+未把静态抽查写成渗透测试或真机攻击面证明。若发现可利用的 root/MCP/订阅绕过，应按源码 `SECURITY.md` 私下报告，不在公开 Issue 贴复现步骤。
+
+### 冗余代码扫描
+
+对 `src/MagicNet/**/*.sh` 提取 417 个定义 / 411 个唯一函数名。仅在定义处出现的名称继续保留，不删除：
+
+- `kamfw_phase_action`：kamfw 阶段钩子。
+- `magicnet_*_apply` 加锁包装由 Rust `run_magicnet_function` 按名调用。
+- `magicnet_kernel_route_rule_start` / `end` / `fallback_rule` 与 `magicnet_ip6tables_nat_ensure`：生命周期与 IPv6 NAT 入口。
+- `_launch_run`：farewell/onboarding 覆盖 launcher 的局部函数（缩进定义，SC2317）。
+- `magicnet_hotspot_watchdog_start_unlocked`：由 `magicnet_hotspot_watchdog_${action}_unlocked` 动态调用。
+
+此前删除的 `magicnet_prepare_singbox_nodes` 包装仍不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用。本轮不删除产品测试或降低验收。
