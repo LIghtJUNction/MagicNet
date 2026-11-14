@@ -42,8 +42,15 @@ class LivePinTest(unittest.TestCase):
             "  android:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/"
             f"android-kernelsu-acceptance.yml@{GITLINK}\n"
         )
-        (self.root / "README.md").write_text(
+        readme = (
             f"Fixed implementation commit `{GITLINK}`\nPublished Android package v1.8.4 / 10612\n"
+        )
+        (self.root / "README.md").write_text(readme)
+        (self.root / "README.en.md").write_text(
+            f"current gitlink: `{GITLINK}`; current Android release: v1.8.4 / 10612\n"
+        )
+        (self.root / "README.ru.md").write_text(
+            f"текущий gitlink: `{GITLINK}`; текущий выпуск Android: v1.8.4 / 10612\n"
         )
         (self.root / "update.json").write_text(json.dumps({
             "changelog": "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.8.4.md",
@@ -51,7 +58,7 @@ class LivePinTest(unittest.TestCase):
             "versionCode": 10612,
             "zipUrl": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.8.4/magicnet_installer.zip",
         }))
-        self.git("add", "recipes", "README.md", "update.json", ".github")
+        self.git("add", "recipes", "README.md", "README.en.md", "README.ru.md", "update.json", ".github")
         self.git("update-index", "--add", "--cacheinfo", f"160000,{GITLINK},generated/magicnet-android")
         self.git("commit", "-m", "Synthetic pins")
 
@@ -68,10 +75,14 @@ class LivePinTest(unittest.TestCase):
             CHECK.verify_live_pins(self.root)
 
     def test_stale_readme_gitlink_is_rejected(self):
-        path = self.root / "README.md"
-        path.write_text(path.read_text().replace(GITLINK, OTHER))
-        with self.assertRaisesRegex(ValueError, "README.md does not record the current source gitlink"):
-            CHECK.verify_live_pins(self.root)
+        for name in ("README.md", "README.en.md", "README.ru.md"):
+            path = self.root / name
+            original = path.read_text()
+            with self.subTest(name=name):
+                path.write_text(original.replace(GITLINK, OTHER))
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the current source gitlink"):
+                    CHECK.verify_live_pins(self.root)
+            path.write_text(original)
 
     def test_stale_build_prompt_gitlink_is_rejected(self):
         path = self.root / "recipes" / "magicnet" / "BUILD_PROMPT.md"
@@ -164,10 +175,14 @@ class LivePinTest(unittest.TestCase):
                     CHECK.verify_live_pins(self.root)
 
     def test_stale_published_version_is_rejected(self):
-        path = self.root / "README.md"
-        path.write_text(path.read_text().replace("v1.8.4", "v1.8.1").replace("10612", "10609"))
-        with self.assertRaisesRegex(ValueError, "published updater"):
-            CHECK.verify_live_pins(self.root)
+        for name in ("README.md", "README.en.md", "README.ru.md"):
+            path = self.root / name
+            original = path.read_text()
+            with self.subTest(name=name):
+                path.write_text(original.replace("v1.8.4", "v1.8.1").replace("10612", "10609"))
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the published updater version"):
+                    CHECK.verify_live_pins(self.root)
+            path.write_text(original)
 
 
 if __name__ == "__main__":

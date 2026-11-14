@@ -43,14 +43,15 @@ def verify_live_pins(root):
     gitlink = gitlink_sha(root)
     version, code = published_updater(root)
     dependencies = (root / "recipes/magicnet/DEPENDENCIES.md").read_text()
-    readme = (root / "README.md").read_text()
     if gitlink not in dependencies:
         raise ValueError("DEPENDENCIES.md does not record the current source gitlink")
-    if gitlink not in readme:
-        raise ValueError("README.md does not record the current source gitlink")
+    for name in ("README.md", "README.en.md", "README.ru.md"):
+        text = (root / name).read_text()
+        if gitlink not in text:
+            raise ValueError(f"{name} does not record the current source gitlink")
+        if version not in text or str(code) not in text:
+            raise ValueError(f"{name} does not record the published updater version")
     verify_source_pins(lambda path: (root / path).read_text(), gitlink)
-    if version not in readme or str(code) not in readme:
-        raise ValueError("README.md does not record the published updater version")
     return gitlink, version, code
 
 
