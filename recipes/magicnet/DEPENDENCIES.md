@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.22 | 产品集成、M01–M68 与完整验收 |
+| magicnet | 0.3.23 | 产品集成、M01–M68 与完整验收 |
 | magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
 | magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
+| magicnet-web-console | 0.2.7 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -16,6 +16,8 @@
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
 
 control 统一公共状态、参数错误和有界只读订阅观察；runtime 统一 URL/节点身份、来源与恢复，根据已确认进程身份执行启停并保留未知配置与事务状态；delivery 统一模块 manifest、资产及正式发行身份。WebUI 从有效只读快照建立编辑基线和下一步建议，操作 ownership 与订阅读取状态仅留内存。合同入口见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，不得复制第二套状态机或增加无需求的常驻服务。
+
+WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
 ## 维护实现的固定来源
 
