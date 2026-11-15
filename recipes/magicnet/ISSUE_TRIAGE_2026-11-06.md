@@ -317,3 +317,9 @@ a413[源码Android43418093071](https://github.com/LIghtJUNction/magicnet-android
 - `magicnet_hotspot_watchdog_start_unlocked`：由 `magicnet_hotspot_watchdog_${action}_unlocked` 动态调用。
 
 此前删除的 `magicnet_prepare_singbox_nodes` 包装仍不存在。主仓库 `scripts/` 的发布/配方检查函数均被对应测试或工作流引用。本轮不删除产品测试或降低验收。
+
+## 2026-11-15：可信订阅与配置分流集成
+
+[源码 PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 已合并为 `cc818816e1b5000ec31ab0ff09a08d36a201048f`，包含精确 origin/CIDR 的可信本地订阅及受限 loopback SOCKS5。前文 a413 扫描仍表示当时的固定源码；不能继续据此说当前实现没有 trust 入口。当前候选 `45154757c104b56c8a5dad24c8386fddf4d94c89` 保留该实现，并接入 SUB-016、C-SUB-009、UI-SUB-013 与 M69 合同；没有整份覆盖过期 PR #452 的文件，也没有回退 #451 的 netd 验收。#440 的实际 NAS/设备验证仍未完成。
+
+本轮 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 修复托管路由插入优先级，保留 sniff/resolve/route-options、模式、拒绝、LAN 与 Tailnet 保护，并保留原数组顺序。模板增加有明确后缀边界的 mDNS；home.arpa/.lan 不在本次修复范围。规则发行固定至 2026-11-15，下载和每个清单成员均核验摘要。全部新旧失败与候选 CI 状态见 [VERIFICATION.md](VERIFICATION.md)。当前仍未公开新 Android 版本；#436 的物理设备触发原因与 #440 的实网验证保持开放。

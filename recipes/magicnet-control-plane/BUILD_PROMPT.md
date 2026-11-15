@@ -4,6 +4,8 @@
 
 依赖 runtime 负责实际进程生命周期、订阅与网络策略；必须委托它的事务，不在 MCP 或 WebUI 再建一套特权逻辑。集成验收：人类 CLI、schema-1 和认证工具操作同一设备状态，同一失败不被包装成成功。
 
+control 0.2.10 按 SUBSCRIPTION_INTERFACE.md 的 C-SUB-009 管理私密订阅信任清单，并提供仅接收来源 scheme、host、port 的检查与解析入口。来源授权统一委托 runtime/SUB-016；check-source 不做 DNS，resolve-source 验证整条下载链和全部解析地址后才输出私密执行器数据。trust set/clear 复用配置锁与订阅来源锁，恢复 pending 时拒绝，不触发下载或重启；不新增机器写例外、MCP 自动披露或状态域。公网 resolve-host 继续保持原保护。
+
 control 0.2.3 增加 C-SUB-008：公共 sub.status、私密 sub.inspect、canonical producer 与支持包共用有界来源观测。URL 清单 64 KiB、本地正文 8 MiB；坏编码、NUL、链接、非普通文件和超限明确失败，缺失允许未配置。读取不创建任何目录或文件；canonical 与支持包的未知来源/数量不能伪报为零，service.status 保留独立服务事实。
 
 ## 人类入口
@@ -42,7 +44,7 @@ MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照�
 - [STATE_CONTRACT.md](STATE_CONTRACT.md)
 
 - [MCP_TOOL_SCHEMAS.md](MCP_TOOL_SCHEMAS.md)：完整已观察的工具目录。
-- [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–008，完整多源入口、公共/私密读取、逐源批次能力、计数、恢复及共享只读观测；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。
+- [SUBSCRIPTION_INTERFACE.md](SUBSCRIPTION_INTERFACE.md)：C-SUB-001–009，完整多源入口、公共/私密读取、逐源批次能力、计数、恢复、共享只读观测与显式来源授权；subscription_batch_v1 是重建新增能力，不能假称旧源码已经实现。
 
 ## 0.2.4 目录与默认 TUN 栈
 

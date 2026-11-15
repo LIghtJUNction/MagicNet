@@ -6,11 +6,30 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `820b690d413e4f393db24962366e1d809fc48489`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `45154757c104b56c8a5dad24c8386fddf4d94c89`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
-| 配方 | 0.3.23，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.24，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | WebUI 精简已通过[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 合入；最终本地与浏览器视觉回归结果见下节，全量 CI 尚在执行。#436 的历史完整验收保留于 2026-11-13 节，真机 OEM 触发仍开放；其余 Issue 状态见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) 2026-11-15 节。稳定发行保持 v1.8.7 / 10615。 |
+| 当前完成与开放项 | 配置与分流候选已提交 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)，定向本地检查通过，完整 CI 与正式发布待完成。可信 NAS 入口已由源码 PR #8 合入，设备验证仍开放；WebUI 前次完整 CI 的窄屏失败已修复，当前结果见下节。 |
+
+## 2026-11-15：配置、分流与发行候选
+
+源码 `45154757c104b56c8a5dad24c8386fddf4d94c89`，tree `5d7579034b549318213e153cbbee1b8b9b54cbd5`，包含四次增量提交：窄屏标签、配置/规则固定值、分流顺序、正常化回归与授权范围说明。模板固定 `da3d375d024e0982265bc67c48a87de7bb4f9424`；其 [PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) 已合入，合并提交 `f9c8495f3ad73d8297fc24eff95970ec8de0e20d`。
+
+| 范围 | 当前证据 |
+| --- | --- |
+| 默认模板 | 生成一致性、DNS 引用与全部 37 项模板测试通过；[CI 43686539387](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/43686539387) 成功。config SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。 |
+| 正常化 | routing-template 4、routing-optimizer 11、routing-modern 18 项通过；完整输入不变、正常化幂等和受保护 DNS 前缀原序保持。首轮 [Rules Release Integration 43686759048](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43686759048) 在 `c86b6540` 因旧测试固定 lmm 为 DNS 第一条失败；当前修订要求 mDNS 第一且 lmm 仍先于两个模式规则，不删除原业务断言；`45154757` 的 [Rules Release Integration 43687107244](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107244) 已成功，真实规则下载与配置匹配检查通过。 |
+| 分流顺序 | 11 项真实物化回归通过，包括应用/域名/广告全部六种顺序、原数组保真及幂等；resolve/route-options 单独及连续的 18 个组合通过。旧基线能复现业务路由提升和域名规则早于 sniff 的失败；补保护前，新准备动作用例的六种顺序均失败。 |
+| 相邻运行逻辑 | app policy failure 12 项，以及 app-routing、route-apply、ad-routing、block-apply、action-routing、hotspot-routing 的定向脚本通过；原子发布失败与缺少必要 sniff 保留旧配置。 |
+| 模板升级 | template-pin、repository-migration、install-refresh 通过；install-template 为 20 passed / 2 skipped（宿主缺 BusyBox，真实核心为 CI opt-in）。精确旧官方 pin 迁移，自定义 digest 保留、结果权限 0600、重复迁移幂等。 |
+| DNS 物化与规则资产 | 4 个 profile × 启停 Tailscale 的 8 个组合保留原生 mDNS；bundled-rules 20 项通过。固定发行 `rules-20261115-585094101194f32e` 的归档摘要、安全展开及 116 个规则集清单逐项核验通过；manifest 摘要见 DEPENDENCIES。 |
+| WebUI | 窄屏状态允许断行，新增实际节点边界断言；17 项定向单元检查、类型与语法检查通过。完整浏览器回归由当前源码 CI 重新执行。 |
+| 整包与发布 | 当前 [PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 的全量质量、锁定核心、构建、Android 与网络证据尚待完成；正式发布未完成，稳定索引保持 v1.8.7 / 10615。 |
+
+`.local` 和链路本地反向查询的规则范围来自 [RFC 6762 第 3、4 节](https://www.rfc-editor.org/rfc/rfc6762.html)；锁定核心具有原生 mDNS 传输。本次未验证 Android 物理设备组播、实际 NAS 或家庭 DNS，home.arpa/.lan 行为没有据此改写。源码 PR #8 已合入可信本地订阅授权；本轮把对应 SUB-016/C-SUB-009/UI-SUB-013 和 M69 合同接入当前配方，不把既有订阅历史修复当成新增实现。
+
+前次失败保留：源码 [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 为 810 passed / 5 skipped / 1 failed，失败是 320px 俄语状态标签溢出；配方 [43683319759](https://github.com/LIghtJUNction/MagicNet/actions/runs/43683319759) 的 Android 在注入路由故障前 UDP 基线超时，`recovery_tick_count=0`。同期源码 [Android 43682884867](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884867) 成功只适用于旧 tree，不能替代当前候选或正式发布门禁。
 
 ## 2026-11-15：WebUI 视觉精简
 
@@ -20,7 +39,7 @@
 | --- | --- |
 | 最终本地 WebUI 检查 | 完整 `npm run check` 通过：388 项测试、Vue 类型检查与生产构建。反馈推荐文案、表单和隐私约束继续检查；旧装饰图标断言已随设计删除。 |
 | 最终浏览器视觉回归 | 固定源码 `820b690d` 的 [visual-evidence 43682885222](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682885222/job/132717181280) 成功，312 项 Playwright 用例通过，生成 192 张 PNG。覆盖 320、360、390、430px 手机、844×390 横屏、1280×900 桌面及浅深主题。 |
-| 全量源码 CI | [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 的完整交互检查，以及构建与 Android CI 尚在执行；本表不把视觉子集的成功扩展为完整流水线成功。 |
+| 全量源码 CI | [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 后续失败：810 passed / 5 skipped / 1 failed，320px 俄语状态标签越界；修复与重新验收见本页上节。视觉子集成功不代表完整流水线成功。 |
 | 配方归档 | 最终源码指针集成后的 check、pack、归档检查与完整 build 提示词检查通过，闭包为 8 包、62 个 Markdown 文件；活动指针的 17 项现有测试通过。[Recipe checks 43682952340](https://github.com/LIghtJUNction/MagicNet/actions/runs/43682952340) 同样通过。 |
 
 最终截图 artifact `14149636251` 下载后独立计算的 SHA-256 为 `ba117498b3721dc42fd08c0ae0ccfb9ef1258908b60beba473ab70073e95dadb`，与 GitHub digest 一致。桌面与手机代表页面已人工复查。浏览器使用显示与原生桥夹具；本轮未执行物理设备 WebView 验收。此前 Android 生命周期结果继续保留原提交、产物和环境身份。本次未发布 Android 安装包，稳定发行仍为 v1.8.7 / 10615。

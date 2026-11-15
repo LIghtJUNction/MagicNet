@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.12"
+version = "0.1.13"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -18,6 +18,8 @@ source = "../magicnet-routing-policy"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.1.13 增加 SUB-016/SUB-A23–A26：设备以精确 origin 与本地 CIDR 明确授权订阅来源，使用直连或指定的 loopback SOCKS5。每次解析、重试和同源跳转核对全部地址，公网下载链不取得本地权限。复用受管 curl、配置锁与订阅事务，无新增运行依赖；保留 0.1.12 的 netd 归属验收。
 
 0.1.12 补齐 CON-A09 的 netd 规则归属证据：采集器与独立门禁分别从网络元数据派生全局和逐应用 UID selectors，核对完整字段和重复次数，仅接受已证明归属的 netId 变化。证据 schema 与生产恢复预算保持。
 

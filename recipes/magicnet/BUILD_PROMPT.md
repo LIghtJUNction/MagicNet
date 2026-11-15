@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.23）
+# 重建 MagicNet（配方 0.3.24）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M68；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M69；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@820b690d413e4f393db24962366e1d809fc48489`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@45154757c104b56c8a5dad24c8386fddf4d94c89`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -32,14 +32,15 @@
 - **控制面未知值（M68）：** `api select` 缺参返回用法错误且不选择节点；`service toggle` 遇 unknown 拒绝启停。有效透明配置缺失、损坏或存在多个透明入站时，effective 保持 unknown；事务目录存在但 phase 缺失/空/不可读时同样 unknown。机器状态与 canonical 采用同一判断，不以 configured 填补观测。
 - **公开状态与隐私：** 每个域只有一个 `.state/machines/*.state` canonical 文件，原子发布；跨域使用可恢复事务。机器接口由 schema-1 dispatcher 完整接管，能力、写操作例外及错误语义遵守 control 合同。订阅、SSID/BSSID、节点名、密钥、原始 UID、设备标识及自由错误文本不进入公共状态、MCP 自动资源或发布物。
 - **订阅与恢复（M11–M13、M30–M47）：** 保留多源整批事务、逐源原生数量下界、稳定身份、同名/冲突判断、来源归属、VLESS Encryption、B/C 草稿及回读。等价节点合并忽略显示名并保留来源；身份明确的同源引用随重命名更新。公共/私密来源共用 C-SUB-008 的有界零写入观察。
+- **可信本地订阅（M69）：** 默认远程来源仍只允许公网 HTTPS。私有授权表仅按精确 HTTP/HTTPS origin 与明确的本地 CIDR 放行 NAS/Tailnet；每次请求、重试和重定向前验证全部解析地址，并固定数值目标。可选代理仅为显式端口的字面 loopback SOCKS5，不自动启动 Tailscale 或代理，不采用环境代理。CLI 授权修改不抓取或启动服务；WebUI 接受 HTTP 语法不代表授予网络权限。遵守 SUB-016、C-SUB-009、UI-SUB-013 的限制、私密与失败语义；升级保留设备授权和订阅历史，所有发布包剔除构建机授权，新装默认无授权。
 - **持久化与幂等：** 暂存目录晋升后，自有规则、缓存、Tailscale 路径和 checkpoint/last-known-good 继续有效，外部路径与停止意图保留。网络策略恢复保留最初完整共享 UID、策略与逐项进度；回执重放也先核对当前 marker、owner 和 journal。模块目录 manifest 及引用资源完整。
 - **核心生命周期（M41–M43、M48）：** 启动超时不传入长期守护；核心就绪前由启动者回收，就绪后脱离旧命令组超时。Android mksh 32 位 PID 校验准确；日志尾读索引按请求行数分配。同步固定上游并保留 fork 协议和生产 tags；握手失败清理连接/回调，流挂接与关闭共享一致并发状态。
-- **路由与 DNS（M49、M50、M55、M60）：** 保留 POLICY_INVENTORY 的五个指定拒绝目标及端口边界、16 个教育后缀和完整优先级。删除 Voice 专用脚本、Sukka 数据及 IP/端口规则，保留普通 ChatGPT 域名/应用、meta-openai、ai-chatgpt 和 DNS。受管未知域名使用经 proxy 的 doh-cloudflare；代理不可用时失败。缺失的 default_domain_resolver 使用 bootstrap-local-dns；已有 resolver、显式 profile、独立配置 DNS 图、国内/Direct/LAN/Tailnet 规则保留。只迁移精确旧官方模板 pin，保留自定义 repo/ref/digest。
+- **路由与 DNS（M38、M49、M50、M55、M60）：** 保留 POLICY_INVENTORY 的五个指定拒绝目标及端口边界、16 个教育后缀和完整优先级。删除 Voice 专用脚本、Sukka 数据及 IP/端口规则，保留普通 ChatGPT 域名/应用、meta-openai、ai-chatgpt 和 DNS。受管未知域名使用经 proxy 的 doh-cloudflare；代理不可用时失败。缺失的 default_domain_resolver 使用 bootstrap-local-dns；已有 resolver、显式 profile、独立配置 DNS 图、国内/Direct/LAN/Tailnet 规则保留。只迁移精确旧官方模板 pin，保留自定义 repo/ref/digest。托管应用、自定义域名、广告规则按该顺序插入；保护 DNS、sniff/resolve/route-options 准备动作、模式、拒绝、LAN 与真实 Tailnet 规则，显式 action:route 不提高业务优先级，原数组保持原序。交错于后置保护前的用户规则保持已有优先级；六种物化顺序与重复应用结果一致。`.local` 与 RFC 6762 的 IPv4/IPv6 链路本地反向区域使用原生 mDNS，先于模式的公网 DNS；失败无公共后备，home.arpa 与 .lan 不因此获得本地解析。范围、边界与固定规则资产按 POLICY-A26–A33 验收。
 - **安装与升级（M51、M54）：** 状态统一 `.state`，缓存/私密临时载荷统一 `.cache`；旧 `.local/state`、`.tmp` 作一次迁移输入。冲突保留目标并私密保存旧数据，失败不丢数据；移除旧 network-card 图标。安装/卸载共用固定 kamfw/launcher.sh，移除重复 lib/kamfw-web，保留浏览器回退、有界等待与错误传播。
 - **锁与监督（M52）：** 配置锁记录实际执行 shell PID 和启动身份，活/暂停/未知 owner 保留互斥。停止先清理自有热点路由/DNS，再结束核心。fswatch 在有界锁内重查，重复启动保留健康 PID；长期进程不继承锁 FD。controller 与框架 lifecycle 锁分离、顺序固定；生成文件相对路径排除保留。用真实固定框架验证首次/重复/并发启停、忙锁与排除规则。
 - **原生 TUN（M53）：** 按 sing-box 1.15 省略弃用 stack，生成器、模板、旧快照恢复与健康状态一致；更新 M29 的默认栈要求。native_tun_stack 与 effective.stack=default 表示配置。Android CLI 选择系统路由且无显式接口/网络绑定时，监控为空仍允许系统路由尝试；依赖真实接口的配置继续等待。失网取消旧异步更新，恢复后重置，不伪造接口或联网状态。
 - **联网、诊断、打包（M56–M58）：** 低频 Google 检查、明确警告、持久指数退避及按证据恢复遵守 CONNECTIVITY_CONTRACT，界面只读缓存。正式包提供固定 curl/OpenSSL/zlib、内嵌 CA、许可和来源，在无系统 curl 的 Android 验证执行器及 TLS 正负控制。单文件诊断有界、脱敏、关联路由/核心/订阅，含 detached supervisor 日志与 HTTPS 能力；保留可解析 JSON 和真实阶段，只用已支持的只读入口。最终 core/full/别名/全部组件 ZIP 独立拒绝测试开发目录，夹具遵守 sanitize→split 次序。
-- **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的未完成范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
+- **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的真机验证范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
 - **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定的一次性 x86_64 Android/KernelSU AVD 在稳定的单 eth0 上联下主动删除精确自有 RPDB 规则，并执行 eth0 down/up，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。netd 网络重编号须由不变的网络元数据与接口/FIB 派生权限对应的全局规则和逐应用 UID selectors，逐项核对完整字段和重复次数，仅替换 netId；其余规则变化仍失败。现场 OEM 触发原因与模拟器可复现恢复分开记录。
 
 CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状态并通过 Android 服务临时关闭 Wi-Fi；在有界等待内取得连续两次相同的单 eth0 netd/RPDB/出口基线后才允许注入。固定镜像的 eth0 是模拟蜂窝接口，故障前须将唯一默认 phone/数据订阅、启用状态与当前 CONNECTED/WWAN/eth0 连接及 netd 网络编号对齐。使用 `cmd phone data disable/enable` 控制其真实生命周期；关闭后须有界确认用户/有效数据均关闭、连接状态断开、当前精确连接为空、接口 DOWN，且 netd 旧 eth0 网络已销毁。仅允许原逐应用 UID 元数据精确转移到 UNREACHABLE，其余元数据不变；重新启用后原归属恢复，只允许 eth0 netId 更新。保留独立延迟 enable guard 并核对 `restore_method=android_mobile_data_toggle`，恢复后仍须实际路由、就绪与应用 TCP 成功。finally 恢复并核对原 Wi-Fi 启用布尔值，准备、关闭或恢复证据缺失即失败。报告保留 `cellular_lifecycle` 三阶段证据；受控蜂窝重连与 Wi-Fi 切换恢复分别验收，临时 Wi-Fi 开关不证明后者。
@@ -56,7 +57,7 @@ CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状
 
 新构建上下文只接收完整递归 Markdown 配方和明确允许的通用工具/外部资源。从空实现目录开始，不读取、复制、调用旧 MagicNet 实现、历史源码或旧测试作为产品基线。源码路径不能成为补需求的前提。
 
-允许复用经许可的固定 sing-box 协议/密码学实现、规则数据和第三方工具，范围由 engine 与 delivery/EXTERNAL_ASSETS 定义；标注复用来源。MagicNetRules 固定 `f3335f9420d07b8c50b26488df2a9492da6bbb44`，仅复用规则及必要描述/许可，并核实发行资产与提交对应。MagicSingBox 历史模板是观察来源；新默认配置依据 policy 完整合同生成。旧实现的六个嵌套子模块不是独立实现必须继承的结构。
+允许复用经许可的固定 sing-box 协议/密码学实现、规则数据和第三方工具，范围由 engine 与 delivery/EXTERNAL_ASSETS 定义；标注复用来源。MagicNetRules 固定 `c4ad0a94f35af2b7950b47362e1c23e583209790`，仅复用规则及必要描述/许可，并核实发行资产与提交对应。MagicSingBox 历史模板是观察来源；新默认配置依据 policy 完整合同生成。旧实现的六个嵌套子模块不是独立实现必须继承的结构。
 
 [REWRITE_CONTRACT.md](REWRITE_CONTRACT.md) 的 M59 另定义观察原版后的跨层替换：同输入比较框架、Shell、CLI/MCP、WebUI、安装与打包的外部结果及持久化副作用，包含联网维护与诊断。该路径与无旧源码独立重建分别记录。只检查/打包配方无需初始化旧源码子模块。
 

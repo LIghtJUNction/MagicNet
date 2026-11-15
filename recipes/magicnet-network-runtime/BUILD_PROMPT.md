@@ -25,8 +25,11 @@ config apply 对有效配置和规则指纹无变化时不重启；transparent a
 
 ## 订阅
 
-URL 来源每行一个公网 HTTPS，最多五个；与本地文件来源互斥。完整定义和来源证据以 SUBSCRIPTION_CONTRACT.md 的 SUB-001–SUB-015 为准；所有入口统一规范化、去重与缓存身份，同一主机的不同 path/query 不能误并。支持 sing-box JSON、Clash/Mihomo YAML、base64 与分享链接/文本；原生 VLESS/VMess/Trojan/SS/SOCKS/Hysteria2/AnyTLS/TUIC；复杂 TLS/transport、别名、块标量与转义需要完整转换器，缺转换器明确拒绝，不猜内容。VLESS encryption 必须遵循 engine 的完整字段合同，不能静默剥离，也不能用短字段限制截断长密钥。
-下载每跳验证 URL/TLS、公网解析地址和重定向，拒绝本机/私网/metadata 等目标及降级，防 DNS rebinding。用受控路径，不读用户 curl 配置或危险 loader/proxy 环境。IPv4-mapped 解析结果按嵌入 IPv4 校验并钉选。未配置 UA 时，默认标识遇 HTTP 403 在同一预算内改用 `clash.meta` 重试一次，不落盘、不覆盖用户 UA（#434，SUB-A21）。
+URL 来源每行一个，最多五个；默认要求公网 HTTPS，显式授权的本地 HTTP/HTTPS 来源遵守 SUB-016；与本地文件来源互斥。完整定义和来源证据以 SUBSCRIPTION_CONTRACT.md 的 SUB-001–SUB-016 为准；所有入口统一规范化、去重与缓存身份，同一主机的不同 path/query 不能误并。支持 sing-box JSON、Clash/Mihomo YAML、base64 与分享链接/文本；原生 VLESS/VMess/Trojan/SS/SOCKS/Hysteria2/AnyTLS/TUIC；复杂 TLS/transport、别名、块标量与转义需要完整转换器，缺转换器明确拒绝，不猜内容。VLESS encryption 必须遵循 engine 的完整字段合同，不能静默剥离，也不能用短字段限制截断长密钥。
+下载每次请求、重试和跳转均验证 URL/TLS、全部解析地址与下载链边界，并钉选已核对的数值 IP，防 DNS rebinding。公网链保持 HTTPS/public；受信任链限定同一 scheme、主机、端口，全部地址须属于该 origin 的明确 CIDR，公网跳转不能借信任清单升权。用受控路径，不读用户 curl 配置或危险 loader/proxy 环境。IPv4-mapped 解析结果按嵌入 IPv4 校验并钉选。未配置 UA 时，默认标识遇 HTTP 403 在同一预算内改用 `clash.meta` 重试一次，不落盘、不覆盖用户 UA（#434，SUB-A21）。
+
+runtime 0.1.13 的私密 `.config/sing-box/subscription-trust.list` 仅由设备 CLI 明确管理，按 SUB-016 限定 origin、本地 CIDR 与可选 literal loopback SOCKS5；缺失或空清单保持默认拒绝 HTTP/本地地址。CLI、WebUI、安装向导和定时刷新共用授权，界面接受 HTTP 语法不产生授权。复用现有受管 curl、锁与事务；信任更新不下载、不重启。升级保留设备已有授权和订阅历史，发布包不携带构建机授权；历史结果与当前运行证据分别报告。
+
 候选来源、完整 JSON 节点数组、合并配置、selector 选择、用量和 journal 同属一事务。jq 结构化合并，禁止用 AWK/正则改 JSON。空/不合格组 fail-closed；节点命名碰撞不覆盖受控服务 selector。
 逐源转换完整性先于跨源合并：同名不同端点保留，真正重复可合并并保留来源；不能用去重后的总数与去重前原始条数比较而误拒多源，也不能为避免拒绝而放过丢字段。任一来源获取失败且无同身份缓存，或无法完整转换，整批保留旧代。新增批次状态采用 control 的 SUBSCRIPTION_INTERFACE.md / subscription_batch_v1，区分本次候选与旧已保存配置，不能只报旧 configured_count。
 引用只阻断无法确认目标的实际冲突，指向无关 `base` 的 detour 不能阻碍两个异端点 `HK` 保留；允许的重命名与同源引用重写按 SUB-007。每个有可靠原生数量的来源，在用户过滤和跨源合并前，按一致的有效节点计数与完全重复折叠语义独立校验转换数量下界；同源完全重复可折叠，其他来源不能补数。未知格式允许转换，未知计数不能公开为已确认零；数量通过仍需独立验证字段语义。

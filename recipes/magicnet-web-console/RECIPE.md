@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.7"
+version = "0.2.8"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.8 增加 UI-SUB-013：接受 HTTP/HTTPS 来源语法，所有来源由设备后端执行同一授权；界面不自动创建信任，拒绝时保留草稿、有效配置与任务所有权。流量路径的名称、状态和说明在 320px 俄语界面中完整换行，不越出各自节点；继续遵守 0.2.7 的克制视觉、可访问性和真实状态合同。复用既有接口与依赖。
 
 0.2.7 以统一的中性色、蓝色操作、留白和静态路径组织全部页面。普通分区去除卡片堆叠，标题减少重复，Logo 返回概览；删除模型署名与装饰性无限动效。视觉合同与验收见 DESIGN.md、BUILD_PROMPT.md 和 ACCEPTANCE.md。
 

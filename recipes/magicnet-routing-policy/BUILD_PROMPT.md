@@ -1,6 +1,6 @@
 # 默认路由、DNS 和规则数据
 
-交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision ba5793b41fd06704102116fe2536eef5988f2905（MagicSingBox），`config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`；规则集合 revision f3335f9420d07b8c50b26488df2a9492da6bbb44（MagicNetRules）。
+交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision `da3d375d024e0982265bc67c48a87de7bb4f9424`（MagicSingBox），`config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`；规则集合使用 MagicNetRules revision `c4ad0a94f35af2b7950b47362e1c23e583209790`、release `rules-20261115-585094101194f32e`，manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`。
 复用上游规则数据需要其许可与可获取性；数据是外部前提，配方不含 .srs 或原配置源码。没有数据时应明确缺失，不用空文件替代真实分类。
 
 先读 POLICY_INVENTORY.md 的公开标签/默认值。默认 tun-in/magicnet0 和 loopback mixed-in，本地管理 API；runtime 在显式模式切换中物化 ebpf，不能在这里加 auto/TProxy/Redirect。
@@ -9,19 +9,33 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 
 ## 规则次序
 
-基础入口处理（53 端口 DNS 劫持、嗅探、DNS 协议劫持、ICMP 与 `0.0.0.0` 保护）→ 指定域名拒绝 → 显式 mode → LAN/保留地址保护 → 原生应用提示 → 广告分类 → 业务分类 → 一般国家 IP/final。
+标准模板按以下次序处理：基础入口处理（53 端口 DNS 劫持、嗅探、DNS 协议劫持、ICMP 与 `0.0.0.0` 保护）、指定域名拒绝、显式 mode、LAN/Tailnet 与保留地址保护、用户托管策略、原生应用提示、广告分类、业务分类、一般国家 IP/final。用户托管策略内部依次为应用直连、应用代理、自定义域名、广告允许、广告拦截。
 具体 AI 在一般 AI 前，Gemini/YouTube 在 Google 前，iCloud 在 Apple 前，Bing/开发/游戏服务在 Microsoft 前，游戏下载在游戏社区/登录前，Telegram 在一般通信前。已知外国服务域不能因解析到 CN IP 被错误直连。
 大陆教育域名分类置于既有 DNS 防护之后、后续国外学术、AI、游戏、开发和媒体分类之前；具体插入点与范围见下节。其他既有规则保持相对次序。
 业务 DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。以下指定域名拒绝只作用于路由，保持 DNS 捕获和解析配置。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
 不能恢复泛 analytics/tracker/github/captive 子串匹配。国内连通性探针是显式例外，不等于任意 captive 域放行。
 
+### 托管规则的稳定插入
+
+物化应用、域名和广告策略时，只替换当前策略拥有的规则，再将新规则插入最后一个保护规则之后。保护范围包括显式模式、`sniff`、`resolve`、`route-options`、DNS 劫持、原生拒绝、ICMP 与保留 IP 拦截、LAN、`preferred_by` 及指向实际 Tailscale endpoint tag 的路由。`resolve` 与 `route-options` 是非终止准备动作，分别准备解析结果和连接选项；新增终止路由不能越过它们。指定拒绝目标的精确域名与端口范围保持不变，Tailnet 保护不能依赖后面恰好存在 LAN 规则。
+
+普通业务规则显式写 `action: route` 或省略该字段时，插入优先级相同；不得仅凭存在 `action` 字段将其提前。其他原有规则的内容和相对次序必须完整保留。若用户配置把业务规则夹在保护规则之间，新规则仍插在最后一个保护规则之后，较早的业务规则保留原优先级；不能通过重排原数组声称覆盖了这些业务规则。
+
+应用、域名和广告三个入口的六种应用顺序必须收敛到相同的托管规则次序，重复应用不增项、不漂移。域名入口位于已有应用策略之后，广告入口位于已有应用和自定义域名策略之后。非空自定义域名策略要求配置中存在 `sniff`，并在它之后执行；缺少嗅探或生成、验证、发布失败时保留原配置。清空策略只撤销该入口拥有的规则，保留原子发布与暂存文件清理。
+
 ### 默认 DNS 出口与引导解析
 
 规则模式下，未匹配显式 DNS 分类的查询使用 `doh-cloudflare`，其 HTTPS 连接必须经 `proxy`。模板的 `dns.final` 与 runtime 生成的默认 `evaluate/respond` 路径保持一致；新安装、升级、订阅刷新和重复应用 profile 都不得恢复直连 fallback。代理不可用或尚无节点时，默认查询失败，不自动交给本地解析器。
 
-`bootstrap-local-dns` 保留为代理节点地址的引导解析器；受管配置缺少 `route.default_domain_resolver` 时指向它，已有显式 resolver 保留，避免将合法用户引导图强制重写。默认图不在连接代理之前依赖同一代理解析节点域名。国内分类、LAN/Tailnet 与显式 Direct 模式的 DNS 规则继续使用原有本地加密解析器。独立导入配置在默认 profile 下保留自己经过验证的 DNS 图；显式 DNS profile 保持既有选择语义。
+`bootstrap-local-dns` 保留为代理节点地址的引导解析器；受管配置缺少 `route.default_domain_resolver` 时指向它，已有显式 resolver 保留，避免将合法用户引导图强制重写。默认图不在连接代理之前依赖同一代理解析节点域名。除下述 mDNS 范围外，国内分类、LAN/Tailnet 与显式 Direct 模式保留原 DNS 规则及次序；启用 Tailscale 后使用其既有 MagicDNS 规则。独立导入配置在默认 profile 下保留自己经过验证的 DNS 图；显式 DNS profile 保持既有选择语义。
 
 诊断需要检查默认查询实际引用的 DNS server、detour 与配置的出站链，不能仅因服务器列表中存在某个公共 DNS 厂商或出站名为 proxy 就报告受保护。默认规则类型元数据、空匹配列表和其他中性值不能掩盖无条件直连。受管默认拒绝禁用 TLS 证书验证的远端；profile 应用失败恢复原持久化意图或原不存在状态，复用配置锁并诚实报告回滚失败。WebUI 初始默认值与机器响应一致。配置检查、锁定核心的隔离查询测试和 Android 实际流量结果分别记录；静态规则匹配不作为设备流量结论。
+
+### 本地链路 mDNS
+
+默认模板增加原生 `type: mdns` 解析器 `lan-mdns`，只接管 POLICY_INVENTORY.md 列明的六个后缀：`.local` 名称及 RFC 6762 的 IPv4/IPv6 链路本地反向区域。该 DNS 规则先于 Direct/Global 模式的公网解析规则，按完整后缀边界匹配；它不增加对应业务路由规则。名称与反向区域分别见 [RFC 6762 第 3 节](https://www.rfc-editor.org/rfc/rfc6762.html#section-3)和[第 4 节](https://www.rfc-editor.org/rfc/rfc6762.html#section-4)。
+
+`lan-mdns` 使用可用的本地组播接口，不配置公共或系统 DNS 后备；无可用接口或无人响应时查询失败。未指定接口时的选择遵循 [sing-box mDNS 文档](https://sing-box.sagernet.org/configuration/dns/server/mdns/)。`home.arpa`、`.lan` 和其他私网反向区域沿用旧策略，不能据此宣称全部私网名称已能解析。未知公网域名保留代理 DNS 默认，节点引导解析与 Tailscale 的 `ts.net` MagicDNS 保持原义；组播连通性必须另做核心与设备验收。
 
 ### 指定域名拒绝
 
@@ -71,7 +85,7 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 
 最多 256 条规则、64 个自定义出口、每组 128 个成员；名称不为空、不含控制字符，最多 256 UTF-8 字节；域名使用 ASCII/Punycode 域后缀，应用使用带点包名。规则以 `(kind,value)` 唯一，目标必须存在。自定义 tag 不得覆盖订阅、内置出口或 endpoint；组/绕行引用不得缺失或成环。支持 selector/urltest 与 SOCKS、HTTP、Shadowsocks、Trojan、VLESS、VMess、Hysteria2、TUIC、AnyTLS 的受限结构化字段，最终以锁定内核的真实校验为准；不允许任意顶层内核字段混入这个扩展。WebUI 提供常用类型，复杂协议仍可经完整覆写编辑器处理。
 
-编译保留原数组及其相对次序。应用与域名规则位于指定域名拒绝、显式模式、DNS 劫持、LAN 和 Tailnet 保护之后、普通业务分类之前。增量规则的 DNS 使用相同应用/域名条件与次序；用户增量的拦截目标拒绝解析，其余目标复制固定的加密 DNS 模板并显式 detour 到该目标，使自定义组切换时解析仍走该组。直接链默认选择本地加密 DNS 模板，其余选择远端模板；模板选择基于配置，运行时组选择不改写模板地址。缺模板或 DNS tag 碰撞必须拒绝，不能悄悄改用其他出口。
+编译保留原数组及其相对次序。标准模板中的应用与域名规则位于指定域名拒绝、显式模式、DNS 劫持、LAN 和 Tailnet 保护之后、普通业务分类之前；交错自定义数组遵守前述稳定插入边界。增量规则的 DNS 使用相同应用/域名条件与次序；用户增量的拦截目标拒绝解析，其余目标复制固定的加密 DNS 模板并显式 detour 到该目标，使自定义组切换时解析仍走该组。直接链默认选择本地加密 DNS 模板，其余选择远端模板；模板选择基于配置，运行时组选择不改写模板地址。缺模板或 DNS tag 碰撞必须拒绝，不能悄悄改用其他出口。
 
 新出口、DNS server、路由与 DNS 规则的精确归属只保存在私密 checkpoint 的 `routing_owned`。重新生成时先去除自身上次生成项，再叠加当前意图，保留订阅与其他写者的新内容；已归属项被外部改成不同内容时返回 `override.routing_conflict`。撤销删除自己的项，不删除新增的订阅项。该 checkpoint 是恢复输入，不是公共状态接口。
 

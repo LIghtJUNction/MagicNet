@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.23 | 产品集成、M01–M68 与完整验收 |
-| magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.7 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
+| magicnet | 0.3.24 | 产品集成、M01–M69 与完整验收 |
+| magicnet-control-plane | 0.2.10 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.13 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-web-console | 0.2.8 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
-| magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
+| magicnet-module-delivery | 0.2.10 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
@@ -21,22 +21,22 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `820b690d413e4f393db24962366e1d809fc48489`，tree `9541ac8d8e014bd8ae3829ff9daea93c92e65e4f`，对应[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9)。本次调整 WebUI 公共样式、导航、静态流量路径与文案，移除模型署名彩蛋、重复装饰和卡片堆叠；原机器接口、运行时和依赖保持。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `45154757c104b56c8a5dad24c8386fddf4d94c89`，tree `5d7579034b549318213e153cbbee1b8b9b54cbd5`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。候选以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现。本轮修复托管规则排序、准备动作与窄屏标签，更新 mDNS 模板和固定规则发行。
 
-首轮界面改动已通过本地完整 WebUI 检查与六视口浏览器回归；最终文案和图标清理通过定向测试、类型检查与生产构建，最终 head 的 CI 尚在执行。各轮结果与准确提交范围见 [VERIFICATION.md](VERIFICATION.md)。此前 Android 完整验收属于 `a4135d5edc39af4895968359bf16e8aefefdaeac` 与配方 `284248b6d4c4913e064de69d6ee7cdebe5045e03`，历史结果继续绑定各自源码和产物。
+模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。当前候选的完整源码、构建和 Android CI 仍待完成，不能沿用旧提交的结果宣称本轮整包通过。准确命令、提交和范围见 [VERIFICATION.md](VERIFICATION.md)。
 
-源码 metadata 保持 v1.8.5 / 10613；公开稳定包仍为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准。本次界面调整未发布 Android 安装包。
+源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮目标为后继 patch 版本。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
 | sing-box | `d850ff0ff68e11a71aa8207627e0a826cb52808f` |
-| MagicSingBox 默认模板 | `ba5793b41fd06704102116fe2536eef5988f2905` |
-| MagicNetRules | `f3335f9420d07b8c50b26488df2a9492da6bbb44` |
+| MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
+| MagicNetRules | `c4ad0a94f35af2b7950b47362e1c23e583209790` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
 | KamHooks | `13cff0dc1f30d8d0842e563008c7e2712233243f` |
 | KamModuleX | `f21050a31c33f0ebcbf429af3056ec43c1b816ef` |
 
-模板 `config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。
+模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261115-585094101194f32e`，manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`，下载归档与各个规则文件均按发布清单核验。
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
