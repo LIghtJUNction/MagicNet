@@ -21,9 +21,9 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `4b02897dffd6acd455c0e25849b46398ca1465b6`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。候选以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现。本轮修复托管规则排序、准备动作与窄屏标签，更新 mDNS 模板和固定规则发行。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的已合并提交 `af72e0435c56bdebc724f2c93c2f775624f010f3`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。该 tree 与受测 PR 提交 `4b02897dffd6acd455c0e25849b46398ca1465b6` 相同；gitlink 与可复用工作流均固定到源码主线的合并提交，保证 PR 分支删除后仍可解析。实现以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现，包含托管规则排序、准备动作、窄屏标签、mDNS 模板与固定规则发行。
 
-模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。当前候选的完整源码、构建和 Android CI 仍待完成，不能沿用旧提交的结果宣称本轮整包通过。准确命令、提交和范围见 [VERIFICATION.md](VERIFICATION.md)。
+模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。受测 PR 提交的完整源码、构建和 Android CI，以及主仓发布预览均已通过；原始结果继续绑定其实际 source SHA。合并后固定值的构建结果与准确验证范围见 [VERIFICATION.md](VERIFICATION.md)。
 
 源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮目标为后继 patch 版本。
 

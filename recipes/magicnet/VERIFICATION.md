@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `4b02897dffd6acd455c0e25849b46398ca1465b6`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `af72e0435c56bdebc724f2c93c2f775624f010f3`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.24，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
@@ -16,7 +16,9 @@
 
 源码 `4b02897dffd6acd455c0e25849b46398ca1465b6`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，包含五次增量提交：窄屏标签、配置/规则固定值、分流顺序、正常化回归与授权范围说明、浏览器任务固定 Ubuntu 24.04。模板固定 `da3d375d024e0982265bc67c48a87de7bb4f9424`；其 [PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) 已合入，合并提交 `f9c8495f3ad73d8297fc24eff95970ec8de0e20d`。
 
-源码 [PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 已 squash 合并为 `af72e0435c56bdebc724f2c93c2f775624f010f3`，tree 与上述受测源码相同。主仓受测 head 为 `05946c51baf7e4d9301e2b76cde25cc6221f13ed`，[PR #456](https://github.com/LIghtJUNction/MagicNet/pull/456) 已 squash 合并为 `f6c808ed7f66276c398d4b3e5d9f7108d80ed7ae`，两者 tree 均为 `3a3b52b1d07fbf29b100139e07cfa044e6344751`。活动源码固定值继续使用已验收且可取得的 `4b02897`。
+源码 [PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 已 squash 合并为 `af72e0435c56bdebc724f2c93c2f775624f010f3`，tree 与上述受测源码相同。主仓受测 head 为 `05946c51baf7e4d9301e2b76cde25cc6221f13ed`，[PR #456](https://github.com/LIghtJUNction/MagicNet/pull/456) 已 squash 合并为 `f6c808ed7f66276c398d4b3e5d9f7108d80ed7ae`，两者 tree 均为 `3a3b52b1d07fbf29b100139e07cfa044e6344751`。活动源码固定值使用已合并的 `af72e043`，历史测试与产物继续保留原始 `4b02897` 身份。
+
+手动 Build [43706037821](https://github.com/LIghtJUNction/MagicNet/actions/runs/43706037821) 在启动阶段报告 `exec.yml@4b02897` 的 `workflow was not found`，未创建构建 job。源码 PR squash 合并并删除分支后，旧 head 未进入 main 历史；主仓已将 gitlink、两个可复用工作流、BUILD_PROMPT、DEPENDENCIES 与三语 README 的活动固定值统一更新到 `af72e043`。两个源码提交的 tree 均为 `ced91db63d6e301dbcda75d7220a6fb829b8e132`。
 
 | 范围 | 当前证据 |
 | --- | --- |
