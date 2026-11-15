@@ -1,0 +1,748 @@
+{
+  "schema": 1,
+  "verified_at": "2026-11-15T14:57:08.525361+00:00",
+  "repositories": [
+    {
+      "repository": "LIghtJUNction/MagicNet",
+      "retired_count": 93,
+      "retired": [
+        {
+          "id": 371215448,
+          "name": ".github/workflows/apply-android-sed-fix.yml",
+          "path": ".github/workflows/apply-android-sed-fix.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 369478618,
+          "name": ".github/workflows/apply-continuation.yml",
+          "path": ".github/workflows/apply-continuation.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359868743,
+          "name": "Apply Verified Network Ownership Fix",
+          "path": ".github/workflows/apply-owned-network.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359840952,
+          "name": "Apply Reviewed Play Patch",
+          "path": ".github/workflows/apply-reviewed-play-patch.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 357247134,
+          "name": "Materialize verified smart updater changes",
+          "path": ".github/workflows/apply-smart-updates.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359339881,
+          "name": "Isolated 72-hour audit",
+          "path": ".github/workflows/audit-72h.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359077898,
+          "name": "Audit config pin synchronization",
+          "path": ".github/workflows/audit-config-pin-once.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359354860,
+          "name": "Final audit delta",
+          "path": ".github/workflows/audit-final-delta.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359345818,
+          "name": "Reviewed runtime integration",
+          "path": ".github/workflows/audit-integrate.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359081513,
+          "name": "Audit PR integration",
+          "path": ".github/workflows/audit-integration-once.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359351177,
+          "name": "Native policy audit",
+          "path": ".github/workflows/audit-native-policy.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359341743,
+          "name": "Isolated candidate snapshot",
+          "path": ".github/workflows/audit-pr-sources.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359360675,
+          "name": "Publish non-overlapping audit delta",
+          "path": ".github/workflows/audit-publish-native.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359334499,
+          "name": "Three-day audit (isolated)",
+          "path": ".github/workflows/audit-review-20260916.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359859696,
+          "name": "AVD Stock Kernel Identity",
+          "path": ".github/workflows/avd-stock-identity-once.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 356072628,
+          "name": "Browser Setup",
+          "path": ".github/workflows/browser-setup.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359914011,
+          "name": "Capture Exact Build Failure",
+          "path": ".github/workflows/capture-build-failure.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359756365,
+          "name": "Verify exact v1.5.5 candidate",
+          "path": ".github/workflows/check-v155-release.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360290333,
+          "name": "Component parallel download audit",
+          "path": ".github/workflows/component-parallel-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 363975556,
+          "name": "Prepare configuration integration fixes",
+          "path": ".github/workflows/config-integration-repair.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 357230407,
+          "name": "Development source snapshot",
+          "path": ".github/workflows/dev-source-snapshot.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 357568573,
+          "name": "DNS regression",
+          "path": ".github/workflows/dns-regression.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359419320,
+          "name": "Verify FD cleanup integration",
+          "path": ".github/workflows/fd-cleanup-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 363996304,
+          "name": "Finalize corrected v1.5.13 release",
+          "path": ".github/workflows/finalize-v1.5.13.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359931890,
+          "name": "Verify Stateful Packaged Lifecycle Fixture",
+          "path": ".github/workflows/fixture-model-replay.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359840913,
+          "name": "Validate v1.5.6 Reviewed Patch",
+          "path": ".github/workflows/import-reviewed-patch.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359769513,
+          "name": "Inspect Android acceptance failure",
+          "path": ".github/workflows/inspect-avd-result.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 356075163,
+          "name": "Installer setup page",
+          "path": ".github/workflows/installer-setup.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359745489,
+          "name": "Verify release integration",
+          "path": ".github/workflows/integrate-release.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 358072037,
+          "name": "Issue recovery validation",
+          "path": ".github/workflows/issue-recovery-validation.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 417247162,
+          "name": "Original Android evidence verification",
+          "path": ".github/workflows/issue436-evidence.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359819732,
+          "name": "Local audit tools",
+          "path": ".github/workflows/local-audit-tools.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359350441,
+          "name": "Machine protocol audit",
+          "path": ".github/workflows/machine-protocol-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 369128434,
+          "name": ".github/workflows/maintenance-kernel-build.yml",
+          "path": ".github/workflows/maintenance-kernel-build.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 369122332,
+          "name": "Maintenance Review Inputs",
+          "path": ".github/workflows/maintenance-snapshot.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 369140090,
+          "name": "Stage Reviewed Integration",
+          "path": ".github/workflows/maintenance-stage.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359842837,
+          "name": "Profile v1.5.5 Core Memory",
+          "path": ".github/workflows/memory-profile.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359905029,
+          "name": "Validate Final NAT Probe Integration",
+          "path": ".github/workflows/merge-nat-probe.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359670008,
+          "name": "Network Acceptance Audit",
+          "path": ".github/workflows/network-acceptance-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359734809,
+          "name": "Retry Android Acceptance",
+          "path": ".github/workflows/network-acceptance-retry.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359912140,
+          "name": "Verify Network Cleanup Boundaries",
+          "path": ".github/workflows/network-boundaries.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359889774,
+          "name": "Network Final Review Sources",
+          "path": ".github/workflows/network-final-review.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 357711144,
+          "name": "Network Integration Check",
+          "path": ".github/workflows/network-integration-check.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364167822,
+          "name": "Offline Review Bootstrap",
+          "path": ".github/workflows/offline-review-bootstrap.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359873513,
+          "name": "Owned Network Integration Source",
+          "path": ".github/workflows/owned-integration-source.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359613286,
+          "name": "Patch readiness audit",
+          "path": ".github/workflows/patch-readiness-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359807213,
+          "name": "Play Network Audit",
+          "path": ".github/workflows/play-network-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359844391,
+          "name": "Play Patch Acceptance Dispatch",
+          "path": ".github/workflows/play-patch-acceptance-once.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359965119,
+          "name": "Play startup fixture audit",
+          "path": ".github/workflows/play-startup-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360293943,
+          "name": "Play Store AVD audit launcher",
+          "path": ".github/workflows/playstore-avd-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359124164,
+          "name": "PR 286 isolated review",
+          "path": ".github/workflows/pr286-review-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360403333,
+          "name": "PR314 bounded parallel component downloads",
+          "path": ".github/workflows/pr314-parallel-components.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360406223,
+          "name": "PR314 parallel components single-flight",
+          "path": ".github/workflows/pr314-parallel-singleflight.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 376837265,
+          "name": "PR368 integration preflight",
+          "path": ".github/workflows/pr368-preflight.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359725292,
+          "name": "Prepare v1.5.5 patch",
+          "path": ".github/workflows/prepare-patch-release.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364353914,
+          "name": "Inspect pinned Proxylink source",
+          "path": ".github/workflows/proxylink-source-inspection.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360202012,
+          "name": "Release candidate integration audit",
+          "path": ".github/workflows/release-candidate-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360201784,
+          "name": "Release preparation audit",
+          "path": ".github/workflows/release-preflight-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364304963,
+          "name": "Stage build fixture repair",
+          "path": ".github/workflows/repair-346-fixture.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359433238,
+          "name": "Repository audit",
+          "path": ".github/workflows/repository-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359915678,
+          "name": "Reproduce Packaged Lifecycle",
+          "path": ".github/workflows/reproduce-package-lifecycle.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359753560,
+          "name": "Validate SDK path fix",
+          "path": ".github/workflows/retry-sdk-bootstrap.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364310411,
+          "name": "Review integration snapshot",
+          "path": ".github/workflows/review-integration-snapshot.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364218283,
+          "name": "Review owner identity correction",
+          "path": ".github/workflows/review-owner-fix.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 367553494,
+          "name": "Rewrite Verification Kit",
+          "path": ".github/workflows/rewrite-devkit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 367691922,
+          "name": "Materialize Reviewed Rewrite Repair",
+          "path": ".github/workflows/rewrite-materialize.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 367602986,
+          "name": "Rewrite Verification",
+          "path": ".github/workflows/rewrite.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 378109957,
+          "name": "Integrate reviewed routing pins",
+          "path": ".github/workflows/routing-maintenance-20261008.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359454731,
+          "name": "Runtime audit verification",
+          "path": ".github/workflows/runtime-audit-final.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360296042,
+          "name": "Runtime audit workspace",
+          "path": ".github/workflows/runtime-audit-workspace.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359482171,
+          "name": "Runtime audit",
+          "path": ".github/workflows/runtime-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359079593,
+          "name": "Prepare runtime resource fix",
+          "path": ".github/workflows/runtime-resource-bootstrap.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360298516,
+          "name": "Runtime refactor workbench",
+          "path": ".github/workflows/runtime-workbench.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 367550306,
+          "name": "Source Snapshot",
+          "path": ".github/workflows/source-snapshot.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364326279,
+          "name": "Stage reviewed Android integration",
+          "path": ".github/workflows/stage-android-integration.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360285726,
+          "name": "Startup WebUI source audit",
+          "path": ".github/workflows/startup-webui-source-audit.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360294568,
+          "name": "Startup and WebUI validation",
+          "path": ".github/workflows/startup-webui-validation.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364262913,
+          "name": "Subscription State Review",
+          "path": ".github/workflows/subscription-state-review.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364397559,
+          "name": "Tailscale CI diagnostics",
+          "path": ".github/workflows/tailscale-ci-diagnostics.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364424488,
+          "name": "Tailscale fixture review",
+          "path": ".github/workflows/tailscale-ci-review.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 364349679,
+          "name": "Tailscale lifecycle review",
+          "path": ".github/workflows/tailscale-review.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359051772,
+          "name": "Temporary MCP package selector patch",
+          "path": ".github/workflows/temp-collapse-mcp-patch.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359054861,
+          "name": "Temporary dead Rust cleanup",
+          "path": ".github/workflows/temp-dead-rust-cleanup.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 357251787,
+          "name": "Smart update development fixture",
+          "path": ".github/workflows/update-development.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359752102,
+          "name": "Verify Android SDK bootstrap",
+          "path": ".github/workflows/verify-avd-sdk-path.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359780585,
+          "name": "Verify v1.5.5 Release Delivery",
+          "path": ".github/workflows/verify-release-delivery.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 359960294,
+          "name": "Verify Network Stop and Failed-Start Rollback",
+          "path": ".github/workflows/verify-stop-rollback.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360266425,
+          "name": "Verify v1.5.6 public delivery",
+          "path": ".github/workflows/verify-v156-public-delivery.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 360273913,
+          "name": "Prepare WebUI recovery workspace",
+          "path": ".github/workflows/webui-recovery-workspace.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 358886145,
+          "name": "Temporary API helper load fix",
+          "path": ".github/workflows/zz-api-helper-load-temp.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 358874401,
+          "name": "Temporary controller endpoint refactor",
+          "path": ".github/workflows/zz-controller-refactor-temp.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 358890287,
+          "name": "Temporary subscription fetch trace",
+          "path": ".github/workflows/zz-debug-sub-fetch-temp.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 358878301,
+          "name": "Temporary runtime endpoint cleanup",
+          "path": ".github/workflows/zz-runtime-endpoint-cleanup-temp.yml",
+          "state": "disabled_manually"
+        }
+      ],
+      "retained_count": 6,
+      "retained": [
+        {
+          "id": 400234189,
+          "name": "Recipe checks",
+          "path": ".github/workflows/recipes.yml",
+          "state": "active"
+        },
+        {
+          "id": 400234191,
+          "name": "Build and release MagicNet",
+          "path": ".github/workflows/release.yml",
+          "state": "active"
+        },
+        {
+          "id": 286730974,
+          "name": "Copilot",
+          "path": "dynamic/agents/copilot-pull-request-reviewer",
+          "state": "active"
+        },
+        {
+          "id": 286549658,
+          "name": "Copilot cloud agent",
+          "path": "dynamic/copilot-swe-agent/copilot",
+          "state": "active"
+        },
+        {
+          "id": 295392008,
+          "name": "Dependabot Updates",
+          "path": "dynamic/dependabot/dependabot-updates",
+          "state": "active"
+        },
+        {
+          "id": 357088399,
+          "name": "Dependency Graph",
+          "path": "dynamic/dependabot/update-graph",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "repository": "LIghtJUNction/magicnet-android",
+      "retired_count": 3,
+      "retired": [
+        {
+          "id": 417107031,
+          "name": "Issue 436 Ethernet dump diagnostic",
+          "path": ".github/workflows/ethernet-dump-diagnostic.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 417191444,
+          "name": "Issue 436 host observer validation",
+          "path": ".github/workflows/issue-436-host-diagnostic.yml",
+          "state": "disabled_manually"
+        },
+        {
+          "id": 417231631,
+          "name": "Original Android evidence verification",
+          "path": ".github/workflows/issue436-evidence.yml",
+          "state": "disabled_manually"
+        }
+      ],
+      "retained_count": 9,
+      "retained": [
+        {
+          "id": 399842559,
+          "name": "Android KernelSU Acceptance",
+          "path": ".github/workflows/android-kernelsu-acceptance.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842560,
+          "name": "Build MagicNet source",
+          "path": ".github/workflows/exec.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842562,
+          "name": "Install Onboarding",
+          "path": ".github/workflows/install-onboarding.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842563,
+          "name": "Network Regression Evidence",
+          "path": ".github/workflows/network-regression-evidence.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842564,
+          "name": "Network regression",
+          "path": ".github/workflows/network-regression.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842565,
+          "name": "Code Quality",
+          "path": ".github/workflows/quality.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842568,
+          "name": "Rules Release Integration",
+          "path": ".github/workflows/rules-release.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842569,
+          "name": "Uninstall Farewell",
+          "path": ".github/workflows/uninstall-farewell.yml",
+          "state": "active"
+        },
+        {
+          "id": 399842570,
+          "name": "WebUI Preview",
+          "path": ".github/workflows/webui-preview.yml",
+          "state": "active"
+        }
+      ]
+    }
+  ],
+  "baseline": {
+    "recipe": "fdf064f9ae40065e0e1f2c8ac11ed024fa44cf30",
+    "source": "af72e0435c56bdebc724f2c93c2f775624f010f3"
+  },
+  "deletions": [
+    {
+      "repository": "LIghtJUNction/MagicNet",
+      "branch": "diagnostic/issue-436-evidence-20261113",
+      "path": ".github/workflows/issue436-evidence.yml",
+      "commit": "01641f1e003c75cfa889c638ee839ce1c0a0d196"
+    },
+    {
+      "repository": "LIghtJUNction/magicnet-android",
+      "branch": "diagnostic/issue-436-ethernet-20261113",
+      "path": ".github/workflows/ethernet-dump-diagnostic.yml",
+      "commit": "d8498e6b3bbcc48a81128b4a8b18d4cfd6ce5c2c"
+    },
+    {
+      "repository": "LIghtJUNction/magicnet-android",
+      "branch": "diagnostic/issue-436-host-20261113",
+      "path": ".github/workflows/issue-436-host-diagnostic.yml",
+      "commit": "f2b742f459c68f4296421b77aef2d21c7eb39c91"
+    },
+    {
+      "repository": "LIghtJUNction/magicnet-android",
+      "branch": "diagnostic/issue-436-evidence-20261113",
+      "path": ".github/workflows/issue436-evidence.yml",
+      "commit": "d60a7159a22a614031831a70c2bfae7012e150fa"
+    }
+  ],
+  "validation": {
+    "actionlint": "1.7.12",
+    "recipe_workflows": 2,
+    "source_workflows": 9,
+    "release_tests": 18,
+    "release_plan_tests": 41,
+    "recipe_pin_tests": 19,
+    "recipe_packages": 8,
+    "markdown_files": 62
+  },
+  "cleanup_runs": [
+    {
+      "repository": "LIghtJUNction/MagicNet",
+      "run_id": 43726878443,
+      "job_id": 132850773131,
+      "conclusion": "success",
+      "url": "https://github.com/LIghtJUNction/MagicNet/actions/runs/43726878443"
+    },
+    {
+      "repository": "LIghtJUNction/magicnet-android",
+      "run_id": 43726566565,
+      "job_id": 132849674145,
+      "conclusion": "success",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/43726566565/job/132849674145"
+    }
+  ],
+  "source_final_commit": "73722038ab527c8d9926bc2ab532ba212bfab31e",
+  "source_final_tree": "ced91db63d6e301dbcda75d7220a6fb829b8e132"
+}
