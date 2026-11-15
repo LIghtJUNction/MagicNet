@@ -69,7 +69,7 @@ def verify_readme_pins(read_text, gitlink, version, code):
     """Refuse stale active README pins even when history still mentions the live values."""
     expected_code = str(code)
     for path, gitlink_pattern in README_GITLINK_FIELDS.items():
-        text = read_text(path)
+        text = active_markdown(read_text(path))
         recorded = single(gitlink_pattern, text, f"{path} active gitlink")["gitlink"]
         if recorded != gitlink:
             raise ValueError(f"{path} does not record the current source gitlink")

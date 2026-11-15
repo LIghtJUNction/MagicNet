@@ -234,6 +234,22 @@ class LivePinTest(unittest.TestCase):
                     CHECK.verify_live_pins(self.root)
             self.write_readmes()
 
+    def test_example_or_comment_only_readme_fields_are_rejected(self):
+        for name, text in readmes().items():
+            for opening, closing in (("```markdown", "```"), ("~~~~", "~~~~"), ("<!--", "-->"), ("<!--", "")):
+                with self.subTest(name=name, opening=opening, closing=closing):
+                    self.write_readmes(**{name: f"{opening}\n{text}{closing}\n"})
+                    with self.assertRaisesRegex(ValueError, f"{name} active gitlink"):
+                        CHECK.verify_live_pins(self.root)
+
+    def test_readme_examples_and_comments_do_not_override_active_fields(self):
+        original = readmes()
+        for name, example in readmes(gitlink=OTHER, version="v1.8.1", code=10609).items():
+            for opening, closing in (("```markdown", "```"), ("~~~~", "~~~~"), ("<!--", "-->")):
+                with self.subTest(name=name, opening=opening):
+                    self.write_readmes(**{name: original[name] + f"\n{opening}\n{example}{closing}\n"})
+                    self.assertEqual(CHECK.verify_live_pins(self.root), (GITLINK, "v1.8.4", 10612))
+
 
 if __name__ == "__main__":
     unittest.main()
