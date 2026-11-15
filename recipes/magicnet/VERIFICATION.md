@@ -6,11 +6,25 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `a4135d5edc39af4895968359bf16e8aefefdaeac`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `820b690d413e4f393db24962366e1d809fc48489`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
-| 配方 | 0.3.22，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.23，八包；验收 M01–M68 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | #436 的生产恢复已随 v1.8.7 发行；a413 源码与284配方完整验收及原件复验均通过，PR #7/#451已合并。历史668源码升级重启失败仍保留、根因未知；真机 OEM 触发仍开放。#440 可信 NAS 入口仍未合入 main：源码 PR #8 可合并，配方 PR #452 因 #451 后冲突保持 dirty，本轮不合并、不改 gitlink。#447/#449 已于 2026-11-13 关闭。配方仓 live-pin 现按三份 README 的活动字段核验，拒绝历史提及冒充当前固定值。详见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) 2026-11-15 节 |
+| 当前完成与开放项 | WebUI 精简候选已推送[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9)，本地与首轮浏览器结果见下节；最终 head 的 CI 尚在执行。#436 的历史完整验收保留于 2026-11-13 节，真机 OEM 触发仍开放；其余 Issue 状态见 [Issue 修复记录](ISSUE_TRIAGE_2026-11-06.md) 2026-11-15 节。稳定发行保持 v1.8.7 / 10615。 |
+
+## 2026-11-15：WebUI 视觉精简
+
+源码候选为 `820b690d413e4f393db24962366e1d809fc48489`（tree `9541ac8d8e014bd8ae3829ff9daea93c92e65e4f`），已推送[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9)。页面改用中性色、留白和连续分区，收起重复顶栏入口；Logo 返回概览，流量路径静态展示真实状态。模型署名彩蛋、发光星形、无限装饰动效、重复标题层级与装饰图标已移除。配方为 magicnet 0.3.23 / web-console 0.2.7，接口、设备状态语义与运行依赖保持。
+
+| 验证范围 | 结果 |
+| --- | --- |
+| 首轮本地 WebUI 检查 | `npm run check` 通过：388 项测试、Vue 类型检查与生产构建。 |
+| 首轮 `3d049735` 浏览器回归 | [visual-evidence 43682144480](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682144480) 成功，312 项 Playwright 测试通过，生成 192 张 PNG。覆盖 320、360、390、430px 手机、844×390 横屏、1280×900 桌面及浅深主题。 |
+| 最终本地 WebUI 检查 | 清理文案、图标及旧装饰断言后，完整 `npm run check` 再次通过：388 项测试、Vue 类型检查与生产构建。反馈推荐文案、表单和隐私约束继续检查。 |
+| 最终源码 CI | `820b690d413e4f393db24962366e1d809fc48489` 的 CI 正在执行，尚未记录最终完整结论。 |
+| 配方归档 | 首轮 check、pack、归档检查与 build 提示词检查通过，闭包为 8 包、62 个 Markdown 文件；最终源码指针集成后待复验。 |
+
+浏览器结果使用显示与原生桥夹具，绑定上述首轮提交；本轮未执行物理设备 WebView 验收。此前 Android 生命周期结果继续保留原提交、产物和环境身份。本次未发布 Android 安装包，稳定发行仍为 v1.8.7 / 10615。
 
 ## 2026-11-13：#436 逐应用路由规则与可控网络验收
 
