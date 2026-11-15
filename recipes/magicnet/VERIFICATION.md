@@ -20,6 +20,8 @@
 
 手动 Build [43706037821](https://github.com/LIghtJUNction/MagicNet/actions/runs/43706037821) 在启动阶段报告 `exec.yml@4b02897` 的 `workflow was not found`，未创建构建 job。源码 PR squash 合并并删除分支后，旧 head 未进入 main 历史；主仓已将 gitlink、两个可复用工作流、BUILD_PROMPT、DEPENDENCIES 与三语 README 的活动固定值统一更新到 `af72e043`。两个源码提交的 tree 均为 `ced91db63d6e301dbcda75d7220a6fb829b8e132`。
 
+修复提交 [fdf064f9](https://github.com/LIghtJUNction/MagicNet/commit/fdf064f9ae40065e0e1f2c8ac11ed024fa44cf30) 的 [Recipe checks 43726001521](https://github.com/LIghtJUNction/MagicNet/actions/runs/43726001521) 已成功；本地 78 项发布与固定值回归、工作流语法及八包归档检查通过。新固定源码 `af72e043` 的既有 [Build 43704717207](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43704717207)、[Code Quality 43704717198](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43704717198) 与 [Android 43704717178](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43704717178) 均成功。主仓修复后的完整 Build 尚未新建，当前连接缺少手动触发入口与浏览器登录；结果和新建运行方式见 [Build CI 修复记录](../../docs/ci-build-fix-2026-11-15.md)。
+
 | 范围 | 当前证据 |
 | --- | --- |
 | 默认模板 | 生成一致性、DNS 引用与全部 37 项模板测试通过；[CI 43686539387](https://github.com/LIghtJUNction/MagicSingBox/actions/runs/43686539387) 成功。config SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。 |
