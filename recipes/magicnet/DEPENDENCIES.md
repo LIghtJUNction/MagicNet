@@ -4,33 +4,39 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.22 | 产品集成、M01–M68 与完整验收 |
-| magicnet-control-plane | 0.2.9 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.12 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.6 | WebUI、订阅草稿、警告与诊断导出 |
+| magicnet | 0.3.24 | 产品集成、M01–M69 与完整验收 |
+| magicnet-control-plane | 0.2.10 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.13 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-web-console | 0.2.8 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
-| magicnet-routing-policy | 0.2.5 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.9 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
+| magicnet-module-delivery | 0.2.10 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
 
 control 统一公共状态、参数错误和有界只读订阅观察；runtime 统一 URL/节点身份、来源与恢复，根据已确认进程身份执行启停并保留未知配置与事务状态；delivery 统一模块 manifest、资产及正式发行身份。WebUI 从有效只读快照建立编辑基线和下一步建议，操作 ownership 与订阅读取状态仅留内存。合同入口见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，不得复制第二套状态机或增加无需求的常驻服务。
 
+WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
+
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 是独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的子模块，当前固定为 `a4135d5edc39af4895968359bf16e8aefefdaeac`，tree `f477642021d129ae9b5a64d87436f678db06d62f`。本固定点保留 #436 Android 恢复验收对 netd 逐应用 UID 规则重编号误拒绝的修正，保留源码主线的 Action 升级和原固定 eca9ac8 的停止诊断、编辑器输入预算。采集器与独立门禁均核对元数据、完整 selectors 和重复次数；路由证明使用可恢复的单 eth0 模拟器夹具，通过 Android 移动数据服务控制实际 WWAN/eth0 连接，关闭后核对用户/有效状态、当前连接、接口和 netd 销毁证据，再启用；逐应用元数据只允许精确迁移到 UNREACHABLE 并在恢复后返回；保留失败清理前的有界脱敏支持包。相对已记录的 668 候选，本次增量仅增加宿主诊断观察器，用于保留启动失败时的观察；未知的 boot 失败根因尚未修复。runtime 恢复流程、预算与独立门禁保持；a413源码与固定它的284配方完整CI均通过，各13/13阶段、5次真实新启动，两个原ZIP经独立runner实算摘要及原始完整gate复验通过。源码PR #7和配方PR #451已合并，实际merge tree与受测候选相同；当前配方原件还实际覆盖RPDB netId100→101，结果见[VERIFICATION.md](VERIFICATION.md)。源码 metadata 仍为 v1.8.5 / 10613；公开安装物以根 `update.json` 与 Releases 为准，本固定点没有新的正式发布。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `4b02897dffd6acd455c0e25849b46398ca1465b6`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。候选以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现。本轮修复托管规则排序、准备动作与窄屏标签，更新 mDNS 模板和固定规则发行。
+
+模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。当前候选的完整源码、构建和 Android CI 仍待完成，不能沿用旧提交的结果宣称本轮整包通过。准确命令、提交和范围见 [VERIFICATION.md](VERIFICATION.md)。
+
+源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮目标为后继 patch 版本。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
 | sing-box | `d850ff0ff68e11a71aa8207627e0a826cb52808f` |
-| MagicSingBox 默认模板 | `ba5793b41fd06704102116fe2536eef5988f2905` |
-| MagicNetRules | `f3335f9420d07b8c50b26488df2a9492da6bbb44` |
+| MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
+| MagicNetRules | `c4ad0a94f35af2b7950b47362e1c23e583209790` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
 | KamHooks | `13cff0dc1f30d8d0842e563008c7e2712233243f` |
 | KamModuleX | `f21050a31c33f0ebcbf429af3056ec43c1b816ef` |
 
-模板 `config.json` SHA-256 为 `e269e2303cf1e23d3b4ce69dcb7cca39f0f53dc647c5d03aace4c4bd7f986be0`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。
+模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261115-585094101194f32e`，manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`，下载归档与各个规则文件均按发布清单核验。
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 

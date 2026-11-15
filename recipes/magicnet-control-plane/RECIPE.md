@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.2.9"
+version = "0.2.10"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"
@@ -15,6 +15,8 @@ source = "../magicnet-network-runtime"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.2.10 增加 C-SUB-009：设备 CLI 原子管理私密订阅信任清单，仅接收 scheme、host、port 的检查/解析入口共用后端授权。保留公网 resolve-host、schema=1、既有机器写例外和公共状态披露范围；信任配置不新增运行依赖或状态域。
 
 0.2.9 明确缺参错误、未知进程的 toggle 拒绝，以及透明配置和事务 phase 的 unknown 语义。机器快照与 canonical 使用同一判断，保留原 schema 和命令集合。
 

@@ -25,6 +25,9 @@ DEVELOPMENT_DIRECTORY = re.compile(
     r"(^|/)(tests?|__tests__|fixtures?|__fixtures__|__snapshots__|"
     r"bench|benches|benchmarks?|coverage|htmlcov|node_modules)/"
 )
+SUBSCRIPTION_TRUST_PATH = re.compile(
+    r"(?:\A|/)\.config/sing-box/subscription-trust\.list(?:/|\Z)"
+)
 
 
 def git(root, *args):
@@ -205,6 +208,8 @@ def verify(root, directory, selection=None):
             with zipfile.ZipFile(directory / name) as archive:
                 require(not any(DEVELOPMENT_DIRECTORY.search(member) for member in archive.namelist()),
                         f"ZIP contains development files: {name}")
+                require(not any(SUBSCRIPTION_TRUST_PATH.search(member) for member in archive.namelist()),
+                        f"ZIP contains device subscription trust policy: {name}")
     for name in ("MagicNet-core.zip", "MagicNet-full.zip"):
         with zipfile.ZipFile(directory / name) as archive:
             require(archive.testzip() is None, "Corrupt module ZIP")

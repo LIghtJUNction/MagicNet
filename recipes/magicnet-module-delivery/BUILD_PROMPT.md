@@ -81,3 +81,11 @@ Android 验收的临时 TLS 证书仅容忍有限客体时钟落后：notBefore 
 主仓库提供 build/verify/publish、none/patch/minor/major、自定义版本和可选 code；source_ref 显式解析后固定 SHA。源码仓库提供只读可复用构建和 Android 验收，同一版本注入脚本同步所有 metadata。稳定 updater 与开发源码版本分离；正式发行固定主仓库快照，全部门禁通过后上传草稿、核对资产并公开，随后同步稳定索引。预发布只同步说明，不改稳定索引。同 run 重跑复用快照和原 artifact，补齐缺失上传，拒绝替换既有字节、版本标签或更新回退。完整身份、权限和恢复要求见 RELEASE_CONTRACT.md。
 
 模拟器上联故障测试在 wlan0 down/up 后通过 Android Wi-Fi 服务关闭再开启以恢复 supplicant、关联和系统路由，独立延迟恢复 guard 使用相同动作；eth0 只恢复链路。恢复命令成功仅记录动作，最终仍要求该上联实际默认路由、TUN 状态、就绪与同应用 UID TCP 实测通过。报告记录 restore_method，门禁拒绝缺失或与上联不符的方法。
+
+## 0.2.10 订阅信任迁移
+
+将 `.config/sing-box/subscription-trust.list` 加入既有唯一持久配置迁移清单。正常升级只从已安装设备逐字节恢复其授权，并设置私有权限；复制、恢复或权限失败沿用现有失败与恢复边界。信任规则遵守 runtime/SUB-016，迁移不因新版本自动扩大 origin、CIDR 或代理范围。
+
+构建清理和组件拆包排除开发目录中的信任清单；核心包、两个核心别名、完整包与全部组件 ZIP 都不得携带该文件或其私密内容，最终检查按 RELEASE_CONTRACT.md 执行。新装缺失/空清单保持默认公网 HTTPS 策略，不从示例、环境变量或历史日志生成授权。
+
+沿用 0.2.7 的订阅历史迁移：已有 subscription-status 原始阶段、结果和时间保持，缺失历史不补造成功，当前 subscription-update.lock 不随历史恢复。历史未记录与当前配置是否有效分别判断，canonical 仍按当前运行证据重建。

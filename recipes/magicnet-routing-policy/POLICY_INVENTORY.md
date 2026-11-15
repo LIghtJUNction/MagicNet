@@ -41,7 +41,24 @@
 | direct | direct | — |
 | block | block | — |
 
-DNS server tags：bootstrap-local-dns, doh-google, doh-cloudflare.
+## DNS 解析器与本地链路范围
+
+| DNS server tag | 类型 | 默认职责 |
+| --- | --- | --- |
+| `lan-mdns` | `mdns` | `.local` 和下列链路本地反向区域 |
+| `bootstrap-local-dns` | `https` | 代理节点引导及既有直连分类 |
+| `doh-google` | `https` | 保留既有显式分类，连接经 `proxy` |
+| `doh-cloudflare` | `https` | 未命中分类的公网默认，连接经 `proxy` |
+
+`lan-mdns` 的完整匹配范围为以下六个后缀。按域名标签边界匹配，规则先于 Direct/Global 模式的公网 DNS；启用 Tailscale 后，其既有 `ts.net` MagicDNS 规则保持优先且范围不重叠。
+
+| 后缀 | 范围 | 依据 |
+| --- | --- | --- |
+| `local` | 当前链路的主机名及服务发现名称 | [RFC 6762 第 3 节](https://www.rfc-editor.org/rfc/rfc6762.html#section-3) |
+| `254.169.in-addr.arpa` | `169.254.0.0/16` 的反向查询 | [RFC 6762 第 4 节](https://www.rfc-editor.org/rfc/rfc6762.html#section-4) |
+| `8.e.f.ip6.arpa`、`9.e.f.ip6.arpa`、`a.e.f.ip6.arpa`、`b.e.f.ip6.arpa` | `fe80::/10` 的反向查询 | [RFC 6762 第 4 节](https://www.rfc-editor.org/rfc/rfc6762.html#section-4) |
+
+`lan-mdns` 使用 [sing-box 原生 mDNS](https://sing-box.sagernet.org/configuration/dns/server/mdns/)，不配置公共或系统 DNS 后备。`home.arpa`、`.lan` 和其他私网反向区域保留旧策略；本项不代表这些名称已获得局域网解析能力，也不改变未知公网域名的代理 DNS 默认。
 
 ## 指定域名拒绝
 
@@ -85,6 +102,8 @@ DNS server tags：bootstrap-local-dns, doh-google, doh-cloudflare.
 清单不扩展到所有 `.edu`、`.cn`、包含教育关键词的域名或共享 CDN。官方页面引用的外部资源继续按原有规则处理；本清单不增加 selector、DNS server 或外部规则数据依赖。匹配、优先级及配置保留验收见 POLICY-A16–A20，实际网络与设备结果另记。
 
 ## 本地分类标签
+
+规则来源固定为 [MagicNetRules `c4ad0a94f35af2b7950b47362e1c23e583209790`](https://github.com/LIghtJUNction/MagicNetRules/commit/c4ad0a94f35af2b7950b47362e1c23e583209790)，发行资产为 [rules-20261115-585094101194f32e](https://github.com/LIghtJUNction/MagicNetRules/releases/tag/rules-20261115-585094101194f32e)。manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`；构建须同时校验清单和被引用资产，开机不依赖上游可用性。
 
 - lyc-geosite-ads：local / binary
 - lyc-geosite-cn：local / binary

@@ -1,6 +1,6 @@
 # 订阅入口、状态与逐源结果合同
 
-本文件是重建输入。C-SUB-001–004 提炼自固定的 v1.8.0 源码；C-SUB-005–007 为多来源可诊断性和错误恢复补充明确要求，0.2.3 的 C-SUB-008 补齐共享只读来源观测。不能声称旧二进制已经提供这些增量能力。原有命令、schema=1 和私密边界继续有效。订阅业务规则由 runtime 的 SUBSCRIPTION_CONTRACT.md 定义，界面由 webui 的 SUBSCRIPTION_FLOW.md 定义。
+本文件是重建输入。C-SUB-001–004 提炼自固定的 v1.8.0 源码；C-SUB-005–007 为多来源可诊断性和错误恢复补充明确要求，0.2.3 的 C-SUB-008 补齐共享只读来源观测，0.2.10 的 C-SUB-009 同步已合入源码 PR #8 的私密来源授权。各增量不倒写为旧二进制已有能力。原有命令、schema=1 和私密边界继续有效。订阅业务规则及 PR #8 的固定来源由 runtime 的 SUBSCRIPTION_CONTRACT.md 定义，界面由 webui 的 SUBSCRIPTION_FLOW.md 定义。
 
 ## C-SUB-001：入口不能把批量列表降成单 URL
 
@@ -12,6 +12,9 @@
 | cli sub update sing-box / all / cli sub update-all | 更新已保存的来源，不能把其中第一个 URL 当作整批。 |
 | cli sub clear | 清除订阅来源，保留当前已验证内核配置及工作的网络；存在未恢复事务时拒绝清除。 |
 | cli sub resolve-host <hostname> <port> | 校验主机名与端口，解析全部地址并检查公网策略，成功逐行输出排序后的 IP；仅检查解析及地址策略，不下载内容，不证明 URL、令牌、TLS、订阅格式、转换、合并或代理连接可用。 |
+| cli sub trust set <base64-lines> / clear | 私密来源授权写入，替换或清空完整清单；原子性、锁与失败语义见 C-SUB-009。 |
+| cli sub check-source <scheme> <host> <port> | 只检查来源 authority 的语法与授权，不接收完整 URL、不解析 DNS、不下载；成功无输出，不能作为实际地址或服务可达的证明。 |
+| cli sub resolve-source <scheme> <host> <port> <origin-scheme> <origin-host> <origin-port> | 核对当前目标与起始来源的下载链边界，解析并验证全部地址；成功按排序逐行输出 `IP\|route`，route 为 direct 或明确授权的 loopback SOCKS5 URI，仅供私密下载执行器消费。 |
 | cli webui payload create/append/remove | 私有文件传输入口，命名空间 tmp 或 subscription；每块独立 base64 解码，累计上限 8 MiB。文件名 1–128 个 ASCII 字节，只允许字母、数字、点、下划线、连字符，首字节不能为点。拒绝路径、链接及错误归属，私有权限。 |
 | cli webui payload apply-subscription <safe-basename> | 一次消费 UTF-8 URL 换行列表；受控消费即去除重放入口，读取、校验或应用失败均不得遗留可被再次执行的私有 payload。 |
 | cli webui payload apply-subscription-source <safe-basename> | 一次消费本地订阅正文（可以是 JSON/YAML/分享文本等），不是 URL 列表，也不是聚合配置的 JSON envelope；同样在受控消费时去除重放入口。 |
@@ -28,7 +31,7 @@ cli --json sub status 只输出一个 schema=1、ok=true、command=sub.status、
 | source.configured_count | 当前已提交的远程来源数量；本地模式为 1，未配置远程来源为 0。与最近失败候选数可以不同。 |
 | update.lock_present / transaction_pending | bool，分别代表锁记录和待恢复事务存在；存在不能证明任务正在运行。 |
 | update.owner | active / none / stale / pending / unknown。active 才证明运行；none/stale 对应 running=false；pending/unknown 对应 running=null。 |
-| last.phase / result / generation_id | 最近尝试的阶段、结果与代次。stored result=running 但 owner 已确定 none/stale 时报告 interrupted。不能把旧成功变成本次结果。 |
+| last.phase / result / generation_id | 最近尝试的阶段、结果与代次。无历史记录时保留 never/未记录语义，不能由现有配置补造成功。stored result=running 但 owner 已确定 none/stale 时报告 interrupted。不能把旧成功变成本次结果。 |
 | last.attempt_epoch / success_epoch | 已知尝试和成功的 Unix 秒；旧协议没有记录时为 0，0 不能当作新成功。 |
 | last.configured_count / source_count | 最近尝试登记的候选数与解析流程来源计数；不能替代当前 source.configured_count，也不能仅凭 source_count 推断每个来源都是本次新下载。 |
 | last.imported_count / skipped_count | 本次记录的节点数量和跳过数量；转换前原始行数、过滤后节点数与同名去重后数量不能混为一谈。 |
@@ -43,11 +46,13 @@ cli --json sub status 只输出一个 schema=1、ok=true、command=sub.status、
 
 公共 JSON、canonical 文件和自动 MCP 资源禁止含 URL、hostname、节点/selector 名、URL 摘要、用户标识、凭据和原始错误。需要展示具体来源时，只有用户本地私密编辑页可以把有界 index 与自己的已验证草稿/回读内容对应。
 
+升级继续保留已存在的 subscription-status 原始字节及记录时间；人类文本的 `last_phase`/`last_result` 与机器 `last.phase`/`last.result` 都描述历史。未记录不是当前配置无效的证明，旧 success 也不是本次运行或联网成功的证明。当前更新锁不随历史恢复，canonical 仍依据当前 owner、事务与运行观测生成。
+
 ## C-SUB-003：私密 sub.inspect 与用量
 
 cli --json sub inspect 必须在 capabilities.private_commands 中单列。其 data 复用相同生命周期投影，额外提供 configuration.sing_box_urls（有序字符串数组）、configuration.user_agent（字符串）、configuration.filters（字符串数组）与 source_usage（数组）。用户主动进入订阅编辑流程时安静读取；不经过通用命令捕获、日志、Issue 生成或自动诊断。
 
-每个 source_usage 行包含 id（规范请求 URL 的 SHA-256 小写十六进制）、index（1 起始）、hostname、state（fresh/cached/unknown），及 upload_bytes、download_bytes、total_bytes、expire_epoch、updated_epoch。规范请求 URL 移除 fragment、转小写 scheme/ASCII 主机、省略默认 443、空路径补 `/`，并将原始非 ASCII path/query 按 UTF-8 字节百分号编码；其余 ASCII path/query 字节、顺序、重复键和已有百分号转义原样保留。缺失/无效数值是 null；字节数须为不超过 9007199254740991 的非负整数；时间须为正整数且不超过 253402300799。expire=0 或越界不能显示成已到期。fresh 只表示该条可信元数据的新鲜度，不证明全部订阅或代理通信成功。
+每个 source_usage 行包含 id（规范请求 URL 的 SHA-256 小写十六进制）、index（1 起始）、hostname、state（fresh/cached/unknown），及 upload_bytes、download_bytes、total_bytes、expire_epoch、updated_epoch。规范请求 URL 移除 fragment、转小写 scheme/ASCII 主机、省略相应默认端口（HTTPS 443、HTTP 80）、空路径补 `/`，并将原始非 ASCII path/query 按 UTF-8 字节百分号编码；其余 ASCII path/query 字节、顺序、重复键和已有百分号转义原样保留。缺失/无效数值是 null；字节数须为不超过 9007199254740991 的非负整数；时间须为正整数且不超过 253402300799。expire=0 或越界不能显示成已到期。fresh 只表示该条可信元数据的新鲜度，不证明全部订阅或代理通信成功。
 
 用量以完整来源身份绑定，不能按 index、域名或节点名匹配；来源重排、同主机不同查询令牌都必须独立。最近更新失败/中断时，旧 fresh 最多显示 cached；待提交事务不展示新用量；本地模式 source_usage 为空。URL、本地来源内容或 generation 在观察期间改变，返回 machine.snapshot_changed 并拒绝混合快照。它是变更检测，不是全 OS 原子快照；临时多次读取同值也不证明没有 ABA 变化，重建应使用受控代次/锁保证同次投影。
 
@@ -115,4 +120,14 @@ canonical producer 与支持包复用同一观测语义。来源不可读时，s
 
 验收分别覆盖两种来源模式的合法边界、边界加 1 字节、坏 UTF-8、NUL、链接、目录/FIFO、权限错误、文件与父目录缺失、观察中改写，以及含唯一 canary 的失败输入。比较 status、inspect、canonical producer、service.status 与支持包：缺失允许未配置；坏数据结构化失败或明确 unknown；所有只读调用前后目录树及文件摘要不变，公共输出无 canary。
 
-以上是重建与维护验收，不是本轮对旧版全部接口的运行结果。实际提取/探针结果统一记于根 VERIFICATION.md。
+## C-SUB-009：私密来源授权
+
+`sub trust set <base64-lines>` 接收完整 UTF-8 信任清单，按 runtime/SUB-016 的 16 KiB、64 条目、origin/CIDR/代理规则校验并规范化，再原子替换私有 `.config/sing-box/subscription-trust.list`。空候选拒绝并提示使用 `sub trust clear`；clear 写入空清单以撤销本地访问例外。先取得现有配置 apply 锁，再取得订阅来源 guard；存在未恢复订阅事务时拒绝。失败保留旧清单，文件保持私有权限，输出只给固定错误，不回显原始行。
+
+set/clear 不触发下载、重启、清空订阅来源或删除有效配置。新装缺失/空清单保持默认公网 HTTPS 策略，显式授权只覆盖匹配 origin 的本地 CIDR；撤销后的刷新重新检查权限。setup、set、set-file、apply-file、WebUI payload、安装向导和定时更新均使用同一后端规则，前端不能通过接受 HTTP 语法扩大权限。
+
+`check-source` 只检查 scheme、host、port 构成的 authority 与当前信任策略，不做 DNS、不输出来源信息。`resolve-source` 同时接收当前目标和起始来源的 scheme、host、port，先确认下载链权限，再解析并验证全部 A/AAAA 地址。只有整个集合通过后才输出已排序的 `IP|direct` 或 `IP|<loopback SOCKS5 URI>`，不能输出合法前缀后再失败。完整 path/query/token 不进入这些命令参数；输出属于私密执行器输入，不作通用诊断。公网 `resolve-host` 继续维持原约束，明确配置的 SOCKS5 路线不受环境变量覆盖。
+
+这些人类 CLI 命令不新增 schema=1 能力或机器写例外。带 `--json` 时由机器 dispatcher 完整接管并返回结构化 unsupported，零授权写入、零下载。公共 sub.status、canonical、MCP 自动资源与支持包不返回信任清单，也不新增第二套订阅状态。
+
+以上是重建与维护验收，不是本轮对全部接口的运行结果。实际提取与执行证据统一记于根 VERIFICATION.md。

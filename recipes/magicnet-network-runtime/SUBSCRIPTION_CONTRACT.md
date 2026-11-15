@@ -2,7 +2,7 @@
 
 本质：订阅列表中的每个来源都要得到完整的候选节点；只有整批候选校验通过，才能一起替换正在使用的配置。来源个数、节点个数和网络是否可用是三个不同结果。
 
-本文件是 runtime 配方 0.1.3 的必读部分，覆盖 URL/本地来源、转换、缓存、合并、激活、恢复、周期刷新和订阅状态。保留本包其他 Android 网络要求。实现语言、进程组织和私有临时文件布局自由；下文列出的 CLI、既有配置导入、公开状态及行为边界必须保持。新增公共 JSON 的字段、能力名和披露范围以控制面 `SUBSCRIPTION_INTERFACE.md` 为准，不从本文另造一套接口。
+本文件是 runtime 配方 0.1.13 的必读部分，覆盖 URL/本地来源、显式来源授权、转换、缓存、合并、激活、恢复、周期刷新和订阅状态。保留本包其他 Android 网络要求。实现语言、进程组织和私有临时文件布局自由；下文列出的 CLI、既有配置导入、公开状态及行为边界必须保持。新增公共 JSON 的字段、能力名和披露范围以控制面 `SUBSCRIPTION_INTERFACE.md` 为准，不从本文另造一套接口。
 
 ## 1. 来源和证据边界
 
@@ -21,21 +21,23 @@
 
 以下要求注明“保留”或“重建修正”。“保留”来自源码与既有配方，不表示该行为已在 Android 真机证明；“重建修正”是本轮为消除已查明不一致或覆盖 #426 而新增的目标，不可倒写为旧版本已经支持。
 
+SUB-016 的后续来源是已合并的 [源码 PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8)，合入提交为 `cc818816e1b5000ec31ab0ff09a08d36a201048f`。`crates/magicnet-cli/src/subscription_trust.rs` 定义信任清单、完整地址集合校验与锁边界，`src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh` 实现下载链授权和数值地址钉选。这一来源说明不把旧 v1.8.0 基线改写成已支持可信订阅；主机、模拟器、真实设备和实际发行结果仍分别记于根 VERIFICATION.md。
+
 ## 2. SUB-001：来源入口与边界（保留）
 
-- 远程模式接收一至五个不同的 HTTPS 订阅 URL，每行一个，忽略空白行；去重后超过五个必须拒绝整份候选，不能悄悄截取前五个。空文本不是“清空”的别名。
+- 远程模式接收一至五个不同的订阅 URL，每行一个，忽略空白行；默认只允许公网 HTTPS，显式授权的本地 HTTP/HTTPS 来源遵守 SUB-016。去重后超过五个必须拒绝整份候选，不能悄悄截取前五个。空文本不是“清空”的别名。
 - 人类 CLI 保留 `setup <url>`、`sub set sing-box <url>`、`sub set-file sing-box <base64-lines>`、`sub apply-file sing-box <base64-lines>`、`sub update sing-box|all`、`sub update-all`、`sub clear`。`singbox` 保留为既有目标别名。`set` 是替换为一个来源，不是向列表追加；列表写入口会验证并应用，不是只写文件。
 - `sub get` 是旧式首个 URL 读取，不可让多源客户端用它代表完整列表。完整私密读取走能力协商后的 `sub.inspect`，旧文本兼容层才使用 `sub list`。
 - WebUI URL 文本通过私有 payload 入口传入，不拼进 shell 命令。payload 的原始 UTF-8 字节、换行、query 和长字段在分块上传后必须完整保留。
 - 本地模式接收一个 UTF-8 订阅文档，最大 8 MiB；拒绝空白内容、NUL、无效 UTF-8、超过上限和非受控路径。缺少末尾换行可补齐。它与 URL 列表互斥，切换成功才移除旧模式的活动来源；失败保留旧模式。不得将本地文件上传第三方在线转换服务。
-- 兼容导入已有 `.config/sing-box/subscription.url`、`subscription.local`、`subscription.user-agent`、`subscription-filter.list`。这些是用户配置兼容边界；新实现不必复制所有内部暂存路径。发现损坏旧文件时报告并保留，不把“读失败”当作空列表。
+- 兼容导入已有 `.config/sing-box/subscription.url`、`subscription.local`、`subscription.user-agent`、`subscription-filter.list`，并按 SUB-016 保留设备已有的 `subscription-trust.list`。这些是用户配置兼容边界；新实现不必复制所有内部暂存路径。发现损坏旧文件时报告并保留，不把“读失败”当作空列表。
 
 ## 3. SUB-002：所有入口使用同一来源身份（重建修正）
 
 新规范对 WebUI、CLI、MCP、配置迁移、下载、缓存和用量读取一致：
 
 1. 接受 LF、CRLF、CR 行分隔；去掉每行首尾空白，忽略空行。每个非空行必须是一整个 URL，不接受行内注释或逗号/空格分隔的多个 URL。
-2. 仅允许 HTTPS。scheme 和 ASCII 主机名转小写；默认端口 `443` 省略；没有路径时补 `/`。非 ASCII 主机必须先按相同的、明确实现的域名序列化规则转成 ASCII，再执行主机合法性检查；不能让不同入口分别猜测。
+2. 默认只允许 HTTPS；SUB-016 授权来源可使用 HTTP。scheme 和 ASCII 主机名转小写；各 scheme 的默认端口（HTTPS `443`、HTTP `80`）省略；没有路径时补 `/`。非 ASCII 主机必须先按相同的、明确实现的域名序列化规则转成 ASCII，再执行主机合法性检查；不能让不同入口分别猜测。
 3. fragment 从网络来源中移除，界面告知它不参与订阅请求。不得用任意 `#` 截断包含在 percent 编码中的内容；`%23` 仍是原 URL 的数据。path/query 中已有 percent 编码不解码、不改变大小写；query 参数不重排，重复参数和空值保留。非 ASCII path/query 字符统一按 UTF-8 percent 编码；不得把 `+` 当空格，或把 `%2F` 当路径分隔符。
 4. 用规范化后的完整 URL 精确去重，保留首次出现顺序；同一主机的不同 path/query 是不同来源。后续拉取不能再用另一套清洗规则改变已确定的身份。
 5. 来源顺序是显示和本次进度的顺序，不是缓存键。缓存和来源用量以规范化完整 URL 的强身份绑定，不得用行号或 hostname 代替。迁移旧缓存时只在旧 URL 与新规范化 URL 的映射可证明且无歧义时重建身份；否则重新获取，不串用旧数据。
@@ -45,6 +47,8 @@
 旧实现差异必须保留在迁移说明：WebUI 的 URL 序列化保留 fragment，Rust 按 trim 后原文本去重，shell 在计算 SHA-256 前删除原始 `#` 后的内容。因此不能拿旧三者某一路的数量解释另一路，也不能把本条称为已验证的旧行为。
 
 ## 4. SUB-003：每个下载目标都要验证（保留；整批约束为重建要求）
+
+以下规定默认公网下载链。SUB-016 为设备明确授权的本地来源设置独立边界，不放宽公网链、其他下载器或模块发行的授权。
 
 - 拒绝非 HTTPS、userinfo、空主机、内嵌空白/控制字符、非法端口和私有/特殊用途地址。主机解析得到的每一个 IPv4/IPv6 地址均需通过公网地址策略；混合“一个公网、一个私网”也拒绝。禁止 loopback、link-local、metadata、multicast、CGNAT、文档保留网段及其他非公开目标。IPv4-mapped IPv6（`::ffff:a.b.c.d`）按嵌入的 IPv4 校验，并只把该 IPv4 写入 `--resolve`，不能因 shell/Rust 双校验或旧 Android curl 的 IPv6 `--resolve` 限制把公网 A 记录判失败。
 - 每一跳重定向都重新做 scheme、主机、解析地址与 TLS 检查并绑定已验证地址，不能先解析检查一次、连接时再任由 DNS 换地址。保留证书校验，失败不转成 insecure 重试，不降级 HTTP。
@@ -173,7 +177,24 @@ owner 至少绑定 PID 的启动身份及任务身份，不能只靠 PID 存在�
 
 保持现有 `schema=1`、capabilities、canonical token 约束。新客户端先协商，旧版本缺少批次能力时明确“缺少逐源结果”，不把缺字段当作 0 或 success。
 
-## 17. 已复现的旧聚合缺陷与未决项
+## 17. SUB-016：受信任的 NAS 与本地来源
+
+本地访问例外仅由设备操作员明确配置。私密 `.config/sing-box/subscription-trust.list` 使用 UTF-8 文本，最多 16 KiB、64 个有效条目；忽略空行和以 `#` 开头的整行注释，每个条目为 `origin CIDR [proxy]`。例如 `http://nas.example.invalid:25500 100.100.1.2/32 socks5://127.0.0.1:7892` 只作合成语法示例，不证明该域名可解析或服务可达。省略 proxy 时直连；缺失或空清单不启用本地访问例外。
+
+- origin 精确匹配 HTTP/HTTPS scheme、规范化 ASCII 主机或数值 IP 与端口；缺省端口分别为 80、443。禁止 path、query、fragment、userinfo、通配符和其他协议。完整订阅 URL 继续通过既有私密入口传递，不写入信任清单。
+- CIDR 必须使用规范网络地址，整个范围位于 RFC1918、CGNAT、ULA 或 loopback 空间；公网、link-local（含 `169.254.169.254`）、multicast、unspecified 等不允许的范围拒绝。数值 origin 本身也必须落在该条 CIDR 中。同一 origin 的多个 CIDR 组成并集且必须使用同一代理路线，不同 origin 不共享授权。
+- 可选代理只允许有明确端口的 literal loopback `socks5://` 地址。拒绝 SOCKS5h、HTTP、远端代理、主机名代理、userinfo、path/query/fragment 和环境代理。由本机解析并核对目的地址，传给 curl/SOCKS5 的是已验证数值 IP；HTTP Host 与 TLS 主机校验仍使用原 origin。该路线可连接已配置且运行的本机代理能够到达的授权目标，不自动启动代理或建立 Tailnet；源域名仍须由本机解析，不能据此承诺任意 MagicDNS 名称可用。
+- 首个来源确定整条下载链的授权范围。公网链的后续目标仍只允许公网 HTTPS，不因重定向目标命中信任清单而升权；受信任链的跳转只能保持同一 scheme、主机和端口。跨源、端口变化或 HTTP/HTTPS 切换均拒绝。
+- 每次请求、重试与跳转都重新解析；全部 A/AAAA 地址须属于该 origin 的 CIDR 并集，空结果或混入任一未授权地址时整体拒绝。只有整个集合通过才可向执行器输出地址，连接只使用已核对的地址；IPv4-mapped IPv6 按实际 IPv4 目标核对，避免解析后再次换址。
+- SUB-003 的每来源总期限、最多五次跳转、解压后 8 MiB 上限、TLS 校验与受管 curl 保持。用户 curl 配置、危险 loader/proxy 环境和 `MAGICNET_SUB_PROXY` 不能扩张权限。信任清单不改变模块更新、组件、规则或面板下载的既有策略。
+
+授权管理复用既有配置锁与订阅来源锁，完整校验候选后才规范化并原子替换私密清单。空 set 须拒绝并提示使用 clear；坏输入、锁冲突或未完成恢复事务保留旧授权。set/clear 不下载、不重启，也不删除已保存订阅或有效配置；撤销后续刷新的本地访问权限不等于撤销先前已提交配置。命令参数和失败语义以 control/C-SUB-009 为准。
+
+CLI、WebUI、安装向导与定时刷新共用同一后端授权。前端接受 HTTP 语法只表示可提交策略校验，不能自动授权主机、网段或代理；授权失败保留草稿、旧来源与有效配置。清单只从已安装设备迁移并保持私有权限，构建与发布包不得携带开发机授权，新装默认没有本地访问例外。
+
+升级继续保留已记录的 `.state/sing-box/subscription-status` 原始阶段、结果和时间，当前 `subscription-update.lock` 不随历史恢复。`last_phase=never`、`last_result=never` 表示缺少相应历史记录，不能仅凭现有有效配置补成 success，也不能由历史成功推断当前运行或联网成功。canonical 按当前证据重建。公共 JSON/canonical、MCP 自动资源、诊断与日志不得回显信任清单、私有地址、完整 URL 或 token。
+
+## 18. 已复现的旧聚合缺陷与未决项
 
 在固定源码的真实原生提取、有效计数、合并和 selector 生成函数上，使用合成的转换器输出做离线实验：A、B 各一个 Trojan gRPC 节点，tag 都为 `shared-name`，server 分别为 `a.example.invalid` 与 `b.example.invalid`；协议、port、凭据、transport 其余字段合法。未运行真实转换器，不联网、不修改设备。
 
@@ -188,8 +209,8 @@ owner 至少绑定 PID 的启动身份及任务身份，不能只靠 PID 存在�
 
 尚待新实现与真实设备验证：真实转换器的混合格式与 encryption 支持、五源完整数据流、长 URL/长协议字段跨桥接无损、OEM 网络和重启恢复、真实节点连接。Android/网络未验证项不得被本地合成实验消除。
 
-[#440](https://github.com/LIghtJUNction/MagicNet/issues/440) 的可信 NAS/私网订阅入口仍未纳入本合同。公网 URL 继续遵守 SUB-003 的 HTTPS、每跳校验与拒绝私网/CGNAT/元数据地址；不得通过全局允许 HTTP、私网或环境代理来宣称支持该能力。若日后增加独立、显式启用的信任范围，须精确授权主机、CIDR 与 scheme，并在每次解析和重定向上重新校验。
+[#440](https://github.com/LIghtJUNction/MagicNet/issues/440) 的可信 NAS/本地订阅边界现由 SUB-016 定义，公网链继续遵守 SUB-003。受控 HTTP/TLS/SOCKS5 夹具和模拟器结果不能替代用户 NAS、真实订阅与物理 Android 的验证；现场问题是否完全解决仍须绑定实际版本、输入和失败阶段确认。
 
-## 18. 验收入口
+## 19. 验收入口
 
-运行本包 ACCEPTANCE.md 的 SUB-A01–SUB-A20；每项记录输入、开始/结束代号、活动配置/来源/选择的前后摘要、机器结果、进程意图、退出状态及证明层次。必要的私密证据只在受控测试目录保存，公开结果脱敏。单元、合成转换输出、真实转换器、设备、真实网络及独立重建分开计数。
+运行本包 ACCEPTANCE.md 的 SUB-A01–SUB-A26；每项记录输入、开始/结束代号、活动配置/来源/选择的前后摘要、机器结果、进程意图、退出状态及证明层次。必要的私密证据只在受控测试目录保存，公开结果脱敏。单元、合成转换输出、真实转换器、设备、真实网络及独立重建分开计数。
