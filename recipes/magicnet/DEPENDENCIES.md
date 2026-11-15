@@ -21,7 +21,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `45154757c104b56c8a5dad24c8386fddf4d94c89`，tree `5d7579034b549318213e153cbbee1b8b9b54cbd5`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。候选以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现。本轮修复托管规则排序、准备动作与窄屏标签，更新 mDNS 模板和固定规则发行。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的提交 `4b02897dffd6acd455c0e25849b46398ca1465b6`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。候选以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现。本轮修复托管规则排序、准备动作与窄屏标签，更新 mDNS 模板和固定规则发行。
 
 模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。当前候选的完整源码、构建和 Android CI 仍待完成，不能沿用旧提交的结果宣称本轮整包通过。准确命令、提交和范围见 [VERIFICATION.md](VERIFICATION.md)。
 

@@ -6,7 +6,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `45154757c104b56c8a5dad24c8386fddf4d94c89`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `4b02897dffd6acd455c0e25849b46398ca1465b6`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.24，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
@@ -14,7 +14,7 @@
 
 ## 2026-11-15：配置、分流与发行候选
 
-源码 `45154757c104b56c8a5dad24c8386fddf4d94c89`，tree `5d7579034b549318213e153cbbee1b8b9b54cbd5`，包含四次增量提交：窄屏标签、配置/规则固定值、分流顺序、正常化回归与授权范围说明。模板固定 `da3d375d024e0982265bc67c48a87de7bb4f9424`；其 [PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) 已合入，合并提交 `f9c8495f3ad73d8297fc24eff95970ec8de0e20d`。
+源码 `4b02897dffd6acd455c0e25849b46398ca1465b6`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，包含五次增量提交：窄屏标签、配置/规则固定值、分流顺序、正常化回归与授权范围说明、浏览器任务固定 Ubuntu 24.04。模板固定 `da3d375d024e0982265bc67c48a87de7bb4f9424`；其 [PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) 已合入，合并提交 `f9c8495f3ad73d8297fc24eff95970ec8de0e20d`。
 
 | 范围 | 当前证据 |
 | --- | --- |
@@ -30,7 +30,7 @@
 
 `.local` 和链路本地反向查询的规则范围来自 [RFC 6762 第 3、4 节](https://www.rfc-editor.org/rfc/rfc6762.html)；锁定核心具有原生 mDNS 传输。本次未验证 Android 物理设备组播、实际 NAS 或家庭 DNS，home.arpa/.lan 行为没有据此改写。源码 PR #8 已合入可信本地订阅授权；本轮把对应 SUB-016/C-SUB-009/UI-SUB-013 和 M69 合同接入当前配方，不把既有订阅历史修复当成新增实现。
 
-当前候选的环境/构建阻塞：`45154757` 的 [webui job 132729899795](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107250/job/132729899795) 在 Ubuntu 26.04 安装 Playwright 字体依赖失败，浏览器测试尚未开始；对应修订将相关浏览器 job 固定到 Ubuntu 24.04，保留全部依赖和测试。Android [43687107232](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107232) 在构建 curl 依赖时拒绝 zlib 归档摘要不符，未运行模拟器；未跳过哈希或验收，排查与新候选结果另行记录。
+当前候选的环境/构建阻塞：`45154757` 的 [webui job 132729899795](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107250/job/132729899795) 在 Ubuntu 26.04 安装 Playwright 字体依赖失败，浏览器测试尚未开始；对应修订将相关浏览器 job 固定到 Ubuntu 24.04，保留全部依赖和测试。Android [43687107232](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107232) 在构建 curl 依赖时拒绝 zlib 归档摘要不符，未运行模拟器；失败发生于新下载，工作流没有还原该源归档缓存；820b 至当前锁文件与下载器未变，旧 run 同锁构建成功。新候选保留版本和摘要自然重跑，未跳过哈希或验收。浏览器 job 的 CI 合同 20 项和发布 workflow 合同 42 项本地通过，actionlint 与真实依赖安装由新 CI 确认。
 
 前次失败保留：源码 [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 为 810 passed / 5 skipped / 1 failed，失败是 320px 俄语状态标签溢出；配方 [43683319759](https://github.com/LIghtJUNction/MagicNet/actions/runs/43683319759) 的 Android 在注入路由故障前 UDP 基线超时，`recovery_tick_count=0`。同期源码 [Android 43682884867](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884867) 成功只适用于旧 tree，不能替代当前候选或正式发布门禁。
 
