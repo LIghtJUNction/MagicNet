@@ -52,6 +52,10 @@ Ctrl/Command+K 或 / 打开快速跳转，搜索不抢编辑器/输入框打字�
 覆写 preview/save/apply/reset 显示 pending/revision/conflict；管理字段不准从编辑器绕过。备份/恢复、节点/连接关闭、抓包、修复、停止、重启都有对应风险与确认。
 network-access 先检查完整共享包名单，明确确认后写；只读检查不自动修复。Tailscale disable/resume/logout 区分，失败不报成功。
 
+分流出口切换协议后，提交载荷只含当前协议支持的认证字段。username 仅用于 SOCKS/HTTP；VLESS 不携带隐藏的 password，继续保留 uuid/encryption；Trojan/Shadowsocks 保留当前可见的 password，既有 HTTP 凭据和 TLS 设置不丢失。
+
+编辑已有 urltest 组的成员须保留原 url 和 interval。只有字段缺失时分别补默认 `https://www.gstatic.com/generate_204` 和 `3m`，成员编辑不能重置用户探测设置。
+
 Tailscale 私密配置读取由首次可用、显式刷新或配置 revision 变化驱动。自身读取结束引起的 busy/disabled 解除不能触发无界重读；读取失败后保留明确的重试入口。
 
 ## 国际化与主题

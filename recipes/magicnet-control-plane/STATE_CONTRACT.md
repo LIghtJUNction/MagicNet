@@ -25,3 +25,11 @@ module-update accepted/installer exited/staged/reboot_required 与 effective ins
 ## 统一目录
 
 运行观测与构建元数据统一在 `.state`，可丢弃缓存和私密命令载荷统一在 `.cache`。WebUI、配置编辑、订阅候选、文件与节点命令都只生成 `.cache` 路径；沿用普通文件、owner/mode、链接、大小和原子发布检查。MCP 通用文件接口拒绝 `.cache`、旧 `.tmp`、旧 `.local/state` 与 `.state/directory-migration`，包含路径别名；迁移后的私密数据不能进入公共状态。旧根只作迁移输入，成功后不再保留第二套消费者路径。
+
+## 独立配置保存
+
+独立配置保存将 `.config/sing-box/` 下的 `config.json`、旧配置的 `config.json.bak`、`standalone-config` 及本次变化的 `tailscale-auth.json` 放入同一现有事务。候选校验通过后先预检全部目标，再暂存、同步和逐项替换；预检拒绝任一目标时不提交配置或密钥。后续替换失败按逆序回滚已替换项，并报告回滚或清理错误；全部替换完成后的清理失败保留已提交事实。
+
+事务始终使用候选校验时绑定的目录身份。打开全部目标目录后核对设备号与 inode，任一不符即在暂存前拒绝；提交继续使用这些已核验的目录句柄，不能重新按路径写入替代目录。
+
+备份保留旧配置的原始字节，包括无效 UTF-8；旧配置不存在时不虚构备份。配置、备份、标记和 keys 的私密输出均保持 0600。

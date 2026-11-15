@@ -6,11 +6,28 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `af72e0435c56bdebc724f2c93c2f775624f010f3`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `76b0b069e0cf776dc48b00d8a97eeacbdf44c2ef`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
-| 配方 | 0.3.24，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.25，八包；验收 M01–M70 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | 配置与分流的源码 CI、主仓完整发布预览均通过，[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 与 [主仓 PR #456](https://github.com/LIghtJUNction/MagicNet/pull/456) 已合并。正式发布尚未触发，稳定索引仍为 v1.8.7 / 10615；物理设备、实际 NAS 与 mDNS 组播验证仍开放，独立重建尚未执行。 |
+| 当前完成与开放项 | 本轮八类故障修复已进入源码 main，Rust 937 项、WebUI 392 项及组件质量检查已通过；逐项证据见下节。稳定发行仍为 v1.8.7 / 10615；本轮物理设备换网、真实 NAS 与升级安装结果尚未采集。 |
+
+## 2026-11-15：全面故障检查与运行时修复
+
+固定源码为 [`76b0b069`](https://github.com/LIghtJUNction/magicnet-android/commit/76b0b069e0cf776dc48b00d8a97eeacbdf44c2ef)，tree `8d08e327531493177d63702799d7b887bef74399`。六个增量提交修复 Wi-Fi 退出状态、connectivity 停止竞态、重复 Wi-Fi watcher、协议表单隐藏凭据、测速参数重置、TUN 冲突假绿、配置元数据部分提交和卸载中断后跳过清理。
+
+各缺陷都有旧行为失败、新行为通过的定向复现。独立交叉审阅补上配置验证目录与事务目标目录的设备号/inode 核验；现有文件事务负责预检、替换失败回滚，提交后的暂存清理仍可能报错，此时不能把错误解释为配置已回滚。
+
+| 本轮已完成检查 | 结果 |
+| --- | --- |
+| Rust workspace 全套 | 937 passed，0 failed，1 ignored；869 单元 + 68 集成。原有 ignored 项需要独立 AOSP Android-profile mksh 夹具。 |
+| 配置编辑 / TUN / 共用事务 | 27 / 22 / 9 项通过，已包含在 Rust 总数内。 |
+| WebUI | 392 项 Node 测试、类型检查与生产构建通过。新增浏览器用例由既有 CI 执行；本地 Chromium 启动受 socket 权限限制。 |
+| 安装与下载组件 | Go 格式、vet、race 测试及 components 质量闸全部通过。 |
+| 卸载 | BusyBox 真实进程、锁、timeout/httpd 18 项通过；整个卸载尝试被终止后可重试，并发保持单一清理者。 |
+| 静态检查 | 严格 Clippy、Rust 格式、全 ShellCheck、工作流 actionlint 与 diff 检查通过。 |
+
+本轮修改继续使用既有锁、事务和 schema=1 接口，没有增加运行依赖。设备尚未连接；物理设备换网、Root 管理器实际升级/卸载与真实联网效果仍需对应设备证据。稳定发布索引与历史产物保持各自身份。
 
 ## 2026-11-15：配置、分流与发行候选
 

@@ -88,3 +88,13 @@ LIFE-A12：覆盖无关 CLI/core/其他 loop 的不可读身份、真实候选�
 透明 effective 来自当前配置中唯一的 TUN/eBPF 入站。配置缺失、坏 JSON、无匹配或重复入站均为 unknown，configured 意图单独保留。事务目录存在但 phase 缺失、空或不可读时为 unknown；目录不存在才表示无事务。机器快照与 canonical 共享该判断。
 
 LIFE-A13：注入 unknown 进程、配置缺失/损坏/重复、事务 phase 缺失/空/不可读。核对启停 helper 调用与 watchdog marker，比较机器快照和 reconcile 后 canonical；未知不授权操作，不伪造 effective 或稳定阶段。
+
+## LIFE-009：监督器启动与停止串行
+
+Wi-Fi watcher 的身份核验先区分存活与退出。僵尸或已确认退出的 PID 为 stopped；仍存活但 stat/cmdline 不可读为 unknown。cmdline 读取失败后重查存活状态，确认读取间隙已退出时不得继续阻断停止或恢复；未知身份仍不授权发信号。
+
+connectivity 与 Wi-Fi watcher 分别复用现有 metadata guard 串行执行本类 start/stop，锁内重查身份、发布或回收 PID。stop 等待已进入启动临界区的调用完成后再停止该代监督循环；重复 start 保留健康 PID。争锁超时与锁能力不支持分别报告，派生长期监督进程前关闭其继承的控制锁描述符，不释放调用者仍持有的锁。
+
+LIFE-A14：以真实未回收僵尸和受控 proc 读取故障覆盖 Wi-Fi watcher 的 stat 不可读、cmdline 不可读及读取间隙退出，对照 connectivity watcher。确认退出为 stopped，真实 unknown 保持拒绝；分别记录 POSIX sh、Bash、mksh 和 BusyBox 的执行范围。
+
+LIFE-A15：对 connectivity 与 Wi-Fi watcher 在启动发布 PID 前暂停，再并发发起 stop；另测两个 start 同时进入、健康重复 start、忙锁和锁能力缺失。恢复启动后 stop 完成且不遗留该代监督循环，并发启动只留一个；核对长期进程没有控制锁 FD，保持原超时和 unsupported 错误语义。

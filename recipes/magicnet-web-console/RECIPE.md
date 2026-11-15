@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.8"
+version = "0.2.9"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.9 按选中协议提交有效认证字段，编辑 URL-test 成员时保留已有测速地址与间隔；新建组沿用默认值，提交载荷仍走私密通道。
 
 0.2.8 增加 UI-SUB-013：接受 HTTP/HTTPS 来源语法，所有来源由设备后端执行同一授权；界面不自动创建信任，拒绝时保留草稿、有效配置与任务所有权。流量路径的名称、状态和说明在 320px 俄语界面中完整换行，不越出各自节点；继续遵守 0.2.7 的克制视觉、可访问性和真实状态合同。复用既有接口与依赖。
 

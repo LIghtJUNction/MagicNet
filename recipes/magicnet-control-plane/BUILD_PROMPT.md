@@ -32,6 +32,8 @@ capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspe
 生命周期锁有截止时间，报 busy，不无限等 flock。JSON 配置/selector/Tailscale 读取 4 MiB 边界；Wi-Fi 名单和私密 curl stdin 64 KiB；拒绝 FIFO、symlink、非普通文件。curl 凭据走 stdin，超时、输出截断或输入交付失败明确失败。
 资源数值是来源合同，不是推测的总 RSS 或速度保证。选择另一实现时必须通过相同可观察压力与清理验收。
 
+独立配置保存按 STATE_CONTRACT.md 将有效候选、旧配置备份、standalone 标记及本次变化的 Tailscale keys 纳入同一现有事务。全部目标先预检，再暂存和提交；后续替换失败回滚已替换项。校验与提交绑定同一目录身份，目录被换成另一个真实目录也必须在写入前拒绝；备份保留旧文件原字节。
+
 命令预算由当前调用读取一次，创建 shell worker 时移除一次性 `MAGICNET_COMMAND_TIMEOUT` 覆盖。持久核心的启动、就绪交接和失败清理遵循 runtime/LIFECYCLE_CONTRACT.md；内部启动命令不绕过 `--json` 的机器分派。
 
 MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照尾部 1 MiB，按原规则处理截断首行和无效 UTF-8，最多输出 1000 行，保留顺序、CRLF 与空行的处理规则及脱敏行为。定位末尾 N 行只扫描所需后缀，不为整个文件建立行数组；有效 UTF-8 直接复用读取缓冲区。用固定输入比较结果、临时分配和耗时，不把局部日志优化宣传成整机内存或网络吞吐提升。generic `magicnet_cli` 拒绝人类 `hotspot` / `hotspot status`；`file_list` / `file_read` 拒绝 `.state/hotspot` 及其 symlink 别名。接口名、客户端网段和回程对端只留在人类 CLI 与私密 journal，不能经 MCP 自动路径泄漏。`--json hotspot status` 与 named `magicnet_hotspot_status` 仍是脱敏入口。
@@ -55,5 +57,7 @@ MCP 与人类 CLI 的日志尾读共享同一快照语义：最多读取快照�
 Android 使用系统实际支持的只读命令参数，不能因桌面工具选项在设备上不可用而长期误报未知。路由表必须按配置的实际数字 ID 核对；命名表以及看似数字的表别名都不得被猜作该 ID，RPDB 与 FIB 采用同一无歧义身份。Android 对配置规则窗口与 redirect fallback 内的每条相关 lookup，包括数字外观输出，以无歧义数字表过滤快照逐条核验。无法取得该证据时保持 unknown，不退回只看接口，也不把原始别名或命令错误写入公共摘要。
 
 TUN 健康与机器 readiness 共用一份解析和有界只读观测逻辑。接口存在只是前提；auto_route 启用时，按有效入站配置及固定核心的默认值推导表号、优先级、地址族与 redirect marks，核对必要策略路由组及目标表中 TUN 转发路由对必要静态范围的覆盖。每地址族按显式 route_address（缺省全族）减静态 route_exclude_address 推导，不要求固定 default 或两条 /1；默认模板的私网/ULA 排除仍可验证。route_address 与 route_exclude_address 各字段最多 1024 个前缀，超限保持 unknown；普通非 redirect 路径的动态地址集未观测时保持 unknown，不能把原生 auto_redirect 仅用于 netfilter 的动态集合误当成 FIB 输入。仅热点 iif 残留、fallback 或受限规则不能替代应用路径所需规则。保留 Android 的 per-network 路由表模型，不要求 main 表必有默认路由，不假定 UID 2000 代表所有应用。
+
+TUN 路由的范围覆盖不能掩盖同表竞争前缀。有效 TUN 路由已覆盖必要范围，但其中存在其他设备、不可转发或 linkdown 路由，且受影响范围未被更具体的有效 TUN 路由完全覆盖时，路由证据为 unknown；不猜测 metric 等未观测的优先关系。范围外路由和已被更具体 TUN 路由覆盖的宽泛回退不误报冲突；该未知证据不能授权自动恢复。
 
 每轮 RPDB/FIB 子命令共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB；这不是整个 health/export 的总耗时或 CPU 解析硬截止。任一必要项已知缺失时机器字段为 false，即便另项未知；没有已知缺失而有读取失败、超时、截断或无法解释的证据时为 null。人类 health 显示 warning 及对应 detail。auto_route=false 不强行要求自动规则；eBPF 保持独立附着检查；机器快照对 stopped/unknown 核心保留原语义且不探测路由，人类 health 仍可能检查残留接口。检查不产生公网请求、规则写入、后台循环、自动重启或 canonical 发布，不返回原始地址/规则列表。必要内核资源存在仍不证明真实应用流量已成功。

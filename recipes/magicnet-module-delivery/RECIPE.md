@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.10"
+version = "0.2.11"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.11 使用现有内核锁保护卸载清理，恢复中断后重试，保留并发互斥、锁错误传播及后台进程不继承锁的要求。
 
 0.2.10 将设备私密 `.config/sing-box/subscription-trust.list` 纳入唯一持久配置迁移清单，升级保留其字节与私有权限，继续保留已记录订阅历史。构建清理、拆包与全部最终 ZIP 检查排除开发机信任清单；新装不自动产生本地访问例外。既有发布与 Android 报告门禁保持。
 

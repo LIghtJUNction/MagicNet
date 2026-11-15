@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.24 | 产品集成、M01–M69 与完整验收 |
-| magicnet-control-plane | 0.2.10 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.13 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.8 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
+| magicnet | 0.3.25 | 产品集成、M01–M70 与完整验收 |
+| magicnet-control-plane | 0.2.11 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.14 | 订阅事务、生命周期、监督恢复与低频联网检查 |
+| magicnet-web-console | 0.2.9 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.10 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-module-delivery | 0.2.11 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
@@ -21,11 +21,11 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的已合并提交 `af72e0435c56bdebc724f2c93c2f775624f010f3`，tree `ced91db63d6e301dbcda75d7220a6fb829b8e132`，对应[源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)。该 tree 与受测 PR 提交 `4b02897dffd6acd455c0e25849b46398ca1465b6` 相同；gitlink 与可复用工作流均固定到源码主线的合并提交，保证 PR 分支删除后仍可解析。实现以已合入可信本地订阅的 `cc818816e1b5000ec31ab0ff09a08d36a201048f` 为基线，保留 [UI PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 与 [NAS PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 的实现，包含托管规则排序、准备动作、窄屏标签、mDNS 模板与固定规则发行。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `76b0b069e0cf776dc48b00d8a97eeacbdf44c2ef`，tree `8d08e327531493177d63702799d7b887bef74399`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。六次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现和验证范围见 [VERIFICATION.md](VERIFICATION.md)。
 
-模板的 37 项测试与 [MagicSingBox PR #22](https://github.com/LIghtJUNction/MagicSingBox/pull/22) CI 已通过并合入；源码定向分流、迁移、安装及物化检查通过。受测 PR 提交的完整源码、构建和 Android CI，以及主仓发布预览均已通过；原始结果继续绑定其实际 source SHA。合并后固定值的构建结果与准确验证范围见 [VERIFICATION.md](VERIFICATION.md)。
+本轮从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
-源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮目标为后继 patch 版本。
+源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮更新维护源码与验收，尚未生成后继正式安装包。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |

@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-control-plane"
-version = "0.2.10"
+version = "0.2.11"
 kind = "software"
 description = "MagicNet 版本化 CLI、机器接口与认证 MCP"
 entry = "BUILD_PROMPT.md"
@@ -13,6 +13,8 @@ entry = "BUILD_PROMPT.md"
 [dependencies.runtime]
 source = "../magicnet-network-runtime"
 ~~~
+
+0.2.11 将独立配置、原始字节备份、验证标记与 Tailscale 密钥纳入既有文件事务；提交前核验目录身份，目标异常和替换失败统一回滚。TUN 冲突结果保持 unknown。
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
 

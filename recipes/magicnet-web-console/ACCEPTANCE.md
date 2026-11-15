@@ -37,6 +37,9 @@ UI-CON-01–04：概览/诊断的⚠️、退避、主目标恢复与内核ready
 
 31. 在 320×740 的俄语概览中分别注入 unknown、stopped、ready 状态，检查每个路径节点的名称、状态和说明的实际边界均处于所属节点内；长状态完整换行，节点之间不覆盖，页面无横向溢出。对照中文、英文及浅深主题，保留状态文字与静态连线；不以隐藏溢出、删字或缩小字号通过验收。
 
+32. 在真实分流编辑组件中先填写 HTTP/SOCKS username/password，再切换为 VLESS、Trojan 或 Shadowsocks 并预览载荷。username 仅随 SOCKS/HTTP 提交；VLESS 不提交隐藏 password 且 uuid/encryption 完整，Trojan/Shadowsocks 保留可见 password。对照 HTTP 凭据与 TLS 编辑，确认当前协议支持的字段不丢失。
+33. 修改带自定义 url/interval 的 urltest 组成员，预览和保存均保留原参数；字段分别缺失时仅补对应默认值，新建组使用默认 `https://www.gstatic.com/generate_204` 与 `3m`。组件载荷回归与浏览器交互结果分别记录。
+
 ## 0.2.8 受信任来源
 
 用同一 HTTP/NAS URL，在缺失授权、精确授权、错端口、撤销授权四种状态下检查和保存；前端语法结果一致，后端仅允许准确授权。成功仍须通过既有任务退出与同次结果回读确认，拒绝保留草稿与旧有效配置。安装向导执行同一策略，界面不提供自动信任或代理旁路。复核默认 HTTP 80/HTTPS 443 规范化及 path/query 字节保真，canary 不进入共享输出或 Issue。

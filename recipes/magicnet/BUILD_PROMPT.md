@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.24）
+# 重建 MagicNet（配方 0.3.25）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M69；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M70；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@af72e0435c56bdebc724f2c93c2f775624f010f3`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@76b0b069e0cf776dc48b00d8a97eeacbdf44c2ef`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -44,6 +44,16 @@
 - **TUN 恢复与免真机回归（M66）：** 按 CON-005/CON-A08–A09，在既有 watchdog 独立观察自动路由，以启动宽限、连续确认、共享冷却和开机预算控制标准核心重启。固定的一次性 x86_64 Android/KernelSU AVD 在稳定的单 eth0 上联下主动删除精确自有 RPDB 规则，并执行 eth0 down/up，以同应用 UID、依赖 RPDB 的非 DNS UDP 验证断流与恢复，保留 TCP 正反控制并记录上联断续前后路由、就绪与 TCP 实测；独立校验接收端/清理、外部网络归属、报告与源码身份，缺失或跳过不得通过。netd 网络重编号须由不变的网络元数据与接口/FIB 派生权限对应的全局规则和逐应用 UID selectors，逐项核对完整字段和重复次数，仅替换 netId；其余规则变化仍失败。现场 OEM 触发原因与模拟器可复现恢复分开记录。
 
 CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状态并通过 Android 服务临时关闭 Wi-Fi；在有界等待内取得连续两次相同的单 eth0 netd/RPDB/出口基线后才允许注入。固定镜像的 eth0 是模拟蜂窝接口，故障前须将唯一默认 phone/数据订阅、启用状态与当前 CONNECTED/WWAN/eth0 连接及 netd 网络编号对齐。使用 `cmd phone data disable/enable` 控制其真实生命周期；关闭后须有界确认用户/有效数据均关闭、连接状态断开、当前精确连接为空、接口 DOWN，且 netd 旧 eth0 网络已销毁。仅允许原逐应用 UID 元数据精确转移到 UNREACHABLE，其余元数据不变；重新启用后原归属恢复，只允许 eth0 netId 更新。保留独立延迟 enable guard 并核对 `restore_method=android_mobile_data_toggle`，恢复后仍须实际路由、就绪与应用 TCP 成功。finally 恢复并核对原 Wi-Fi 启用布尔值，准备、关闭或恢复证据缺失即失败。报告保留 `cellular_lifecycle` 三阶段证据；受控蜂窝重连与 Wi-Fi 切换恢复分别验收，临时 Wi-Fi 开关不证明后者。
+
+## 故障恢复一致性（M70）
+
+connectivity 与 Wi-Fi watcher 的启动、重复启动和停止使用同一有界生命周期互斥，停止等待已进入启动流程的实例完成登记后再清理；常驻子进程不持有控制锁。已退出的 Wi-Fi watcher 可清理，活进程身份读取失败保持 unknown。
+
+TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreachable 路由覆盖时，观察结果保持 unknown，且不授权自动恢复；排除范围及被更具体 TUN 前缀覆盖的宽泛 fallback 保留。
+
+独立配置保存将配置、原始字节备份、验证标记与 Tailscale 密钥纳入已有文件事务，预检所有目标，并在替换失败时回滚；提交使用与校验一致的目录身份。既有提交后暂存清理错误保持明确语义，断电或 SIGKILL 的跨文件持久原子性不在该保证内。
+
+分流编辑器仅提交所选协议允许的认证字段，修改 URL-test 成员保留已有测速地址和间隔。卸载清理使用现有内核锁，整个尝试被终止后可重新执行，活跃清理者保持互斥；锁异常返回失败，后台 timeout 与告别页进程不继承卸载锁。
 
 ## 视觉与资源约束
 

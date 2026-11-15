@@ -27,3 +27,6 @@
 18. 用 unknown 的进程观测执行 `service toggle sing-box`：非零拒绝，不调用 start/stop，watchdog marker 保留；running/stopped 的已支持分支继续正常。区分既有 canonical 收尾发布与服务写操作。
 19. 固定 configured=tun/ebpf，分别提供缺失、坏 JSON、无透明入站、重复同型和混合透明入站；effective 均为 unknown。事务目录无 phase、空 phase、不可读 phase 同样 unknown，目录不存在仍为 idle。机器快照与显式 reconcile 后 canonical 一致，不泄露配置或原始错误。
 20. 执行 C-SUB-009：trust set/clear 的合法、空/坏输入、边界与超限、锁竞争、恢复 pending 和原子保存；HTTP/本地候选的默认拒绝与精确授权。setup、列表、payload、安装与定时入口一致。check-source 不做 DNS 且成功无输出；resolve-source 核对起始来源与目标并在全部地址通过后才输出固定格式。trust/check-source/resolve-source 带 --json 均结构化拒绝且零写入；canary 不进入公共状态、MCP 自动资源、错误或支持包。升级有/无历史分别核对原记录与 never/未记录语义，不从已配置来源或有效配置补造成功。
+21. 在 TUN 已覆盖必要范围的快照中加入同长或更具体的其他设备、blackhole/unreachable、linkdown 路由，IPv4/IPv6 均验证 unknown；不以 TUN 范围并集伪报 ready。对照范围外竞争项、被更具体 TUN 路由覆盖的宽泛回退及真正缺失，分别保持 present 或 missing。未知与另一项已知缺失并存时，机器 readiness 可为 false，但 runtime 不得据此累计完整缺失或自动恢复。
+22. 独立配置保存覆盖已有/缺失配置、已有备份、无效 UTF-8 旧配置及 Tailscale auth_key 提取；成功后配置、原字节备份、standalone 标记和变化的 keys 一致，私密文件权限保持。把备份、标记或 keys 目标替换为目录、链接或其他非普通文件，预检失败时旧配置及相关文件不变；逐次注入后续替换失败，核对已替换项回滚及错误传播。已提交后的清理失败须保留已提交事实。
+23. 在候选校验期间将配置目录改名，并在原路径放入另一个真实目录或 symlink；保存必须拒绝，不能把旧目录中验证的候选或备份写入替代目录。以正常目录为对照，核对所有事务目标沿同一已验证目录身份完成预检、暂存与提交。

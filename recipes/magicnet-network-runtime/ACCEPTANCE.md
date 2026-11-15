@@ -16,6 +16,8 @@
 | hotspot reconcile 持锁期间发起 service start/stop/restart，含核心已运行的 no-op | 并发生命周期 | 周期 reconcile try-lock 失败则无副作用跳过；用户动作得到有界等待/规范 busy 结果，不被误报为核心失败 |
 | 热点拓扑首次变化、应用耗时超过一次 UI 请求、读取状态失败/晚返回 | WebUI 生命周期与刷新 | 后台阶段可观察；旧 ready 不复用；调用端超时不释放设备 owner；非冲突读操作仍可用 |
 | 连续五轮核心启停、清理中断、PID/owner unknown | stop/start 恢复 | 优雅关闭先给清理机会；只回收拥有的 tun/cgroup/TC/路由资源；失败保留证据且明确不完整 |
+| Wi-Fi watcher 僵尸、读取 stat 后退出、存活但 stat/cmdline 不可读 | 状态核验与停止 | 确认退出为 stopped，不误报 unknown；真实不可读仍拒绝发信号，按 LIFE-A14 跨 shell 验证 |
+| connectivity/Wi-Fi 并发启动、重复启动、启动尚未发布 PID 时停止 | 真实进程生命周期 | 同类监督循环唯一，健康 PID 保持；停止等待已进入临界区的启动并回收该代，无停止成功后出现的新循环；争锁有界、长期监督进程不持控制锁，见 LIFE-A15 |
 | 下游分别具备/不具备全局 IPv6，热点代理与直连 | 客户端回程 | 实际客户端双栈结果分开记录；健康状态不能覆盖失败回程；没有 v6 前提则标未覆盖 |
 | Play/GMS/GSF 真实应用请求、DNS 与系统 per-UID 策略变化 | OEM 网络验收 | API readback、root curl 和 TUN 接口存在均非应用成功证明；不同厂商逐项记录，不应用全局直连绕过 |
 | 活动 config 空/损坏、last-known-good 无效、事务每个阶段中断 | 配置恢复 | 先验证独立备份；无有效基线则拒绝激活；保留 journal 与用户配置供重试 |
