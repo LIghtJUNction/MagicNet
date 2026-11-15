@@ -10,7 +10,7 @@
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.24，八包；验收 M01–M69 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | 配置与分流候选已提交 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10)，定向本地检查通过，完整 CI 与正式发布待完成。可信 NAS 入口已由源码 PR #8 合入，设备验证仍开放；WebUI 前次完整 CI 的窄屏失败已修复，当前结果见下节。 |
+| 当前完成与开放项 | [配方 PR #456](https://github.com/LIghtJUNction/MagicNet/pull/456) 与 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 已合并；固定源码的完整发布预览通过，正式发布待完成。NAS、WebUI、分流与本地 DNS 已整合，物理设备、真实 NAS/mDNS 网络和独立重建仍未执行。 |
 
 ## 2026-11-15：配置、分流与发行候选
 
@@ -24,19 +24,23 @@
 | 相邻运行逻辑 | app policy failure 12 项，以及 app-routing、route-apply、ad-routing、block-apply、action-routing、hotspot-routing 的定向脚本通过；原子发布失败与缺少必要 sniff 保留旧配置。 |
 | 模板升级 | template-pin、repository-migration、install-refresh 通过；install-template 为 20 passed / 2 skipped（宿主缺 BusyBox，真实核心为 CI opt-in）。精确旧官方 pin 迁移，自定义 digest 保留、结果权限 0600、重复迁移幂等。 |
 | DNS 物化与规则资产 | 4 个 profile × 启停 Tailscale 的 8 个组合保留原生 mDNS；bundled-rules 20 项通过。固定发行 `rules-20261115-585094101194f32e` 的归档摘要、安全展开及 116 个规则集清单逐项核验通过；manifest 摘要见 DEPENDENCIES。 |
-| WebUI | 窄屏状态允许断行，新增实际节点边界断言；17 项定向单元检查、类型与语法检查通过。完整浏览器回归由当前源码 CI 重新执行。 |
-| 配方与发行验证器 | 配方 check、pack、归档 check 与完整 build 提示词通过（8 包、62 Markdown）；固定值回归 17 项通过。发行验证器新增设备授权文件检查，18 项资产验证与 41 项发布计划回归通过；24 个重算摘要的污染包被拒绝，21 个相似路径正例保留。 |
-| 整包与发布 | 当前 [PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 的全量质量、锁定核心、构建、Android 与网络证据尚待完成；正式发布未完成，稳定索引保持 v1.8.7 / 10615。 |
+| WebUI | 窄屏状态允许断行，新增实际节点边界断言；17 项定向单元检查、类型与语法检查通过。固定源码的 [完整发布质量门禁](https://github.com/LIghtJUNction/MagicNet/actions/runs/43687915429/job/132732328718) 已通过，包含浏览器检查。 |
+| 配方与发行验证器 | 配方 check、pack、归档 check 与完整 build 提示词通过（8 包、62 Markdown）；本轮固定值回归 19 项、发布计划 41 项与资产验证 18 项通过。README 校验排除 HTML 注释和围栏代码示例，保留有效字段旁的历史示例；三种语言均有正反例。发行验证器拒绝 24 个重算摘要的授权文件污染包，保留 21 个相似路径正例。 |
+| 整包与发布 | [完整预览 43687915429](https://github.com/LIghtJUNction/MagicNet/actions/runs/43687915429) 首次运行成功：构建、发布质量、Android 15 / KernelSU / x86_64、独立 Simulation Gate 与最终资产核验全部通过。预览身份为 v1.8.8 / 10616，publish 跳过；稳定索引保持 v1.8.7 / 10615。 |
+
+本轮逐项核对三个待处理 PR：[#452](https://github.com/LIghtJUNction/MagicNet/pull/452) 的可信订阅合同和升级保护、[#455](https://github.com/LIghtJUNction/MagicNet/pull/455) 的简约界面均已由 #456 整合；[#453](https://github.com/LIghtJUNction/MagicNet/pull/453) 的多语言校验由 [#454](https://github.com/LIghtJUNction/MagicNet/pull/454) 的活动字段校验取代。保留当前实现和源码指针，旧分支按已被取代处理。#452 的历史报告仍可通过[原固定提交](https://github.com/LIghtJUNction/MagicNet/blob/d2608565713e487aa2e4661bb6e9c161633137bf/recipes/magicnet/ISSUE_440_VALIDATION_2026-11-13.md)查询。
+
+预览实际构建 source=`4b02897dffd6acd455c0e25849b46398ca1465b6`、recipe=`48dd2a3830fa857c774415fc8eba838ccd83ff4c`；[资产核验](https://github.com/LIghtJUNction/MagicNet/actions/runs/43687915429/job/132742190425)核对同一身份。配方受测 head `05946c51` 与合并提交 `f6c808ed` 的 tree 均为 `3a3b52b1d07fbf29b100139e07cfa044e6344751`；固定源码与源码合并提交 `af72e043` 的 tree 均为 `ced91db63d6e301dbcda75d7220a6fb829b8e132`。构建日志明确通过可信来源、下载策略、真实 HTTP/TLS/SOCKS5、安装升级与组件归档安全检查；设备 trust/history 保留与发布包授权隔离均覆盖。
 
 `.local` 和链路本地反向查询的规则范围来自 [RFC 6762 第 3、4 节](https://www.rfc-editor.org/rfc/rfc6762.html)；锁定核心具有原生 mDNS 传输。本次未验证 Android 物理设备组播、实际 NAS 或家庭 DNS，home.arpa/.lan 行为没有据此改写。源码 PR #8 已合入可信本地订阅授权；本轮把对应 SUB-016/C-SUB-009/UI-SUB-013 和 M69 合同接入当前配方，不把既有订阅历史修复当成新增实现。
 
-当前候选的环境/构建阻塞：`45154757` 的 [webui job 132729899795](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107250/job/132729899795) 在 Ubuntu 26.04 安装 Playwright 字体依赖失败，浏览器测试尚未开始；对应修订将相关浏览器 job 固定到 Ubuntu 24.04，保留全部依赖和测试。Android [43687107232](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107232) 在构建 curl 依赖时拒绝 zlib 归档摘要不符，未运行模拟器；失败发生于新下载，工作流没有还原该源归档缓存；820b 至当前锁文件与下载器未变，旧 run 同锁构建成功。新候选保留版本和摘要自然重跑，未跳过哈希或验收。浏览器 job 的 CI 合同 20 项和发布 workflow 合同 42 项本地通过，actionlint 与真实依赖安装由新 CI 确认。
+前序候选的环境/构建失败：`45154757` 的 [webui job 132729899795](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107250/job/132729899795) 在 Ubuntu 26.04 安装 Playwright 字体依赖失败，浏览器测试尚未开始；对应修订将相关浏览器 job 固定到 Ubuntu 24.04，保留全部依赖和测试。Android [43687107232](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107232) 在构建 curl 依赖时拒绝 zlib 归档摘要不符，未运行模拟器；失败发生于新下载，工作流没有还原该源归档缓存；820b 至当前锁文件与下载器未变，旧 run 同锁构建成功。新候选保留版本和摘要自然重跑，未跳过哈希或验收。浏览器 job 的 CI 合同 20 项和发布 workflow 合同 42 项本地通过，当前完整预览已完成依赖安装与实际门禁。
 
 前次失败保留：源码 [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 为 810 passed / 5 skipped / 1 failed，失败是 320px 俄语状态标签溢出；配方 [43683319759](https://github.com/LIghtJUNction/MagicNet/actions/runs/43683319759) 的 Android 在注入路由故障前 UDP 基线超时，`recovery_tick_count=0`。同期源码 [Android 43682884867](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884867) 成功只适用于旧 tree，不能替代当前候选或正式发布门禁。
 
 ## 2026-11-15：WebUI 视觉精简
 
-源码固定点为 `820b690d413e4f393db24962366e1d809fc48489`（tree `9541ac8d8e014bd8ae3829ff9daea93c92e65e4f`）。[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 已合并，合并提交 `9bf5958916c0e336d7e8d2d2e700c928d24d954d` 的 tree 与该固定点一致。页面改用中性色、留白和连续分区，收起重复顶栏入口；Logo 返回概览，流量路径静态展示真实状态。模型署名彩蛋、发光星形、无限装饰动效、重复标题层级与装饰图标已移除。配方为 magicnet 0.3.23 / web-console 0.2.7，接口、设备状态语义与运行依赖保持。
+源码固定点为 `820b690d413e4f393db24962366e1d809fc48489`（tree `9541ac8d8e014bd8ae3829ff9daea93c92e65e4f`）。[源码 PR #9](https://github.com/LIghtJUNction/magicnet-android/pull/9) 已合并，合并提交 `9bf5958916c0e336d7e8d2d2e700c928d24d954d` 的 tree 与该固定点一致。页面改用中性色、留白和连续分区，收起重复顶栏入口；Logo 返回概览，概览流量路径静态展示真实状态。模型署名彩蛋、发光星形、无限装饰动效、重复标题层级与装饰图标已移除。配方为 magicnet 0.3.23 / web-console 0.2.7，接口、设备状态语义与运行依赖保持。
 
 | 验证范围 | 结果 |
 | --- | --- |
@@ -45,7 +49,7 @@
 | 全量源码 CI | [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 后续失败：810 passed / 5 skipped / 1 failed，320px 俄语状态标签越界；修复与重新验收见本页上节。视觉子集成功不代表完整流水线成功。 |
 | 配方归档 | 最终源码指针集成后的 check、pack、归档检查与完整 build 提示词检查通过，闭包为 8 包、62 个 Markdown 文件；活动指针的 17 项现有测试通过。[Recipe checks 43682952340](https://github.com/LIghtJUNction/MagicNet/actions/runs/43682952340) 同样通过。 |
 
-最终截图 artifact `14149636251` 下载后独立计算的 SHA-256 为 `ba117498b3721dc42fd08c0ae0ccfb9ef1258908b60beba473ab70073e95dadb`，与 GitHub digest 一致。桌面与手机代表页面已人工复查。浏览器使用显示与原生桥夹具；本轮未执行物理设备 WebView 验收。此前 Android 生命周期结果继续保留原提交、产物和环境身份。本次未发布 Android 安装包，稳定发行仍为 v1.8.7 / 10615。
+最终截图 artifact `14149636251` 下载后独立计算的 SHA-256 为 `ba117498b3721dc42fd08c0ae0ccfb9ef1258908b60beba473ab70073e95dadb`，与 GitHub digest 一致。桌面与手机代表页面已人工复查。浏览器使用显示与原生桥夹具；该轮未执行物理设备 WebView、真实网络验证或独立重建。此前 Android 生命周期结果继续保留原提交、产物和环境身份。该轮未发布 Android 安装包，当时稳定发行仍为 v1.8.7 / 10615。
 
 ## 2026-11-13：#436 逐应用路由规则与可控网络验收
 
