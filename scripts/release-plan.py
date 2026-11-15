@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 import release
-from recipe_pins import verify_source_pins
+from recipe_pins import README_RELEASE_FIELDS, verify_source_pins
 
 REPO = release.REPOSITORY
 SOURCE = release.SOURCE
@@ -35,30 +35,7 @@ def readme_release_text(text, path, update):
     version, code = update["version"], update["versionCode"]
     target = release.version_tuple(version)
     release.updater(version, code)
-    software_version = r"v[0-9]+\.[0-9]+\.[0-9]+"
-    tag = re.escape(f"https://github.com/{REPO}/releases/tag/") + rf"(?P<tag>{software_version})"
-    pair = (rf"\[`?(?P<version>{software_version})[ \t]*/[ \t]*"
-            rf"(?P<code>[1-9][0-9]*)`?\]\({tag}\)")
-    notes = rf"docs/releases/(?P<notes>{software_version})\.md"
-    patterns = {
-        "README.md": (
-            ("Android release badge",
-             rf"\[!\[Android release\]\(https://img\.shields\.io/badge/Android-"
-             rf"(?P<version>{software_version})%20%2[Ff]%20(?P<code>[1-9][0-9]*)"
-             rf"-[^)\r\n]+\)\]\({tag}\)"),
-            ("published package", rf"^[ \t]*\|[ \t]*Published Android package[ \t]*\|[ \t]*{pair}"),
-            ("installation notes",
-             rf"^[ \t]*\|[ \t]*Install and use MagicNet[ \t]*\|[^\r\n]*?"
-             rf"\[(?P<version>{software_version})[ \t]+installation notes\]\({notes}\)"),
-        ),
-        "README.en.md": (("current Android release",
-                          rf"current Android release:[ \t]*{pair}\.[ \t\r\n]*"
-                          rf"\[Release and installation notes\]\({notes}\)"),),
-        "README.ru.md": (("current Android release",
-                          rf"текущий выпуск Android:[ \t]*{pair}\.[ \t\r\n]*"
-                          rf"\[Установка и изменения\]\({notes}\)"),),
-    }
-    for label, pattern in patterns[path]:
+    for label, pattern in README_RELEASE_FIELDS[path]:
         matches = list(re.finditer(pattern, text, re.MULTILINE))
         require(len(matches) == 1, f"{path} must contain exactly one current {label} field")
         match = matches[0]

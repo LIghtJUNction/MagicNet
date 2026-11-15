@@ -9,7 +9,7 @@ import tarfile
 import tempfile
 import tomllib
 
-from recipe_pins import verify_source_pins
+from recipe_pins import verify_readme_pins, verify_source_pins
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,14 +43,13 @@ def verify_live_pins(root):
     gitlink = gitlink_sha(root)
     version, code = published_updater(root)
     dependencies = (root / "recipes/magicnet/DEPENDENCIES.md").read_text()
-    readme = (root / "README.md").read_text()
     if gitlink not in dependencies:
         raise ValueError("DEPENDENCIES.md does not record the current source gitlink")
-    if gitlink not in readme:
-        raise ValueError("README.md does not record the current source gitlink")
-    verify_source_pins(lambda path: (root / path).read_text(), gitlink)
-    if version not in readme or str(code) not in readme:
-        raise ValueError("README.md does not record the published updater version")
+    def reader(path):
+        return (root / path).read_text()
+
+    verify_source_pins(reader, gitlink)
+    verify_readme_pins(reader, gitlink, version, code)
     return gitlink, version, code
 
 
