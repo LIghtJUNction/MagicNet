@@ -322,4 +322,12 @@ a413[源码Android43418093071](https://github.com/LIghtJUNction/magicnet-android
 
 [源码 PR #8](https://github.com/LIghtJUNction/magicnet-android/pull/8) 已合并为 `cc818816e1b5000ec31ab0ff09a08d36a201048f`，包含精确 origin/CIDR 的可信本地订阅及受限 loopback SOCKS5。前文 a413 扫描仍表示当时的固定源码；不能继续据此说当前实现没有 trust 入口。当前候选 `4b02897dffd6acd455c0e25849b46398ca1465b6` 保留该实现，并接入 SUB-016、C-SUB-009、UI-SUB-013 与 M69 合同；没有整份覆盖过期 PR #452 的文件，也没有回退 #451 的 netd 验收。#440 的实际 NAS/设备验证仍未完成。
 
-本轮 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 修复托管路由插入优先级，保留 sniff/resolve/route-options、模式、拒绝、LAN 与 Tailnet 保护，并保留原数组顺序。模板增加有明确后缀边界的 mDNS；home.arpa/.lan 不在本次修复范围。规则发行固定至 2026-11-15，下载和每个清单成员均核验摘要。全部新旧失败与候选 CI 状态见 [VERIFICATION.md](VERIFICATION.md)。当前仍未公开新 Android 版本；#436 的物理设备触发原因与 #440 的实网验证保持开放。
+本轮 [源码 PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 修复托管路由插入优先级，保留 sniff/resolve/route-options、模式、拒绝、LAN 与 Tailnet 保护，并保留原数组顺序。模板增加有明确后缀边界的 mDNS；home.arpa/.lan 不在本次修复范围。规则发行固定至 2026-11-15，下载和每个清单成员均核验摘要。
+
+源码 `4b02897dffd6acd455c0e25849b46398ca1465b6` 的完整质量、构建、Android、网络、规则、安装与核心/视觉证据 CI 均成功。主仓受测 head `05946c51baf7e4d9301e2b76cde25cc6221f13ed` 的 [发布预览 43687915429](https://github.com/LIghtJUNction/MagicNet/actions/runs/43687915429) 也成功，构建、Android 和最终资产核验通过；publish 因本次事件为 PR 按设计跳过。
+
+源码与主仓两份 Android 原始 ZIP 均已独立核对 GitHub 摘要，按各自报告实际 source 使用 `4b02897` 原门禁复验，均为 exit 0、13/13 阶段和 5/5 次重启通过。源码报告实际提交为与 `4b02897` 同 tree 的 `39245f16a2044ca2eb5ce614225043f6dced4522`，主仓报告为精确 `4b02897`。模拟器中的 RPDB 删除与 eth0 上联恢复证据通过；完整身份、计数、摘要和历史失败见 [VERIFICATION.md](VERIFICATION.md)。
+
+源码 PR #10 已 squash 合并为 `af72e0435c56bdebc724f2c93c2f775624f010f3`，[主仓 PR #456](https://github.com/LIghtJUNction/MagicNet/pull/456) 已 squash 合并为 `f6c808ed7f66276c398d4b3e5d9f7108d80ed7ae`；合并后的 tree 分别与受测源码 `4b02897`、主仓 `05946c5` 相同。主仓合并后的 [Recipe checks 43704522152](https://github.com/LIghtJUNction/MagicNet/actions/runs/43704522152) 成功，活动源码固定值仍保留 `4b02897`。
+
+尚未触发 `main` 上 `mode=publish` 的正式 `workflow_dispatch`。目标 v1.8.8 / 10616 未公开，稳定发行仍为 v1.8.7 / 10615。#436 的物理设备触发原因、#440 的实际 NAS/设备行为及 mDNS 组播网络验证保持开放；本轮 CI 成功不覆盖这些实网证据，也不改写前次失败。
