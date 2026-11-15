@@ -32,7 +32,7 @@ capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspe
 生命周期锁有截止时间，报 busy，不无限等 flock。JSON 配置/selector/Tailscale 读取 4 MiB 边界；Wi-Fi 名单和私密 curl stdin 64 KiB；拒绝 FIFO、symlink、非普通文件。curl 凭据走 stdin，超时、输出截断或输入交付失败明确失败。
 资源数值是来源合同，不是推测的总 RSS 或速度保证。选择另一实现时必须通过相同可观察压力与清理验收。
 
-独立配置保存按 STATE_CONTRACT.md 将有效候选、旧配置备份、standalone 标记及本次变化的 Tailscale keys 纳入同一现有事务。全部目标先预检，再暂存和提交；后续替换失败回滚已替换项。校验与提交绑定同一目录身份，目录被换成另一个真实目录也必须在写入前拒绝；备份保留旧文件原字节。
+独立配置保存按 STATE_CONTRACT.md 将有效候选、旧配置备份、standalone 标记及本次变化的 Tailscale keys 纳入同一现有事务。全部目标先预检，再暂存和提交；后续替换失败回滚已替换项。校验与提交绑定同一目录身份，目录被换成另一个真实目录也必须在写入前拒绝；备份保留旧文件原字节。候选与旧配置使用编辑器既有 8 MiB 上限有界读取，恰限允许，超限在进入事务前失败。
 
 命令预算由当前调用读取一次，创建 shell worker 时移除一次性 `MAGICNET_COMMAND_TIMEOUT` 覆盖。持久核心的启动、就绪交接和失败清理遵循 runtime/LIFECYCLE_CONTRACT.md；内部启动命令不绕过 `--json` 的机器分派。
 
