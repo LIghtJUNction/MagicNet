@@ -25,9 +25,12 @@
 | 模板升级 | template-pin、repository-migration、install-refresh 通过；install-template 为 20 passed / 2 skipped（宿主缺 BusyBox，真实核心为 CI opt-in）。精确旧官方 pin 迁移，自定义 digest 保留、结果权限 0600、重复迁移幂等。 |
 | DNS 物化与规则资产 | 4 个 profile × 启停 Tailscale 的 8 个组合保留原生 mDNS；bundled-rules 20 项通过。固定发行 `rules-20261115-585094101194f32e` 的归档摘要、安全展开及 116 个规则集清单逐项核验通过；manifest 摘要见 DEPENDENCIES。 |
 | WebUI | 窄屏状态允许断行，新增实际节点边界断言；17 项定向单元检查、类型与语法检查通过。完整浏览器回归由当前源码 CI 重新执行。 |
+| 配方与发行验证器 | 配方 check、pack、归档 check 与完整 build 提示词通过（8 包、62 Markdown）；固定值回归 17 项通过。发行验证器新增设备授权文件检查，18 项资产验证与 41 项发布计划回归通过；24 个重算摘要的污染包被拒绝，21 个相似路径正例保留。 |
 | 整包与发布 | 当前 [PR #10](https://github.com/LIghtJUNction/magicnet-android/pull/10) 的全量质量、锁定核心、构建、Android 与网络证据尚待完成；正式发布未完成，稳定索引保持 v1.8.7 / 10615。 |
 
 `.local` 和链路本地反向查询的规则范围来自 [RFC 6762 第 3、4 节](https://www.rfc-editor.org/rfc/rfc6762.html)；锁定核心具有原生 mDNS 传输。本次未验证 Android 物理设备组播、实际 NAS 或家庭 DNS，home.arpa/.lan 行为没有据此改写。源码 PR #8 已合入可信本地订阅授权；本轮把对应 SUB-016/C-SUB-009/UI-SUB-013 和 M69 合同接入当前配方，不把既有订阅历史修复当成新增实现。
+
+当前候选的环境/构建阻塞：`45154757` 的 [webui job 132729899795](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107250/job/132729899795) 在 Ubuntu 26.04 安装 Playwright 字体依赖失败，浏览器测试尚未开始；对应修订将相关浏览器 job 固定到 Ubuntu 24.04，保留全部依赖和测试。Android [43687107232](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43687107232) 在构建 curl 依赖时拒绝 zlib 归档摘要不符，未运行模拟器；未跳过哈希或验收，排查与新候选结果另行记录。
 
 前次失败保留：源码 [Code Quality 43682884914](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884914) 为 810 passed / 5 skipped / 1 failed，失败是 320px 俄语状态标签溢出；配方 [43683319759](https://github.com/LIghtJUNction/MagicNet/actions/runs/43683319759) 的 Android 在注入路由故障前 UDP 基线超时，`recovery_tick_count=0`。同期源码 [Android 43682884867](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43682884867) 成功只适用于旧 tree，不能替代当前候选或正式发布门禁。
 

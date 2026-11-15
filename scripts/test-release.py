@@ -244,6 +244,36 @@ class ReleaseTest(unittest.TestCase):
                 self.assets(extra_archive=name, extra_path=entry)
                 self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
 
+    def test_every_module_and_component_rejects_device_subscription_trust_policy(self):
+        for name in ("MagicNet-core.zip", "MagicNet-full.zip", "component"):
+            for entry in (".config/sing-box/subscription-trust.list",
+                          ".config/sing-box/subscription-trust.list/",
+                          ".config/sing-box/subscription-trust.list/allow.json",
+                          "./.config/sing-box/subscription-trust.list",
+                          "./.config/sing-box/subscription-trust.list/",
+                          "././.config/sing-box/subscription-trust.list/policy",
+                          "component/.config/sing-box/subscription-trust.list",
+                          "nested/component/.config/sing-box/subscription-trust.list/policy"):
+                with self.subTest(archive=name, entry=entry):
+                    # Rebuild component filenames, manifests, aliases and checksums;
+                    # valid digests cannot authorize shipping device configuration.
+                    self.assets(extra_archive=name, extra_path=entry)
+                    with self.assertRaisesRegex(ValueError, "ZIP contains device subscription trust policy"):
+                        RELEASE.verify(self.root, self.directory)
+
+    def test_similar_subscription_trust_names_are_allowed(self):
+        for name in ("MagicNet-core.zip", "MagicNet-full.zip", "component"):
+            for entry in (".config/sing-box/subscription-trust.list.example",
+                          ".config/sing-box/subscription-trust.list-old/policy",
+                          ".config/sing-box/subscription-trustXlist",
+                          ".config/sing-box-other/subscription-trust.list",
+                          "other.config/sing-box/subscription-trust.list",
+                          "docs/subscription-trust.list",
+                          "./component/.config/sing-box/subscription-trust.list.example/policy"):
+                with self.subTest(archive=name, entry=entry):
+                    self.assets(extra_archive=name, extra_path=entry)
+                    self.assertEqual(RELEASE.verify(self.root, self.directory)["source_sha"], self.source_sha)
+
     def test_server_must_confirm_every_asset_before_draft_is_published(self):
         self.assets()
         response = {"draft": True, "tag_name": "v1.2.3", "target_commitish": self.environment["GITHUB_SHA"],
