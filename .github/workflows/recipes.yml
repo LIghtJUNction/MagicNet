@@ -190,10 +190,14 @@ jobs:
           paths = {entry["path"] for entry in tree["tree"]}
 
           # Validate the complete reviewed list before changing any workflow state.
+          listing = request("/actions/workflows?per_page=100")
+          if listing["total_count"] != len(listing["workflows"]):
+              raise SystemExit("Cannot validate an incomplete workflow inventory")
+          workflows = {workflow["id"]: workflow for workflow in listing["workflows"]}
           for workflow_id, path in retired.items():
               if path in paths:
                   raise SystemExit(f"Refusing to disable a current workflow: {path}")
-              workflow = request(f"/actions/workflows/{workflow_id}")
+              workflow = workflows[workflow_id]
               if workflow["id"] != workflow_id or workflow["path"] != path:
                   raise SystemExit(f"Workflow identity changed: {workflow_id}")
               if workflow["state"] not in {"active", "disabled_manually"}:
@@ -203,13 +207,18 @@ jobs:
 
           rows = []
           for workflow_id, path in retired.items():
-              request(f"/actions/workflows/{workflow_id}/disable", "PUT")
-              workflow = request(f"/actions/workflows/{workflow_id}")
-              if workflow["state"] != "disabled_manually":
-                  raise SystemExit(f"Workflow was not disabled: {workflow_id}")
-              print(f"Disabled {workflow_id}: {path}")
+              if workflows[workflow_id]["state"] != "disabled_manually":
+                  request(f"/actions/workflows/{workflow_id}/disable", "PUT")
+                  # GitHub can briefly return the previous state after accepting a write.
+                  for delay in (1, 2, 4, 8):
+                      time.sleep(delay)
+                      workflow = request(f"/actions/workflows/{workflow_id}")
+                      if workflow["state"] == "disabled_manually":
+                          break
+                  else:
+                      raise SystemExit(f"Workflow was not disabled: {workflow_id}")
+              print(f"Disabled {workflow_id}: {path}", flush=True)
               rows.append(f"| {workflow_id} | `{path}` | disabled_manually |")
-              time.sleep(1)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("## Retired workflow registrations\n\n")
               summary.write("| ID | Path | State |\n| --- | --- | --- |\n")
