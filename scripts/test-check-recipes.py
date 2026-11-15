@@ -14,6 +14,40 @@ SPEC.loader.exec_module(CHECK)
 
 GITLINK = "b989227b140a7627edff8b60ad87655cb09ac2d0"
 OTHER = "8ff1242817038dfe220a68b75934d6b127bea4b1"
+TAG = "https://github.com/LIghtJUNction/MagicNet/releases/tag"
+README_NAMES = ("README.md", "README.en.md", "README.ru.md")
+
+
+def readmes(gitlink=GITLINK, version="v1.8.4", code=10612):
+    """Use the published README field shapes, plus history that must not satisfy the check."""
+    tag = f"{TAG}/{version}"
+    notes = f"docs/releases/{version}.md"
+    history = (
+        f"\nHistorical release: [v1.8.4 / 10612]({TAG}/v1.8.4). "
+        f"[v1.8.4 installation notes](docs/releases/v1.8.4.md). "
+        f"Historical gitlink `{GITLINK}`.\n"
+    )
+    return {
+        "README.md": (
+            f"  [![Android release](https://img.shields.io/badge/Android-{version}"
+            f"%20%2F%20{code}-111111?style=flat-square&logo=android)]({tag})\n"
+            "| Install and use MagicNet | [Releases]"
+            f"(https://github.com/LIghtJUNction/MagicNet/releases) and "
+            f"[{version} installation notes]({notes}) |\n"
+            f"| Published Android package | [`{version} / {code}`]({tag}) |\n"
+            f"| Fixed implementation commit | `{gitlink}` |\n" + history
+        ),
+        "README.en.md": (
+            "# MagicNet\n\nOriginal v1.8.4 / 10612 evidence stays unchanged. "
+            f"current gitlink: `{gitlink}`; current Android release: "
+            f"[{version} / {code}]({tag}). [Release and installation notes]({notes}).\n" + history
+        ),
+        "README.ru.md": (
+            "# MagicNet\n\nИсторический выпуск v1.8.4 / 10612. "
+            f"текущий gitlink: `{gitlink}`; текущий выпуск Android: "
+            f"[{version} / {code}]({tag}). [Установка и изменения]({notes}).\n" + history
+        ),
+    }
 
 
 class LivePinTest(unittest.TestCase):
@@ -42,16 +76,15 @@ class LivePinTest(unittest.TestCase):
             "  android:\n    uses: LIghtJUNction/magicnet-android/.github/workflows/"
             f"android-kernelsu-acceptance.yml@{GITLINK}\n"
         )
-        (self.root / "README.md").write_text(
-            f"Fixed implementation commit `{GITLINK}`\nPublished Android package v1.8.4 / 10612\n"
-        )
+        for name, text in readmes().items():
+            (self.root / name).write_text(text)
         (self.root / "update.json").write_text(json.dumps({
             "changelog": "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.8.4.md",
             "version": "v1.8.4",
             "versionCode": 10612,
             "zipUrl": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.8.4/magicnet_installer.zip",
         }))
-        self.git("add", "recipes", "README.md", "update.json", ".github")
+        self.git("add", "recipes", *README_NAMES, "update.json", ".github")
         self.git("update-index", "--add", "--cacheinfo", f"160000,{GITLINK},generated/magicnet-android")
         self.git("commit", "-m", "Synthetic pins")
 
@@ -67,11 +100,19 @@ class LivePinTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "DEPENDENCIES.md"):
             CHECK.verify_live_pins(self.root)
 
+    def write_readmes(self, **kwargs):
+        files = readmes()
+        files.update(kwargs)
+        for path, text in files.items():
+            (self.root / path).write_text(text)
+
     def test_stale_readme_gitlink_is_rejected(self):
-        path = self.root / "README.md"
-        path.write_text(path.read_text().replace(GITLINK, OTHER))
-        with self.assertRaisesRegex(ValueError, "README.md does not record the current source gitlink"):
-            CHECK.verify_live_pins(self.root)
+        for name in README_NAMES:
+            with self.subTest(name=name):
+                self.write_readmes(**{name: readmes(gitlink=OTHER)[name]})
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the current source gitlink"):
+                    CHECK.verify_live_pins(self.root)
+            self.write_readmes()
 
     def test_stale_build_prompt_gitlink_is_rejected(self):
         path = self.root / "recipes" / "magicnet" / "BUILD_PROMPT.md"
@@ -164,10 +205,34 @@ class LivePinTest(unittest.TestCase):
                     CHECK.verify_live_pins(self.root)
 
     def test_stale_published_version_is_rejected(self):
-        path = self.root / "README.md"
-        path.write_text(path.read_text().replace("v1.8.4", "v1.8.1").replace("10612", "10609"))
-        with self.assertRaisesRegex(ValueError, "published updater"):
-            CHECK.verify_live_pins(self.root)
+        for name in README_NAMES:
+            with self.subTest(name=name):
+                self.write_readmes(**{name: readmes(version="v1.8.1")[name]})
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the published updater version"):
+                    CHECK.verify_live_pins(self.root)
+            self.write_readmes()
+
+    def test_stale_published_version_code_is_rejected(self):
+        for name in README_NAMES:
+            with self.subTest(name=name):
+                self.write_readmes(**{name: readmes(code=10609)[name]})
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the published updater version"):
+                    CHECK.verify_live_pins(self.root)
+            self.write_readmes()
+
+    def test_historical_readme_mentions_do_not_satisfy_stale_active_fields(self):
+        stale_gitlink = readmes(gitlink=OTHER)
+        stale_release = readmes(version="v1.8.1", code=10609)
+        for name in README_NAMES:
+            with self.subTest(name=name, field="gitlink"):
+                self.write_readmes(**{name: stale_gitlink[name]})
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the current source gitlink"):
+                    CHECK.verify_live_pins(self.root)
+            with self.subTest(name=name, field="release"):
+                self.write_readmes(**{name: stale_release[name]})
+                with self.assertRaisesRegex(ValueError, f"{name} does not record the published updater version"):
+                    CHECK.verify_live_pins(self.root)
+            self.write_readmes()
 
 
 if __name__ == "__main__":
