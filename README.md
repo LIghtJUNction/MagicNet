@@ -3,7 +3,7 @@
   <h1>MagicNet</h1>
   <p>A transparent networking control plane for rooted Android.</p>
 
-  [![Android release](https://img.shields.io/badge/Android-v1.8.7%20%2F%2010615-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7)
+  [![Android release](https://img.shields.io/badge/Android-v1.8.9%20%2F%2010617-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.9)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.26-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
 
@@ -16,7 +16,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Goal | Entry point |
 | --- | --- |
-| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.7 installation notes](docs/releases/v1.8.7.md) |
+| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.8.9 installation notes](docs/releases/v1.8.9.md) |
 | Build the maintained implementation | [Source repository](https://github.com/LIghtJUNction/magicnet-android) and [build guide](generated/magicnet-android/docs/build.md) |
 | Rebuild from requirements | [Product recipe](recipes/magicnet/BUILD_PROMPT.md) and [acceptance](recipes/magicnet/ACCEPTANCE.md) |
 | Publish a version | [Release guide](docs/releasing.md) |
@@ -25,7 +25,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Layer | Current state |
 | --- | --- |
-| Published Android package | [`v1.8.7 / 10615`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.7) |
+| Published Android package | [`v1.8.9 / 10617`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.8.9) |
 | Recipe | `0.3.26` |
 | Fixed implementation commit | `c5a1368639da929ae619a5a74444dc79e657618a` |
 | Fixed sing-box core | `5604500d0b894af3b6fbc3c48a4ee71c1ff0e167` / `1.15.0-alpha.13` |
