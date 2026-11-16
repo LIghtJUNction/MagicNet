@@ -2,7 +2,7 @@
 
 ## 发布身份
 
-目标版本为 v1.8.9，versionCode 10617。维护源码固定为 0edd0045a114576b6b000deff1bb5e96a103d0be。正式发布流程尚待本轮运行完成；公开结果、安装资产与稳定索引在完成后回读并记录。
+目标版本为 v1.8.9，versionCode 10617。维护源码固定为 d9995229e10d5552ae278f7b497f4078dc590973。正式发布流程尚待本轮运行完成；公开结果、安装资产与稳定索引在完成后回读并记录。
 
 ## 修复原因
 
@@ -12,7 +12,7 @@ Android 构建失败来自 zlib 旧下载端点返回 HTTP 200 的 HTML 页面�
 
 ## 变更与固定输入
 
-详细版本与用户变化见 [v1.8.9 说明](releases/v1.8.9.md)，完整固定摘要见 [EXTERNAL_ASSETS](../recipes/magicnet-module-delivery/EXTERNAL_ASSETS.md)。规则安装减少一次重复比较；TLS/GoTLS 显式使用 hook 文本来源。Rust 与前端锁文件的净删行主要来自自动依赖去重，不作为运行性能提升结论。
+详细版本与用户变化见 [v1.8.9 说明](releases/v1.8.9.md)，完整固定摘要见 [EXTERNAL_ASSETS](../recipes/magicnet-module-delivery/EXTERNAL_ASSETS.md)。规则安装减少一次重复比较；TLS/GoTLS 显式使用 hook 文本来源。统一 ELF 结构校验替代 file/readelf 的文字解析，接受合格静态 PIE 并拒绝错误架构、GNU 解释器及普通共享库。Rust 与前端锁文件的净删行主要来自自动依赖去重，不作为运行性能提升结论。
 
 ## 本地验证
 
@@ -25,6 +25,7 @@ Android 构建失败来自 zlib 旧下载端点返回 HTTP 200 的 HTML 页面�
 | eCapture 兼容 | 9 项通过，模拟 CLI 参数与无效输入零副作用 |
 | curl 与模拟器合同 | 13 + 114 项通过 |
 | 内嵌 CA | 实际官方 CA 的 4 项定向验证通过 |
+| Android ELF | 14 项通过，含真实官方 eCapture static PIE；现有 CLI 符号链接及 ARM64 工具兼容通过 |
 | 发行完整性 | 外部资产实物摘要匹配；既有归档、路径、损坏输入负例与组件检查通过 |
 
 宿主完整 TLS proof 测试使用开发机系统 curl 时，既有解析器拒绝系统 zlib-ng 版本后缀；本轮没有修改该 Android 版本解析规则。正式 Ubuntu/Android 流程使用锁定的纯数字版本构建，完整结果以本轮发布 CI 为准。

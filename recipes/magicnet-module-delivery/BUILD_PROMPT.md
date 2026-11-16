@@ -96,3 +96,5 @@ Android 验收的临时 TLS 证书仅容忍有限客体时钟落后：notBefore 
 沿用 0.2.7 的订阅历史迁移：已有 subscription-status 原始阶段、结果和时间保持，缺失历史不补造成功，当前 subscription-update.lock 不随历史恢复。历史未记录与当前配置是否有效分别判断，canonical 仍按当前运行证据重建。
 
 HTTPS 执行器输入遵守 EXTERNAL_ASSETS 的固定摘要。缓存命中同样验证摘要；损坏缓存丢弃并从官方锁定来源重新获取，下载后的错误页面和摘要不符均失败。内嵌 CA 验收从同一构建锁读取预期，不维护第二份手写版本/摘要/数量。
+
+Android ARM64 可执行文件按 ELF 头、程序段和动态段验证。Android 解释器必须为 /system/bin/linker64；静态输入不得依赖外部动态库，静态 PIE 还须具备可执行身份。普通共享库、错误架构、GNU 加载器或解析失败均拒绝，验证不依赖 file 工具的描述词。
