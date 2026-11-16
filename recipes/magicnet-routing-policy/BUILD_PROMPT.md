@@ -1,6 +1,6 @@
 # 默认路由、DNS 和规则数据
 
-交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision `da3d375d024e0982265bc67c48a87de7bb4f9424`（MagicSingBox），`config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`；规则集合使用 MagicNetRules revision `c4ad0a94f35af2b7950b47362e1c23e583209790`、release `rules-20261115-585094101194f32e`，manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`。
+交付可被 engine 校验的默认配置和不可变的本地分类资产。参考模板 revision `da3d375d024e0982265bc67c48a87de7bb4f9424`（MagicSingBox），`config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`；规则集合使用 MagicNetRules revision `c4ad0a94f35af2b7950b47362e1c23e583209790`、release `rules-20261116-df4863416dd56ad6`，manifest SHA-256 为 `701c103ede587ca83ed6852a2a9bd0b093248cc843e8e221c9b3b7cac6f116cc`。
 复用上游规则数据需要其许可与可获取性；数据是外部前提，配方不含 .srs 或原配置源码。没有数据时应明确缺失，不用空文件替代真实分类。
 
 先读 POLICY_INVENTORY.md 的公开标签/默认值。默认 tun-in/magicnet0 和 loopback mixed-in，本地管理 API；runtime 在显式模式切换中物化 ebpf，不能在这里加 auto/TProxy/Redirect。

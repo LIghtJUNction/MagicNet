@@ -51,7 +51,7 @@ KAM 清理失败、组件打包器发现未清理目录，或发布验证器在�
 
 标签指向主仓库本次固定发行快照；实现 SHA 由计划、provenance 与快照 gitlink 固定。先创建草稿并上传全部附件，再核对服务端附件清单、大小和 SHA-256，全部成功才公开。任何必需门槛失败、取消或跳过都不公开 Release。
 
-草稿通过 Release 列表定位唯一同版本记录，以数字 release ID 查询、上传和公开，兼容草稿标签查询返回 404。Release 正文记录原 run、不可变 artifact ID 与快照；已有身份不符、歧义、非法 ID、已上传资产不符时拒绝恢复。上传中断后，原 run 的 failed-jobs 重跑保留原 artifact，仅补齐缺失文件。服务端 502 留下的 state=starter 且 size=0 空资产，仅在同身份草稿中按合法数字 asset ID 清理后补传；已 uploaded 内容永不覆盖。
+已有草稿通过 Release 列表定位唯一同版本记录；新建草稿直接使用创建响应返回的数字 release ID，列表暂未收录时也可继续。后续查询、上传和公开均按该 ID，兼容草稿标签查询返回 404。Release 正文记录原 run、不可变 artifact ID 与快照；已有身份不符、歧义、非法 ID、已上传资产不符时拒绝恢复。上传中断后，原 run 的 failed-jobs 重跑保留原 artifact，仅补齐缺失文件。服务端 502 留下的 state=starter 且 size=0 空资产，仅在同身份草稿中按合法数字 asset ID 清理后补传；已 uploaded 内容永不覆盖。
 
 完整重建产生了不同 artifact ID 时，禁止用它覆盖原草稿。已公开发行在同身份、同资产校验通过后视为发布步骤幂等成功；公开资产缺失或变动仍失败。只在确认公开、非预发布、tag 指向正确快照且资产一致后更新 main 的稳定 updater；更新使用最新 main 的小提交，保留用户同时提交的文件和 gitlink，不回退更高版本或 code。预发布只补入发行说明，保留稳定 update.json 与源码指针。
 

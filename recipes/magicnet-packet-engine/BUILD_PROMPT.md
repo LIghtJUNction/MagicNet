@@ -1,7 +1,7 @@
 # TUN 与 eBPF 引擎
 
 重建满足 MagicNet 的 sing-box 兼容数据面。生产 Android arm64 保留 tun 与 with_ebpf；Linux amd64 用于校验/主机测试。模块只允许 tun|ebpf；内部 eBPF mode local/shared/hybrid 是其子配置，不是第三种模块模式。
-来源 fork 为 LIghtJUNction/sing-box，当前固定完整 revision `d850ff0ff68e11a71aa8207627e0a826cb52808f`，已同步上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。父仓库 sing-box.version 为 `1.15.0-alpha.13`，正式构建身份应包含 `1.15.0-alpha.13+LIghtJUNction.d850ff0ff68e`，本轮检查用 Linux 二进制显式标为 dev；完整提交、基础版本与二进制摘要分别核对，不能只看版本名。更新前的消费固定点和历史版本差异保留于 PROVENANCE / VERIFICATION。
+来源 fork 为 LIghtJUNction/sing-box，当前固定完整 revision `5604500d0b894af3b6fbc3c48a4ee71c1ff0e167`，已同步上游 testing `e5d91fa79f6319d5de940d6c81d81f0fe53b9476`。父仓库 sing-box.version 为 `1.15.0-alpha.13`，正式构建身份应包含 `1.15.0-alpha.13+LIghtJUNction.5604500d0b89`，本轮检查用 Linux 二进制显式标为 dev；完整提交、基础版本与二进制摘要分别核对，不能只看版本名。更新前的消费固定点和历史版本差异保留于 PROVENANCE / VERIFICATION。
 可以按其实际许可证复用固定 fork/上游协议实现；源码是明确外部构建前提，不藏进配方，不作为无配方的依赖。需要网络/上游许可时显式记录。语言自由不意味着要手写未经验证的密码学。
 
 完整阅读 [CORE_LIFECYCLE.md](CORE_LIFECYCLE.md) 的 CORE-001–005 与 CORE-A01–A06。上游同步目标、连接资源归属、并发关闭和内存验证由该合同约束；当前固定点的宿主测试、交叉构建及设备验收边界见根配方 VERIFICATION.md。

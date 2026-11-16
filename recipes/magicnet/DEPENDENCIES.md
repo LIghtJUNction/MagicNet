@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.25 | 产品集成、M01–M71 与完整验收 |
+| magicnet | 0.3.26 | 产品集成、M01–M72 与完整验收 |
 | magicnet-control-plane | 0.2.11 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
 | magicnet-network-runtime | 0.1.14 | 订阅事务、生命周期、监督恢复与低频联网检查 |
 | magicnet-web-console | 0.2.9 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.11 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-module-delivery | 0.2.12 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
@@ -23,30 +23,38 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `d1dbdf5c782a99d67ee3ca4a4da6a0e50b38912b`，tree `97cda8b3b978859bc3828679f50d55ac6e24c12e`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `0edd0045a114576b6b000deff1bb5e96a103d0be`，tree `7ddd4e29c5844eb2f150f451ec58d04d14661eb6`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
 11-16 调优以 `b6f3a37fb5d035105917f844a6a23bb499bc1a61` 为对照，实施提交 `be00fa78f2e26a4d6998eb64e181de4028056aff` 保留 API 正文预算与路由归一化修复；当前固定提交同时保存可复现基准和完整脱敏证据。Android 开发手机仅替换 CLI 并保留经过四阶段短测的 gc_percent=50 覆盖，全局默认和现有依赖固定值保持。实测与范围见 [PERFORMANCE.md](PERFORMANCE.md)。
 
-源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮更新维护源码与验收，尚未生成后继正式安装包。
+源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮维护目标为 v1.8.9 / 10617；正式公开与稳定索引以发布工作流完成后的回读为准。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
-| sing-box | `d850ff0ff68e11a71aa8207627e0a826cb52808f` |
+| sing-box | `5604500d0b894af3b6fbc3c48a4ee71c1ff0e167` |
 | MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
 | MagicNetRules | `c4ad0a94f35af2b7950b47362e1c23e583209790` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
 | KamHooks | `13cff0dc1f30d8d0842e563008c7e2712233243f` |
 | KamModuleX | `f21050a31c33f0ebcbf429af3056ec43c1b816ef` |
 
-模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261115-585094101194f32e`，manifest SHA-256 为 `617efeca902e65745aba56f119aea5d18cfff1c264d5d9e084d3235cf54c679e`，下载归档与各个规则文件均按发布清单核验。
+模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261116-df4863416dd56ad6`，manifest SHA-256 为 `701c103ede587ca83ed6852a2a9bd0b093248cc843e8e221c9b3b7cac6f116cc`，下载归档与各个规则文件均按发布清单核验。
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
 源码、观察 checkout、宿主测试工具和六个嵌套子模块均不进入配方归档。独立重建可采用自己的依赖结构，但必须遵守 engine、delivery 的复用许可和全部行为合同；不能要求读取旧源码补齐需求。本次改动没有新增运行库。
 
 Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及逐应用 UID selectors 从已核验的网络元数据派生，采集器与独立报告门禁各自验证完整规则和重复次数；沿用 schema=1 证据、现有工具及生产恢复接口。
+
+## 2026-11-17 维护输入
+
+本轮固定 sing-box fork 的两个 CI 修复提交，更新规则发行资产、Rust 兼容锁及 npm/Bun 双锁。WebUI 使用 Vue 3.5.45、Vite 8.3.8、Tailwind 4.3.5、KernelSU SDK 3.3.0、Playwright 1.65.1、vue-tsc 3.3.14 和 highlight.js 11.12.0；TypeScript 维持 5.9 系列。运行接口与持久化格式保持。
+
+外部工具使用 yq 4.54.3、eCapture 2.11.0、Zashboard 3.30.0；jq 1.8.2 保持当前正式版。HTTPS 执行器固定 curl 8.23.0、OpenSSL 3.5.9 LTS、zlib 1.4 和 2026-11-05 Mozilla CA，全部摘要见 delivery/EXTERNAL_ASSETS。新规则归档摘要为 df4863416dd56ad6637fdc3edc395d488463b9079d845a27085052a8e69e9e28。
+
+规则、源码、依赖与发布说明已经分阶段提交；验证范围见 VERIFICATION，稳定软件版本继续由根 update.json 表示。
 
 ## 外部前提
 

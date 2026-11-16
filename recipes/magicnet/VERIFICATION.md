@@ -1,5 +1,12 @@
 # 实现与发行验证
 
+## 2026-11-17 CI 修复与依赖维护
+
+本轮维护源码固定为 0edd0045a114576b6b000deff1bb5e96a103d0be，发布目标 v1.8.9 / 10617。对应修复、来源和最终 CI 结果见 [维护验收记录](../../docs/maintenance-2026-11-17.md)。
+
+本地已完成：发布计划 42 项回归；规则 20 项、下载器 6 项回归；实际核验新发行全部 116 个 SRS，默认模板安装 54 个规则及 54 个 marker；依赖阶段 WebUI 392 项、类型检查、构建、npm audit 0、Bun 冻结锁；Rust 873 项单元测试与 68 项集成测试（1 项既有 ignored），Clippy 无 warning；新增 eCapture 兼容测试后该模块 9 项通过；curl 13 项、Android simulation 114 项，以及实际 CA 的 4 项定向检查通过。发布完整 CI 与最终资产状态在维护验收记录更新。
+
+
 本页保留可定位的结果与限制。历史结果只适用于各自提交、产物和环境；完整过程保存在[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/VERIFICATION.md)。
 
 ## 当前索引
