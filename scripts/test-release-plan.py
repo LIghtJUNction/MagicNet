@@ -45,26 +45,12 @@ class FakeGitHub:
 
     @property
     def writes(self):
-        return [args for args in self.calls if args[:2] == ("release", "create")
-                or ("--method" in args and args[args.index("--method") + 1] in ("POST", "PATCH", "DELETE"))]
+        return [args for args in self.calls
+                if "--method" in args and args[args.index("--method") + 1] in ("POST", "PATCH", "DELETE")]
 
     def call(self, *args):
         args = tuple(map(str, args))
         self.calls.append(args)
-        if args[:2] == ("release", "create"):
-            version = args[2]
-            if any(item["tag_name"] == version for item in self.items):
-                raise AssertionError("The workflow tried to recreate an existing release")
-            release_id = 901
-            self.items.append({
-                "id": release_id, "tag_name": version,
-                "target_commitish": args[args.index("--target") + 1],
-                "draft": True, "prerelease": "--prerelease" in args,
-                "body": Path(args[args.index("--notes-file") + 1]).read_text(),
-                "assets": [], "html_url": f"https://github.com/{RELEASE.REPOSITORY}/releases/tag/{version}",
-                "upload_url": f"https://uploads.github.com/repos/{RELEASE.REPOSITORY}/releases/{release_id}/assets{{?name,label}}",
-            })
-            return self.items[-1]["html_url"] + "\n"
         if args[:3] == ("api", "--paginate", "--slurp"):
             if args[3] != f"repos/{RELEASE.REPOSITORY}/releases?per_page=100":
                 raise AssertionError(f"Unexpected release listing: {args}")
@@ -75,6 +61,28 @@ class FakeGitHub:
         endpoint = next((arg for arg in args if arg.startswith("repos/") or arg.startswith("https://")), "")
         if "/tags/" in endpoint:
             raise AssertionError("Draft tags return 404; release requests must use their numeric ID")
+        if method == "POST" and endpoint == f"repos/{RELEASE.REPOSITORY}/releases":
+            fields = {}
+            for index, arg in enumerate(args):
+                if arg in ("-f", "-F"):
+                    key, value = args[index + 1].split("=", 1)
+                    fields[key] = json.loads(value) if arg == "-F" else value
+            version = fields["tag_name"]
+            if any(item["tag_name"] == version for item in self.items):
+                raise AssertionError("The workflow tried to recreate an existing release")
+            release_id = 901
+            self.test.assertIs(fields["draft"], True)
+            if fields["prerelease"]:
+                self.test.assertEqual(fields["make_latest"], "false")
+            self.items.append({
+                "id": release_id, "tag_name": version,
+                "target_commitish": fields["target_commitish"],
+                "draft": True, "prerelease": fields["prerelease"],
+                "body": fields["body"], "assets": [],
+                "html_url": f"https://github.com/{RELEASE.REPOSITORY}/releases/tag/{version}",
+                "upload_url": f"https://uploads.github.com/repos/{RELEASE.REPOSITORY}/releases/{release_id}/assets{{?name,label}}",
+            })
+            return json.dumps(self.items[-1])
         if method == "DELETE":
             prefix = f"repos/{RELEASE.REPOSITORY}/releases/assets/"
             if not endpoint.startswith(prefix) or not endpoint[len(prefix):].isdigit():
@@ -456,6 +464,17 @@ class ReleasePlanTest(unittest.TestCase):
             self.prepare_publish()
         self.assertEqual(self.github.writes, [])
 
+    def test_new_draft_uses_creation_response_when_release_listing_lags(self):
+        self.prepare_publish()
+        self.assets()
+        with patch.object(PLANNER, "releases", return_value=[]):
+            result = PLANNER.publish(self.root, self.directory, "7001")
+        self.assertFalse(result["draft"])
+        self.assertEqual(result["id"], 901)
+        self.assertEqual(len(self.github.items), 1)
+        self.assertEqual(self.git(self.origin, "rev-parse", "refs/tags/v1.2.3"),
+                         self.expected["recipe_sha"])
+
     def test_publish_resumes_partial_upload_by_numeric_id_without_replacing_assets(self):
         draft = self.interrupted_draft(fail_at=3)
         preserved = copy.deepcopy(draft["assets"])
@@ -464,7 +483,8 @@ class ReleasePlanTest(unittest.TestCase):
         result = PLANNER.publish(self.root, self.directory, "7001")
         self.assertFalse(result["draft"])
         self.assertEqual(draft["assets"][:2], preserved)
-        self.assertNotIn(("release", "create"), [call[:2] for call in self.github.calls])
+        self.assertFalse(any(call[:2] == ("api", f"repos/{RELEASE.REPOSITORY}/releases")
+                             and "POST" in call for call in self.github.calls))
         new_names = [parse_qs(urlsplit(next(arg for arg in call if arg.startswith("https://"))).query)["name"][0]
                      for call in self.github.writes if "POST" in call]
         self.assertEqual(set(new_names), {path.name for path in self.directory.iterdir()} - {asset["name"] for asset in preserved})

@@ -261,18 +261,20 @@ def publish(root, directory, artifact):
         require(not git(root, "ls-remote", "--tags", "origin", f"refs/tags/{version}"),
                 "Version tag already exists; refusing to replace it")
         notes = (root / f"docs/releases/{version}.md").read_text()
-        with tempfile.TemporaryDirectory(prefix="magicnet-release-notes-") as temporary:
-            path = Path(temporary) / "notes.md"
-            path.write_text(notes + f"\n\nRecipe snapshot: {expected['recipe_sha']}\n"
-                            f"Source commit: {expected['source_sha']}\n\n{identity}\n")
-            args = ["release", "create", version, "--repo", REPO, "--target", expected["recipe_sha"],
-                    "--draft", "--title", f"MagicNet-{expected['version_code']}-{version}",
-                    "--notes-file", str(path)]
-            if selected["prerelease"]:
-                args += ["--prerelease", "--latest=false"]
-            gh(*args)
-        found = one_release(version)
-        require(found is not None, "Created draft could not be found")
+        body = (notes + f"\n\nRecipe snapshot: {expected['recipe_sha']}\n"
+                f"Source commit: {expected['source_sha']}\n\n{identity}\n")
+        # The release listing can lag behind a successful draft creation. Use
+        # the POST response's numeric ID, never rediscover a new draft by tag.
+        args = ["--method", "POST", "-f", f"tag_name={version}",
+                "-f", f"target_commitish={expected['recipe_sha']}",
+                "-f", f"name=MagicNet-{expected['version_code']}-{version}",
+                "-f", f"body={body}", "-F", "draft=true",
+                "-F", f"prerelease={str(selected['prerelease']).lower()}"]
+        if selected["prerelease"]:
+            args += ["-f", "make_latest=false"]
+        found = api(f"repos/{REPO}/releases", *args)
+        require(found.get("draft") is True and found.get("tag_name") == version,
+                "Created release is not the requested draft")
     require(identity in (found.get("body") or ""),
             "Existing release belongs to another artifact; rerun failed jobs in the original run")
     require(found["target_commitish"] == expected["recipe_sha"]
