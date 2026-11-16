@@ -6,11 +6,15 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `ee1a83fc0545d88966b3265c4c10481d926b01bc`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `d1dbdf5c`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
 | 配方 | 0.3.25，八包；验收 M01–M71 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
 | 当前完成与开放项 | 本轮 API/路由修复和复现证据已进入源码 main；Rust 34、Python 41 项定向测试与 ARM64 构建通过，手机 GC 四阶段短测与最终就绪检查通过。公网提速未证明；长期续航、全应用覆盖、真实 NAS、换网及升级安装仍需各自证据。历史全面检查与正式发行结果按原身份保留。 |
+
+## 2026-11-17：修复发布测试期限偶发失败
+
+发布运行 [43894486078](https://github.com/LIghtJUNction/MagicNet/actions/runs/43894486078) 在源码 `ee1a83fc` 的 `template_fetch_checks_the_configured_hash` 中失败；该测试的 shell fixture 总期限仅 3 秒。源码修复 `d1dbdf5c` 将成功路径测试的期限放宽到 15 秒。单项复现及 `cargo test --bin magicnet-cli`（881 passed，1 ignored）通过；专门验证超时行为的相邻用例保持原有短期限。发布仍待新运行完成。
 
 ## 2026-11-16：内存、路由与网络实机调优
 
@@ -22,7 +26,7 @@ HTTP 预算基准初测和独立复跑各 28 个预期拒绝样本；请求峰�
 
 最终核心/TUN/API 就绪，联网检查 HTTP 204，fswatch 运行；测试 APK 和本轮设备暂存文件已清理。实机原 route/DNS 为 63/27，新归一化与其相同；旧优化器会额外插入一条规则。公网观察两轮成功 14/15、13/15，海外超时保留，没有公网整体提速结论。首个重启返回失败但未保存 stderr，原因未知，不能用后续重启成功掩盖。长期续航、全应用覆盖、UDP/QUIC 吞吐和升级安装仍不在这次短测结论内。
 
-主仓库本地 check、pack、归档 check、完整 build 提示词生成及固定引用回归检查通过。归档门禁原始摘要：`Recipe archive and complete prompt verified: 8 packages, 62 Markdown files; live pin ee1a83fc0545d88966b3265c4c10481d926b01bc / v1.8.7 10615`。
+主仓库本地 check、pack、归档 check、完整 build 提示词生成及固定引用回归检查通过。归档门禁原始摘要：`Recipe archive and complete prompt verified: 8 packages, 62 Markdown files; live pin d1dbdf5c782a99d67ee3ca4a4da6a0e50b38912b / v1.8.7 10615`。
 
 ## 2026-11-15：全面故障检查与运行时修复
 

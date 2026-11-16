@@ -23,7 +23,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `ee1a83fc0545d88966b3265c4c10481d926b01bc`，tree `abf0914411ac6d3e8d22b1e7464f001f868ed0fe`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `d1dbdf5c782a99d67ee3ca4a4da6a0e50b38912b`，tree `97cda8b3b978859bc3828679f50d55ac6e24c12e`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
