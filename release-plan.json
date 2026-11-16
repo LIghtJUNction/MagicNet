@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "repository": "LIghtJUNction/MagicNet",
+  "source_repository": "LIghtJUNction/magicnet-android",
+  "base_sha": "828a0d58633104b28214c2ec0127999a921c2cab",
+  "source_sha": "d1dbdf5c782a99d67ee3ca4a4da6a0e50b38912b",
+  "version": "v1.8.8",
+  "version_code": 10616,
+  "prerelease": false,
+  "run_id": "43916818151",
+  "inputs": {
+    "bump": "patch",
+    "version": "",
+    "version_code": "",
+    "source_ref": "d1dbdf5c782a99d67ee3ca4a4da6a0e50b38912b",
+    "prerelease": false
+  }
+}
