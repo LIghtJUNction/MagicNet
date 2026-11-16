@@ -8,6 +8,8 @@
 | jq | jqlang/jq | jq-1.8.2 | jq-linux-arm64 | 8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309 |
 | ecapture | gojue/ecapture | v2.11.0 | ecapture-v2.11.0-android-arm64.tar.gz | f962faafc0f715ffb016b86ddb841c6844c27bdb4f177b43c3e72d89c260234a |
 | zashboard | Zephyruso/zashboard | v3.30.0 | dist-no-fonts.zip | ec794e7c4daf4c839ecbc0a1292fdaf7bc7a6e3e4a4ce284db2b32379145c278 |
+| ecapture（AVD） | gojue/ecapture | v2.11.0 | ecapture-v2.11.0-android-amd64.tar.gz | c98eed452d9b548dc5f6bac38fc28b733d691e73b21a3b0b5cd6b86a3a1a2033 |
+| zashboard（可选完整字体） | Zephyruso/zashboard | v3.30.0 | dist.zip | 1f91c014e61e768240a86ad0a9bd565b247ec5a0e26b125fb5d19076682905b7 |
 
 [#447](https://github.com/LIghtJUNction/MagicNet/issues/447) 与 [#449](https://github.com/LIghtJUNction/MagicNet/issues/449) 申请内置 zashboard。上表锁定的 `v3.30.0` `dist-no-fonts.zip` 已是审核过的默认 sing-box 本地面板；对同一资产再次申请不适配新产品。更换面板须重新审核并更新本表与源码 `hooks/lib/release_locks.sh`。
 

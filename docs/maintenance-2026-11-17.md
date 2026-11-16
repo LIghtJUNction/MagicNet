@@ -2,13 +2,15 @@
 
 ## 发布身份
 
-目标版本为 v1.8.9，versionCode 10617。维护源码固定为 d9995229e10d5552ae278f7b497f4078dc590973。正式发布流程尚待本轮运行完成；公开结果、安装资产与稳定索引在完成后回读并记录。
+目标版本为 v1.8.9，versionCode 10617。维护源码固定为 c5a1368639da929ae619a5a74444dc79e657618a。正式发布流程尚待本轮运行完成；公开结果、安装资产与稳定索引在完成后回读并记录。
 
 ## 修复原因
 
 Android 构建失败来自 zlib 旧下载端点返回 HTTP 200 的 HTML 页面，原 SHA-256 门禁正确拒绝。固定来源现为官方 GitHub Release；损坏缓存重新获取，错误内容保持失败。curl、OpenSSL、zlib、CA 及验收共用固定输入。
 
 此前发布已完成构建、Android 和资产门禁，末端在创建草稿后重新列举时未发现该草稿。发布器现直接使用创建响应的数字 ID，保留原有身份及资产验证。失败证据：[Android 构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/43916363849/job/133471990323)、[发布末端](https://github.com/LIghtJUNction/MagicNet/actions/runs/43916818151/job/133507075123)。
+
+本轮发布运行 [43931861481](https://github.com/LIghtJUNction/MagicNet/actions/runs/43931861481/job/133527040021) 在准备 x86_64 安装载荷时发现 eCapture fixture 仍固定 2.5.2，与生产 2.11.0 不一致。正式包内容与安装检查已通过，但该 Android 前置失败使发布保持阻断。修复同步官方 amd64 资产及摘要，并增加早期同版、失配拒绝、坏摘要拒绝回归；同步消除 AVD yq 的重复版本来源和 WebUI Zashboard 旧下载候选。
 
 ## 变更与固定输入
 
@@ -26,6 +28,8 @@ Android 构建失败来自 zlib 旧下载端点返回 HTTP 200 的 HTML 页面�
 | curl 与模拟器合同 | 13 + 114 项通过 |
 | 内嵌 CA | 实际官方 CA 的 4 项定向验证通过 |
 | Android ELF | 14 项通过，含真实官方 eCapture static PIE；现有 CLI 符号链接及 ARM64 工具兼容通过 |
+| AVD 固定值同步 | 33 项 workflow 回归通过；完整 x86_64 载荷准备脚本实跑成功，eCapture 2.11.0 与 Proxylink 均通过架构检查；yq 4.54.3 实际 Go 构建成功 |
+| Dashboard 下载候选 | 3.30.0 普通与无字体 ZIP 实物 SHA-256/完整性通过；WebUI 类型检查与私密载荷合同检查通过 |
 | 发行完整性 | 外部资产实物摘要匹配；既有归档、路径、损坏输入负例与组件检查通过 |
 
 宿主完整 TLS proof 测试使用开发机系统 curl 时，既有解析器拒绝系统 zlib-ng 版本后缀；本轮没有修改该 Android 版本解析规则。正式 Ubuntu/Android 流程使用锁定的纯数字版本构建，完整结果以本轮发布 CI 为准。
