@@ -29,7 +29,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 11-16 调优以 `b6f3a37fb5d035105917f844a6a23bb499bc1a61` 为对照，实施提交 `be00fa78f2e26a4d6998eb64e181de4028056aff` 保留 API 正文预算与路由归一化修复；当前固定提交同时保存可复现基准和完整脱敏证据。Android 开发手机仅替换 CLI 并保留经过四阶段短测的 gc_percent=50 覆盖，全局默认和现有依赖固定值保持。实测与范围见 [PERFORMANCE.md](PERFORMANCE.md)。
 
-源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.7 / 10615，以根 `update.json` 与 Releases 为准；本轮维护目标为 v1.8.9 / 10617；正式公开与稳定索引以发布工作流完成后的回读为准。
+源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.9 / 10617，[正式发布运行 43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947) 已完整成功；根 `update.json`、Releases 与三语 README 已回读一致。公开安装包及组件内容的实物核验见 [维护验收记录](../../docs/maintenance-2026-11-17.md)。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |

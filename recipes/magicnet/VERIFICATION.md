@@ -2,9 +2,9 @@
 
 ## 2026-11-17 CI 修复与依赖维护
 
-本轮维护源码固定为 c5a1368639da929ae619a5a74444dc79e657618a，发布目标 v1.8.9 / 10617。对应修复、来源和最终 CI 结果见 [维护验收记录](../../docs/maintenance-2026-11-17.md)。
+本轮维护源码固定为 c5a1368639da929ae619a5a74444dc79e657618a，v1.8.9 / 10617 已正式公开。源码四条 CI、发行快照的构建、完整质量、Android、资产核验、公开发布与稳定索引同步均成功。公开下载校验覆盖在线入口、核心包、完整离线包与来源清单，171 个组件文件的摘要、大小及权限一致。修复原因、版本、安装包摘要与完整证据见 [维护验收记录](../../docs/maintenance-2026-11-17.md)。
 
-本地已完成：发布计划 42 项回归；规则 20 项、下载器 6 项回归；实际核验新发行全部 116 个 SRS，默认模板安装 54 个规则及 54 个 marker；依赖阶段 WebUI 392 项、类型检查、构建、npm audit 0、Bun 冻结锁；Rust 873 项单元测试与 68 项集成测试（1 项既有 ignored），Clippy 无 warning；新增 eCapture 兼容测试后该模块 9 项通过；curl 13 项、Android simulation 114 项，以及实际 CA 的 4 项定向检查通过。Android ELF 14 项正反例与真实资产检查通过；AVD workflow 33 项通过，完整 x86_64 载荷准备、yq 4.54.3 实际构建与 Dashboard 两份资产实物校验通过。发布完整 CI 与最终资产状态在维护验收记录更新。
+本地已完成：发布计划 42 项回归；规则 20 项、下载器 6 项回归；实际核验新发行全部 116 个 SRS，默认模板安装 54 个规则及 54 个 marker；依赖阶段 WebUI 392 项、类型检查、构建、npm audit 0、Bun 冻结锁；Rust 873 项单元测试与 68 项集成测试（1 项既有 ignored），Clippy 无 warning；新增 eCapture 兼容测试后该模块 9 项通过；curl 13 项、Android simulation 114 项，以及实际 CA 的 4 项定向检查通过。Android ELF 14 项正反例与真实资产检查通过；AVD workflow 33 项通过，完整 x86_64 载荷准备、yq 4.54.3 实际构建与 Dashboard 两份资产实物校验通过。正式发布与公开下载验收结果已写入维护验收记录。
 
 
 本页保留可定位的结果与限制。历史结果只适用于各自提交、产物和环境；完整过程保存在[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/VERIFICATION.md)。
@@ -14,10 +14,10 @@
 | 对象 | 事实源 |
 | --- | --- |
 | 维护源码 | `c5a13686`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
-| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
+| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.9 / 10617 |
 | 配方 | 0.3.26，八包；验收 M01–M72 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
-| 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | 本轮 API/路由修复和复现证据已进入源码 main；Rust 34、Python 41 项定向测试与 ARM64 构建通过，手机 GC 四阶段短测与最终就绪检查通过。公网提速未证明；长期续航、全应用覆盖、真实 NAS、换网及升级安装仍需各自证据。历史全面检查与正式发行结果按原身份保留。 |
+| 最近完整发布 | 2026-11-17（UTC+8），[43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947)，v1.8.9 / 10617；构建、完整质量、Android、资产核验、公开发布及稳定索引同步通过 |
+| 当前完成与开放项 | 本轮 CI 阻断、fork/规则/依赖与消费端固定值同步均完成；20 个附件公开，安装包与 171 个组件文件实际校验通过。本轮证据覆盖 CI 与模拟器，物理手机升级、长期续航、全应用覆盖及公网性能仍需各自证据；历史检查按原身份保留。 |
 
 ## 2026-11-17：修复发布测试期限偶发失败
 
