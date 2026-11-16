@@ -1,13 +1,13 @@
 # 重建 MagicNet（配方 0.3.25）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M70；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M71；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@b6f3a37fb5d035105917f844a6a23bb499bc1a61`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@ee1a83fc0545d88966b3265c4c10481d926b01bc`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -62,6 +62,8 @@ TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreacha
 安装/更新仅使用带 ownership 的唯一事务目录，失败先恢复再清理；恢复失败保留唯一材料。清理分批遍历，不新增时间戳备份。UDP 索引达到 1024 项后在最后一项释放时丢弃空索引空间；小流量复用，保留分片锁、引用计数和旧连接不能删除新连接的规则。覆盖大批释放/重建及安装成功、失败、恢复、未知目录保护。
 
 性能预算见 [PERFORMANCE.md](PERFORMANCE.md)。记录实际路径、输入、环境与基线；宿主微基准、短时回环、Android RSS、持续吞吐和续航分别验收。
+
+M71 将本地 API 正文预算和保守路由归一化纳入集成：原生后备在读取期间执行调用方上限，超限明确失败；默认规则只消除完整相邻覆盖的 53 快速规则，并合并相邻同目标的纯规则集分发。完整边界见 control 的运行资源与验收第 24 项、policy 的 POLICY-A34–A37。保留 HTTP 首行采样、路由状态屏障及用户策略；沿用现有接口与依赖。报告分别给出超限请求的内存边界、规则对象变化和设备网络实测，不以其中一项代替其他指标。
 
 ## 独立重建边界
 

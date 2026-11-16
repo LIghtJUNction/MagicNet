@@ -23,7 +23,7 @@ source = "../magicnet-module-delivery"
 source = "../software-quality"
 ~~~
 
-本包描述完整 Android root 网络工作台；行为与 M01–M70 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
+本包描述完整 Android root 网络工作台；行为与 M01–M71 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
 
 配方版本与 Android 软件版本独立。当前依赖、源码固定点见 [DEPENDENCIES.md](DEPENDENCIES.md)；已发布安装物以根 `update.json` 为准，实际验证与未完成范围见 [VERIFICATION.md](VERIFICATION.md)。runtime 0.1.14、control 0.2.11、webui 0.2.9 与 delivery 0.2.11 共同定义日常操作恢复、未知状态、TUN 有界恢复和模拟器证据门禁。
 

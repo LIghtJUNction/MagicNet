@@ -51,3 +51,5 @@
 订阅单源替换与多源列表、私密payload、sub.status/sub.inspect字段和批次能力的精确语义见 SUBSCRIPTION_INTERFACE.md。命令名称包含file不表示允许读取任意用户路径；set-file/apply-file接收base64 URL列表，本地订阅正文使用受控apply-subscription-source。
 
 `api select` 必须同时提供 group 和 node；缺参返回正常用法错误，不触发节点选择或写入 selector 意图。`service toggle sing-box` 只根据已确认的 running/stopped 选择停止/启动；进程状态 unknown 时非零返回，不调用启停或改写 watchdog 意图。既有收尾 canonical 观测发布保留。
+
+本地 API 完整响应受对应调用的正文预算约束，原生 HTTP 后备还保留 8 MiB 总上限。超限或不完整响应返回非零错误，不输出可被误用的截断结果；声明长度已超限时无需等待正文，无声明长度时越限即结束读取。`api stats` 保留有界首行采样和总截止时间。此约束沿用现有命令、参数及 schema-1 机器接口。

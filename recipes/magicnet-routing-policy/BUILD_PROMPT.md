@@ -15,6 +15,12 @@ proxy 与 AI 组没有合格节点默认 block，lan/cn-direct/国内类 direct�
 业务 DNS 域分类与路由拥有相同条件/次序；IP/协议-only 不复制成 DNS 规则。以下指定域名拒绝只作用于路由，保持 DNS 捕获和解析配置。Direct 业务用本地加密 DNS，Proxy 用远端解析；手动 DNS profile 仍明确覆盖。
 不能恢复泛 analytics/tracker/github/captive 子串匹配。国内连通性探针是显式例外，不等于任意 captive 域放行。
 
+### 默认配置的保守归一化
+
+只在托管的 `mixed-in`/`tun-in` 嗅探与 DNS 协议劫持对之前维护 53 端口快速规则：嗅探规则仅含 `inbound` 和 `action: sniff`，inbound 为非空名称或列表，下一条恰为 `protocol: dns`、`action: hijack-dns`。紧邻前驱若仅含 `port`、`action: hijack-dns` 及可选 `inbound`，端口为合法整数或列表且包含 53，inbound 省略或覆盖全部目标，则沿用该前驱。已有同形快速规则被其紧邻前驱完整覆盖时删除冗余项。覆盖判断不向前越过其他规则；部分 inbound、附加条件或状态动作不构成完整覆盖。保留嗅探与非标准端口 DNS 的协议识别路径，其他前序规则维持原有优先级。
+
+相邻的纯 `rule_set` 分发规则在目标相同时可合并；路由比较 `outbound`，DNS 比较 `server`，显式 `action: route` 与省略 action 按相同语义处理。接受非空字符串标量或由非空字符串组成的非空列表，合并后稳定去重且保留标签顺序。额外匹配条件、invert、不同目标、状态动作及非法标签保持分离。归一化不得改变规则集定义、出口、DNS server、final 或 selector 选择；重复执行结果稳定。分别报告顶层规则数量、内部规则集匹配工作及实际网络测量。
+
 ### 托管规则的稳定插入
 
 物化应用、域名和广告策略时，只替换当前策略拥有的规则，再将新规则插入最后一个保护规则之后。保护范围包括显式模式、`sniff`、`resolve`、`route-options`、DNS 劫持、原生拒绝、ICMP 与保留 IP 拦截、LAN、`preferred_by` 及指向实际 Tailscale endpoint tag 的路由。`resolve` 与 `route-options` 是非终止准备动作，分别准备解析结果和连接选项；新增终止路由不能越过它们。指定拒绝目标的精确域名与端口范围保持不变，Tailnet 保护不能依赖后面恰好存在 LAN 规则。

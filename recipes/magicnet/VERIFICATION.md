@@ -6,11 +6,23 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `b6f3a37fb5d035105917f844a6a23bb499bc1a61`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `ee1a83fc0545d88966b3265c4c10481d926b01bc`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.7 / 10615 |
-| 配方 | 0.3.25，八包；验收 M01–M70 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 配方 | 0.3.25，八包；验收 M01–M71 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-11，[42982936016](https://github.com/LIghtJUNction/MagicNet/actions/runs/42982936016)，v1.8.7 / 10615；构建、完整质量、Android 全部 13 阶段、资产核验与公开发布通过 |
-| 当前完成与开放项 | 本轮八类故障修复已进入源码 main，Rust 938 项、WebUI 392 项及组件质量检查已通过；逐项证据见下节与[完整报告](../../docs/comprehensive-audit-2026-11-15.md)。稳定发行仍为 v1.8.7 / 10615；本轮物理设备换网、真实 NAS 与升级安装结果尚未采集。 |
+| 当前完成与开放项 | 本轮 API/路由修复和复现证据已进入源码 main；Rust 34、Python 41 项定向测试与 ARM64 构建通过，手机 GC 四阶段短测与最终就绪检查通过。公网提速未证明；长期续航、全应用覆盖、真实 NAS、换网及升级安装仍需各自证据。历史全面检查与正式发行结果按原身份保留。 |
+
+## 2026-11-16：内存、路由与网络实机调优
+
+实施源码 `be00fa78f2e26a4d6998eb64e181de4028056aff` 修复原生 HTTP 调用方预算和等价路由归一化；证据及复现工具提交 `ee1a83fc0545d88966b3265c4c10481d926b01bc`，tree `abf0914411ac6d3e8d22b1e7464f001f868ed0fe`。本轮新增 M71 与对应 control/policy 验收，逐次数据、失败和限制见[实机调优报告](https://github.com/LIghtJUNction/magicnet-android/blob/ee1a83fc0545d88966b3265c4c10481d926b01bc/docs/performance/2026-11-16-memory-routing-network.md)。
+
+本地 Rust local_http 10、WebUI API 24 项通过；Python modern routing 26、optimizer 11、template 4 项通过，另有维护路由结构/mDNS/8 组 DNS/Tailnet 合同脚本通过。ARM64 release CLI 构建成功，安装到 PHK110 / Android 16 的模块后能力接口一致、状态与流量采样有效。新 CLI SHA-256 为 `0bf0bde5b691809e55461cf83f41eaad8426da40ae64e4d23afb7b66960a2d54`，旧文件已备份并核验。没有生成或公开后继正式安装包，稳定发行仍为 v1.8.7 / 10615。
+
+HTTP 预算基准初测和独立复跑各 28 个预期拒绝样本；请求峰值堆复现为有长度 8,388,842→8,467 B、无长度 8,388,842→1,048,851 B。设备 GC 默认/50/默认/50 四段均完成两次国内下载；PSS+SwapPss 为 104,068 / 86,193 / 108,537 / 83,647 KiB。回滚到默认在 A2 实测，B2 再验证后仅保留本设备 gc_percent=50；configured/active revision 同为 3，无 pending，非 GC 配置完全相同。
+
+最终核心/TUN/API 就绪，联网检查 HTTP 204，fswatch 运行；测试 APK 和本轮设备暂存文件已清理。实机原 route/DNS 为 63/27，新归一化与其相同；旧优化器会额外插入一条规则。公网观察两轮成功 14/15、13/15，海外超时保留，没有公网整体提速结论。首个重启返回失败但未保存 stderr，原因未知，不能用后续重启成功掩盖。长期续航、全应用覆盖、UDP/QUIC 吞吐和升级安装仍不在这次短测结论内。
+
+主仓库本地 check、pack、归档 check、完整 build 提示词生成及固定引用回归检查通过。归档门禁原始摘要：`Recipe archive and complete prompt verified: 8 packages, 62 Markdown files; live pin ee1a83fc0545d88966b3265c4c10481d926b01bc / v1.8.7 10615`。
 
 ## 2026-11-15：全面故障检查与运行时修复
 
