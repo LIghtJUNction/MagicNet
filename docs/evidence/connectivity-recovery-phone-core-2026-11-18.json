@@ -1,0 +1,63 @@
+{
+  "core_sha": "3a155d21872b22e6b9b75326c98d11f7ff159a2e",
+  "isolated": true,
+  "cases": [
+    {
+      "case": "selected_primary",
+      "api_http": 200,
+      "result": {
+        "delay": 572,
+        "expected_status": 204,
+        "http_status": 204,
+        "ok": true,
+        "strict_probe": true
+      }
+    },
+    {
+      "case": "selected_secondary",
+      "api_http": 200,
+      "result": {
+        "delay": 289,
+        "expected_status": 204,
+        "http_status": 204,
+        "ok": true,
+        "strict_probe": true
+      }
+    },
+    {
+      "case": "ordinary_page_must_fail",
+      "api_http": 200,
+      "result": {
+        "expected_status": 204,
+        "http_status": 200,
+        "ok": false,
+        "reason": "http_status",
+        "strict_probe": true
+      }
+    },
+    {
+      "case": "invalid_http_rejected",
+      "api_http": 400,
+      "result": {
+        "expected_status": 204,
+        "http_status": null,
+        "ok": false,
+        "reason": "invalid_request",
+        "strict_probe": true
+      }
+    },
+    {
+      "case": "alternative_concrete_node_probe",
+      "api_http": 200,
+      "result": {
+        "expected_status": 204,
+        "http_status": null,
+        "ok": false,
+        "reason": "timeout",
+        "strict_probe": true
+      }
+    }
+  ],
+  "mixed_exit": 0,
+  "mixed_result": "http=204 seconds=0.328615"
+}

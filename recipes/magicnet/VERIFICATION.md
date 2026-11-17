@@ -4,11 +4,25 @@
 
 本轮配方更新为 magicnet 0.3.28、network-runtime 0.1.16、control-plane 0.2.12、packet-engine 0.2.4 和 module-delivery 0.2.13，保留 web-console 0.2.10 的日常界面。新增 M75–M77、CON-A11–A14、C-CON-001–003，分别约束当前所选代理的严格双 HTTPS 204、独立 mixed 观测、最多三个同组真实候选、checked 保存与补偿、人工只探测和预算保留。
 
-最终维护源码为 [4a001bd24f3e88772cfc829b29ecaae4c846c6fe](https://github.com/LIghtJUNction/magicnet-android/commit/4a001bd24f3e88772cfc829b29ecaae4c846c6fe)，tree `299685efe7f0ea7da2836a6d13535b5b46f8bea9`，已推送 main。CLI 验证 894 passed / 0 failed / 1 既有 ignored，connectivity runtime 另行报告 26 项通过；10 项 selector 是相关子集，不累计。限定改动范围的 Clippy（all-targets、-D warnings）、fmt 和 diff 检查通过。界面结果对应其父提交 `fa77ab10e3c7e6ca6ecf4af14dda45aa46f57d1b`，不替代整套正式质量与 Android 门禁。
+当前维护源码为 [a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b](https://github.com/LIghtJUNction/magicnet-android/commit/a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b)，tree `c51a058235ec81f077468cc61f060bbdee7a83b9`，已签名提交并推送 main；本次补齐 CI 标签及 Android 验收合同，核心仍为 3a155d21。下述 CLI 结果对应修补前基线 [4a001bd24f3e88772cfc829b29ecaae4c846c6fe](https://github.com/LIghtJUNction/magicnet-android/commit/4a001bd24f3e88772cfc829b29ecaae4c846c6fe)：CLI 验证 894 passed / 0 failed / 1 既有 ignored，connectivity runtime 另行报告 26 项通过；10 项 selector 是相关子集，不累计。限定改动范围的 Clippy（all-targets、-D warnings）、fmt 和 diff 检查通过。界面结果对应其父提交 `fa77ab10e3c7e6ca6ecf4af14dda45aa46f57d1b`，不替代整套正式质量与 Android 门禁。
 
 已推送核心 `3a155d21872b22e6b9b75326c98d11f7ff159a2e` 在物理 Android 设备的隔离进程通过配置检查、Google/Cloudflare 严格 204 正向控制、HTTP 200 反向控制、非 HTTPS 输入拒绝、已知故障代理超时，以及非 root shell 经新 mixed 入口的真实 204。安装中的 v1.8.9 核心未替换，临时资源已清理；该证据不表示新 CLI、正式 ZIP 或全部应用/TUN 路径已验收。
 
 候选 WebUI 391 项、类型检查与构建通过；手机 360 像素和桌面共 8 项 Playwright 通过并检查截图。配方发布脚本 18 项、发布计划 42 项、固定值检查器 19 项、actionlint 与核心构建脚本语法通过。各结果范围与精确核心身份见[本轮连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。完整配方闭包和正式质量/Android 门禁仍按最终提交与发布记录判定，公开稳定索引保持 v1.8.9 / 10617。
+
+## 2026-11-18 首次 CI 与发行尝试的边界
+
+source `4a001bd2` 的 [Code Quality 44170188714](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44170188714) 成功；[Network Evidence 44170188784](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44170188784) 因预检标签集合未纳入 with_lx_probe 而失败，没有该次 runner JSON。[Android 44170189095](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44170189095) 的实际 simulation 原件确认 3 passed、cold-boot failed（invalid connectivity target or path）、9 not_run，整体保持失败。
+
+[正式发布 44171252511](https://github.com/LIghtJUNction/MagicNet/actions/runs/44171252511) 已在 publish 前取消。其计划为 v1.9.0 / 10618，快照 `82054c099e4fcf81fc069c27327ca62e93ea25ee`；公开稳定索引仍为 v1.8.9 / 10617。该次运行使用 4a 源码；后续当前固定值见当前索引，取消快照不构成已发布版本。
+
+本地 host harness 在 4a HEAD 加未提交标签修补的工作树完成 77 次回环请求、20.0305 秒空闲观察、外网 0，请求与生产标签检查通过。设备隔离核心和本地主机的两份 JSON 已按原始字节加入 docs/evidence；其摘要、范围、Android 失败原件身份及后续门禁要求见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。本地主机结果不替代旧失败 CI、Android 或正式发布验证。
+
+## 2026-11-18 Android 验收合同修正的本地结果
+
+Android harness 已同步 selected_proxy 与独立 mixed 字段，并严格要求 online 同时有双目标、mixed、时间/延迟和无失败警告的完整证据。一次性隔离夹具显式增加 proxy→direct 单成员 selector，本地 DNS 与 route.final=direct 保持；显式 tick 仍最多一次，Google 上界 2、辅助上界 2，验收器不改 canonical 状态。
+
+`python3 scripts/test-android-device-simulation.py` 120/120、`python3 scripts/test-android-simulation-fixes.py` 37/37 通过。两条命令分别使用实际生产标签 host core `3a155d21` 执行 --check-core 均 exit 0，核验初始、升级和实际 renderer 生成候选；复跑不重复累计。Android 修补涉及上述三份脚本，现已随 CI 标签及证据上传修正固定为 a25eb7cb；新 [Quality 44175291769](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291769)、[Network 44175291715](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291715)、[Build 44175291680](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291680)、[Android 44175291684](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291684) 均已确认同一源码 head，记录时为 in_progress。此处只有本地 fixture/单元/核心配置证据，旧 `4a` Android 的 3 passed / 1 failed / 9 not_run 继续保留，公开稳定发行仍为 v1.8.9 / 10617。
 
 ## 2026-11-18 日常界面与核心退出清理合同
 
@@ -33,7 +47,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `4a001bd24f3e88772cfc829b29ecaae4c846c6fe`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.9 / 10617 |
 | 配方 | 0.3.27，八包；验收 M01–M74 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-17（UTC+8），[43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947)，v1.8.9 / 10617；构建、完整质量、Android、资产核验、公开发布及稳定索引同步通过 |
