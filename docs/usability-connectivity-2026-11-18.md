@@ -4,7 +4,7 @@
 
 ## 当前结果
 
-实现已分两次提交并进入源码仓库 main。目标版本为 v1.9.0；截至本记录编写，正式发布尚未触发，公开稳定索引仍为 v1.8.9 / 10617。下文分别记录本地验证、当前 CI 和仍待完成的发行步骤。
+实现已分两次提交并进入源码仓库 main。目标版本为 v1.9.0；正式发布尚未触发，公开稳定索引仍为 v1.8.9 / 10617。代码质量、源码构建、网络回归和主仓配方 CI 已通过；Android 首次验收遇到宿主模拟器 SIGSEGV，原提交重跑正在执行。
 
 | 身份 | 固定值 |
 | --- | --- |
@@ -12,7 +12,7 @@
 | 界面改造及最终源码 | [`1e91457e5a04d96fc0604728a512333477a63376`](https://github.com/LIghtJUNction/magicnet-android/commit/1e91457e5a04d96fc0604728a512333477a63376) |
 | 最终源码 tree | `ebc376174a91ece21ff73a53e81af924c1a7b81d` |
 | 配方版本 | magicnet 0.3.27、web-console 0.2.10、network-runtime 0.1.15 |
-| 目标发行 | v1.9.0；Android versionCode 由正式发布计划确定 |
+| 目标发行 | v1.9.0 / 10618（现有版本选择函数的只读预检结果；正式发布计划仍需在触发时核对） |
 
 ## 日常操作改进
 
@@ -55,16 +55,23 @@
 
 ## 当前 CI 与发行
 
-以下运行均对应最终源码 `1e91457e`，不是历史提交的结果。创建本记录时均在执行，尚未记为通过：
+以下源码运行均对应 `1e91457e`。主仓 Recipe checks 对应集成提交 `c1741908`。
 
-- [Code Quality 44136054407](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054407)
-- [Build 44136054360](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054360)
-- [Android KernelSU Acceptance 44136054256](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054256)
-- [Network Regression Evidence 44136054354](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054354)
+| CI | 当前结果 |
+| --- | --- |
+| [Code Quality 44136054407](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054407) | success；WebUI check 实跑 20.88 秒、完整浏览器门禁实跑 596.37 秒，均 exit 0 |
+| [Build 44136054360](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054360) | success |
+| [Network Regression Evidence 44136054354](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054354) | success；其中浏览器子集 312 项通过，与完整门禁重叠，不累计 |
+| [Recipe checks 44136806946](https://github.com/LIghtJUNction/MagicNet/actions/runs/44136806946) | success |
+| [Android KernelSU Acceptance 44136054256](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44136054256) | attempt 1 失败；attempt 2 在相同源码上执行中 |
+
+Android attempt 1 实际为 11 passed / 1 failed / 1 not_run。失败在 `enable-reboot`，`uninstall-reboot` 未执行；此前 TUN 恢复、停止清理、重复重启、升级与禁用重启通过。宿主观察器明确记录 Emulator 37.2.13 的 `returncode=-11`、`signal=11`，时间为 2026-11-18 01:43:52.538830（UTC+8）。显式清理请求在 01:48:47.067535，晚约 294.53 秒，清理结果为 `already_exited`；因此不是清理操作主动结束了模拟器。cgroup 与已捕获的内核观察未记录 OOM。缺少 Emulator 内部崩溃栈，不能进一步确定 SIGSEGV 的内部触发原因，也没有证据将它归因于本轮实现。
+
+首次失败原件为 artifact `14354102594`（`android-kernelsu-acceptance-44136054256-1`），342,254 字节；本地重新计算的 SHA-256 与 GitHub digest 一致：`db0d96fad98809db7400738b35b7456b4ec6c7c31be880437f43bd823d1bea24`。保留原始失败，用 GitHub 插件重跑原失败 Android job 及依赖 gate，源码与验收条件保持原样。重跑须按实际完整结果另行记录，不能用已通过的十一阶段代替完整 Android 成功。
 
 正式发布使用主仓既有 [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml)，分支 main，`mode=publish`、`bump=none`、`version=1.9.0`，保持 `source_ref` 为空并使用已审查的 gitlink。源码构建、完整质量、Android 生命周期与网络恢复、安装包来源和资产清单核验通过后才可公开发行，再同步稳定更新索引。
 
-目前 GitHub 插件能提交源码和读取 CI，但没有手动触发 workflow 的操作；备用浏览器未登录 GitHub，ssmcp 连接需要重新认证。主仓集成快照 `7eefc939` 已完成最终配方检查；发行触发仍需要恢复其中一个可用的已登录发布通道。发布门禁、触发条件和权限规则保持原样。
+目前 GitHub 插件能提交源码和读取 CI，但没有手动触发 workflow 的操作；备用浏览器未登录 GitHub，安全登录请求已取消，ssmcp 连接需要重新认证。主仓集成快照 `7eefc939` 已完成最终配方检查；发行触发仍需要恢复其中一个可用的已登录发布通道。发布门禁、触发条件和权限规则保持原样。
 
 ## 后续验收边界
 
