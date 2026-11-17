@@ -47,7 +47,7 @@
 | 最终错误提示文字修订 | 相关 18 项单测及 phone-390 单条 E2E 通过 | 仅三语文字及对应断言变化；与前述数量重叠，不累计 |
 | 主仓发行与固定值回归 | 79 / 79 通过 | 发布脚本 18、发布计划 42、配方检查回归 19 |
 | 静态质量 | Rust fmt、严格 Clippy、ShellCheck、source lint、actionlint、diff 检查通过 | 未放宽现有检查规则 |
-| 配方闭包 | check、pack、归档 check、完整提示词生成通过，8 包 / 62 Markdown | 最终整仓 source pin 检查待集成提交后回读 |
+| 配方闭包 | check、pack、归档 check、完整提示词生成通过，8 包 / 62 Markdown | 集成快照 `7eefc939` 的整仓 source pin 检查通过，精确固定 `1e91457e`，稳定索引保持 v1.8.9 / 10617 |
 
 浏览器使用官方 Chrome for Testing 157.0.8103.78。项目 Playwright 固定浏览器的本地下载未取得有效归档，因此通过已有的浏览器路径参数运行，项目依赖与锁文件保持原样。浏览器验收包含十四页双主题布局、三语、未知及失败状态、四项直达与次级页面、模式切换确认、草稿、缩放和滚动。首次验收发现折叠区域隐藏模式错误，已修复并在固定代码回归通过。
 
@@ -64,7 +64,7 @@
 
 正式发布使用主仓既有 [Build and release MagicNet](https://github.com/LIghtJUNction/MagicNet/actions/workflows/release.yml)，分支 main，`mode=publish`、`bump=none`、`version=1.9.0`，保持 `source_ref` 为空并使用已审查的 gitlink。源码构建、完整质量、Android 生命周期与网络恢复、安装包来源和资产清单核验通过后才可公开发行，再同步稳定更新索引。
 
-目前 GitHub 插件能提交源码和读取 CI，但没有手动触发 workflow 的操作；备用浏览器未登录 GitHub，ssmcp 连接需要重新认证。完成主仓集成和最终配方检查后，发行触发仍需要恢复其中一个可用的已登录发布通道。发布门禁、触发条件和权限规则保持原样。
+目前 GitHub 插件能提交源码和读取 CI，但没有手动触发 workflow 的操作；备用浏览器未登录 GitHub，ssmcp 连接需要重新认证。主仓集成快照 `7eefc939` 已完成最终配方检查；发行触发仍需要恢复其中一个可用的已登录发布通道。发布门禁、触发条件和权限规则保持原样。
 
 ## 后续验收边界
 

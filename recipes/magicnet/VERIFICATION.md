@@ -6,7 +6,7 @@
 
 源码已分两次提交并进入 main：网络修复 `8cb0a061`，界面改造及最终源码 `1e91457e5a04d96fc0604728a512333477a63376`，tree `ebc376174a91ece21ff73a53e81af924c1a7b81d`。Rust 全套 948 passed / 0 failed / 1 既有环境 ignored；其中 connectivity runtime 14 项包含 5 项新增回归。自有资源清理在 sh、bash 各 59 项通过，DNS fastpath 6 项及启动安全通过。WebUI 388 项、类型与构建通过；四视口浏览器固定代码 63 passed / 1 桌面不适用 skipped / 0 failed，最后文案修订的 18 项相关单测及单条手机 E2E 通过。后两项与此前数量重叠，不累计。
 
-主仓发行与固定值回归 79 项、格式、严格 Clippy、ShellCheck、source lint、工作流 actionlint 和 diff 检查通过。recipkg check、pack、归档 check 与完整提示词生成确认八包、62 个普通 UTF-8 Markdown 文件闭包；最终源码固定值的整仓门禁由集成提交后核验。实现、复现、提交、验证边界与实际 CI 链接见[本轮验收记录](../../docs/usability-connectivity-2026-11-18.md)。
+主仓发行与固定值回归 79 项、格式、严格 Clippy、ShellCheck、source lint、工作流 actionlint 和 diff 检查通过。recipkg check、pack、归档 check 与完整提示词生成确认八包、62 个普通 UTF-8 Markdown 文件闭包；集成快照 `7eefc939` 的整仓固定值门禁通过，精确源码为 `1e91457e`，稳定索引保持 v1.8.9 / 10617。实现、复现、提交、验证边界与实际 CI 链接见[本轮验收记录](../../docs/usability-connectivity-2026-11-18.md)。
 
 最终源码四条 CI 已启动，记录编写时仍在执行；目标 v1.9.0 尚未触发正式发布，稳定发行索引仍为 v1.8.9 / 10617。历史 CI 与模拟器结果不替代本轮验证，物理手机上的偶发断网尚需对应现场证据。
 
