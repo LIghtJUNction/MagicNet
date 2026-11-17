@@ -4,13 +4,13 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.27 | 产品集成、M01–M74 与完整验收 |
-| magicnet-control-plane | 0.2.11 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.15 | 订阅事务、生命周期、退出后清理与低频联网检查 |
+| magicnet | 0.3.28 | 产品集成、M01–M77 与完整验收 |
+| magicnet-control-plane | 0.2.12 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet-network-runtime | 0.1.16 | 订阅事务、生命周期、退出后清理与低频联网检查 |
 | magicnet-web-console | 0.2.10 | 日常直达导航、分层概览、订阅草稿与诊断 |
-| magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
+| magicnet-packet-engine | 0.2.4 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
-| magicnet-module-delivery | 0.2.12 | 安装升级、组件、版本选择、构建和正式发布 |
+| magicnet-module-delivery | 0.2.13 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
 根包直接依赖 control、webui、delivery、quality；control 依赖 runtime，runtime 依赖 engine、policy。所有边均为可检查、递归打包的 Markdown 配方，pack 时由 LOCK 记录摘要。webui、delivery 与 control 的集成由根包协调，避免重复分发规格。
@@ -19,13 +19,15 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
-0.3.27 同时依赖本闭包中的 webui 0.2.10 与 runtime 0.1.15 合同：前者定义四项日常直达、更多十页和概览折叠层级，后者定义退出后经既有配置锁复核的自有网络清理。不能只更新界面说明却继续交付旧导航，也不能用 paused 状态代替资源清理。control 0.2.11 的机器字段、命令和能力集保持；清理复用既有生命周期 helper、锁与 ownership，不新增常驻进程或运行库。pack 的 LOCK 摘要须反映这一完整闭包。
+0.3.28 在保留 webui 0.2.10 日常界面的基础上同步 runtime 0.1.16、control 0.2.12、packet-engine 0.2.4 和 delivery 0.2.13。运行时依赖核心可选的严格 HTTPS 探测，模块构建明确加入 with_lx_probe；CLI 必须检查严格能力标记和 HTTP 204，不接受旧延迟接口的成功作为替代。选择器持久化错误、候选切换补偿、人工即时检查与独立 mixed 观测属于同一闭包，不能只交付其中一层。正式源码固定点、构建工作流与 core revision 必须一起同步。
+
+0.3.27 的已保留基线是 webui 0.2.10 与 runtime 0.1.15 合同：前者定义四项日常直达、更多十页和概览折叠层级，后者定义退出后经既有配置锁复核的自有网络清理。不能只更新界面说明却继续交付旧导航，也不能用 paused 状态代替资源清理。核心退出清理复用既有生命周期 helper、锁与 ownership，不新增常驻进程或运行库。0.3.28 的机器增量按 control 0.2.12 执行；pack 的 LOCK 摘要须反映当前完整闭包。
 
 本轮 API 正文预算与路由归一化复用现有原生 loopback HTTP、可信 curl 和构建期归一化工具，无新增运行库、常驻服务、机器命令或能力标记。规则集定义、出口、DNS server 和 selector 依赖集合保持；M71 的正文预算、规则结构与设备网络测量分别验收。
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `1e91457e5a04d96fc0604728a512333477a63376`，tree `ebc376174a91ece21ff73a53e81af924c1a7b81d`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `4a001bd24f3e88772cfc829b29ecaae4c846c6fe`，tree `299685efe7f0ea7da2836a6d13535b5b46f8bea9`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；本轮当前代理严格检查、选择补偿和界面验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
@@ -35,7 +37,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 | 源码子模块 | 固定提交 |
 | --- | --- |
-| sing-box | `5604500d0b894af3b6fbc3c48a4ee71c1ff0e167` |
+| sing-box | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` |
 | MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
 | MagicNetRules | `c4ad0a94f35af2b7950b47362e1c23e583209790` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
@@ -52,7 +54,7 @@ Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及�
 
 ## 2026-11-17 维护输入
 
-本轮固定 sing-box fork 的两个 CI 修复提交，更新规则发行资产、Rust 兼容锁及 npm/Bun 双锁。WebUI 使用 Vue 3.5.45、Vite 8.3.8、Tailwind 4.3.5、KernelSU SDK 3.3.0、Playwright 1.65.1、vue-tsc 3.3.14 和 highlight.js 11.12.0；TypeScript 维持 5.9 系列。运行接口与持久化格式保持。
+本轮在既有规则发行资产、Rust 兼容锁及 npm/Bun 双锁基础上，固定包含可选严格 HTTPS 探测的 sing-box fork 提交；MagicNet 显式启用 with_lx_probe。WebUI 使用 Vue 3.5.45、Vite 8.3.8、Tailwind 4.3.5、KernelSU SDK 3.3.0、Playwright 1.65.1、vue-tsc 3.3.14 和 highlight.js 11.12.0；TypeScript 维持 5.9 系列。运行接口与持久化格式保持。
 
 外部工具使用 yq 4.54.3、eCapture 2.11.0、Zashboard 3.30.0；jq 1.8.2 保持当前正式版。HTTPS 执行器固定 curl 8.23.0、OpenSSL 3.5.9 LTS、zlib 1.4 和 2026-11-05 Mozilla CA，全部摘要见 delivery/EXTERNAL_ASSETS。新规则归档摘要为 df4863416dd56ad6637fdc3edc395d488463b9079d845a27085052a8e69e9e28。
 

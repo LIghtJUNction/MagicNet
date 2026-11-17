@@ -63,3 +63,9 @@ TUN 健康与机器 readiness 共用一份解析和有界只读观测逻辑。�
 TUN 路由的范围覆盖不能掩盖同表竞争前缀。有效 TUN 路由已覆盖必要范围，但其中存在其他设备、不可转发或 linkdown 路由，且受影响范围未被更具体的有效 TUN 路由完全覆盖时，路由证据为 unknown；不猜测 metric 等未观测的优先关系。范围外路由和已被更具体 TUN 路由覆盖的宽泛回退不误报冲突；该未知证据不能授权自动恢复。
 
 每轮 RPDB/FIB 子命令共享 3 秒截止时间，stdout/stderr 每流最多 256 KiB；这不是整个 health/export 的总耗时或 CPU 解析硬截止。任一必要项已知缺失时机器字段为 false，即便另项未知；没有已知缺失而有读取失败、超时、截断或无法解释的证据时为 null。人类 health 显示 warning 及对应 detail。auto_route=false 不强行要求自动规则；eBPF 保持独立附着检查；机器快照对 stopped/unknown 核心保留原语义且不探测路由，人类 health 仍可能检查残留接口。检查不产生公网请求、规则写入、后台循环、自动重启或 canonical 发布，不返回原始地址/规则列表。必要内核资源存在仍不证明真实应用流量已成功。
+
+## 0.2.12 显式联网检查与选择错误
+
+新增人类 `cli connectivity check`，通过同一受控 producer 取得新联网观测，只探测、10 秒节流，保留自动动作/订阅冷却、TUN 预算和停止意图。普通 status、health、MCP、支持包及 WebUI 刷新仍只读；不新增 --json 或 MCP 写入口。所选代理的严格双 HTTPS 204 与独立 mixed 路径各自显示，不以旧核心 delay 或路由组的成功掩盖当前节点失效。
+
+api select 的持久化错误必须非零返回，保存失败不触碰运行 API。使用既有锁复核、checked 保存、运行时 PUT、双读回与失败补偿，外部新选择返回 rollback_conflict 且不被覆盖；跨组操作保留顺序批次语义。命令成功、节点网络可用与系统应用流量成功分别呈现，公共状态保持 schema=1 与脱敏边界。

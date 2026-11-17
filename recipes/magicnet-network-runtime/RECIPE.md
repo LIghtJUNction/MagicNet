@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.15"
+version = "0.1.16"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -16,6 +16,8 @@ source = "../magicnet-packet-engine"
 [dependencies.policy]
 source = "../magicnet-routing-policy"
 ~~~
+
+0.1.16 增加 CON-007–008/CON-A11–A14：经所选出站严格 GET 并校验双站点 204，与 mixed 数据面独立记录；候选最多三个且来自当前组的既有真实代理，配置锁内重查、保存、切换与读回，复验失败补偿旧选择。人工 check 和切换后的即时检查不清空恢复冷却、TUN 次数或用户停止意图。
 
 0.1.15 增加 CON-006/LIFE-010：核心已退出时，既有 watchdog 在配置/生命周期锁内再次确认后复用停止后清理，撤销自有 DNS/热点网络资源。忙锁、活跃或未知核心、停用和取消不清理；失败保留证据并重试，不复活核心。沿用 schema=1、已有状态域与运行依赖。
 

@@ -100,3 +100,9 @@ HTTPS 执行器输入遵守 EXTERNAL_ASSETS 的固定摘要。缓存命中同样
 Android ARM64 可执行文件按 ELF 头、程序段和动态段验证。Android 解释器必须为 /system/bin/linker64；静态输入不得依赖外部动态库，静态 PIE 还须具备可执行身份。普通共享库、错误架构、GNU 加载器或解析失败均拒绝，验证不依赖 file 工具的描述词。
 
 AVD 的 yq 从生产 release lock 读取固定 tag；eCapture 的 Android ARM64/amd64 保持同版，两种资产分别核验摘要。版本不一致须在早期合同检查及下载前拒绝。依赖 readelf 文本的夹具校验固定 C locale；WebUI 审核过的 Zashboard 默认与候选下载须同步当前发行及各自摘要。
+
+## 0.2.13 严格探测核心的交付
+
+MagicNet 的核心构建在固定 fork 默认能力之外显式加入 `with_lx_probe`；生产 ARM64、Linux 主机验收及 Android x86_64 验收使用同一审核源码和标签合同。核心默认构建配置保持可选，不能通过默认启用新功能改变其他消费者。构建元数据、版本来源与组件摘要必须对应实际二进制，不用文件名或文档声明代替能力证明。
+
+正式包执行器需要实际支持 expected_status=204 严格 HTTPS GET 和 strict_probe 标记。缺少标签的旧核心应保持旧 API 兼容，但 MagicNet 运行时必须报告严格能力不可用而非成功。组件复用、构建和正式发布验证覆盖该能力及 TLS/204 正反控制，原质量、Android、隐私、全部 ZIP 内容、摘要与 provenance 门禁不变。

@@ -15,7 +15,7 @@
 | sysroute | {list / snapshot / add-rule <priority> <table> / del-rule <priority> / add-route <table> <dest / default> <dev> [via] / del-route <table> <dest / default>} |
 | repair |  |
 | support | {bundle / export} |
-| connectivity | {status / tick} |
+| connectivity | {status / tick / check} |
 | setup | <subscription-url> |
 | config | apply |
 | override | {status / inspect / preview-file <payload> / set-file <payload> / reset-file <payload> / apply-file <payload> / apply} --json |
@@ -46,7 +46,7 @@
 
 `app inspect` 仅在显式 `--json` 机器模式提供私密应用名清单；人类 `app packages [query]` 保留包名兼容路径。
 
-`connectivity status` 与 `--json connectivity status` 只读缓存；`connectivity tick` 是监督 producer 的有界到期检查，只有人类入口可调用，不支持 `--json tick`。`support export` 与 `--json support export` 是明确的单文件导出，完整语义见 DIAGNOSTIC_CONTRACT.md；`support bundle` 保留文本/MCP 使用。
+`connectivity status` 与 `--json connectivity status` 只读缓存；`connectivity tick` 是监督 producer 的有界到期检查，`connectivity check` 显式发起一次真实检查以确认当前所选代理及独立 mixed 路径。tick/check 只在人类入口提供，不新增 `--json` 写命令；人工 check 只探测、10 秒节流，保留自动动作、订阅刷新和 TUN 恢复预算，遵守单 producer、锁及停止意图。`support export` 与 `--json support export` 是明确的单文件导出，完整语义见 DIAGNOSTIC_CONTRACT.md；`support bundle` 保留文本/MCP 使用。
 
 订阅单源替换与多源列表、私密payload、sub.status/sub.inspect字段和批次能力的精确语义见 SUBSCRIPTION_INTERFACE.md。命令名称包含file不表示允许读取任意用户路径；set-file/apply-file接收base64 URL列表，本地订阅正文使用受控apply-subscription-source。
 
@@ -55,3 +55,9 @@
 本地 API 完整响应受对应调用的正文预算约束，原生 HTTP 后备还保留 8 MiB 总上限。超限或不完整响应返回非零错误，不输出可被误用的截断结果；声明长度已超限时无需等待正文，无声明长度时越限即结束读取。`api stats` 保留有界首行采样和总截止时间。此约束沿用现有命令、参数及 schema-1 机器接口。
 
 TLS/GoTLS 文本诊断显式使用 eCapture 的 hook 来源；升级依赖后不因上游默认值改变而启用 PCAP 来源。nspr 保留原参数，公共命令、时长/输出上限和 PID/UID 过滤保持。
+
+## 选择保存与联网确认（0.2.12）
+
+`api select <group> <node>` 的成功要求选择可持久保存、运行时切换成功且读回相符。先在既有锁内重查成员和当前值，再 checked 保存；保存失败非零退出且不得调用运行时 PUT。后续失败按旧运行值与旧保存值补偿，外部新选择不得覆盖；保存失败或补偿冲突不能被一个成功的 API 响应掩盖。节点切换后的网络确认与仅仅选择成功分别展示，网络失败不写成 online。
+
+`cli connectivity check` 是显式网络操作，普通 status、health、MCP 和诊断读取仍零公网请求。它通过已启用 with_lx_probe 的核心检查所选出站双 HTTPS 204，并单独观测 mixed 数据面；仅旧 delay 字段不算严格成功。人工 check 不执行 repair/refresh/restart，10 秒节流；忙时返回 `connectivity.check_queued`，节流返回 `connectivity.check_throttled`。实际重测不清空动作冷却、订阅刷新间隔或 TUN 尝试次数。

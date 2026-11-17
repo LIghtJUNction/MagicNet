@@ -8,7 +8,7 @@ hybrid 无下游时 local 可 ready，shared_tc=pending、shared_ready=false；�
 
 ## 0.2.5 增量：联网与诊断
 
-`connectivity.status` 以及 `service.status.data.connectivity` 返回同一缓存观测，状态为 unknown/pending/online/degraded/offline/paused/stale；`target` 固定 Google HTTPS 204 端点，`path=mixed_proxy`。字段含 reason/primary_reason、warning、checked_at/next_check_at/retry_in_seconds、失败/探测计数、退避、HTTP/延迟、辅助结果和最近动作。未知数值为 null；用户停止后 paused，不借 PID 或辅助成功声称 Google 在线。读取零写入、零外网探测。
+`connectivity.status` 以及 `service.status.data.connectivity` 返回同一缓存观测，状态为 unknown/pending/online/degraded/offline/paused/stale；`target` 固定 Google HTTPS 204 端点，`path=selected_proxy`；`mixed_path=mixed_proxy` 独立说明 mixed 数据面。字段含 reason/primary_reason、warning、checked_at/next_check_at/retry_in_seconds、失败/探测计数、退避、HTTP/延迟、辅助结果和最近动作。未知数值为 null；用户停止后 paused，不借 PID 或辅助成功声称 Google 在线。读取零写入、零外网探测。
 
 `support.export` 无参数，成功 data 为 `{path,bytes}`，失败 `support.export_failed`。commands/mutation_commands 均显式列入，`support_export={requires_write:true,state_effect:"export-only",fresh_network_probe:false}`；导出只写报告，幂等/并发/失败语义见 DIAGNOSTIC_CONTRACT.md。capabilities 另增加 low_frequency_connectivity 特性。下文稳定快照保留历史证据，不代表新增接口已包含在旧版本。
 
@@ -137,4 +137,12 @@ service.status.readiness.dataplane 与 transparent.status.dataplane_ready 在核
 
 ## TUN 恢复观察（0.2.8）
 
-connectivity.status 和 service.status.data.connectivity 增加 `tun_auto_route`：status 为 not_required/pending/present/missing/unknown/paused/stale；warning 为布尔；checked_at、next_check_at、last_recovery_at 和 retry_in_seconds 缺测为 null；已有时间/间隔及 consecutive_failures、recovery_attempts、recovery_limit 为有界非负数；recovery_status 为 none/pending/ok/failed/busy/cooldown/exhausted。capabilities 声明 bounded_tun_auto_route_recovery；诊断保留这些规范字段，不携带 PID、boot 或规则。原 schema-1 和命令目录兼容，顶层 Google/mixed_proxy 状态不被路由结论替换。恢复条件与预算以 runtime/CONNECTIVITY_CONTRACT 的 CON-005 为准。
+connectivity.status 和 service.status.data.connectivity 增加 `tun_auto_route`：status 为 not_required/pending/present/missing/unknown/paused/stale；warning 为布尔；checked_at、next_check_at、last_recovery_at 和 retry_in_seconds 缺测为 null；已有时间/间隔及 consecutive_failures、recovery_attempts、recovery_limit 为有界非负数；recovery_status 为 none/pending/ok/failed/busy/cooldown/exhausted。capabilities 声明 bounded_tun_auto_route_recovery；诊断保留这些规范字段，不携带 PID、boot 或规则。原 schema-1 和命令目录兼容，当前所选代理和 mixed 数据面状态不被 TUN 路由结论替换。恢复条件与预算以 runtime/CONNECTIVITY_CONTRACT 的 CON-005 为准。
+
+## 所选代理与 mixed 数据面（0.2.12）
+
+connectivity.status 与 service.status.data.connectivity 使用同一缓存状态。`path=selected_proxy` 表示 proxy 组当前所选出站的严格双目标结果；新增 `mixed_path=mixed_proxy`、`mixed_status`（online/failed/unknown/not_run）和 `mixed_reason`（规范 probe reason），单独报告 mixed 数据面。路径、原因、HTTP 状态与检查时间不能混用；未知值保持 null/unknown，具有正确路径语义的过期缓存保持 stale/pending。缺少严格 probe_path 标记的旧 mixed 缓存即使原为新鲜 online，也必须呈现 unknown 并等待立即到期的新探测，不能作为 selected_proxy 成功。当前代理成功而 mixed 失败时为 degraded/mixed_path_failed，不显示全部在线。
+
+reason 新增 probe_unsupported、selection_changed、mixed_path_failed；核心严格能力标记缺失或旧 delay 响应为 unknown/probe_unsupported，API 不可用为 unknown/probe_unavailable，畸形响应为 unknown/probe_invalid，均不能触发恢复。私有选择变更请求待处理时只读状态可显示 pending/selection_changed，不额外发探测。last_action 新增 failover，action_status 新增 conflict、rollback_failed，分别保留实际动作与补偿结果。
+
+capabilities 声明 strict_selected_proxy_probe、bounded_selector_failover、manual_connectivity_check。公共状态继续脱敏，不加入节点名称、订阅地址、认证信息、PID 或开机身份；内部 request_generation/manual_checked_uptime 不进入机器 JSON。原 schema=1 和机器命令边界保持；人类 connectivity check 不自动加入 commands/mutation_commands，`--json connectivity check` 或其他未设计的机器写操作必须结构化拒绝。读取、health、MCP 和导出零新公网探测、零自动选择变更。

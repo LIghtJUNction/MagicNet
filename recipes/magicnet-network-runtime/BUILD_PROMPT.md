@@ -81,3 +81,11 @@ repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确�
 ## 系统证书禁用
 
 实现 [CERTIFICATE_POLICY.md](CERTIFICATE_POLICY.md)：默认关闭的 user-0 系统 CA 禁用策略（缺少 enabled 等同 false，开机 apply 直接返回、不改证书或广播；只有显式 disable 才启用），精确 SHA-256/完整主体和大小写无关字面关键词匹配；禁用、恢复、预览与开机重应用。仅恢复自身 ownership，卸载恢复，不注入 CA。
+
+## 0.1.16 当前代理的真实联网与候选恢复
+
+按 CONNECTIVITY_CONTRACT 的 CON-007–008，proxy 组当前所选代理必须通过核心严格 GET/204 双目标验证，mixed 数据面另行记录，禁止由 network-test 路由组或旧 HEAD 延迟结果代替。严格能力标记缺失时报告不可用，不判成功、不触发节点恢复。
+
+自动恢复最多验证三个同组已有真实代理候选，双目标通过后在现有配置锁内重查、checked 保存、运行时 PUT 与双读回，立即复验真实路径。任何失败补偿旧运行值与旧保存值，外部新选择不覆盖并报告 rollback_conflict；原缺省值不变成新持久意图。跨组变更使用有补偿的顺序批次。
+
+人工 connectivity check 和切换即时检查提供新观测，保持单 producer 与停止优先级；人工 check 仅探测，10 秒节流，不执行恢复，也不清空动作/刷新冷却或 TUN 次数。status、health、MCP 与导出继续零公网请求；无新常驻服务、运行依赖或机器写入口。

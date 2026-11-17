@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-packet-engine"
-version = "0.2.3"
+version = "0.2.4"
 kind = "software"
 description = "MagicNet TUN 与 eBPF 数据面合同"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.4 增加可选 with_lx_probe：现有 Clash delay API 在 expected_status=204 时按指定出站执行 HTTPS GET，校验证书、禁止重定向并给出严格能力标记、真实 HTTP 状态与结果。未请求严格模式或未启用构建标签时保留既有 API 行为；模块必须核验标记，不能把旧 HEAD 延迟结果当作联网成功。
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
 

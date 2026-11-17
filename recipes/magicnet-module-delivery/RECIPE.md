@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-module-delivery"
-version = "0.2.12"
+version = "0.2.13"
 kind = "software"
 description = "MagicNet 模块安装、组件分发与安全更新"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.13 要求 MagicNet 的生产 ARM64 与验收用主机/Android 核心显式启用 with_lx_probe，并记录相同固定源码与构建来源。严格探测能力、真实 204 正反控制和旧 API 兼容性纳入组件及发布验收；构建标签不改变上游默认产品能力，现有质量、Android 和全部 ZIP 门禁保持。
 
 0.2.11 使用现有内核锁保护卸载清理，恢复中断后重试，保留并发互斥、锁错误传播及后台进程不继承锁的要求。
 

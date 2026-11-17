@@ -1,5 +1,15 @@
 # 实现与发行验证
 
+## 2026-11-18 当前代理严格检查与有界恢复
+
+本轮配方更新为 magicnet 0.3.28、network-runtime 0.1.16、control-plane 0.2.12、packet-engine 0.2.4 和 module-delivery 0.2.13，保留 web-console 0.2.10 的日常界面。新增 M75–M77、CON-A11–A14、C-CON-001–003，分别约束当前所选代理的严格双 HTTPS 204、独立 mixed 观测、最多三个同组真实候选、checked 保存与补偿、人工只探测和预算保留。
+
+最终维护源码为 [4a001bd24f3e88772cfc829b29ecaae4c846c6fe](https://github.com/LIghtJUNction/magicnet-android/commit/4a001bd24f3e88772cfc829b29ecaae4c846c6fe)，tree `299685efe7f0ea7da2836a6d13535b5b46f8bea9`，已推送 main。CLI 验证 894 passed / 0 failed / 1 既有 ignored，connectivity runtime 另行报告 26 项通过；10 项 selector 是相关子集，不累计。限定改动范围的 Clippy（all-targets、-D warnings）、fmt 和 diff 检查通过。界面结果对应其父提交 `fa77ab10e3c7e6ca6ecf4af14dda45aa46f57d1b`，不替代整套正式质量与 Android 门禁。
+
+已推送核心 `3a155d21872b22e6b9b75326c98d11f7ff159a2e` 在物理 Android 设备的隔离进程通过配置检查、Google/Cloudflare 严格 204 正向控制、HTTP 200 反向控制、非 HTTPS 输入拒绝、已知故障代理超时，以及非 root shell 经新 mixed 入口的真实 204。安装中的 v1.8.9 核心未替换，临时资源已清理；该证据不表示新 CLI、正式 ZIP 或全部应用/TUN 路径已验收。
+
+候选 WebUI 391 项、类型检查与构建通过；手机 360 像素和桌面共 8 项 Playwright 通过并检查截图。配方发布脚本 18 项、发布计划 42 项、固定值检查器 19 项、actionlint 与核心构建脚本语法通过。各结果范围与精确核心身份见[本轮连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。完整配方闭包和正式质量/Android 门禁仍按最终提交与发布记录判定，公开稳定索引保持 v1.8.9 / 10617。
+
 ## 2026-11-18 日常界面与核心退出清理合同
 
 本轮配方为 magicnet 0.3.27、web-console 0.2.10、network-runtime 0.1.15，新增 M73–M74、CON-A10 与 LIFE-A16。合同规定四项日常直达、更多十页、概览默认折叠的运行详情与网络设置，以及核心退出后在既有配置锁内复核并清理自有 DNS/热点资源。公共机器接口、配置意图和运行依赖保持。
@@ -23,7 +33,7 @@
 
 | 对象 | 事实源 |
 | --- | --- |
-| 维护源码 | `1e91457e`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
+| 维护源码 | `4a001bd24f3e88772cfc829b29ecaae4c846c6fe`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
 | 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.9 / 10617 |
 | 配方 | 0.3.27，八包；验收 M01–M74 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
 | 最近完整发布 | 2026-11-17（UTC+8），[43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947)，v1.8.9 / 10617；构建、完整质量、Android、资产核验、公开发布及稳定索引同步通过 |
