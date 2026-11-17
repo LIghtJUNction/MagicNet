@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.26"
+version = "0.3.27"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -23,9 +23,11 @@ source = "../magicnet-module-delivery"
 source = "../software-quality"
 ~~~
 
-本包描述完整 Android root 网络工作台；行为与 M01–M72 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
+本包描述完整 Android root 网络工作台；行为与 M01–M74 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
 
-配方版本与 Android 软件版本独立。当前依赖、源码固定点见 [DEPENDENCIES.md](DEPENDENCIES.md)；已发布安装物以根 `update.json` 为准，实际验证与未完成范围见 [VERIFICATION.md](VERIFICATION.md)。runtime 0.1.14、control 0.2.11、webui 0.2.9 与 delivery 0.2.12 共同定义日常操作恢复、未知状态、TUN 有界恢复和模拟器证据门禁。
+配方版本与 Android 软件版本独立。当前依赖、源码固定点见 [DEPENDENCIES.md](DEPENDENCIES.md)；已发布安装物以根 `update.json` 为准，实际验证与未完成范围见 [VERIFICATION.md](VERIFICATION.md)。runtime 0.1.15、control 0.2.11、webui 0.2.10 与 delivery 0.2.12 共同定义日常操作恢复、未知状态、TUN 有界恢复和模拟器证据门禁。
+
+0.3.27 增加 M73–M74：四项日常直达与更多导航、默认折叠的概览技术信息，以及核心退出后在既有锁内清理自有网络资源。保留全部页面、三语、配置意图、schema=1 和运行依赖；候选实现与正式发行的实际结果分别记录。
 
 0.3.26 增加 M72：同步固定 fork、规则与兼容依赖，修复草稿定位和 HTTPS 输入下载，保留文本诊断行为；实际测试和正式发行身份按 VERIFICATION 记录。
 

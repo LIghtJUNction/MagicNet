@@ -24,6 +24,8 @@ Wi-Fi watcher 已确认退出或处于僵尸状态时按 stopped 处理；存活
 
 connectivity 与 Wi-Fi watcher 各自的 start/stop 按 LIFE-009 共享同一生命周期互斥。停止必须等待已进入启动临界区的调用完成，再核验并停止其发布的监督循环；重复启动保留健康 PID，并发启动只留一份循环。争锁有界，长期监督进程不继承控制锁。
 
+runtime 0.1.15 按 CON-006/LIFE-010 处理核心已退出而监督循环仍在运行的情况。watchdog 不能只发布 paused 后留下指向无人监听端口的 DNS 捕获或自有热点路由；须尝试取得既有配置/生命周期锁，再次确认核心已停止、模块仍启用且未收到停止请求，才复用停止后的幂等清理。只处理已有 ownership 证据覆盖的 DNS、guard、路由和热点 offload，不启动核心、不探测公网、不改用户配置。锁忙、身份未知或新核心已启动时零清理；失败保留恢复证据，由后续既有 tick 重试。机器 schema 与 canonical 状态域保持不变。
+
 config apply 对有效配置和规则指纹无变化时不重启；transparent apply 显式重建当前数据面。状态读取无写；写生命周期完成 publish/reconcile。
 周期 hotspot reconcile 使用非阻塞争锁，繁忙时无副作用跳过，不发布当前 owner 的状态；I/O/锁错误仍报告失败。实际尝试后，无论成功或失败都发布新的规范化观测。显式 service start|stop|restart 的锁获取有界等待，保留 startup/disabled/owner/事务恢复检查；参考实现只把服务操作锁预算从 2 秒扩为 10 秒，其他配置操作仍为 2 秒，该预算不代表完整操作耗时。
 模式切换只收 tun|ebpf，先校验候选、记录旧配置和资源、停自有核心、启动并验证目标，再提交。任一步失败可回滚字节与 owned 资源；中断 journal 保留并可恢复。不声称多个 OS 资源更新同时原子。

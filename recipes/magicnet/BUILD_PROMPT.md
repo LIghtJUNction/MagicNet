@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.26）
+# 重建 MagicNet（配方 0.3.27）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M72；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M74；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@c5a1368639da929ae619a5a74444dc79e657618a`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@1e91457e5a04d96fc0604728a512333477a63376`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -58,6 +58,10 @@ TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreacha
 ## 视觉与资源约束
 
 视觉按 webui/DESIGN 统一：中性白浅底与近黑深底，蓝色用于操作和选中，语义色配合文字表达真实状态。普通分区以标题、对齐和 24/32px 留白组织，常规控件与必要容器圆角 8–12px、弹层 16px；保留输入、编辑器、危险提示和焦点边界。Logo 返回概览，低频入口保留在更多菜单或快速跳转；去除重复上标、宣传式副标、模型署名、卡片堆叠和装饰性无限动效，路径静态展示原有机器事实。保留 14 页、三语、草稿、危险确认、44px 触达下限、键盘避让和减少动效。检查窄屏、横屏、桌面、浅深主题与文字对比度；接口、持久字段和运行依赖沿用现有合同。
+
+M73 将概览、节点、订阅、应用作为四个日常直达入口，其余十页通过更多访问；高级页深链接和快速跳转须揭示当前导航。概览默认保留状态、启停、刷新、检查网络、异常与下一步，将进程、综合服务检查、实际模式与 RSS 放入运行详情，将透明模式、热点、Wi-Fi 和服务管理放入网络设置，两组默认折叠。重启移入服务管理，原确认和队列门控保留；独立流量路径页展示静态说明，示意图不证明联网，实时证据从概览运行详情与诊断查看。折叠不隐藏关键错误、未完成更新或初次设置，也不改变设备意图或后台任务。
+
+M74 按 runtime CON-006/LIFE-010 处理核心已退出而监督循环仍运行的情形：watchdog 非阻塞取得既有配置/生命周期锁，在锁内重新确认核心仍停止、模块启用且未取消后，复用停止后清理。只撤销已证明归属的 DNS 捕获、guard、自有路由并恢复热点 offload 原值；忙锁、活跃/未知核心、停用或取消不清理。失败保留证据由后续 tick 重试，不启动核心、不新增公网探测，不把清理成功当作联网成功；schema=1 与状态域保持。
 
 安装/更新仅使用带 ownership 的唯一事务目录，失败先恢复再清理；恢复失败保留唯一材料。清理分批遍历，不新增时间戳备份。UDP 索引达到 1024 项后在最后一项释放时丢弃空索引空间；小流量复用，保留分片锁、引用计数和旧连接不能删除新连接的规则。覆盖大批释放/重建及安装成功、失败、恢复、未知目录保护。
 

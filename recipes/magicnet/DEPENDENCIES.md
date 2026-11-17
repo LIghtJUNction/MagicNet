@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.26 | 产品集成、M01–M72 与完整验收 |
+| magicnet | 0.3.27 | 产品集成、M01–M74 与完整验收 |
 | magicnet-control-plane | 0.2.11 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
-| magicnet-network-runtime | 0.1.14 | 订阅事务、生命周期、监督恢复与低频联网检查 |
-| magicnet-web-console | 0.2.9 | WebUI 视觉与操作、订阅草稿、警告与诊断导出 |
+| magicnet-network-runtime | 0.1.15 | 订阅事务、生命周期、退出后清理与低频联网检查 |
+| magicnet-web-console | 0.2.10 | 日常直达导航、分层概览、订阅草稿与诊断 |
 | magicnet-packet-engine | 0.2.3 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.12 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -19,11 +19,13 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
+0.3.27 同时依赖本闭包中的 webui 0.2.10 与 runtime 0.1.15 合同：前者定义四项日常直达、更多十页和概览折叠层级，后者定义退出后经既有配置锁复核的自有网络清理。不能只更新界面说明却继续交付旧导航，也不能用 paused 状态代替资源清理。control 0.2.11 的机器字段、命令和能力集保持；清理复用既有生命周期 helper、锁与 ownership，不新增常驻进程或运行库。pack 的 LOCK 摘要须反映这一完整闭包。
+
 本轮 API 正文预算与路由归一化复用现有原生 loopback HTTP、可信 curl 和构建期归一化工具，无新增运行库、常驻服务、机器命令或能力标记。规则集定义、出口、DNS server 和 selector 依赖集合保持；M71 的正文预算、规则结构与设备网络测量分别验收。
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `c5a1368639da929ae619a5a74444dc79e657618a`，tree `2a403c8ed096eff8fd354840f81d71b35922453f`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `1e91457e5a04d96fc0604728a512333477a63376`，tree `ebc376174a91ece21ff73a53e81af924c1a7b81d`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史。2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 

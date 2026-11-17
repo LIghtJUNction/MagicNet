@@ -98,3 +98,11 @@ connectivity 与 Wi-Fi watcher 分别复用现有 metadata guard 串行执行本
 LIFE-A14：以真实未回收僵尸和受控 proc 读取故障覆盖 Wi-Fi watcher 的 stat 不可读、cmdline 不可读及读取间隙退出，对照 connectivity watcher。确认退出为 stopped，真实 unknown 保持拒绝；分别记录 POSIX sh、Bash、mksh 和 BusyBox 的执行范围。
 
 LIFE-A15：对 connectivity 与 Wi-Fi watcher 在启动发布 PID 前暂停，再并发发起 stop；另测两个 start 同时进入、健康重复 start、忙锁和锁能力缺失。恢复启动后 stop 完成且不遗留该代监督循环，并发启动只留一个；核对长期进程没有控制锁 FD，保持原超时和 unsupported 错误语义。
+
+## LIFE-010：退出后的网络清理复用生命周期互斥
+
+正常停止以外的核心退出也需要撤销自有 DNS 捕获和热点路由。仍在运行的 connectivity watchdog 按 CON-006 非阻塞取得既有控制面配置锁，再按固定顺序进入直接 Shell/开机入口共用的配置锁；后者等待最多 2 秒，整个清理调用最多 45 秒。锁内重新核验核心归属与 stopped 状态，现有 after-stop 在执行前再次确认。锁外的一次空 PID 结果不足以授权清理；控制面启动、配置应用、订阅激活以及直接 Shell/开机启动均不能穿过清理临界区。活跃或未知核心、模块停用、worker 取消及未取得锁时不执行资源清理。
+
+清理只处理既有 ownership 记录，保留用户意图与其他模块规则。部分失败不删除剩余恢复证据；后续 tick 可以重试。正常停止后再次清理应无额外副作用，不能启动服务、重新建立监督循环或新增公共 marker。清理结果与联网状态分别报告，canonical/schema-1 合同不扩展。
+
+LIFE-A16：让核心在已建立 owned DNS/热点状态后退出，执行生产 tick 与真实 after-stop 链；检查 DNS 跳转、guard、自有路由与 offload 恢复以及外部规则保留。加入锁占用、取锁期间核心重新启动、unknown 身份、停用/取消、清理失败和后续重试，证明锁内重查、幂等与失败证据保留。分别记录纯 helper 替身、真实进程/锁、实际内核规则与 Android 设备结果，不能以调用计数代替网络恢复证据。

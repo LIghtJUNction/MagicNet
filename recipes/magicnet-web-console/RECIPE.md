@@ -5,11 +5,13 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.9"
+version = "0.2.10"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
+
+0.2.10 将概览、节点、订阅、应用设为日常直达，其余十页放入更多；概览将运行证据和高级设置分为默认折叠的运行详情与网络设置。保留 14 页、三语、原地址、草稿、危险确认和全部真实状态；概览不重复展示流量路径。导航、层级与验收要求见 DESIGN、BUILD_PROMPT 和 ACCEPTANCE 第 20、31、34–35 项。
 
 0.2.9 按选中协议提交有效认证字段，编辑 URL-test 成员时保留已有测速地址与间隔；新建组沿用默认值，提交载荷仍走私密通道。
 
