@@ -1,0 +1,2509 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "Android-15-KernelSU-v3.2.0-pinned-kernel-x86_64-standalone-TUN-fixture",
+  "not_tested": [
+    "stock-kernel KernelSU LKM injection",
+    "ARM64 execution",
+    "OEM kernels",
+    "Play/GMS login/download",
+    "public proxy quality",
+    "eBPF dataplane",
+    "IPv6 packet forwarding",
+    "eCapture execution",
+    "proxylink subscription parsing"
+  ],
+  "provenance": {
+    "schema": 1,
+    "scope": "disposable-x86_64-avd-only",
+    "production_zip_sha256": "f6e846af2adc1ae2b0810ff13caf346c0785fd89be32cd34cd7465c5b7348897",
+    "source_sha": "a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b",
+    "payload_sha256": {
+      "bin/magicnet-cli": "a2932ec900813723a57caa0956261adbc770547a1f79791fe27512bdec8e7912",
+      "bin/sing-box": "567b8e9ac13a4acf1b278f53c6df0069cb8b1aeb28a99e1020d20da9daed5e74",
+      "bin/jq": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f",
+      "bin/yq": "6bdf6d4d4b3b8ad2cceebd87f0e9545bf49f2142df959fe17f37166d2f65d618",
+      "bin/curl": "aaedbd4fd65d654398c98caf00769d57857f7d564c69d8533b5a5ea48c4ace52",
+      "bin/ecapture": "643c987ed206775c9fad34745b1a0d03fe583457146a52f82fbd8c5dbf458eaa",
+      "bin/proxylink": "ebfa5522c96bc5c704b1df711131615ca53874b63b374a6577013338451b84b9"
+    },
+    "excluded_build_cache_sha256": {
+      ".cache/assets/ecapture.archive": "f962faafc0f715ffb016b86ddb841c6844c27bdb4f177b43c3e72d89c260234a",
+      ".cache/assets/tools/jq.asset": "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309",
+      ".cache/assets/tools/yq.asset": "89f69310b61b68d1245065a1241d1fc843f7a36cd6103ffd77ad987613bd1b67",
+      ".cache/assets/zashboard.archive": "ec794e7c4daf4c839ecbc0a1292fdaf7bc7a6e3e4a4ce284db2b32379145c278"
+    },
+    "compatibility_aliases": {
+      "cli": {
+        "target": "bin/magicnet-cli",
+        "representation": "executable-copy",
+        "source_sha256": "8e9b932b615eee3f66ee34dd00530dca1d705a1d1185fa6f8affa0f53d6843ec",
+        "fixture_sha256": "a2932ec900813723a57caa0956261adbc770547a1f79791fe27512bdec8e7912"
+      }
+    },
+    "metadata_sha256": {
+      "licenses/curl/build-provenance.json": "cfb22d08c241cc08c4bd8177afcde2bac760bedede83a9f886e6bc6a5f0a3c44"
+    },
+    "fixture_zip_sha256": "681a2f4212adf135c396f2e96bd60c6e17bd0adb7600ad97c3f7905a5153d20d",
+    "curl_build": {
+      "schema": 1,
+      "scope": "production-android-curl",
+      "target": {
+        "abi": "x86_64",
+        "api": 21,
+        "os": "android"
+      },
+      "versions": {
+        "curl": "8.23.0",
+        "openssl": "3.5.9",
+        "zlib": "1.4"
+      },
+      "source_sha256": {
+        "curl": "8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5",
+        "openssl": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+        "zlib": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+        "ca": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
+      },
+      "ca_embedded": true,
+      "ca_sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+      "builder_sha256": "5164bc33b36953e639b7e8b306b8450d3e9b0d39352d20b951a200cc50108cd9",
+      "verifier_sha256": "6b2a3b17786f0d88e174e8ba158ee60b9e4c42faea7e5160d2db510ccfda131b",
+      "lock_sha256": "03248762d64abc3d4eafe2cc9044c7268165f4cbdda9dc5d196f06f4abb26c79",
+      "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a",
+      "curl_sha256": "aaedbd4fd65d654398c98caf00769d57857f7d564c69d8533b5a5ea48c4ace52",
+      "curl_bytes": 6718224,
+      "elf": {
+        "interpreter": "/system/bin/linker64",
+        "needed": [
+          "libc.so",
+          "libdl.so"
+        ],
+        "rpath": false
+      }
+    },
+    "device": {
+      "sdk": 35,
+      "requested_memory_mib": 2048,
+      "observed_memtotal_kib": 2531916,
+      "memory_source": "/proc/meminfo"
+    },
+    "system_curl_available": false,
+    "kernelsu": {
+      "mode": "pinned-kernel-userspace-late-load",
+      "kmi": "android15-6.6",
+      "kernel_version": "Kernel Version: 32389"
+    },
+    "module_curl_controls": {
+      "schema": 1,
+      "status": "passed",
+      "stage": "complete",
+      "system_curl_available": false,
+      "selected_path": "/data/adb/modules/MagicNet/bin/curl",
+      "build": {
+        "schema": 1,
+        "scope": "production-android-curl",
+        "target": {
+          "abi": "x86_64",
+          "api": 21,
+          "os": "android"
+        },
+        "versions": {
+          "curl": "8.23.0",
+          "openssl": "3.5.9",
+          "zlib": "1.4"
+        },
+        "source_sha256": {
+          "curl": "8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5",
+          "openssl": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+          "zlib": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+          "ca": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
+        },
+        "ca_embedded": true,
+        "ca_sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+        "builder_sha256": "5164bc33b36953e639b7e8b306b8450d3e9b0d39352d20b951a200cc50108cd9",
+        "verifier_sha256": "6b2a3b17786f0d88e174e8ba158ee60b9e4c42faea7e5160d2db510ccfda131b",
+        "lock_sha256": "03248762d64abc3d4eafe2cc9044c7268165f4cbdda9dc5d196f06f4abb26c79",
+        "ndk_source_properties_sha256": "fb5eec1ca5dac09442109cf79e9ce49faecd8b312dbc997e88903a394e14994a",
+        "curl_sha256": "aaedbd4fd65d654398c98caf00769d57857f7d564c69d8533b5a5ea48c4ace52",
+        "curl_bytes": 6718224,
+        "elf": {
+          "interpreter": "/system/bin/linker64",
+          "needed": [
+            "libc.so",
+            "libdl.so"
+          ],
+          "rpath": false
+        }
+      },
+      "installed_binary_verified": true,
+      "local_tls_diagnostics": {
+        "schema": 1,
+        "status": "verified",
+        "controls": [
+          {
+            "control": "positive",
+            "expected_exit_code": 0,
+            "exit_code": 0,
+            "reported_error": "none",
+            "server_gets": 1,
+            "stderr_present": false
+          },
+          {
+            "control": "hostname_reject",
+            "expected_exit_code": 60,
+            "exit_code": 60,
+            "reported_error": "hostname_mismatch",
+            "server_gets": 0,
+            "stderr_present": true
+          },
+          {
+            "control": "default_trust_reject",
+            "expected_exit_code": 60,
+            "exit_code": 60,
+            "reported_error": "untrusted_certificate",
+            "server_gets": 0,
+            "stderr_present": true
+          }
+        ],
+        "clock": {
+          "host_before_utc_seconds": 1794950446,
+          "host_after_utc_seconds": 1794950446,
+          "guest_utc_seconds": 1794950445,
+          "guest_clock_status": "observed"
+        },
+        "certificate": {
+          "not_before_utc_seconds": 1794950146,
+          "not_after_utc_seconds": 1795036846
+        },
+        "cleanup": true
+      },
+      "local_tls": {
+        "schema": 1,
+        "status": "verified",
+        "https": true,
+        "ssl": true,
+        "resolve": true,
+        "gzip": true,
+        "tls_positive": true,
+        "hostname_reject": true,
+        "default_trust_reject": true,
+        "cleanup": true,
+        "embedded_ca_identity": true,
+        "embedded_ca_bytes": 200116,
+        "embedded_ca_sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+        "embedded_ca_cert_count": 118,
+        "versions": {
+          "curl": "8.23.0",
+          "libcurl": "8.23.0",
+          "openssl": "3.5.9",
+          "zlib": "1.4"
+        },
+        "positive_gets": 1,
+        "hostname_reject_gets": 0,
+        "default_reject_gets": 0
+      },
+      "connectivity": {
+        "schema": 1,
+        "status": "observed",
+        "explicit_tick_count": 1,
+        "explicit_request_upper_bound": {
+          "google": 2,
+          "auxiliary": 2
+        },
+        "canonical_state_modified_by_harness": false,
+        "google_https_204_observed": false,
+        "status_reads": 2,
+        "before": {
+          "target": "https://www.google.com/generate_204",
+          "path": "selected_proxy",
+          "status": "unknown",
+          "reason": "not_checked",
+          "primary_reason": "not_checked",
+          "warning": true,
+          "checked_at": null,
+          "next_check_at": null,
+          "retry_in_seconds": null,
+          "consecutive_failures": 0,
+          "probe_count": 0,
+          "backoff_seconds": 300,
+          "latency_ms": null,
+          "http_status": null,
+          "secondary_status": "not_run",
+          "direct_status": "not_run",
+          "mixed_path": "mixed_proxy",
+          "mixed_status": "not_run",
+          "mixed_reason": "not_checked",
+          "last_action": "none",
+          "action_status": "none",
+          "last_action_at": null,
+          "last_refresh_at": null
+        },
+        "observation_source": "single_product_tick",
+        "tick_exit_code": 0,
+        "after": {
+          "target": "https://www.google.com/generate_204",
+          "path": "selected_proxy",
+          "status": "offline",
+          "reason": "upstream_unavailable",
+          "primary_reason": "transport_failure",
+          "warning": true,
+          "checked_at": 1794950447,
+          "next_check_at": 1794950506,
+          "retry_in_seconds": 59,
+          "consecutive_failures": 1,
+          "probe_count": 1,
+          "backoff_seconds": 60,
+          "latency_ms": null,
+          "http_status": null,
+          "secondary_status": "failed",
+          "direct_status": "failed",
+          "mixed_path": "mixed_proxy",
+          "mixed_status": "failed",
+          "mixed_reason": "tls_failure",
+          "last_action": "none",
+          "action_status": "none",
+          "last_action_at": null,
+          "last_refresh_at": null
+        }
+      },
+      "seconds": 2.401
+    },
+    "installed_controls": {
+      "schema": 1,
+      "status": "passed",
+      "active_connectivity_probe_requested": false,
+      "stage": "complete",
+      "supervisor_start_exit_code": 0,
+      "fswatch_running": true,
+      "connectivity": {
+        "target": "https://www.google.com/generate_204",
+        "path": "selected_proxy",
+        "status": "offline",
+        "reason": "upstream_unavailable",
+        "primary_reason": "transport_failure",
+        "warning": true,
+        "checked_at": 1794950447,
+        "next_check_at": 1794950506,
+        "retry_in_seconds": 56,
+        "consecutive_failures": 1,
+        "probe_count": 1,
+        "backoff_seconds": 60,
+        "latency_ms": null,
+        "http_status": null,
+        "secondary_status": "failed",
+        "direct_status": "failed",
+        "mixed_path": "mixed_proxy",
+        "mixed_status": "failed",
+        "mixed_reason": "tls_failure",
+        "last_action": "none",
+        "action_status": "none",
+        "last_action_at": null,
+        "last_refresh_at": null
+      },
+      "support_export": {
+        "path": "/sdcard/Download/MagicNet/MagicNet-diagnostics.txt",
+        "bytes": 62838,
+        "artifact": "diagnostic-export.txt",
+        "sha256": "94f15f13081f9f77617e261e2ab49399507257a012f2d2a45b7c9c3ce5f1ec61",
+        "required_sections": [
+          "platform and versions",
+          "system resources",
+          "subscription lifecycle",
+          "canonical state",
+          "connectivity history",
+          "configuration structure",
+          "configuration: route",
+          "configuration: dns",
+          "service status",
+          "core resources",
+          "sing-box version",
+          "sing-box configuration check",
+          "routes: ipv4 rules",
+          "routes: ipv6 rules",
+          "routes: ipv4 routes",
+          "routes: ipv6 routes",
+          "transparent TUN and eBPF observation",
+          "collection summary"
+        ],
+        "content": {
+          "service_status": {
+            "command": "service.status",
+            "schema": 1,
+            "core_running": true,
+            "api_ready": true,
+            "dataplane_ready": true,
+            "overall_ready": true,
+            "fswatch_running": true,
+            "rss_kib": 82552,
+            "connectivity": {
+              "target": "https://www.google.com/generate_204",
+              "path": "selected_proxy",
+              "status": "offline",
+              "reason": "upstream_unavailable",
+              "primary_reason": "transport_failure",
+              "warning": true,
+              "checked_at": 1794950447,
+              "next_check_at": 1794950506,
+              "retry_in_seconds": 56,
+              "consecutive_failures": 1,
+              "probe_count": 1,
+              "backoff_seconds": 60,
+              "latency_ms": null,
+              "http_status": null,
+              "secondary_status": "failed",
+              "direct_status": "failed",
+              "mixed_path": "mixed_proxy",
+              "mixed_status": "failed",
+              "mixed_reason": "tls_failure",
+              "last_action": "none",
+              "action_status": "none",
+              "last_action_at": null,
+              "last_refresh_at": null
+            }
+          },
+          "mcp_status": {
+            "enabled": false,
+            "secret_set": false,
+            "port": 8766,
+            "running": false
+          },
+          "curl_executor": {
+            "selection": "module_bin",
+            "available": true,
+            "network_request": "not_run",
+            "versions": {
+              "curl": "8.23.0",
+              "openssl": "3.5.9",
+              "zlib": "1.4"
+            },
+            "https": true,
+            "tls": true,
+            "gzip": true,
+            "embedded_ca_sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+            "curl_sha256": "aaedbd4fd65d654398c98caf00769d57857f7d564c69d8533b5a5ea48c4ace52",
+            "curl_bytes": 6718224,
+            "target": {
+              "abi": "x86_64",
+              "api": 21,
+              "os": "android"
+            },
+            "runtime_capability_in_build_record": "not_tested",
+            "binary_digest_verification_by_export": "not_run"
+          }
+        }
+      },
+      "seconds": 3.823
+    },
+    "route_recovery": {
+      "schema": 1,
+      "status": "verified",
+      "scope": "disposable-android-app-uid-tun",
+      "rpdb_loss": {
+        "status": "verified",
+        "recovery_entry": "connectivity.tick",
+        "recovery_tick_count": 5,
+        "helper_lifecycle": {
+          "before_stop": {
+            "core_pid": 18502,
+            "core_start_ticks": 8071,
+            "tun_name": "magicnet0",
+            "tun_ifindex": 22,
+            "rules": [
+              "0: from all lookup local",
+              "1: from all lookup 621593087",
+              "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+              "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+              "9002: from all nop",
+              "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+              "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+              "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+              "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+              "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+              "17000: from all iif lo oif dummy0 lookup dummy0",
+              "17000: from all iif lo oif eth0 lookup eth0",
+              "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+              "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+              "20000: from all fwmark 0x0/0x10000 lookup local_network",
+              "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+              "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+              "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+              "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+              "32000: from all unreachable",
+              "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+            ],
+            "fib": [
+              "0.0.0.0/5 dev magicnet0",
+              "8.0.0.0/7 dev magicnet0",
+              "11.0.0.0/8 dev magicnet0",
+              "12.0.0.0/6 dev magicnet0",
+              "16.0.0.0/4 dev magicnet0",
+              "32.0.0.0/3 dev magicnet0",
+              "64.0.0.0/3 dev magicnet0",
+              "96.0.0.0/6 dev magicnet0",
+              "100.0.0.0/10 dev magicnet0",
+              "100.128.0.0/9 dev magicnet0",
+              "101.0.0.0/8 dev magicnet0",
+              "102.0.0.0/7 dev magicnet0",
+              "104.0.0.0/5 dev magicnet0",
+              "112.0.0.0/5 dev magicnet0",
+              "120.0.0.0/6 dev magicnet0",
+              "124.0.0.0/7 dev magicnet0",
+              "126.0.0.0/8 dev magicnet0",
+              "128.0.0.0/3 dev magicnet0",
+              "160.0.0.0/5 dev magicnet0",
+              "168.0.0.0/8 dev magicnet0",
+              "169.0.0.0/9 dev magicnet0",
+              "169.128.0.0/10 dev magicnet0",
+              "169.192.0.0/11 dev magicnet0",
+              "169.224.0.0/12 dev magicnet0",
+              "169.240.0.0/13 dev magicnet0",
+              "169.248.0.0/14 dev magicnet0",
+              "169.252.0.0/15 dev magicnet0",
+              "169.255.0.0/16 dev magicnet0",
+              "170.0.0.0/7 dev magicnet0",
+              "172.0.0.0/12 dev magicnet0",
+              "172.32.0.0/11 dev magicnet0",
+              "172.64.0.0/10 dev magicnet0",
+              "172.128.0.0/9 dev magicnet0",
+              "173.0.0.0/8 dev magicnet0",
+              "174.0.0.0/7 dev magicnet0",
+              "176.0.0.0/4 dev magicnet0",
+              "192.0.0.0/9 dev magicnet0",
+              "192.128.0.0/11 dev magicnet0",
+              "192.160.0.0/13 dev magicnet0",
+              "192.169.0.0/16 dev magicnet0",
+              "192.170.0.0/15 dev magicnet0",
+              "192.172.0.0/14 dev magicnet0",
+              "192.176.0.0/12 dev magicnet0",
+              "192.192.0.0/10 dev magicnet0",
+              "193.0.0.0/8 dev magicnet0",
+              "194.0.0.0/7 dev magicnet0",
+              "196.0.0.0/6 dev magicnet0",
+              "200.0.0.0/5 dev magicnet0",
+              "208.0.0.0/4 dev magicnet0",
+              "240.0.0.0/4 dev magicnet0"
+            ],
+            "helper": {
+              "rule": "1: from all lookup 621593087",
+              "table": 621593087,
+              "fib": [
+                "local 127.0.0.1 dev eth0 scope host"
+              ]
+            },
+            "netd": {
+              "networks": [
+                {
+                  "net_id": 51,
+                  "type": "DUMMY",
+                  "interfaces": [
+                    "dummy0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 52,
+                  "type": "UNREACHABLE",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 99,
+                  "type": "LOCAL",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 100,
+                  "type": "PHYSICAL",
+                  "interfaces": [
+                    "eth0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: uids{ 0-99999 }",
+                    "Per-app UID ranges: prio 40 uids{ 10136 }",
+                    "Required permission: NONE"
+                  ]
+                }
+              ],
+              "eth0_ifindex": 15,
+              "eth0_fib": [
+                "10.0.2.0/24 dev eth0 proto static scope link",
+                "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+              ]
+            }
+          },
+          "stopped": {
+            "core_state": "stopped",
+            "rules": [
+              "0: from all lookup local",
+              "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+              "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+              "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+              "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+              "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+              "17000: from all iif lo oif dummy0 lookup dummy0",
+              "17000: from all iif lo oif eth0 lookup eth0",
+              "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+              "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+              "20000: from all fwmark 0x0/0x10000 lookup local_network",
+              "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+              "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+              "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+              "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+              "32000: from all unreachable"
+            ],
+            "helper_table": 621593087,
+            "helper_fib": []
+          },
+          "after_start": {
+            "core_pid": 22240,
+            "core_start_ticks": 9975,
+            "tun_name": "magicnet0",
+            "tun_ifindex": 23,
+            "rules": [
+              "0: from all lookup local",
+              "1: from all lookup 672513583",
+              "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+              "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+              "9002: from all nop",
+              "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+              "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+              "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+              "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+              "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+              "17000: from all iif lo oif dummy0 lookup dummy0",
+              "17000: from all iif lo oif eth0 lookup eth0",
+              "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+              "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+              "20000: from all fwmark 0x0/0x10000 lookup local_network",
+              "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+              "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+              "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+              "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+              "32000: from all unreachable",
+              "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+            ],
+            "fib": [
+              "0.0.0.0/5 dev magicnet0",
+              "8.0.0.0/7 dev magicnet0",
+              "11.0.0.0/8 dev magicnet0",
+              "12.0.0.0/6 dev magicnet0",
+              "16.0.0.0/4 dev magicnet0",
+              "32.0.0.0/3 dev magicnet0",
+              "64.0.0.0/3 dev magicnet0",
+              "96.0.0.0/6 dev magicnet0",
+              "100.0.0.0/10 dev magicnet0",
+              "100.128.0.0/9 dev magicnet0",
+              "101.0.0.0/8 dev magicnet0",
+              "102.0.0.0/7 dev magicnet0",
+              "104.0.0.0/5 dev magicnet0",
+              "112.0.0.0/5 dev magicnet0",
+              "120.0.0.0/6 dev magicnet0",
+              "124.0.0.0/7 dev magicnet0",
+              "126.0.0.0/8 dev magicnet0",
+              "128.0.0.0/3 dev magicnet0",
+              "160.0.0.0/5 dev magicnet0",
+              "168.0.0.0/8 dev magicnet0",
+              "169.0.0.0/9 dev magicnet0",
+              "169.128.0.0/10 dev magicnet0",
+              "169.192.0.0/11 dev magicnet0",
+              "169.224.0.0/12 dev magicnet0",
+              "169.240.0.0/13 dev magicnet0",
+              "169.248.0.0/14 dev magicnet0",
+              "169.252.0.0/15 dev magicnet0",
+              "169.255.0.0/16 dev magicnet0",
+              "170.0.0.0/7 dev magicnet0",
+              "172.0.0.0/12 dev magicnet0",
+              "172.32.0.0/11 dev magicnet0",
+              "172.64.0.0/10 dev magicnet0",
+              "172.128.0.0/9 dev magicnet0",
+              "173.0.0.0/8 dev magicnet0",
+              "174.0.0.0/7 dev magicnet0",
+              "176.0.0.0/4 dev magicnet0",
+              "192.0.0.0/9 dev magicnet0",
+              "192.128.0.0/11 dev magicnet0",
+              "192.160.0.0/13 dev magicnet0",
+              "192.169.0.0/16 dev magicnet0",
+              "192.170.0.0/15 dev magicnet0",
+              "192.172.0.0/14 dev magicnet0",
+              "192.176.0.0/12 dev magicnet0",
+              "192.192.0.0/10 dev magicnet0",
+              "193.0.0.0/8 dev magicnet0",
+              "194.0.0.0/7 dev magicnet0",
+              "196.0.0.0/6 dev magicnet0",
+              "200.0.0.0/5 dev magicnet0",
+              "208.0.0.0/4 dev magicnet0",
+              "240.0.0.0/4 dev magicnet0"
+            ],
+            "helper": {
+              "rule": "1: from all lookup 672513583",
+              "table": 672513583,
+              "fib": [
+                "local 127.0.0.1 dev eth0 scope host"
+              ]
+            },
+            "netd": {
+              "networks": [
+                {
+                  "net_id": 51,
+                  "type": "DUMMY",
+                  "interfaces": [
+                    "dummy0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 52,
+                  "type": "UNREACHABLE",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 99,
+                  "type": "LOCAL",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 100,
+                  "type": "PHYSICAL",
+                  "interfaces": [
+                    "eth0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: uids{ 0-99999 }",
+                    "Per-app UID ranges: prio 40 uids{ 10136 }",
+                    "Required permission: NONE"
+                  ]
+                }
+              ],
+              "eth0_ifindex": 15,
+              "eth0_fib": [
+                "10.0.2.0/24 dev eth0 proto static scope link",
+                "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+              ]
+            }
+          }
+        },
+        "stage": "complete",
+        "before": {
+          "core_pid": 22240,
+          "core_start_ticks": 9975,
+          "tun_name": "magicnet0",
+          "tun_ifindex": 23,
+          "rules": [
+            "0: from all lookup local",
+            "1: from all lookup 672513583",
+            "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+            "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+            "9002: from all nop",
+            "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+            "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+            "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+            "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+            "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+            "17000: from all iif lo oif dummy0 lookup dummy0",
+            "17000: from all iif lo oif eth0 lookup eth0",
+            "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+            "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+            "20000: from all fwmark 0x0/0x10000 lookup local_network",
+            "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+            "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+            "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+            "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+            "32000: from all unreachable",
+            "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+          ],
+          "fib": [
+            "0.0.0.0/5 dev magicnet0",
+            "8.0.0.0/7 dev magicnet0",
+            "11.0.0.0/8 dev magicnet0",
+            "12.0.0.0/6 dev magicnet0",
+            "16.0.0.0/4 dev magicnet0",
+            "32.0.0.0/3 dev magicnet0",
+            "64.0.0.0/3 dev magicnet0",
+            "96.0.0.0/6 dev magicnet0",
+            "100.0.0.0/10 dev magicnet0",
+            "100.128.0.0/9 dev magicnet0",
+            "101.0.0.0/8 dev magicnet0",
+            "102.0.0.0/7 dev magicnet0",
+            "104.0.0.0/5 dev magicnet0",
+            "112.0.0.0/5 dev magicnet0",
+            "120.0.0.0/6 dev magicnet0",
+            "124.0.0.0/7 dev magicnet0",
+            "126.0.0.0/8 dev magicnet0",
+            "128.0.0.0/3 dev magicnet0",
+            "160.0.0.0/5 dev magicnet0",
+            "168.0.0.0/8 dev magicnet0",
+            "169.0.0.0/9 dev magicnet0",
+            "169.128.0.0/10 dev magicnet0",
+            "169.192.0.0/11 dev magicnet0",
+            "169.224.0.0/12 dev magicnet0",
+            "169.240.0.0/13 dev magicnet0",
+            "169.248.0.0/14 dev magicnet0",
+            "169.252.0.0/15 dev magicnet0",
+            "169.255.0.0/16 dev magicnet0",
+            "170.0.0.0/7 dev magicnet0",
+            "172.0.0.0/12 dev magicnet0",
+            "172.32.0.0/11 dev magicnet0",
+            "172.64.0.0/10 dev magicnet0",
+            "172.128.0.0/9 dev magicnet0",
+            "173.0.0.0/8 dev magicnet0",
+            "174.0.0.0/7 dev magicnet0",
+            "176.0.0.0/4 dev magicnet0",
+            "192.0.0.0/9 dev magicnet0",
+            "192.128.0.0/11 dev magicnet0",
+            "192.160.0.0/13 dev magicnet0",
+            "192.169.0.0/16 dev magicnet0",
+            "192.170.0.0/15 dev magicnet0",
+            "192.172.0.0/14 dev magicnet0",
+            "192.176.0.0/12 dev magicnet0",
+            "192.192.0.0/10 dev magicnet0",
+            "193.0.0.0/8 dev magicnet0",
+            "194.0.0.0/7 dev magicnet0",
+            "196.0.0.0/6 dev magicnet0",
+            "200.0.0.0/5 dev magicnet0",
+            "208.0.0.0/4 dev magicnet0",
+            "240.0.0.0/4 dev magicnet0"
+          ],
+          "helper": {
+            "rule": "1: from all lookup 672513583",
+            "table": 672513583,
+            "fib": [
+              "local 127.0.0.1 dev eth0 scope host"
+            ]
+          },
+          "netd": {
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 100,
+                "type": "PHYSICAL",
+                "interfaces": [
+                  "eth0"
+                ],
+                "details": [
+                  "Allowed UID ranges: uids{ 0-99999 }",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }",
+                  "Required permission: NONE"
+                ]
+              }
+            ],
+            "eth0_ifindex": 15,
+            "eth0_fib": [
+              "10.0.2.0/24 dev eth0 proto static scope link",
+              "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+            ]
+          }
+        },
+        "owned_rules": [
+          "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+          "9002: from all nop",
+          "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+        ],
+        "recovery_before": {
+          "status": "present",
+          "warning": false,
+          "checked_at": 1794950446,
+          "next_check_at": 1794950513,
+          "retry_in_seconds": 0,
+          "consecutive_failures": 0,
+          "recovery_attempts": 0,
+          "recovery_limit": 3,
+          "recovery_status": "none",
+          "last_recovery_at": null
+        },
+        "baseline_app": {
+          "complete": true,
+          "ok": true,
+          "uid": 10209,
+          "reason": "sentinel",
+          "accepted": 1,
+          "elapsed_ms": 6,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        },
+        "fault": {
+          "core_pid": 22240,
+          "core_start_ticks": 9975,
+          "tun_name": "magicnet0",
+          "tun_ifindex": 23,
+          "rules": [
+            "0: from all lookup local",
+            "1: from all lookup 672513583",
+            "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+            "9002: from all nop",
+            "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+            "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+            "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+            "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+            "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+            "17000: from all iif lo oif dummy0 lookup dummy0",
+            "17000: from all iif lo oif eth0 lookup eth0",
+            "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+            "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+            "20000: from all fwmark 0x0/0x10000 lookup local_network",
+            "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+            "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+            "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+            "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+            "32000: from all unreachable"
+          ],
+          "fib": [
+            "0.0.0.0/5 dev magicnet0",
+            "8.0.0.0/7 dev magicnet0",
+            "11.0.0.0/8 dev magicnet0",
+            "12.0.0.0/6 dev magicnet0",
+            "16.0.0.0/4 dev magicnet0",
+            "32.0.0.0/3 dev magicnet0",
+            "64.0.0.0/3 dev magicnet0",
+            "96.0.0.0/6 dev magicnet0",
+            "100.0.0.0/10 dev magicnet0",
+            "100.128.0.0/9 dev magicnet0",
+            "101.0.0.0/8 dev magicnet0",
+            "102.0.0.0/7 dev magicnet0",
+            "104.0.0.0/5 dev magicnet0",
+            "112.0.0.0/5 dev magicnet0",
+            "120.0.0.0/6 dev magicnet0",
+            "124.0.0.0/7 dev magicnet0",
+            "126.0.0.0/8 dev magicnet0",
+            "128.0.0.0/3 dev magicnet0",
+            "160.0.0.0/5 dev magicnet0",
+            "168.0.0.0/8 dev magicnet0",
+            "169.0.0.0/9 dev magicnet0",
+            "169.128.0.0/10 dev magicnet0",
+            "169.192.0.0/11 dev magicnet0",
+            "169.224.0.0/12 dev magicnet0",
+            "169.240.0.0/13 dev magicnet0",
+            "169.248.0.0/14 dev magicnet0",
+            "169.252.0.0/15 dev magicnet0",
+            "169.255.0.0/16 dev magicnet0",
+            "170.0.0.0/7 dev magicnet0",
+            "172.0.0.0/12 dev magicnet0",
+            "172.32.0.0/11 dev magicnet0",
+            "172.64.0.0/10 dev magicnet0",
+            "172.128.0.0/9 dev magicnet0",
+            "173.0.0.0/8 dev magicnet0",
+            "174.0.0.0/7 dev magicnet0",
+            "176.0.0.0/4 dev magicnet0",
+            "192.0.0.0/9 dev magicnet0",
+            "192.128.0.0/11 dev magicnet0",
+            "192.160.0.0/13 dev magicnet0",
+            "192.169.0.0/16 dev magicnet0",
+            "192.170.0.0/15 dev magicnet0",
+            "192.172.0.0/14 dev magicnet0",
+            "192.176.0.0/12 dev magicnet0",
+            "192.192.0.0/10 dev magicnet0",
+            "193.0.0.0/8 dev magicnet0",
+            "194.0.0.0/7 dev magicnet0",
+            "196.0.0.0/6 dev magicnet0",
+            "200.0.0.0/5 dev magicnet0",
+            "208.0.0.0/4 dev magicnet0",
+            "240.0.0.0/4 dev magicnet0"
+          ],
+          "helper": {
+            "rule": "1: from all lookup 672513583",
+            "table": 672513583,
+            "fib": [
+              "local 127.0.0.1 dev eth0 scope host"
+            ]
+          },
+          "netd": {
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 100,
+                "type": "PHYSICAL",
+                "interfaces": [
+                  "eth0"
+                ],
+                "details": [
+                  "Allowed UID ranges: uids{ 0-99999 }",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }",
+                  "Required permission: NONE"
+                ]
+              }
+            ],
+            "eth0_ifindex": 15,
+            "eth0_fib": [
+              "10.0.2.0/24 dev eth0 proto static scope link",
+              "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+            ]
+          }
+        },
+        "removed_rule_count": 2,
+        "core_identity_unchanged": true,
+        "tun_unchanged": true,
+        "fib_unchanged": true,
+        "unowned_rules_unchanged": true,
+        "ready_after_fault": false,
+        "health_after_fault_rpdb_missing": true,
+        "fault_app": {
+          "complete": true,
+          "ok": false,
+          "uid": 10209,
+          "reason": "timeout",
+          "accepted": 0,
+          "elapsed_ms": 5000,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        },
+        "app_after_fault": false,
+        "first_missing": {
+          "status": "missing",
+          "warning": true,
+          "checked_at": 1794950640,
+          "next_check_at": 1794950700,
+          "retry_in_seconds": 60,
+          "consecutive_failures": 1,
+          "recovery_attempts": 0,
+          "recovery_limit": 3,
+          "recovery_status": "none",
+          "last_recovery_at": null
+        },
+        "first_missing_identity": {
+          "core_pid": 22240,
+          "core_start_ticks": 9975
+        },
+        "recovery_after": {
+          "status": "present",
+          "warning": false,
+          "checked_at": 1794950768,
+          "next_check_at": 1794950828,
+          "retry_in_seconds": 60,
+          "consecutive_failures": 0,
+          "recovery_attempts": 1,
+          "recovery_limit": 3,
+          "recovery_status": "ok",
+          "last_recovery_at": 1794950701
+        },
+        "after": {
+          "core_pid": 26829,
+          "core_start_ticks": 29556,
+          "tun_name": "magicnet0",
+          "tun_ifindex": 24,
+          "rules": [
+            "0: from all lookup local",
+            "1: from all lookup 1848696858",
+            "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+            "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+            "9002: from all nop",
+            "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+            "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+            "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+            "15040: from all fwmark 0x10066/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+            "16000: from all fwmark 0x10066/0x1ffff iif lo lookup eth0",
+            "17000: from all iif lo oif dummy0 lookup dummy0",
+            "17000: from all iif lo oif eth0 lookup eth0",
+            "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+            "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+            "20000: from all fwmark 0x0/0x10000 lookup local_network",
+            "22040: from all fwmark 0x66/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+            "23000: from all fwmark 0x66/0x1ffff iif lo lookup eth0",
+            "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+            "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+            "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+            "32000: from all unreachable",
+            "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+          ],
+          "fib": [
+            "0.0.0.0/5 dev magicnet0",
+            "8.0.0.0/7 dev magicnet0",
+            "11.0.0.0/8 dev magicnet0",
+            "12.0.0.0/6 dev magicnet0",
+            "16.0.0.0/4 dev magicnet0",
+            "32.0.0.0/3 dev magicnet0",
+            "64.0.0.0/3 dev magicnet0",
+            "96.0.0.0/6 dev magicnet0",
+            "100.0.0.0/10 dev magicnet0",
+            "100.128.0.0/9 dev magicnet0",
+            "101.0.0.0/8 dev magicnet0",
+            "102.0.0.0/7 dev magicnet0",
+            "104.0.0.0/5 dev magicnet0",
+            "112.0.0.0/5 dev magicnet0",
+            "120.0.0.0/6 dev magicnet0",
+            "124.0.0.0/7 dev magicnet0",
+            "126.0.0.0/8 dev magicnet0",
+            "128.0.0.0/3 dev magicnet0",
+            "160.0.0.0/5 dev magicnet0",
+            "168.0.0.0/8 dev magicnet0",
+            "169.0.0.0/9 dev magicnet0",
+            "169.128.0.0/10 dev magicnet0",
+            "169.192.0.0/11 dev magicnet0",
+            "169.224.0.0/12 dev magicnet0",
+            "169.240.0.0/13 dev magicnet0",
+            "169.248.0.0/14 dev magicnet0",
+            "169.252.0.0/15 dev magicnet0",
+            "169.255.0.0/16 dev magicnet0",
+            "170.0.0.0/7 dev magicnet0",
+            "172.0.0.0/12 dev magicnet0",
+            "172.32.0.0/11 dev magicnet0",
+            "172.64.0.0/10 dev magicnet0",
+            "172.128.0.0/9 dev magicnet0",
+            "173.0.0.0/8 dev magicnet0",
+            "174.0.0.0/7 dev magicnet0",
+            "176.0.0.0/4 dev magicnet0",
+            "192.0.0.0/9 dev magicnet0",
+            "192.128.0.0/11 dev magicnet0",
+            "192.160.0.0/13 dev magicnet0",
+            "192.169.0.0/16 dev magicnet0",
+            "192.170.0.0/15 dev magicnet0",
+            "192.172.0.0/14 dev magicnet0",
+            "192.176.0.0/12 dev magicnet0",
+            "192.192.0.0/10 dev magicnet0",
+            "193.0.0.0/8 dev magicnet0",
+            "194.0.0.0/7 dev magicnet0",
+            "196.0.0.0/6 dev magicnet0",
+            "200.0.0.0/5 dev magicnet0",
+            "208.0.0.0/4 dev magicnet0",
+            "240.0.0.0/4 dev magicnet0"
+          ],
+          "helper": {
+            "rule": "1: from all lookup 1848696858",
+            "table": 1848696858,
+            "fib": [
+              "local 127.0.0.1 dev eth0 scope host"
+            ]
+          },
+          "netd": {
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 102,
+                "type": "PHYSICAL",
+                "interfaces": [
+                  "eth0"
+                ],
+                "details": [
+                  "Allowed UID ranges: uids{ 0-99999 }",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }",
+                  "Required permission: NONE"
+                ]
+              }
+            ],
+            "eth0_ifindex": 15,
+            "eth0_fib": [
+              "10.0.2.0/24 dev eth0 proto static scope link",
+              "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+            ]
+          },
+          "previous_helper_fib": []
+        },
+        "ready_after_recovery": true,
+        "recovered_app": {
+          "complete": true,
+          "ok": true,
+          "uid": 10209,
+          "reason": "sentinel",
+          "accepted": 1,
+          "elapsed_ms": 4,
+          "transport": "udp",
+          "receiver_bound": true,
+          "receiver_closed": true,
+          "request_attempted": true
+        },
+        "app_after_recovery": true
+      },
+      "network_fixture": {
+        "scope": "disposable-single-eth0",
+        "prepared": true,
+        "restored": true,
+        "qemu": true,
+        "abi": "x86_64",
+        "wifi_initial_enabled": true,
+        "control_transport_verified": true,
+        "wifi_disabled": true,
+        "stable_observations": [
+          {
+            "netd": {
+              "networks": [
+                {
+                  "net_id": 51,
+                  "type": "DUMMY",
+                  "interfaces": [
+                    "dummy0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 52,
+                  "type": "UNREACHABLE",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 99,
+                  "type": "LOCAL",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 100,
+                  "type": "PHYSICAL",
+                  "interfaces": [
+                    "eth0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: uids{ 0-99999 }",
+                    "Per-app UID ranges: prio 40 uids{ 10136 }",
+                    "Required permission: NONE"
+                  ]
+                }
+              ],
+              "eth0_ifindex": 15,
+              "eth0_fib": [
+                "10.0.2.0/24 dev eth0 proto static scope link",
+                "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+              ]
+            },
+            "rules": [
+              "0: from all lookup local",
+              "1: from all lookup 621593087",
+              "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+              "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+              "9002: from all nop",
+              "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+              "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+              "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+              "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+              "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+              "17000: from all iif lo oif dummy0 lookup dummy0",
+              "17000: from all iif lo oif eth0 lookup eth0",
+              "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+              "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+              "20000: from all fwmark 0x0/0x10000 lookup local_network",
+              "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+              "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+              "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+              "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+              "32000: from all unreachable",
+              "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+            ],
+            "egress": "eth0"
+          },
+          {
+            "netd": {
+              "networks": [
+                {
+                  "net_id": 51,
+                  "type": "DUMMY",
+                  "interfaces": [
+                    "dummy0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 52,
+                  "type": "UNREACHABLE",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 99,
+                  "type": "LOCAL",
+                  "interfaces": [],
+                  "details": [
+                    "Allowed UID ranges: unrestricted"
+                  ]
+                },
+                {
+                  "net_id": 100,
+                  "type": "PHYSICAL",
+                  "interfaces": [
+                    "eth0"
+                  ],
+                  "details": [
+                    "Allowed UID ranges: uids{ 0-99999 }",
+                    "Per-app UID ranges: prio 40 uids{ 10136 }",
+                    "Required permission: NONE"
+                  ]
+                }
+              ],
+              "eth0_ifindex": 15,
+              "eth0_fib": [
+                "10.0.2.0/24 dev eth0 proto static scope link",
+                "default via 10.0.2.2 dev eth0 proto static mtu 1500"
+              ]
+            },
+            "rules": [
+              "0: from all lookup local",
+              "1: from all lookup 621593087",
+              "9000: from all fwmark 0x200000/0xe00000 goto 9002",
+              "9001: from all fwmark 0x400000/0xe00000 lookup 2022",
+              "9002: from all nop",
+              "10000: from all fwmark 0xc0000/0xd0000 lookup legacy_system",
+              "11000: from all iif lo oif dummy0 uidrange 0-0 lookup dummy0",
+              "11000: from all iif lo oif eth0 uidrange 0-0 lookup eth0",
+              "15040: from all fwmark 0x10064/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "16000: from all fwmark 0x10063/0x1ffff iif lo lookup local_network",
+              "16000: from all fwmark 0x10064/0x1ffff iif lo lookup eth0",
+              "17000: from all iif lo oif dummy0 lookup dummy0",
+              "17000: from all iif lo oif eth0 lookup eth0",
+              "18000: from all fwmark 0x0/0x10000 lookup legacy_system",
+              "19000: from all fwmark 0x0/0x10000 lookup legacy_network",
+              "20000: from all fwmark 0x0/0x10000 lookup local_network",
+              "22040: from all fwmark 0x64/0x1ffff iif lo uidrange 10136-10136 lookup eth0",
+              "23000: from all fwmark 0x64/0x1ffff iif lo lookup eth0",
+              "25000: from all fwmark 0x0/0x10000 iif lo uidrange 10136-10136 lookup eth0_local",
+              "29040: from all fwmark 0x0/0xffff iif lo uidrange 10136-10136 lookup eth0",
+              "31000: from all fwmark 0x0/0xffff iif lo lookup eth0",
+              "32000: from all unreachable",
+              "32768: not from all fwmark 0x200000/0xe00000 lookup 2022"
+            ],
+            "egress": "eth0"
+          }
+        ],
+        "wifi_final_enabled": true
+      },
+      "app_uid": 10209,
+      "uplink_reconnect": {
+        "recovery_tick_count": 1,
+        "status": "verified",
+        "stage": "complete",
+        "interface": "eth0",
+        "default_interfaces": [
+          "eth0"
+        ],
+        "control_transport_verified": true,
+        "baseline": {
+          "state": {
+            "status": "present",
+            "warning": false,
+            "checked_at": 1794950768,
+            "next_check_at": 1794950828,
+            "retry_in_seconds": 59,
+            "consecutive_failures": 0,
+            "recovery_attempts": 1,
+            "recovery_limit": 3,
+            "recovery_status": "ok",
+            "last_recovery_at": 1794950701
+          },
+          "routes": [
+            "10.0.2.0/24 dev eth0 table eth0_local proto static scope link",
+            "224.0.0.0/24 dev eth0 table eth0_local proto static scope link",
+            "local 127.0.0.1 dev eth0 table 1848696858 scope host",
+            "0.0.0.0/5 dev magicnet0 table 2022",
+            "8.0.0.0/7 dev magicnet0 table 2022",
+            "11.0.0.0/8 dev magicnet0 table 2022",
+            "12.0.0.0/6 dev magicnet0 table 2022",
+            "16.0.0.0/4 dev magicnet0 table 2022",
+            "32.0.0.0/3 dev magicnet0 table 2022",
+            "64.0.0.0/3 dev magicnet0 table 2022",
+            "96.0.0.0/6 dev magicnet0 table 2022",
+            "100.0.0.0/10 dev magicnet0 table 2022",
+            "100.128.0.0/9 dev magicnet0 table 2022",
+            "101.0.0.0/8 dev magicnet0 table 2022",
+            "102.0.0.0/7 dev magicnet0 table 2022",
+            "104.0.0.0/5 dev magicnet0 table 2022",
+            "112.0.0.0/5 dev magicnet0 table 2022",
+            "120.0.0.0/6 dev magicnet0 table 2022",
+            "124.0.0.0/7 dev magicnet0 table 2022",
+            "126.0.0.0/8 dev magicnet0 table 2022",
+            "128.0.0.0/3 dev magicnet0 table 2022",
+            "160.0.0.0/5 dev magicnet0 table 2022",
+            "168.0.0.0/8 dev magicnet0 table 2022",
+            "169.0.0.0/9 dev magicnet0 table 2022",
+            "169.128.0.0/10 dev magicnet0 table 2022",
+            "169.192.0.0/11 dev magicnet0 table 2022",
+            "169.224.0.0/12 dev magicnet0 table 2022",
+            "169.240.0.0/13 dev magicnet0 table 2022",
+            "169.248.0.0/14 dev magicnet0 table 2022",
+            "169.252.0.0/15 dev magicnet0 table 2022",
+            "169.255.0.0/16 dev magicnet0 table 2022",
+            "170.0.0.0/7 dev magicnet0 table 2022",
+            "172.0.0.0/12 dev magicnet0 table 2022",
+            "172.32.0.0/11 dev magicnet0 table 2022",
+            "172.64.0.0/10 dev magicnet0 table 2022",
+            "172.128.0.0/9 dev magicnet0 table 2022",
+            "173.0.0.0/8 dev magicnet0 table 2022",
+            "174.0.0.0/7 dev magicnet0 table 2022",
+            "176.0.0.0/4 dev magicnet0 table 2022",
+            "192.0.0.0/9 dev magicnet0 table 2022",
+            "192.128.0.0/11 dev magicnet0 table 2022",
+            "192.160.0.0/13 dev magicnet0 table 2022",
+            "192.169.0.0/16 dev magicnet0 table 2022",
+            "192.170.0.0/15 dev magicnet0 table 2022",
+            "192.172.0.0/14 dev magicnet0 table 2022",
+            "192.176.0.0/12 dev magicnet0 table 2022",
+            "192.192.0.0/10 dev magicnet0 table 2022",
+            "193.0.0.0/8 dev magicnet0 table 2022",
+            "194.0.0.0/7 dev magicnet0 table 2022",
+            "196.0.0.0/6 dev magicnet0 table 2022",
+            "200.0.0.0/5 dev magicnet0 table 2022",
+            "208.0.0.0/4 dev magicnet0 table 2022",
+            "240.0.0.0/4 dev magicnet0 table 2022",
+            "default dev dummy0 table dummy0 proto static scope link",
+            "default via 10.0.2.2 dev eth0 table eth0 proto static mtu 1500",
+            "10.0.2.0/24 dev eth0 table eth0 proto static scope link",
+            "10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15",
+            "172.19.0.0/30 dev magicnet0 proto kernel scope link src 172.19.0.1",
+            "local 10.0.2.15 dev eth0 table local proto kernel scope host src 10.0.2.15",
+            "broadcast 10.0.2.255 dev eth0 table local proto kernel scope link src 10.0.2.15",
+            "local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1",
+            "local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1",
+            "broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1",
+            "local 172.19.0.1 dev magicnet0 table local proto kernel scope host src 172.19.0.1",
+            "broadcast 172.19.0.3 dev magicnet0 table local proto kernel scope link src 172.19.0.1"
+          ],
+          "selected_default": true,
+          "ready": true,
+          "tcp": {
+            "called": true,
+            "result": {
+              "complete": true,
+              "ok": true,
+              "uid": 10209,
+              "reason": "sentinel",
+              "accepted": 1,
+              "elapsed_ms": 5
+            }
+          }
+        },
+        "cellular_lifecycle": {
+          "acknowledged": true,
+          "before": {
+            "owner": {
+              "phone_id": 0,
+              "sub_id": 1,
+              "user_data_enabled": true,
+              "data_enabled": true,
+              "data_state": 2,
+              "connections": [
+                {
+                  "state": "CONNECTED",
+                  "transport": "WWAN",
+                  "net_id": 102,
+                  "interface": "eth0"
+                }
+              ]
+            },
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 102,
+                "type": "PHYSICAL",
+                "interfaces": [
+                  "eth0"
+                ],
+                "details": [
+                  "Allowed UID ranges: uids{ 0-99999 }",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }",
+                  "Required permission: NONE"
+                ]
+              }
+            ]
+          },
+          "down": {
+            "owner": {
+              "phone_id": 0,
+              "sub_id": 1,
+              "user_data_enabled": false,
+              "data_enabled": false,
+              "data_state": 0,
+              "connections": []
+            },
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              }
+            ],
+            "flags": 4098
+          },
+          "after": {
+            "owner": {
+              "phone_id": 0,
+              "sub_id": 1,
+              "user_data_enabled": true,
+              "data_enabled": true,
+              "data_state": 2,
+              "connections": [
+                {
+                  "state": "CONNECTED",
+                  "transport": "WWAN",
+                  "net_id": 103,
+                  "interface": "eth0"
+                }
+              ]
+            },
+            "networks": [
+              {
+                "net_id": 51,
+                "type": "DUMMY",
+                "interfaces": [
+                  "dummy0"
+                ],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 52,
+                "type": "UNREACHABLE",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 99,
+                "type": "LOCAL",
+                "interfaces": [],
+                "details": [
+                  "Allowed UID ranges: unrestricted"
+                ]
+              },
+              {
+                "net_id": 103,
+                "type": "PHYSICAL",
+                "interfaces": [
+                  "eth0"
+                ],
+                "details": [
+                  "Allowed UID ranges: uids{ 0-99999 }",
+                  "Per-app UID ranges: prio 40 uids{ 10136 }",
+                  "Required permission: NONE"
+                ]
+              }
+            ]
+          }
+        },
+        "restore_method": "android_mobile_data_toggle",
+        "restore_guard_pid": 28965,
+        "restore_guard_start_ticks": 35957,
+        "down_flags": 4098,
+        "down_observed": true,
+        "control_channel_survived": true,
+        "restore_guard_finished": true,
+        "up_flags": 4099,
+        "up_observed": true,
+        "last_observation": {
+          "state": {
+            "status": "present",
+            "warning": false,
+            "checked_at": 1794950768,
+            "next_check_at": 1794950828,
+            "retry_in_seconds": 28,
+            "consecutive_failures": 0,
+            "recovery_attempts": 1,
+            "recovery_limit": 3,
+            "recovery_status": "ok",
+            "last_recovery_at": 1794950701
+          },
+          "routes": [
+            "10.0.2.0/24 dev eth0 table eth0_local proto static scope link",
+            "224.0.0.0/24 dev eth0 table eth0_local proto static scope link",
+            "local 127.0.0.1 dev eth0 table 1848696858 scope host",
+            "0.0.0.0/5 dev magicnet0 table 2022",
+            "8.0.0.0/7 dev magicnet0 table 2022",
+            "11.0.0.0/8 dev magicnet0 table 2022",
+            "12.0.0.0/6 dev magicnet0 table 2022",
+            "16.0.0.0/4 dev magicnet0 table 2022",
+            "32.0.0.0/3 dev magicnet0 table 2022",
+            "64.0.0.0/3 dev magicnet0 table 2022",
+            "96.0.0.0/6 dev magicnet0 table 2022",
+            "100.0.0.0/10 dev magicnet0 table 2022",
+            "100.128.0.0/9 dev magicnet0 table 2022",
+            "101.0.0.0/8 dev magicnet0 table 2022",
+            "102.0.0.0/7 dev magicnet0 table 2022",
+            "104.0.0.0/5 dev magicnet0 table 2022",
+            "112.0.0.0/5 dev magicnet0 table 2022",
+            "120.0.0.0/6 dev magicnet0 table 2022",
+            "124.0.0.0/7 dev magicnet0 table 2022",
+            "126.0.0.0/8 dev magicnet0 table 2022",
+            "128.0.0.0/3 dev magicnet0 table 2022",
+            "160.0.0.0/5 dev magicnet0 table 2022",
+            "168.0.0.0/8 dev magicnet0 table 2022",
+            "169.0.0.0/9 dev magicnet0 table 2022",
+            "169.128.0.0/10 dev magicnet0 table 2022",
+            "169.192.0.0/11 dev magicnet0 table 2022",
+            "169.224.0.0/12 dev magicnet0 table 2022",
+            "169.240.0.0/13 dev magicnet0 table 2022",
+            "169.248.0.0/14 dev magicnet0 table 2022",
+            "169.252.0.0/15 dev magicnet0 table 2022",
+            "169.255.0.0/16 dev magicnet0 table 2022",
+            "170.0.0.0/7 dev magicnet0 table 2022",
+            "172.0.0.0/12 dev magicnet0 table 2022",
+            "172.32.0.0/11 dev magicnet0 table 2022",
+            "172.64.0.0/10 dev magicnet0 table 2022",
+            "172.128.0.0/9 dev magicnet0 table 2022",
+            "173.0.0.0/8 dev magicnet0 table 2022",
+            "174.0.0.0/7 dev magicnet0 table 2022",
+            "176.0.0.0/4 dev magicnet0 table 2022",
+            "192.0.0.0/9 dev magicnet0 table 2022",
+            "192.128.0.0/11 dev magicnet0 table 2022",
+            "192.160.0.0/13 dev magicnet0 table 2022",
+            "192.169.0.0/16 dev magicnet0 table 2022",
+            "192.170.0.0/15 dev magicnet0 table 2022",
+            "192.172.0.0/14 dev magicnet0 table 2022",
+            "192.176.0.0/12 dev magicnet0 table 2022",
+            "192.192.0.0/10 dev magicnet0 table 2022",
+            "193.0.0.0/8 dev magicnet0 table 2022",
+            "194.0.0.0/7 dev magicnet0 table 2022",
+            "196.0.0.0/6 dev magicnet0 table 2022",
+            "200.0.0.0/5 dev magicnet0 table 2022",
+            "208.0.0.0/4 dev magicnet0 table 2022",
+            "240.0.0.0/4 dev magicnet0 table 2022",
+            "default dev dummy0 table dummy0 proto static scope link",
+            "default via 10.0.2.2 dev eth0 table eth0 proto static mtu 1500",
+            "10.0.2.0/24 dev eth0 table eth0 proto static scope link",
+            "10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15",
+            "172.19.0.0/30 dev magicnet0 proto kernel scope link src 172.19.0.1",
+            "local 10.0.2.15 dev eth0 table local proto kernel scope host src 10.0.2.15",
+            "broadcast 10.0.2.255 dev eth0 table local proto kernel scope link src 10.0.2.15",
+            "local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1",
+            "local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1",
+            "broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1",
+            "local 172.19.0.1 dev magicnet0 table local proto kernel scope host src 172.19.0.1",
+            "broadcast 172.19.0.3 dev magicnet0 table local proto kernel scope link src 172.19.0.1"
+          ],
+          "selected_default": true,
+          "ready": true,
+          "tcp": {
+            "called": true,
+            "result": {
+              "complete": true,
+              "ok": true,
+              "uid": 10209,
+              "reason": "sentinel",
+              "accepted": 1,
+              "elapsed_ms": 4
+            }
+          }
+        },
+        "recovery_after": {
+          "status": "present",
+          "warning": false,
+          "checked_at": 1794950768,
+          "next_check_at": 1794950828,
+          "retry_in_seconds": 28,
+          "consecutive_failures": 0,
+          "recovery_attempts": 1,
+          "recovery_limit": 3,
+          "recovery_status": "ok",
+          "last_recovery_at": 1794950701
+        },
+        "ready_after_recovery": true,
+        "app_after_recovery": true
+      },
+      "tun_controls": {
+        "status": "verified",
+        "scope": "emulator_test_uid_tcp",
+        "positive": true,
+        "reject": true,
+        "positive_after": true,
+        "restored": true
+      },
+      "positive": true,
+      "reject": true,
+      "positive_after": true,
+      "restored": true
+    },
+    "invalid_config_rollback": {
+      "status": "passed",
+      "core_rejection_exit_code": 1,
+      "save_rejection_exit_code": 1,
+      "active_config_preserved": true
+    },
+    "upgrade": {
+      "node_preserved": true,
+      "staged_node_preserved": true,
+      "staged_policy_preserved": true,
+      "user_policy_preserved": true,
+      "standalone_marker_removed": true,
+      "proxy_connectivity_tested": false
+    },
+    "busybox_checks": [
+      {
+        "stage": "extracted",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      },
+      {
+        "stage": "activated",
+        "status": "passed",
+        "sha256": "060844b0769f7a50262854af027c4d6076a212d160a51309b53057cfb7122900",
+        "version": "1.36.1.1",
+        "checks": {
+          "nodes": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "inbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "outbounds": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "nodes_absent": {
+            "exit_code": 1,
+            "expected_exit_code": 1,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_trimmed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_preserved_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "awk_user_ids": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "kernelsu_busybox"
+          },
+          "sed_lines": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          },
+          "sed_capture": {
+            "exit_code": 0,
+            "expected_exit_code": 0,
+            "output_matches": true,
+            "provider": "android_system_sed"
+          }
+        },
+        "hash_exit_code": 0,
+        "version_exit_code": 0,
+        "sed_provider": "/system/bin/sed"
+      }
+    ],
+    "root_checks": [
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      },
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      },
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      },
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      },
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      },
+      {
+        "status": "passed",
+        "root_requests": [
+          {
+            "exit_code": 0,
+            "diagnostic": "success",
+            "stderr_present": false
+          }
+        ],
+        "wait_attempts": 1,
+        "identity_attempts": 1
+      }
+    ],
+    "reboot_checks": [
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      },
+      {
+        "status": "passed",
+        "command_exit_code": 0,
+        "command_result": "completed",
+        "new_boot_observed": true,
+        "root_verified": true,
+        "selinux_enforcing": true,
+        "kernelsu_reactivation": "verified_native_init",
+        "kernelsu_native_boot": {
+          "mode": "pinned-kernel-native-init",
+          "stages": {
+            "post-fs-data": "passed",
+            "services": "passed",
+            "boot-completed": "passed"
+          },
+          "kernel_interface": true,
+          "domain_verified": true,
+          "selinux_enforcing": true,
+          "busybox_verified": true
+        }
+      }
+    ],
+    "stop_checks": [
+      {
+        "operation": "service_stop",
+        "exit_code": 0,
+        "error_kinds": []
+      },
+      {
+        "operation": "kernel_stop",
+        "exit_codes": [
+          0
+        ]
+      },
+      {
+        "operation": "kernel_stop",
+        "exit_codes": [
+          0
+        ]
+      },
+      {
+        "operation": "kernel_stop",
+        "exit_codes": [
+          0
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "environment",
+      "status": "passed",
+      "seconds": 37.361
+    },
+    {
+      "name": "kernelsu-bootstrap",
+      "status": "passed",
+      "seconds": 3.19
+    },
+    {
+      "name": "install-before-first-boot",
+      "status": "passed",
+      "seconds": 17.756
+    },
+    {
+      "name": "cold-boot",
+      "status": "passed",
+      "seconds": 48.299
+    },
+    {
+      "name": "app-uid-tun-controls",
+      "status": "passed",
+      "seconds": 42.376
+    },
+    {
+      "name": "tun-route-recovery",
+      "status": "passed",
+      "seconds": 328.191
+    },
+    {
+      "name": "invalid-config-rollback",
+      "status": "passed",
+      "seconds": 0.513
+    },
+    {
+      "name": "stop-cleanup",
+      "status": "passed",
+      "seconds": 3.075
+    },
+    {
+      "name": "restart-idempotence",
+      "status": "passed",
+      "seconds": 42.647
+    },
+    {
+      "name": "upgrade-preservation",
+      "status": "passed",
+      "seconds": 87.267
+    },
+    {
+      "name": "disable-reboot",
+      "status": "passed",
+      "seconds": 33.188
+    },
+    {
+      "name": "enable-reboot",
+      "status": "passed",
+      "seconds": 78.196
+    },
+    {
+      "name": "uninstall-reboot",
+      "status": "passed",
+      "seconds": 35.485
+    }
+  ]
+}

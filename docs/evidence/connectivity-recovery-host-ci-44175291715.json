@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "captured_at_utc": "2026-11-17T21:05:44.018496+00:00",
+  "scope": "Linux host simulation; Android TUN/eBPF and radio not exercised",
+  "source_commit": "a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b",
+  "environment": {
+    "os": "Linux",
+    "release": "7.0.0-1017-azure",
+    "architecture": "x86_64",
+    "cpus": 4,
+    "python": "3.12.3",
+    "load_average": [
+      1.02001953125,
+      2.01904296875,
+      1.01708984375
+    ],
+    "cpu_tick_hz": 100
+  },
+  "google_once": {
+    "status": "not_requested",
+    "requests": 0
+  },
+  "core": {
+    "source_revision": "3a155d21872b22e6b9b75326c98d11f7ff159a2e",
+    "binary_sha256": "27aef7fef346dc99d2cd34e40c5a6b6aa687402cb924ed0373670bfb2a8e64da",
+    "binary_bytes": 86515838,
+    "version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.3a155d21872b\n\nEnvironment: go1.26.7 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,with_ebpf,badlinkname,tfogo_checklinkname0,with_xhttp,with_awg,with_lx_command,with_lxd,with_lx_chain,with_lx_idle_suspend,with_lx_probe\nCGO: disabled",
+    "config": "mixed_loopback_only_no_tun_no_ebpf",
+    "log_level": "warn",
+    "production_build_tags_verified": true,
+    "configuration_check": "passed"
+  },
+  "loopback": {
+    "status": "passed",
+    "transport": "http_over_ipv4_loopback_mixed_proxy",
+    "external_requests": 0,
+    "request_count": 77,
+    "idle": {
+      "elapsed_seconds": 20.0324,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 58688,
+      "rss_end_kib": 58688,
+      "peak_rss_kib": 58688,
+      "rss_kib": {
+        "samples": 21,
+        "min": 58688,
+        "median": 58688,
+        "p95_nearest_rank": 58688,
+        "max": 58688
+      },
+      "pss_kib": {
+        "samples": 21,
+        "min": 58680,
+        "median": 58680,
+        "p95_nearest_rank": 58680,
+        "max": 58680
+      },
+      "maximum_threads": 9
+    },
+    "core_during_load": {
+      "elapsed_seconds": 0.0604,
+      "cpu_seconds": 0.05,
+      "cpu_percent_one_core": 82.8094,
+      "rss_start_kib": 58688,
+      "rss_end_kib": 60376,
+      "peak_rss_kib": 60376
+    },
+    "workloads": {
+      "latency": {
+        "payload_bytes": 26,
+        "samples_per_path": 30,
+        "connection_mode": "new_http_connection_per_request",
+        "payload_verified_each_request": true,
+        "direct": {
+          "elapsed_ms": {
+            "samples": 30,
+            "min": 0.2236,
+            "median": 0.272,
+            "p95_nearest_rank": 0.3422,
+            "max": 0.6866
+          },
+          "throughput_mbps": {
+            "samples": 30,
+            "min": 0.3029,
+            "median": 0.7647,
+            "p95_nearest_rank": 0.8905,
+            "max": 0.93
+          },
+          "elapsed_ms_samples": [
+            0.68663,
+            0.31461,
+            0.25059,
+            0.28253,
+            0.25365,
+            0.28259,
+            0.24377,
+            0.29004,
+            0.27716,
+            0.2852,
+            0.26724,
+            0.28313,
+            0.23358,
+            0.28981,
+            0.23933,
+            0.31036,
+            0.23609,
+            0.2821,
+            0.25892,
+            0.25624,
+            0.22364,
+            0.30895,
+            0.28105,
+            0.25014,
+            0.24686,
+            0.27142,
+            0.27257,
+            0.2671,
+            0.23533,
+            0.34219
+          ]
+        },
+        "proxy": {
+          "elapsed_ms": {
+            "samples": 30,
+            "min": 0.5233,
+            "median": 0.5806,
+            "p95_nearest_rank": 0.6633,
+            "max": 0.8226
+          },
+          "throughput_mbps": {
+            "samples": 30,
+            "min": 0.2529,
+            "median": 0.3582,
+            "p95_nearest_rank": 0.3824,
+            "max": 0.3975
+          },
+          "elapsed_ms_samples": [
+            0.8226,
+            0.66334,
+            0.57871,
+            0.57603,
+            0.57276,
+            0.60406,
+            0.55649,
+            0.56847,
+            0.5439,
+            0.58284,
+            0.5601,
+            0.60579,
+            0.56575,
+            0.61338,
+            0.58015,
+            0.55235,
+            0.58114,
+            0.61924,
+            0.55705,
+            0.58971,
+            0.5648,
+            0.56247,
+            0.59184,
+            0.52331,
+            0.56109,
+            0.58967,
+            0.62559,
+            0.61233,
+            0.58481,
+            0.59982
+          ]
+        }
+      },
+      "throughput": {
+        "payload_bytes": 4194304,
+        "samples_per_path": 8,
+        "connection_mode": "new_http_connection_per_request",
+        "payload_verified_each_request": true,
+        "direct": {
+          "elapsed_ms": {
+            "samples": 8,
+            "min": 0.778,
+            "median": 0.8613,
+            "p95_nearest_rank": 2.1659,
+            "max": 2.1659
+          },
+          "throughput_mbps": {
+            "samples": 8,
+            "min": 15492.1714,
+            "median": 38958.0273,
+            "p95_nearest_rank": 43131.2521,
+            "max": 43131.2521
+          },
+          "elapsed_ms_samples": [
+            2.1659,
+            0.79868,
+            0.77796,
+            0.99764,
+            0.97426,
+            0.86777,
+            0.85491,
+            0.78402
+          ]
+        },
+        "proxy": {
+          "elapsed_ms": {
+            "samples": 8,
+            "min": 2.7183,
+            "median": 2.9011,
+            "p95_nearest_rank": 3.036,
+            "max": 3.036
+          },
+          "throughput_mbps": {
+            "samples": 8,
+            "min": 11052.3592,
+            "median": 11569.4888,
+            "p95_nearest_rank": 12343.9713,
+            "max": 12343.9713
+          },
+          "elapsed_ms_samples": [
+            3.03595,
+            2.95422,
+            2.82533,
+            2.85258,
+            2.94954,
+            2.81419,
+            2.71829,
+            3.01726
+          ]
+        }
+      }
+    },
+    "proxy_added_median_latency_ms": 0.3086,
+    "proxy_to_direct_median_throughput_ratio": 0.297
+  },
+  "local_acceptance": "passed"
+}

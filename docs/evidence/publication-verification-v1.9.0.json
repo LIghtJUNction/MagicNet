@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "release_url": "https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.0",
+  "published_at": "2026-11-17T21:42:01Z",
+  "version": "v1.9.0",
+  "version_code": 10618,
+  "source_sha": "a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b",
+  "core_sha": "3a155d21872b22e6b9b75326c98d11f7ff159a2e",
+  "recipe_sha": "fa411b5cd94fd899eb6a21eed3e2f1329a0bc3c8",
+  "release_id": 449231749,
+  "asset_count": 20,
+  "all_published_asset_digests_match_checksums": true,
+  "downloaded_asset_count": 7,
+  "full_archive_crc_valid": true,
+  "full_archive_metadata_valid": true,
+  "stable_index_matches_release": true,
+  "main_source_gitlink_matches_release": true,
+  "full_package": {
+    "name": "MagicNet-full.zip",
+    "sha256": "239ce18c0f805735c29c896694c5827677c5b1de54b89a5e75920f0d32d878b4",
+    "bytes": 61422854,
+    "url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.0/MagicNet-full.zip"
+  },
+  "installer": {
+    "name": "magicnet_installer.zip",
+    "sha256": "2c868235d70c000cbd393fa384bb5970f050bf90530e0d98eee725a513572538",
+    "bytes": 3466036,
+    "url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.0/magicnet_installer.zip"
+  },
+  "checksums_url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.0/SHA256SUMS",
+  "release_body_has_relative_report_link": false
+}

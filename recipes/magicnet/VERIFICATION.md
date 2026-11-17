@@ -1,5 +1,15 @@
 # 实现与发行验证
 
+## 2026-11-18 v1.9.0 正式发布完成
+
+**[MagicNet v1.9.0 / 10618](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.0) 已公开为稳定版。** [正式运行 44175989691](https://github.com/LIghtJUNction/MagicNet/actions/runs/44175989691) 的构建、完整质量、Android、资产核验、publish 与 sync-index 全部 success，发布于 UTC 2026-11-17 21:42:01。source 为 a25eb7cb，core 为 3a155d21，不可变配方/tag 快照为 fa411b5c；稳定索引同步提交为 `75217e7319410276a8bbf588c6e1b1ac0c4aa008`。
+
+[完整离线包](https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.0/MagicNet-full.zip) 为 61,422,854 字节，SHA256 `239ce18c0f805735c29c896694c5827677c5b1de54b89a5e75920f0d32d878b4`。已公开 20 项资产，摘要一致性核验通过；独立下载 7 项并确认完整 ZIP 的 CRC、manifest、module.prop v1.9.0 / 10618、来源与稳定索引一致。[公开复核 JSON](../../docs/evidence/publication-verification-v1.9.0.json) 原字节 SHA256 为 `579c46e300341a46b4504e7207d4808772c14b1f021b6e9288e625ac33f817c3`，详见 [SHA256SUMS](https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.0/SHA256SUMS) 和[完整验收报告](../../docs/connectivity-recovery-2026-11-18.md)。本次是哈希、来源与内容校验，没有另行验证安装包数字签名。
+
+正式 [Android simulation 原件](../../docs/evidence/connectivity-recovery-android-formal-44175989691.json) 为 13 passed / 0 failed / 0 not_run，SHA256 `8bfcb50483b160cb736c3cad5fa1fb53bdd0ca8b799bf9bed490318600eea8ff`。受控 AVD 生命周期、TUN 正反控制、RPDB/上联恢复和回滚通过；Google 204 实际未观测到，selected 为 offline/transport_failure，mixed 为 failed/tls_failure，显式 tick=1，harness 未改 canonical。v1.9.0 / 10618 来自同 artifact diagnostic-export 的平台版本节，simulation 本身无 version 字段。其 production ZIP `f6e846af…8897` 属于 Android gate 输入，不是公开 full 包摘要。
+
+UTC 21:44:31 最终 ADB 检查 exit 0、device_count=0。设备最后观测安装版本仍为 v1.8.9，本次未安装或暂存 v1.9.0 完整模块。此前旧配置恢复与新核心真机隔离的 Google/Cloudflare 204 已分别验证；完整正式包已下载到开发机并通过 SHA256 校验。源码 CI、主机、AVD、真机隔离与公开产物各自范围保持，历史失败记录不改写。
+
 ## 2026-11-18 当前代理严格检查与有界恢复
 
 本轮配方更新为 magicnet 0.3.28、network-runtime 0.1.16、control-plane 0.2.12、packet-engine 0.2.4 和 module-delivery 0.2.13，保留 web-console 0.2.10 的日常界面。新增 M75–M77、CON-A11–A14、C-CON-001–003，分别约束当前所选代理的严格双 HTTPS 204、独立 mixed 观测、最多三个同组真实候选、checked 保存与补偿、人工只探测和预算保留。
@@ -8,7 +18,7 @@
 
 已推送核心 `3a155d21872b22e6b9b75326c98d11f7ff159a2e` 在物理 Android 设备的隔离进程通过配置检查、Google/Cloudflare 严格 204 正向控制、HTTP 200 反向控制、非 HTTPS 输入拒绝、已知故障代理超时，以及非 root shell 经新 mixed 入口的真实 204。安装中的 v1.8.9 核心未替换，临时资源已清理；该证据不表示新 CLI、正式 ZIP 或全部应用/TUN 路径已验收。
 
-候选 WebUI 391 项、类型检查与构建通过；手机 360 像素和桌面共 8 项 Playwright 通过并检查截图。配方发布脚本 18 项、发布计划 42 项、固定值检查器 19 项、actionlint 与核心构建脚本语法通过。各结果范围与精确核心身份见[本轮连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。完整配方闭包和正式质量/Android 门禁仍按最终提交与发布记录判定，公开稳定索引保持 v1.8.9 / 10617。
+候选 WebUI 391 项、类型检查与构建通过；手机 360 像素和桌面共 8 项 Playwright 通过并检查截图。配方发布脚本 18 项、发布计划 42 项、固定值检查器 19 项、actionlint 与核心构建脚本语法通过。各结果范围与精确核心身份见[本轮连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。完整配方闭包及正式质量/Android 结果见本页最新发布完成记录，公开稳定索引已为 v1.9.0 / 10618。
 
 ## 2026-11-18 首次 CI 与发行尝试的边界
 
@@ -22,9 +32,15 @@ source `4a001bd2` 的 [Code Quality 44170188714](https://github.com/LIghtJUNctio
 
 Android harness 已同步 selected_proxy 与独立 mixed 字段，并严格要求 online 同时有双目标、mixed、时间/延迟和无失败警告的完整证据。一次性隔离夹具显式增加 proxy→direct 单成员 selector，本地 DNS 与 route.final=direct 保持；显式 tick 仍最多一次，Google 上界 2、辅助上界 2，验收器不改 canonical 状态。
 
-`python3 scripts/test-android-device-simulation.py` 120/120、`python3 scripts/test-android-simulation-fixes.py` 37/37 通过。两条命令分别使用实际生产标签 host core `3a155d21` 执行 --check-core 均 exit 0，核验初始、升级和实际 renderer 生成候选；复跑不重复累计。Android 修补涉及上述三份脚本，现已随 CI 标签及证据上传修正固定为 a25eb7cb；新 [Quality 44175291769](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291769)、[Network 44175291715](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291715)、[Build 44175291680](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291680)、[Android 44175291684](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291684) 均已确认同一源码 head，记录时为 in_progress。此处只有本地 fixture/单元/核心配置证据，旧 `4a` Android 的 3 passed / 1 failed / 9 not_run 继续保留，公开稳定发行仍为 v1.8.9 / 10617。
+`python3 scripts/test-android-device-simulation.py` 120/120、`python3 scripts/test-android-simulation-fixes.py` 37/37 通过。两条命令分别使用实际生产标签 host core `3a155d21` 执行 --check-core 均 exit 0，核验初始、升级和实际 renderer 生成候选；复跑不重复累计。Android 修补涉及上述三份脚本，现已随 CI 标签及证据上传修正固定为 a25eb7cb；新 [Quality 44175291769](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291769)、[Network 44175291715](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291715)、[Build 44175291680](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291680)、[Android 44175291684](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291684) 均已逐一确认同一 a25 源码 head，四项全部 completed/success。上述 120/37 及 --check-core 的本地 fixture/单元/核心配置结果与这些实际源码 CI 分开记录；旧 `4a` Android 的 3 passed / 1 failed / 9 not_run 继续保留。正式发布 44175989691 的独立质量与生命周期验证随后全部成功，公开稳定发行已为 v1.9.0 / 10618；具体范围与设备部署边界见本页发布完成记录。
 
-## 2026-11-18 日常界面与核心退出清理合同
+## 2026-11-18 成功 Network CI 与正式发布结果
+
+a25 的 [Network 44175291715](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44175291715) 已 success，core-memory-evidence artifact `14369033231` 的 ZIP 摘要已与 GitHub metadata 核对。其 [host-forwarding 原件](../../docs/evidence/connectivity-recovery-host-ci-44175291715.json) 为 6,267 字节，SHA256 `c131d86f41be6467858e790ed376068626c861a4f8634b1269fba79470fb5748`；source=a25、core=3a、Go 1.26.7、配置与生产标签核验 passed，77 回环请求、20.0324 秒空闲观察、外网 0。该证据与旧开发机实验分开，未覆盖 Android TUN/eBPF 或无线链路，不据此推断 Android 性能。
+
+新 [正式发布 44175989691](https://github.com/LIghtJUNction/MagicNet/actions/runs/44175989691) 的准备步骤已 success：workflow head `97d455630f1221b98e79ed4021950a61473fb1f8`，目标 v1.9.0 / 10618，source=a25，不可变快照 `fa411b5cd94fd899eb6a21eed3e2f1329a0bc3c8`，plan artifact `14369367796`。正式 harness、build、完整质量、真实 Android/KernelSU 与资产核验均已 success；公开发布和稳定索引同步已经完成。各原件摘要、范围及实际链接见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。
+
+## 2026-11-18 日常界面与核心退出清理合同（前序基线历史记录）
 
 本轮配方为 magicnet 0.3.27、web-console 0.2.10、network-runtime 0.1.15，新增 M73–M74、CON-A10 与 LIFE-A16。合同规定四项日常直达、更多十页、概览默认折叠的运行详情与网络设置，以及核心退出后在既有配置锁内复核并清理自有 DNS/热点资源。公共机器接口、配置意图和运行依赖保持。
 
@@ -48,10 +64,10 @@ Android harness 已同步 selected_proxy 与独立 mixed 字段，并严格要�
 | 对象 | 事实源 |
 | --- | --- |
 | 维护源码 | `a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b`；依赖身份见 [DEPENDENCIES.md](DEPENDENCIES.md) |
-| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.8.9 / 10617 |
-| 配方 | 0.3.27，八包；验收 M01–M74 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
-| 最近完整发布 | 2026-11-17（UTC+8），[43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947)，v1.8.9 / 10617；构建、完整质量、Android、资产核验、公开发布及稳定索引同步通过 |
-| 当前完成与开放项 | 本轮日常导航与概览精简、核心退出后的自有网络清理及本地回归完成；源码质量、构建、网络与配方 CI 通过；Android 宿主 SIGSEGV 后在相同源码复跑，v1.9.0 尚未发布。最近公开的 v1.8.9 有 20 个附件及对应内容核验。物理手机升级、原始偶发断网、长期续航和公网性能仍需对应现场证据。 |
+| 稳定发行索引 | 根 `update.json` 与 [README](../../README.md)：v1.9.0 / 10618 |
+| 配方 | 0.3.28，八包；验收 M01–M77 见 [ACCEPTANCE.md](ACCEPTANCE.md) |
+| 最近完整发布 | UTC 2026-11-17 21:42:01，[44175989691](https://github.com/LIghtJUNction/MagicNet/actions/runs/44175989691)，v1.9.0 / 10618；构建、完整质量、Android、资产核验、公开发布及稳定索引同步通过 |
+| 当前完成与开放项 | 当前代理严格探测、独立 mixed 观测、有界候选恢复及原界面/核心退出清理已随 v1.9.0 发布；源码四项 CI 与正式全流程通过，20 项公开资产及 7 项实际下载已核验。真机隔离核心 Google/Cloudflare 204 与 AVD 13 项通过分开记录；AVD 未观测到公网 Google 204。最终 ADB 无设备，完整新版未安装/暂存；ARM64/OEM 完整模块部署、长期续航及公网代理质量不在本次完成范围。 |
 
 ## 2026-11-17：修复发布测试期限偶发失败
 
