@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-11-18",
+  "source_baseline": "e1c8d1effb1a00cdebe0cf3177381c78b2b5d12d",
+  "source_fix": "9943eb128aaef46ca3bb01f9151b49c23ac67c41",
+  "environment": "Development machine, isolated Linux user and network namespace",
+  "kernel": "7.3.4-arch1-1",
+  "iproute2": "7.3.0",
+  "interface": "magicnet0",
+  "interface_type": "dummy",
+  "address": "192.0.2.1/32",
+  "destination": "198.51.100.10",
+  "external_network_packets_sent": 0,
+  "status": "passed",
+  "setup_exit_codes": [0, 0, 0, 0],
+  "conditional_route_dump": "default tos 0x10 dev magicnet0 scope link",
+  "observations": [
+    {
+      "case": "conditional_route_ordinary_packet",
+      "argv": ["ip", "-4", "route", "get", "198.51.100.10"],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "RTNETLINK answers: Network is unreachable"
+    },
+    {
+      "case": "conditional_route_matching_tos",
+      "argv": ["ip", "-4", "route", "get", "198.51.100.10", "tos", "0x10"],
+      "exit_code": 0,
+      "stdout": "198.51.100.10 tos 0x10 dev magicnet0 src 192.0.2.1 uid 0 \n    cache",
+      "stderr": ""
+    },
+    {
+      "case": "zero_tos_route_ordinary_packet",
+      "argv": ["ip", "-4", "route", "get", "198.51.100.10"],
+      "exit_code": 0,
+      "stdout": "198.51.100.10 dev magicnet0 src 192.0.2.1 uid 0 \n    cache",
+      "stderr": ""
+    }
+  ],
+  "zero_tos_route_dump": "default dev magicnet0 scope link",
+  "process_exit_code": 0,
+  "cleanup": "Test network objects belonged to the temporary network namespace, which ended with the child process."
+}

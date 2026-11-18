@@ -1,5 +1,9 @@
 # 实现与发行验证
 
+## 2026-11-18 条件 TUN 路由观察修复
+
+源码 [9943eb12](https://github.com/LIghtJUNction/magicnet-android/commit/9943eb128aaef46ca3bb01f9151b49c23ac67c41) 修复非零或未知 TOS/DS 条件路由的假绿，明确零值保留默认匹配；机器状态和 watchdog 共享未知结果，恢复预算保留。主仓 [d1cb47ee](https://github.com/LIghtJUNction/MagicNet/commit/d1cb47eeb7ab8806bad68ab269333d3bd6ef15b1) 同步 MagicNet 0.3.30 / network-runtime 0.1.17 与所有当前源码 pins。59 项源码定向测试、61 项配方/发布工具测试、Clippy、fmt 及八包/62 份 Markdown 的完整配方检查通过。开发机隔离网络命名空间验证普通、匹配 TOS 和零值选路对照；[报告与复查命令](../../docs/tun-route-selectors-2026-11-18.md)记录实际范围。手机只读采样仍为 v1.8.9 / 10617；公开稳定索引仍为 v1.9.0 / 10618。
+
 ## 2026-11-18 v1.9.0 正式发布完成
 
 **[MagicNet v1.9.0 / 10618](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.0) 已公开为稳定版。** [正式运行 44175989691](https://github.com/LIghtJUNction/MagicNet/actions/runs/44175989691) 的构建、完整质量、Android、资产核验、publish 与 sync-index 全部 success，发布于 UTC 2026-11-17 21:42:01。source 为 a25eb7cb，core 为 3a155d21，不可变配方/tag 快照为 fa411b5c；稳定索引同步提交为 `75217e7319410276a8bbf588c6e1b1ac0c4aa008`。
