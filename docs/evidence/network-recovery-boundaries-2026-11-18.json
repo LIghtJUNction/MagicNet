@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "title": "MagicNet scoped route evidence and queued crash cleanup",
+  "observed_at_utc": "2026-11-18 10:39:46 UTC",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "commit": "2a7dcddd471ea80f9510b780168a152a067ca5e0",
+    "tree": "ffe959c97bd2368004ab815b50afbc12fd4a081f"
+  },
+  "recipe": {
+    "repository": "LIghtJUNction/MagicNet",
+    "integration_commit": "9d717fa18eb7061ed7a5e78f81f2f781037cc1c8",
+    "product_version": "0.3.31",
+    "network_runtime_version": "0.1.18"
+  },
+  "stable_release": {
+    "version": "v1.9.0",
+    "version_code": 10618,
+    "new_release_published": false
+  },
+  "regression_cases": [
+    {
+      "name": "conditional_fib_routes_only_affect_required_destinations",
+      "before": {
+        "exit_code": 101,
+        "actual": "None",
+        "expected": "Some(true)"
+      },
+      "after": "passed",
+      "matrix_combinations": 48,
+      "axes": [
+        "IPv4 / IPv6",
+        "tos / dsfield / from / nexthop",
+        "outside inclusion / excluded destination / overlapping required destination",
+        "normal required route present / absent"
+      ]
+    },
+    {
+      "name": "connectivity_pending_manual_check_does_not_block_crashed_core_cleanup",
+      "before": {
+        "exit_code": 101,
+        "residual_fixture": "dns-capture-attached"
+      },
+      "after": "passed",
+      "assertions": [
+        "manual command makes no new probes and performs no cleanup",
+        "background tick cleans fixture-owned DNS capture after core exit",
+        "state remains paused/core_stopped",
+        "no core restart and no new probes"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli diagnostics::tun::tests",
+      "passed": 25,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli connectivity::",
+      "passed": 30,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli tun_machine_readiness_uses_the_same_live_routing_evidence_as_health",
+      "passed": 1,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --test connectivity_runtime",
+      "passed": 27,
+      "exit_code": 0
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/test-release.py",
+      "passed": 18,
+      "exit_code": 0
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/test-release-plan.py",
+      "passed": 42,
+      "exit_code": 0
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/test-check-recipes.py",
+      "passed": 19,
+      "exit_code": 0
+    }
+  ],
+  "totals": {
+    "source_tests": 83,
+    "recipe_tests": 79,
+    "local_tests": 162,
+    "matrix_combinations_are_not_additional_test_functions": true
+  },
+  "other_checks": [
+    {
+      "workspace": "source",
+      "command": "cargo clippy --locked -p magicnet-cli --all-targets -- -D warnings",
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo fmt --all -- --check",
+      "exit_code": 0
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/check-recipes.py",
+      "exit_code": 0,
+      "packages": 8,
+      "markdown_files": 62,
+      "includes": [
+        "check",
+        "pack",
+        "archive check",
+        "complete prompt"
+      ]
+    },
+    {
+      "workspace": "recipe",
+      "command": "bash scripts/check-workflows.sh",
+      "exit_code": 0,
+      "actionlint": "1.7.12"
+    },
+    {
+      "workspace": "both",
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "toolchain": {
+    "rustc": "1.100.0 (0ef1bc386 2026-11-09)",
+    "cargo": "1.100.0 (3acc79c0c 2026-11-05)"
+  },
+  "ci": [
+    {
+      "conclusion": "success",
+      "name": "Code Quality",
+      "status": "completed",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015161"
+    },
+    {
+      "conclusion": "success",
+      "name": "Network Regression Evidence",
+      "status": "completed",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015133"
+    },
+    {
+      "conclusion": "",
+      "name": "Build MagicNet source",
+      "status": "in_progress",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286014957"
+    },
+    {
+      "conclusion": "",
+      "name": "Android KernelSU Acceptance",
+      "status": "in_progress",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015001"
+    }
+  ],
+  "independent_review": {
+    "scope": "final code diff and existing safety boundaries",
+    "conclusion": "no blockers",
+    "tests_repeated": false
+  },
+  "limitations": [
+    "Host fixtures and real CLI regression coverage only; no new physical-device acceptance in this iteration.",
+    "No device installation, configuration change or version release performed.",
+    "OEM-specific root cause and controlled physical-device acceptance in issue #436 remain open.",
+    "Running CI jobs are not counted as successful."
+  ],
+  "issue_url": "https://github.com/LIghtJUNction/MagicNet/issues/436"
+}

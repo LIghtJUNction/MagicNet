@@ -1,5 +1,13 @@
 # 实现与发行验证
 
+## 2026-11-18 目的范围与排队检查恢复边界
+
+源码 [2a7dcddd](https://github.com/LIghtJUNction/magicnet-android/commit/2a7dcddd471ea80f9510b780168a152a067ca5e0) 修复无关目的网段的条件路由污染 TUN 证据，以及排队手动检查持续阻止核心退出后的后台清理。与必需范围相交的未知条件继续保留未知，手动命令自身不清理；既有锁、资源归属和恢复预算保持。两个新增回归均已先验证修改前失败，再验证修复后通过。
+
+主仓 [9d717fa1](https://github.com/LIghtJUNction/MagicNet/commit/9d717fa18eb7061ed7a5e78f81f2f781037cc1c8) 同步 MagicNet 0.3.31 / network-runtime 0.1.18、源码 gitlink 与可复用工作流引用。83 项源码测试、79 项配方/发布工具测试、Clippy、fmt、actionlint 与八包/62 份 Markdown 的完整配方检查通过；48 路由组合属于一个回归用例内部，不重复计数。详见 [迭代报告](../../docs/network-recovery-boundaries-2026-11-18.md) 和 [结构化证据](../../docs/evidence/network-recovery-boundaries-2026-11-18.json)。
+
+源码 Code Quality 和 Network Regression Evidence 已 success；构建及 Android 工作流在报告快照时仍运行。本轮未进行新的真机验收、手机安装或版本发布；公开稳定版保持 v1.9.0 / 10618，#436 的 OEM 根因与受控真机验收仍待后续工作。
+
 ## 2026-11-18 条件 TUN 路由观察修复
 
 源码 [9943eb12](https://github.com/LIghtJUNction/magicnet-android/commit/9943eb128aaef46ca3bb01f9151b49c23ac67c41) 修复非零或未知 TOS/DS 条件路由的假绿，明确零值保留默认匹配；机器状态和 watchdog 共享未知结果，恢复预算保留。主仓 [d1cb47ee](https://github.com/LIghtJUNction/MagicNet/commit/d1cb47eeb7ab8806bad68ab269333d3bd6ef15b1) 同步 MagicNet 0.3.30 / network-runtime 0.1.17 与所有当前源码 pins。59 项源码定向测试、61 项配方/发布工具测试、Clippy、fmt 及八包/62 份 Markdown 的完整配方检查通过。开发机隔离网络命名空间验证普通、匹配 TOS 和零值选路对照；[报告与复查命令](../../docs/tun-route-selectors-2026-11-18.md)记录实际范围。手机只读采样仍为 v1.8.9 / 10617；公开稳定索引仍为 v1.9.0 / 10618。
