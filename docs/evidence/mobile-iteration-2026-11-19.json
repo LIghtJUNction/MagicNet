@@ -1,0 +1,558 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-11-19T02:58:41+08:00",
+  "scope": "MagicNet phone-focused iteration; aggregated observations, not raw device payloads",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "commit": "75da8b3064350dd335844da1957cd45b6c347f9c",
+    "tree": "c12d49b393ee718d2f2340dcabec93db517396cb",
+    "last_commit_changes": "App.vue navigation geometry/observer and styles.css rail transition",
+    "commits": [
+      [
+        "920ec2be79f421db3caba0c01226b7db687768c4",
+        "node labels and explicit empty selector"
+      ],
+      [
+        "43e0de3e5eab7ef22ceaf0d36ec0808b9228a78e",
+        "Android awk and complete SS fallback"
+      ],
+      [
+        "1731973da7a93573602a264be6b334fb80d15ee0",
+        "phone overview and navigation"
+      ],
+      [
+        "87ce15968dbf230bed76309fe54c76d1e1b6fe8a",
+        "tool preparation fail-fast"
+      ],
+      [
+        "a5062e1c5f7f773d0b857b5fdb257f2110fe815b",
+        "all fourteen phone pages"
+      ],
+      [
+        "adbfe716057c4d910eca12ac0698005353c579ea",
+        "current content and readiness test locators"
+      ],
+      [
+        "6c71b1a3992edcff60afc9f971b102915606fc96",
+        "scrollable fixture and exact translated label"
+      ],
+      [
+        "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "navigation visibility after layout changes"
+      ],
+      [
+        "75da8b3064350dd335844da1957cd45b6c347f9c",
+        "final navigation resize geometry and fractional clipping fix"
+      ]
+    ]
+  },
+  "recipe": {
+    "repository": "LIghtJUNction/MagicNet",
+    "integration_commit": "921d490746f51e9dfc961c37721980fb76a591e3",
+    "integration_tree": "fb7ea2d25bb581a88b87808e51cc81eb378721c0",
+    "versions": {
+      "product": "0.3.35",
+      "web": "0.2.13",
+      "control": "0.2.15"
+    },
+    "check": {
+      "packages": 8,
+      "markdown_files": 62,
+      "result": "pass",
+      "source_pin": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "operations": [
+        "check directory",
+        "pack",
+        "check archive",
+        "build full prompt",
+        "verify complete Markdown closure"
+      ],
+      "environment": "ssmcp development machine",
+      "evidence_url": "https://github.com/LIghtJUNction/MagicNet/blob/921d490746f51e9dfc961c37721980fb76a591e3/docs/evidence/navigation-2026-11-19.json"
+    },
+    "tests": {
+      "release": 18,
+      "release_plan": 42,
+      "check_recipes": 19,
+      "total_passed": 79,
+      "source_pin_at_test": "adbfe716057c4d910eca12ac0698005353c579ea",
+      "scope": "Historical isolated batch; later CI results are recorded separately"
+    },
+    "prior_check": {
+      "packages": 8,
+      "markdown_files": 62,
+      "result": "pass",
+      "cli_source": "f6f5983d558937677c712fea291c65b376487568",
+      "source_pin": "6c71b1a3992edcff60afc9f971b102915606fc96",
+      "operations": [
+        "check directory",
+        "pack",
+        "check archive",
+        "build full prompt",
+        "verify complete Markdown closure"
+      ]
+    }
+  },
+  "subscription": {
+    "original_entries": 48,
+    "original_protocols": {
+      "shadowsocks": 34,
+      "vmess": 14
+    },
+    "excluded": 19,
+    "notice_rows": 2,
+    "expected": 27,
+    "before": 2,
+    "device_config": {
+      "shadowsocks": 25,
+      "vmess": 2,
+      "total": 27
+    },
+    "device_cli_count": 27,
+    "config_cli_tag_sets_equal": true,
+    "user_filter_intent_preserved": true,
+    "all_nodes_network_reachability_tested": false
+  },
+  "mobile": {
+    "pages": [
+      "control",
+      "proxies",
+      "subs",
+      "apps",
+      "block",
+      "chain",
+      "tailscale",
+      "config",
+      "webui",
+      "health",
+      "terminal",
+      "output",
+      "tools",
+      "about"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "reviewed_widths": [
+      360,
+      390,
+      430
+    ],
+    "browser_tests": [
+      {
+        "batch": "phone390+phone430 page/editor review",
+        "passed": 62,
+        "failed": 0
+      },
+      {
+        "batch": "phone360 initial full suite",
+        "passed": 143,
+        "failed": 6,
+        "total": 149
+      },
+      {
+        "batch": "phone360 corrected four-file follow-up",
+        "passed": 15,
+        "failed": 0,
+        "duration_seconds": 31,
+        "original_failures_covered": 6
+      },
+      {
+        "batch": "4110 six-viewport navigation/i18n initial",
+        "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "passed": 74,
+        "skipped": 2,
+        "failed": 2
+      },
+      {
+        "batch": "final six-viewport navigation/usability/i18n",
+        "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+        "passed": 76,
+        "skipped": 2,
+        "failed": 0,
+        "test_files": 3,
+        "viewports": 6
+      }
+    ],
+    "webui_unit": {
+      "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "passed": 399,
+      "failed": 0,
+      "skipped": 0,
+      "origin": "normal KAM pre-build WebUI check",
+      "duration_ms": 4445.095891
+    },
+    "typecheck": "pass",
+    "production_web_build": "pass",
+    "prior_runtime_update": {
+      "source": "1731973da7a93573602a264be6b334fb80d15ee0",
+      "method": "CLI/WebUI runtime hot update",
+      "verified_file_hashes": 73
+    },
+    "latest_webroot_update": {
+      "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "file_count": 77,
+      "file_hashes_verified": true,
+      "independent_build_match": true,
+      "same_core": true,
+      "same_boot": true,
+      "config_unchanged": true,
+      "request_unchanged": true,
+      "selections_unchanged": true,
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      }
+    },
+    "final_physical_page_review": {
+      "status": "not_complete",
+      "pages_reviewed_as_final_version": 0,
+      "reason": "concurrent human foreground activity observed; stopped automated foreground input",
+      "browser_fixture_images_are_not_device_proof": true
+    }
+  },
+  "source_tests": {
+    "scope": "Earlier focused node, subscription and tool-hook regression batches",
+    "nodes": {
+      "passed": 12
+    },
+    "subscriptions": {
+      "total": 41,
+      "passed": 35,
+      "optional_skipped": 6
+    },
+    "tool_hook": {
+      "passed": 8,
+      "new_failure_propagation_cases": 3
+    }
+  },
+  "build": {
+    "ci": {
+      "source": "adbfe716057c4d910eca12ac0698005353c579ea",
+      "run_id": 44356085246,
+      "status": "success",
+      "version": "v1.8.5",
+      "version_code": 10613,
+      "gates": {
+        "package_smoke": "pass",
+        "package_install_smoke": "pass",
+        "full_package_smoke": "pass"
+      },
+      "artifact": {
+        "id": 14454200379,
+        "bytes": 128030673,
+        "sha256": "bf8e8b25edd6e4b9724a6f0544b01642d514cd180a1c0018d54e46a0df6f5eff",
+        "digest_scope": "outer GitHub Actions artifact ZIP",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44356085246/artifacts/14454200379"
+      }
+    },
+    "local": {
+      "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "version": "v1.9.1",
+      "version_code": 10619,
+      "size": 104219361,
+      "sha256": "61639f93bd2903d700eecb4908f26b62e0d37941ba3be27d61d818d1e08ab58c",
+      "package_smoke": true,
+      "package_smoke_origin": "normal kam post-build hook",
+      "package_install_smoke": true,
+      "file_name": "MagicNet.zip",
+      "completion_verified": true,
+      "installer_migration_tests_passed": 22,
+      "normal_build_exit_code": 0,
+      "device_staging_verified": true,
+      "post_reboot_activation_verified": false
+    },
+    "prior_public_release_observation": {
+      "version": "v1.9.1",
+      "version_code": 10619,
+      "source": "5169e07155a47d16f3c5e610a8aa368cc2d08b02"
+    },
+    "new_public_release": false,
+    "previous_local": {
+      "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+      "version": "v1.9.1",
+      "version_code": 10619,
+      "size": 104219272,
+      "sha256": "0415cce4dbb5220c662b70e71916824da4dd48daa6b4ef84b64fb847173f8001",
+      "package_smoke": true,
+      "package_install_smoke": true
+    },
+    "log_sha256": {
+      "full-package-75da8b3.log": "f9a44fd79b4dac25e7a19b42f1edb23dc9fb082ca939949db70ae70d2ae0f49b",
+      "full-package-4110fc9.log": "9e89a0d30c3d8c0023d2e8cf31d2e57be0e2a6fe822ed7711b3c9cdab11f19e1"
+    }
+  },
+  "ci": {
+    "prior_browser_run": {
+      "id": 44356085163,
+      "source": "adbfe716057c4d910eca12ac0698005353c579ea",
+      "passed": 884,
+      "failed": 5,
+      "skipped": 5,
+      "known_failure_categories": {
+        "scroll_fixture": 2,
+        "translated_label_including_hint": 2,
+        "desktop_deep_link_visibility": 1
+      }
+    },
+    "prior_network": "success",
+    "prior_android": "cancelled",
+    "previous_source_snapshot": [
+      {
+        "id": 44361470560,
+        "name": "Network Regression Evidence",
+        "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44361470560"
+      },
+      {
+        "id": 44361470479,
+        "name": "Build MagicNet source",
+        "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44361470479"
+      },
+      {
+        "id": 44361470363,
+        "name": "Code Quality",
+        "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44361470363"
+      },
+      {
+        "id": 44361470403,
+        "name": "Android KernelSU Acceptance",
+        "source": "4110fc9a31e57ea76d080e1971e1251220b9548d",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44361470403"
+      }
+    ],
+    "final_source": {
+      "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "commit_contains_skip_ci": true,
+      "full_ci_success_verified": false,
+      "local_targeted_browser_passed": 76,
+      "local_targeted_browser_skipped": 2,
+      "local_targeted_browser_failed": 0,
+      "normal_local_full_package_build_passed": true
+    }
+  },
+  "issue436": {
+    "status": "open",
+    "strict_result": "NOT_VERIFIED",
+    "owned_ipv4_capture_rules_removed": 2,
+    "core_unchanged_during_injection": true,
+    "tun_fib_unchanged_during_injection": true,
+    "foreign_rules_preserved_at_injection": true,
+    "readiness_rejected": true,
+    "health_missing": true,
+    "recovery_attempt_delta": 1,
+    "fault_phase_https_204_passed": 2,
+    "application_outage_reproduced": false,
+    "observation_stopped_after_seconds": 91.93,
+    "stop_reason": "config_or_intent_changed",
+    "time_is_not_recovery_latency": true,
+    "manual_restart_after_guard": false,
+    "independent_followup": {
+      "same_boot": true,
+      "core_identity_changed": true,
+      "dataplane_ready": true,
+      "overall_ready": true,
+      "tun_status": "present",
+      "warning": false,
+      "consecutive_missing": 0,
+      "recovery_status": "ok",
+      "attempts": 1,
+      "owned_capture_rules_present": true,
+      "owned_ledger_equal": true,
+      "request_bytes_equal": true,
+      "application_https_204_passed": 2
+    },
+    "config_semantic_diff": {
+      "real_nodes_equal": true,
+      "selector_marker_absent_to_true_count": 34,
+      "outbound_definition_order_changed": true,
+      "other_tag_paired_parameters_equal": true,
+      "selector_member_order_equal": true,
+      "defaults_equal": true,
+      "route_final_equal": true,
+      "marker_cause": "fixed kamfw normal startup normalization",
+      "order_cause_verified": false
+    },
+    "foreign_final_diff": {
+      "ipv4_added": 1,
+      "ipv4_removed": 1,
+      "ipv6_added": 2,
+      "ipv6_removed": 2,
+      "fully_attributed": false
+    },
+    "natural_oem_trigger_identified": false
+  },
+  "latency": {
+    "ordinary_app_https_ms": {
+      "google": 921,
+      "cloudflare": 1707
+    },
+    "current_proxy_strict_repeats_ms": [
+      1941,
+      1146
+    ],
+    "sample_ss_ms": [
+      2215,
+      1194,
+      null
+    ],
+    "sample_ss_timeout_count": 1,
+    "earlier_home_cached_ms": 695,
+    "selected_node_and_history_unchanged": true,
+    "performance_improvement_claimed": false,
+    "final_ordinary_app_https_ms": {
+      "google": 672,
+      "cloudflare": 840
+    },
+    "final_samples_protocol": {
+      "http": 204,
+      "redirects": 0,
+      "response_bytes": 0,
+      "same_ordinary_app_uid": true,
+      "paths_not_equated_with_explicit_proxy_probe": true
+    }
+  },
+  "continuation": {
+    "execution_connection_recovered": true,
+    "needs": [
+      "normal phone reboot to activate the successfully staged module",
+      "review final fourteen pages in physical KernelSU WebView when phone is idle",
+      "verify nodes and ordinary app network after reboot",
+      "reproduce the original issue436 application outage and verify recovery under a frozen configuration"
+    ],
+    "temporary_test_apk": "best.lmm.magicnet.probe",
+    "cleanup_verified": true,
+    "issue436_strict_result": "NOT_VERIFIED"
+  },
+  "privacy": {
+    "raw_subscription_urls_included": false,
+    "raw_node_names_included": false,
+    "credentials_included": false,
+    "device_identifiers_included": false,
+    "raw_device_config_included": false
+  },
+  "device_snapshot_recorded_at": "2026-11-19T02:54:06+08:00",
+  "device": {
+    "staged_install": {
+      "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "version": "v1.9.1",
+      "version_code": 10619,
+      "package_sha256": "61639f93bd2903d700eecb4908f26b62e0d37941ba3be27d61d818d1e08ab58c",
+      "package_size": 104219361,
+      "installer_exit_code": 0,
+      "staged": true,
+      "reboot_pending": true,
+      "activated": false,
+      "staged_immutable_files_verified": 80,
+      "staged_node_count": 27,
+      "staged_node_types": {
+        "shadowsocks": 25,
+        "vmess": 2
+      },
+      "staged_node_parameters_preserved": true,
+      "migration_inputs_preserved": true,
+      "migration_file_checks": {
+        ".state/sing-box/selector-selections.json": true,
+        ".config/sing-box/subscription.url": true,
+        ".config/sing-box/subscription.local": true,
+        ".config/sing-box/subscription-filter.list": true,
+        ".config/sing-box/subscription.user-agent": true,
+        ".state/transparent-mode": true
+      },
+      "active_config_unchanged": true,
+      "active_request_unchanged": true,
+      "active_selections_unchanged": true,
+      "active_core_same": true,
+      "same_boot": true,
+      "staged_core_version": "sing-box version 1.15.0-alpha.13+LIghtJUNction.3a155d21872b",
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      }
+    },
+    "ordinary_app_network_after_staging": {
+      "source_webui": "75da8b3064350dd335844da1957cd45b6c347f9c",
+      "ordinary_app": true,
+      "same_app_uid": true,
+      "probes": [
+        {
+          "target": "google",
+          "url": "https://www.google.com/generate_204",
+          "schema": 1,
+          "operation": "https",
+          "ok": true,
+          "complete": true,
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 672,
+          "reason": "https_response"
+        },
+        {
+          "target": "cloudflare",
+          "url": "https://cp.cloudflare.com/generate_204",
+          "schema": 1,
+          "operation": "https",
+          "ok": true,
+          "complete": true,
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 840,
+          "reason": "https_response"
+        }
+      ],
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      }
+    },
+    "cleanup": {
+      "probe_package": "best.lmm.magicnet.probe",
+      "probe_uninstalled": true,
+      "final_install_transfer_files_removed": [
+        "webroot.tar.gz",
+        "webroot.sha256",
+        "MagicNet-full-75da8b3.zip",
+        "immutable.sha256"
+      ],
+      "final_install_transfer_directory_removed": true,
+      "unexpected_files_preserved_count": 0,
+      "private_module_backup_retained": true,
+      "private_backup_validated_bytes": 162281984,
+      "pending_module_not_removed": true
+    },
+    "backup": {
+      "private": true,
+      "bytes": 162281984,
+      "members": 533,
+      "archive_validated": true,
+      "hash_index_retained_privately": true
+    },
+    "reboot_performed": false,
+    "full_module_activation_verified": false
+  },
+  "open_issues": {
+    "LIghtJUNction/MagicNet": [
+      436
+    ],
+    "LIghtJUNction/magicnet-android": []
+  },
+  "delivery": {
+    "report_repository_path": "docs/mobile-iteration-2026-11-19.md",
+    "evidence_repository_path": "docs/evidence/mobile-iteration-2026-11-19.json",
+    "drive_folder_url": "https://drive.google.com/drive/folders/1l506lcpZnJS-42-bpKHdk4W8yiAZenrc",
+    "preview_scope": "390px browser fixtures; not physical device proof"
+  }
+}
