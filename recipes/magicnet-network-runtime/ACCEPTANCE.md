@@ -13,6 +13,8 @@
 | 多用户/共享 UID/卸载重装、UID 枚举失败 | 应用三种策略 | 真实身份解析；未知不当成功；bypass DNS 同步；不删除他人规则 |
 | 64 KiB 名单边界/坏编码/非法/读取失败，blacklist/whitelist | 编辑和轮询 | 失败保留旧状态，成功模式与名单语义一致并主动发布 |
 | 原 offload 为不同值、外部规则与自有规则并存 | 热点启停/卸载 | 恢复精确原值，仅删已证明 owned 的项 |
+| 默认私网排除、显式 route_address、合法分段 FIB、缺失前缀与 linkdown | 热点 TUN 状态 | 按配置必要 IPv4 范围核验；完整为 active，明确缺失或全 IPv4 排除为 pending；不要求字面 default 或两条 /1 |
+| 条件/竞争路由、无关排除范围、缺失/非法/歧义配置与观察失败 | 热点机器与 canonical | 相交不确定证据保持 unknown，无关条件不掩盖完整或缺失；缺 RPDB/FORWARD 优先 pending；只读无文件/公网副作用，规范化结果不含配置与接口私密值 |
 | hotspot reconcile 持锁期间发起 service start/stop/restart，含核心已运行的 no-op | 并发生命周期 | 周期 reconcile try-lock 失败则无副作用跳过；用户动作得到有界等待/规范 busy 结果，不被误报为核心失败 |
 | 热点拓扑首次变化、应用耗时超过一次 UI 请求、读取状态失败/晚返回 | WebUI 生命周期与刷新 | 后台阶段可观察；旧 ready 不复用；调用端超时不释放设备 owner；非冲突读操作仍可用 |
 | 连续五轮核心启停、清理中断、PID/owner unknown | stop/start 恢复 | 优雅关闭先给清理机会；只回收拥有的 tun/cgroup/TC/路由资源；失败保留证据且明确不完整 |
@@ -112,6 +114,12 @@ CON-A11–A14 覆盖当前代理与 network-test/mixed 路由分离、双目标�
 注入保存失败时运行 API 零变更；PUT、读回、复验、取消和部分批次失败恢复原运行值与原保存值，包括原缺省项。并发外部选择导致 rollback_conflict 时保留新选择并如实报告未完成差异，不能声称已全部回滚。候选穷尽和无合格候选保留原节点。
 
 长退避中显式 check 必须产生有界新结果，同时保留共享 300 秒动作冷却、3600 秒订阅刷新间隔和同次开机的 TUN 尝试次数；并发 tick/check 只有一个 producer，10 秒节流和忙错误可核验。人工 check 不做恢复，普通状态读取不联网，用户停止/停用/归属未知不触发探测恢复。实际网络失败、能力缺失、未执行和测试通过分开记录。
+
+## 0.1.20 缓存代际与热点观察回归
+
+CON-A08 覆盖同 PID/starttime、PID 更换、PID 复用、缺少保存身份、多个核心与身份读取失败。只允许未过期同代际 present/missing 继续显示原值；其它代际证据为 unknown。另验证 not_required、paused、clock/summary unknown 和 stale 的前置语义。真实 CLI 的 connectivity.status 与 service.status 读取前后 canonical 字节、恢复预算、失败计数、网络探测次数与动作记录必须不变，不公开进程身份。
+
+M23 的热点查询必须向 ip 传递规范表参数 `2022`；独立内核夹具和模拟安装生命周期检查保持严格，不用兼容畸形 argv 的小夹具掩盖门禁失败。主机 iproute2 容忍空白不代表所有 Android 工具行为相同，实际结果分层记录。
 
 ## 0.1.18 范围与排队检查回归
 

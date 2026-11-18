@@ -8,6 +8,8 @@
 
 ## 生命周期与所有权
 
+runtime 0.1.20 的只读 TUN 投影必须在既有 paused/unknown/stale 前置判断后，核对未过期 present/missing 缓存的单一已归属 PID 与实时启动时间；不同代际、PID 复用、多核心或不可读显示 unknown。not_required 不要求启动代际核对。读取不探测网络或路由、不重扫归属、不改 canonical、失败计数或恢复预算；公共 JSON 不增加进程标识。CON-A08 同时覆盖真实 connectivity.status 与 service.status 消费链。
+
 runtime 0.1.18 按 CON-005/CON-A08 先检查 FIB 路由目的前缀是否与静态排除后的必要范围相交，再评估流量条件。无关或已排除区间内的条件路由不改变完整与明确缺失结论；相交范围内的非零 `tos` / `dsfield`、无法解析的值及缺值均保持未知，不计作无条件 TUN 覆盖；明确数值零保留默认匹配。健康检查、机器 readiness 与 watchdog 共用观察器，未知清除连续缺失且零恢复，独立联网观测及既有预算保留。
 
 runtime 0.1.9 增加 CON-005/CON-A08–A09：独立观察 TUN 自动路由，以双确认、启动宽限、共享冷却和每次开机预算约束标准核心重启；Google 结果保持独立。固定 Android/KernelSU 模拟器必须主动丢失自有规则并验证真实应用流量恢复，日常回归不依赖物理手机。
@@ -50,6 +52,8 @@ URL 规范化清单、来源索引或缓存映射写入失败时立即停止该�
 周期 off/12/24/48/72 小时，单 refresh owner；超时、信号、并发 updater 和旧 PID 不生成重复驻留任务。订阅刷新不刷新上游业务分类数据。
 
 ## 应用、Wi-Fi、热点和 DNS
+
+热点的 IPv4 FIB 覆盖必须来自有界读取的唯一有效 tun-in，而非仅寻找 default 或两条 /1。按 route_address（缺省全族）减静态 route_exclude_address 计算必要范围，复用普通 TUN 的区间、条件及竞争路由观察。合法分段覆盖可 active；必要路由缺失、linkdown 或全 IPv4 排除为 pending；相交的非零/未知 TOS/DS、源地址、多路径或竞争路由为 unknown，排除范围内条件不干扰结果。配置缺失/损坏/多义、非 tun、非 magicnet0、非固定数字表 2022 或动态范围无法观察保持 unknown。原有 RPDB、FORWARD、内部 peer 回程证据继续必需，已知 RPDB/FORWARD 缺失优先 pending。向 ip 传递独立且规范的十进制表参数 `2022`，不能把额外空白写入 argv 或由测试夹具容忍。只读状态不改配置/归属记录、不发公网请求，机器与 canonical 使用同一结果；eBPF shared 路径保持独立。
 
 包身份在当前 Android 所有用户中解析，支持共享 UID、卸载重装；proxy/direct/bypass 语义按根行为保留。bypass 同时从两种数据面和 DNS 捕获排除；netd UID 0 代发 DNS 的设备保守保留 bypass 边界，不能谎称所有 DNS 必被代理。
 Wi-Fi 读取失败不是空名单，64 KiB 有界并验证普通文件；非法/过大编辑保留旧文件且不切模式。后台轮询状态改变主动发布。

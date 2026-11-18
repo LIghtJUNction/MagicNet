@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.18"
+version = "0.1.20"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -16,6 +16,10 @@ source = "../magicnet-packet-engine"
 [dependencies.policy]
 source = "../magicnet-routing-policy"
 ~~~
+
+0.1.20 补齐 CON-A08 的缓存代际投影：未过期 present/missing 必须匹配当前单一已归属 PID/starttime，身份更换/复用/多义/不可读为 unknown，状态读取不改文件、探测或恢复预算；同时修正热点表查询 argv 并保留严格独立夹具。
+
+0.1.19 承接热点配置范围与 FIB 共用观察器：按有效 route_address 减静态排除核验完整 IPv4 覆盖，完整/明确缺失/不确定分别 active/pending/unknown；原 RPDB、FORWARD、内部 peer 回程、只读和脱敏边界继续必需。
 
 0.1.18 补齐 CON-A08/CON-A10 的范围与调度边界：只评估目的前缀与必要范围相交的 FIB 路由，无关条件不能掩盖缺失；人工检查保持仅观测，排队请求不阻止后台停机清理。锁内身份复核、资源归属及恢复预算保持。
 
