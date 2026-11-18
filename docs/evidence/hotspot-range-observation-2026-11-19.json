@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-11-19T03:41:27+08:00",
+  "base_source": "2a7dcddd471ea80f9510b780168a152a067ca5e0",
+  "implementation_commit": "ada4f32f90299ec4b25deb591a2eb476a0a9cd17",
+  "implementation_tree": "0f631b8716ee200ce58d8f19dce60c49590c91a7",
+  "corrective_commit": "6d67ce0df8e4dac896e58706e4af6b20f4aff833",
+  "observed_recipe_head": "6270ab90c02665d8f99d2557f5a6463ad83851df",
+  "observed_recipe_source_gitlink": "75da8b3064350dd335844da1957cd45b6c347f9c",
+  "direct_local_results": [
+    {
+      "test": "hotspot_observation",
+      "implementation": "base",
+      "passed": 4,
+      "failed": 5,
+      "exit_code": 101
+    },
+    {
+      "test": "hotspot_observation",
+      "implementation": "ada4f32f",
+      "passed": 9,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "test": "bin filter hotspot",
+      "passed": 33,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "test": "bin filter diagnostics::tun::tests",
+      "passed": 25,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "test": "observation_state",
+      "passed": 9,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "test": "all-target clippy -D warnings",
+      "exit_code": 0
+    },
+    {
+      "test": "cargo fmt --check",
+      "exit_code": 0
+    },
+    {
+      "test": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "counts_may_overlap": true,
+  "initial_ci": [
+    {
+      "id": 44288240726,
+      "name": "Network Regression Evidence",
+      "conclusion": "success"
+    },
+    {
+      "id": 44288240688,
+      "name": "Build MagicNet source",
+      "conclusion": "failure"
+    },
+    {
+      "id": 44288240872,
+      "name": "Code Quality",
+      "conclusion": "cancelled"
+    },
+    {
+      "id": 44288240849,
+      "name": "Android KernelSU Acceptance",
+      "conclusion": "cancelled"
+    }
+  ],
+  "correction_evidence": "docs/tun-generation-hotspot-gate-2026-11-18.md",
+  "latest_local_retry": {
+    "source": "75da8b3064350dd335844da1957cd45b6c347f9c",
+    "status": "result_not_observed",
+    "reason": "development_session_readback_interrupted"
+  },
+  "new_device_validation": false,
+  "new_binary_release_by_this_iteration": false
+}
