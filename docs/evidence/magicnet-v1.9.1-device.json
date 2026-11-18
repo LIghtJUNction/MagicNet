@@ -810,5 +810,21 @@
     "No TUN rule loss or automatic recovery occurred in the physical cellular test.",
     "UI navigation does not verify every configuration mutation, hardware mode or OEM policy.",
     "No subscription URLs, node names, server addresses, device identifiers or credentials are included."
-  ]
+  ],
+  "post_experiment_readonly_followup": {
+    "time": "2026-11-18T11:48:04.079517+00:00",
+    "connectivity": {
+      "status": "online",
+      "reason": "ok",
+      "checked_at": 1795002188,
+      "mixed_status": "online",
+      "mixed_reason": "ok",
+      "warning": false
+    },
+    "tun_status": "present",
+    "network_settings": {
+      "wifi_on": "0",
+      "mobile_data": "1"
+    }
+  }
 }

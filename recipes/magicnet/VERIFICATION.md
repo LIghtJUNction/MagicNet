@@ -7,7 +7,7 @@
 | 对象 | 固定版本与范围 |
 | --- | --- |
 | 当前主仓配方 | MagicNet `0.3.33` / network-runtime `0.1.20` |
-| 当前 gitlink | [`a97467513e5f3c9842b470112f31a961e2bc99b0`](https://github.com/LIghtJUNction/magicnet-android/commit/a97467513e5f3c9842b470112f31a961e2bc99b0) |
+| 当前 gitlink | [`c2ccbd3e03e4757a88fc342018449676a22ca224`](https://github.com/LIghtJUNction/magicnet-android/commit/c2ccbd3e03e4757a88fc342018449676a22ca224) |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 | 公开稳定版 | [v1.9.1 / 10619](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)，源码 `5169e07155a47d16f3c5e610a8aa368cc2d08b02` |
 | 真机验收候选 | 同版本、同源码的本地构建；一台 ARM64 手机 |
@@ -30,6 +30,12 @@
 | [Android KernelSU Acceptance](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729877) | in_progress |
 
 较早 `2a7dcddd` 的 [Build](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286014957)、[Quality](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015161)、[Network](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015133) 已 success，[Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44286015001) 为 cancelled。主仓配方集成 `896c8134` 的 [Recipe checks](https://github.com/LIghtJUNction/MagicNet/actions/runs/44295084605) 已 success；这些状态按 11:33 UTC 读取结果记录。
+
+## 诊断隐私测试修复
+
+后续主分支 [c2ccbd3e](https://github.com/LIghtJUNction/magicnet-android/commit/c2ccbd3e03e4757a88fc342018449676a22ca224) 仅修改诊断导出测试。旧断言把数字 UID 在整份报告中匹配，合法系统计数含相同数字也会报泄露；受控样本已复现这一误报。修复保留独特私密字符串的全文检查，严格断言 exclude_uid 为 present/count 投影，并在同一报告保留值为 10112 的公开 MTU 正例。严格 JSON 相等仍拒绝原 UID 数组及额外字段。
+
+该提交的 [Code Quality](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44298081441) 与 [Network Regression](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44298081591) 已 success。生产代码与运行脚本相对 a9746751 未变；a9746751 的 [Android](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729877) 后续已 success，其较早 quality 失败快照仍保留。v1.9.1 发布身份继续固定 5169e071。
 
 ## 正式 v1.9.1 / 10619
 
@@ -63,6 +69,8 @@ WebUI 实际通过 **399 项单元测试、typecheck、build，以及 865 项浏
 手机最初一次 Cloudflare 请求 connect timeout，随后同一普通应用 UID 使用默认与 IPv4 请求均返回 204（约 0.95 s / 0.84 s），未更换节点。该暂态失败的原因尚未确定。
 
 前两次蜂窝实验因后台 Chrome UID 的 DNS 基线失败而在断网前中止；补充 INET 组无效。仅恢复 Chrome 前台、无 root 目标预热后，同命令取得两目标 204，说明该 UID 探针受前后台状态影响，具体系统策略未确定。最终实验在每组应用探针前确认 Chrome 前台。断网与 180 秒观察完成，末尾 Google / Cloudflare 分别为 204（1.39 s / 0.45 s），网络设置复原；严格所选代理探测为 degraded / endpoint_specific、mixed 为 online，原始 outcome 保持 needs_review。未观测到 TUN 规则丢失或自动恢复，不将此结果写为 #436 已修复。详见[本轮报告](../../docs/releases/v1.9.1.md)和[脱敏设备证据](../../docs/evidence/magicnet-v1.9.1-device.json)。
+
+19:48（Asia/Taipei）只读回查时，所选代理与 mixed 均为 online、warning=false，TUN 为 present，网络开关保持原值。此回查单独保留在证据中，原蜂窝实验的 needs_review 结论不变。Zashboard 请求 [#457](https://github.com/LIghtJUNction/MagicNet/issues/457) 已按已发布功能与真机结果关闭为 completed。
 
 跨 OEM、最低 Android/WebView 版本、长期运行、持续性能与耗电仍未覆盖。[#436](https://github.com/LIghtJUNction/MagicNet/issues/436) 的换网触发根因和真机实际丢规则后的恢复仍开放；模拟器故障注入与本次未触发规则丢失的手机重连分别计证据。
 
