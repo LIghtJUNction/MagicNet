@@ -61,3 +61,7 @@ TLS/GoTLS 文本诊断显式使用 eCapture 的 hook 来源；升级依赖后不
 `api select <group> <node>` 的成功要求选择可持久保存、运行时切换成功且读回相符。先在既有锁内重查成员和当前值，再 checked 保存；保存失败非零退出且不得调用运行时 PUT。后续失败按旧运行值与旧保存值补偿，外部新选择不得覆盖；保存失败或补偿冲突不能被一个成功的 API 响应掩盖。节点切换后的网络确认与仅仅选择成功分别展示，网络失败不写成 online。
 
 `cli connectivity check` 是显式网络操作，普通 status、health、MCP 和诊断读取仍零公网请求。它通过已启用 with_lx_probe 的核心检查所选出站双 HTTPS 204，并单独观测 mixed 数据面；仅旧 delay 字段不算严格成功。人工 check 不执行 repair/refresh/restart，10 秒节流；忙时返回 `connectivity.check_queued`，节流返回 `connectivity.check_throttled`。实际重测不清空动作冷却、订阅刷新间隔或 TUN 尝试次数。
+
+## 当前节点列表（0.2.14）
+
+`cli node list` 从已提交的有效 sing-box 配置读取真实代理节点，按 `proxy` 成员去重；默认最多 48 条，`MAGICNET_NODE_LIST_LIMIT` 可调整且最大 500。旧 `subscription-work/tags.txt` 和临时候选不作为当前节点来源。有效空配置保持空并清除旧节点缓存；配置缺失、不可读或无效时可回退既有节点缓存，`MAGICNET_NODE_CACHE=0` 禁用回退。列表及缓存本身不证明节点可联网或核心已切换。

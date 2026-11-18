@@ -5,13 +5,15 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.11"
+version = "0.2.12"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
 
 交付保留 14 页、三语、浅深主题与现有设备操作的移动界面。当前流程见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，视觉规范见 [DESIGN.md](DESIGN.md)，订阅合同见 [SUBSCRIPTION_FLOW.md](SUBSCRIPTION_FLOW.md)，全部验收见 [ACCEPTANCE.md](ACCEPTANCE.md)。
+
+0.2.12 修正缓存节点页的刷新：重新进入已加载页面时读取当前核心快照，旧响应与旧测速结果不能覆盖新一轮状态；保留搜索、展开和有效的待确认选择。共享视觉使用克制的灰蓝画布、轻量设置面板与统一控件层次，保留触控、三语、浅深主题和全部功能。
 
 0.2.11 将本机 Zashboard 提升为概览主操作，并在管理面板和宽屏顶栏提供同一入口；新鲜机器快照、同源 loopback 地址、setup 参数、旧 CLI 校验和共享 busy 构成完整打开流程。安装与校验等维护细节默认折叠。
 
