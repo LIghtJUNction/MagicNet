@@ -113,6 +113,12 @@ CON-A11–A14 覆盖当前代理与 network-test/mixed 路由分离、双目标�
 
 长退避中显式 check 必须产生有界新结果，同时保留共享 300 秒动作冷却、3600 秒订阅刷新间隔和同次开机的 TUN 尝试次数；并发 tick/check 只有一个 producer，10 秒节流和忙错误可核验。人工 check 不做恢复，普通状态读取不联网，用户停止/停用/归属未知不触发探测恢复。实际网络失败、能力缺失、未执行和测试通过分开记录。
 
+## 0.1.18 范围与排队检查回归
+
+CON-A08 覆盖 IPv4/IPv6、route_address 范围之外、route_exclude_address 已排除区间及跨越排除边界的条件路由。必要普通路由完整或缺失时，无关条件分别保持 present 或 missing；相交的 TOS/DS、源地址和多路径条件继续为 unknown。保留非法输出与默认路由对照。
+
+CON-A10 使用真实 CLI 子进程验证核心退出后执行人工 check：人工命令零清理、零探测、零重启；请求仍排队时，后续自动 tick 在原有锁及身份复核后清理自有 DNS 残留，状态保持 paused/core_stopped。已有锁忙、替代核心、unknown、停用、取消、失败重试与幂等回归继续通过。
+
 ## 0.1.17 条件 FIB 回归
 
 CON-A08 增加只存在 `default tos 0x10 dev magicnet0` 的健康 RPDB 夹具，另覆盖 `dsfield`、命名/非法值和行尾缺值：路由观察为 unknown、机器 readiness=null、watchdog 连续缺失清零且零恢复。明确数值零与普通路由对照继续通过。真实 CLI 子进程须保留先前联网结果、不增加探测或恢复次数；隔离 Linux 网络命名空间验证普通流量与匹配 TOS 的选路差异，和 Android 设备验收分别记录。

@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.30）
+# 重建 MagicNet（配方 0.3.31）
 
 为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M78；交付可运行产品。
 
@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@5169e07155a47d16f3c5e610a8aa368cc2d08b02`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@2a7dcddd471ea80f9510b780168a152a067ca5e0`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -51,7 +51,7 @@ connectivity 与 Wi-Fi watcher 的启动、重复启动和停止使用同一有�
 
 TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreachable 路由覆盖时，观察结果保持 unknown，且不授权自动恢复；排除范围及被更具体 TUN 前缀覆盖的宽泛 fallback 保留。
 
-TUN 路由中的非零 `tos` / `dsfield`、无法解析的值与缺值同样保持 unknown，不能计作普通流量的完整覆盖；明确数值零继续默认匹配。健康、机器 readiness 与 watchdog 共用判断，按 runtime 0.1.17 的 CON-A08 回归验证未知不触发恢复、已有联网证据与预算保留。
+FIB 先根据 route_address 扣除 route_exclude_address，忽略目的前缀完全位于必要范围之外的路由。相交路由的非零 `tos` / `dsfield`、未知或缺失条件值、源地址及多路径选择器保持 unknown；明确数值零继续默认匹配。无关条件路由不得使完整覆盖变为未知，也不得掩盖必要范围的明确缺失。健康、机器 readiness 与 watchdog 共用判断，按 runtime 0.1.18 的 CON-A08 验证 IPv4/IPv6、范围外、排除区间与相交对照。
 
 独立配置保存将配置、原始字节备份、验证标记与 Tailscale 密钥纳入已有文件事务，预检所有目标，并在替换失败时回滚；提交使用与校验一致的目录身份。候选与旧配置备份沿用编辑器 8 MiB 上限，有界读取，超限在任何目标写入前失败。既有提交后暂存清理错误保持明确语义，断电或 SIGKILL 的跨文件持久原子性不在该保证内。
 
@@ -65,7 +65,7 @@ M78 按 webui 0.2.11 和 control 0.2.13 提供显眼的本机 Zashboard 入口�
 
 M73 将概览、节点、订阅、应用作为四个日常直达入口，其余十页通过更多访问；高级页深链接和快速跳转须揭示当前导航。概览默认保留状态、启停、刷新、检查网络、异常与下一步，将进程、综合服务检查、实际模式与 RSS 放入运行详情，将透明模式、热点、Wi-Fi 和服务管理放入网络设置，两组默认折叠。重启移入服务管理，原确认和队列门控保留；独立流量路径页展示静态说明，示意图不证明联网，实时证据从概览运行详情与诊断查看。折叠不隐藏关键错误、未完成更新或初次设置，也不改变设备意图或后台任务。
 
-M74 按 runtime CON-006/LIFE-010 处理核心已退出而监督循环仍运行的情形：watchdog 非阻塞取得既有配置/生命周期锁，在锁内重新确认核心仍停止、模块启用且未取消后，复用停止后清理。只撤销已证明归属的 DNS 捕获、guard、自有路由并恢复热点 offload 原值；忙锁、活跃/未知核心、停用或取消不清理。失败保留证据由后续 tick 重试，不启动核心、不新增公网探测，不把清理成功当作联网成功；schema=1 与状态域保持。
+M74 按 runtime CON-006/LIFE-010 处理核心已退出而监督循环仍运行的情形：watchdog 非阻塞取得既有配置/生命周期锁，在锁内重新确认核心仍停止、模块启用且未取消后，复用停止后清理。只撤销已证明归属的 DNS 捕获、guard、自有路由并恢复热点 offload 原值；忙锁、活跃/未知核心、停用或取消不清理。失败保留证据由后续 tick 重试，不启动核心、不新增公网探测，清理后继续报告 paused。手动 check 自身不执行清理；核心停止时仍待处理的观测请求不得阻止后台 tick 按上述条件清理。schema=1 与状态域保持。
 
 安装/更新仅使用带 ownership 的唯一事务目录，失败先恢复再清理；恢复失败保留唯一材料。清理分批遍历，不新增时间戳备份。UDP 索引达到 1024 项后在最后一项释放时丢弃空索引空间；小流量复用，保留分片锁、引用计数和旧连接不能删除新连接的规则。覆盖大批释放/重建及安装成功、失败、恢复、未知目录保护。
 

@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.17"
+version = "0.1.18"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -16,6 +16,8 @@ source = "../magicnet-packet-engine"
 [dependencies.policy]
 source = "../magicnet-routing-policy"
 ~~~
+
+0.1.18 补齐 CON-A08/CON-A10 的范围与调度边界：只评估目的前缀与必要范围相交的 FIB 路由，无关条件不能掩盖缺失；人工检查保持仅观测，排队请求不阻止后台停机清理。锁内身份复核、资源归属及恢复预算保持。
 
 0.1.17 补齐 CON-005/CON-A08 的 FIB 条件判定：非零或未知 `tos` / `dsfield` 不作为普通流量的完整 TUN 覆盖；明确零值保留默认匹配。健康、机器状态与 watchdog 共用结果，未知清除连续缺失且不触发恢复，沿用已有接口与依赖。
 
