@@ -3,7 +3,7 @@
   <h1>MagicNet</h1>
   <p>A transparent networking control plane for rooted Android.</p>
 
-  [![Android release](https://img.shields.io/badge/Android-v1.9.0%20%2F%2010618-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.0)
+  [![Android release](https://img.shields.io/badge/Android-v1.9.1%20%2F%2010619-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)
   [![Recipe](https://img.shields.io/badge/recipe-0.3.31-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
 
@@ -16,7 +16,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Goal | Entry point |
 | --- | --- |
-| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.9.0 installation notes](docs/releases/v1.9.0.md) |
+| Install and use MagicNet | [Releases](https://github.com/LIghtJUNction/MagicNet/releases) and [v1.9.1 installation notes](docs/releases/v1.9.1.md) |
 | Build the maintained implementation | [Source repository](https://github.com/LIghtJUNction/magicnet-android) and [build guide](generated/magicnet-android/docs/build.md) |
 | Rebuild from requirements | [Product recipe](recipes/magicnet/BUILD_PROMPT.md) and [acceptance](recipes/magicnet/ACCEPTANCE.md) |
 | Publish a version | [Release guide](docs/releasing.md) |
@@ -25,7 +25,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 
 | Layer | Current state |
 | --- | --- |
-| Published Android package | [`v1.9.0 / 10618`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.0) |
+| Published Android package | [`v1.9.1 / 10619`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1) |
 | Recipe | `0.3.31` |
 | Fixed implementation commit | `2a7dcddd471ea80f9510b780168a152a067ca5e0` |
 | Fixed sing-box core | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
