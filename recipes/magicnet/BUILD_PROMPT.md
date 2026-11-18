@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@6c71b1a3992edcff60afc9f971b102915606fc96`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@75da8b3064350dd335844da1957cd45b6c347f9c`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -68,6 +68,8 @@ FIB 先根据 route_address 扣除 route_exclude_address，忽略目的前缀完
 M78 按 webui 0.2.13 和 control 0.2.15 提供显眼的本机 Zashboard 入口：点击时读取新鲜 service.status，分别核验 API 与本地资源，旧 CLI 只读校验回退，目标限制为同 loopback origin 的 /ui/ 且保留 setup 参数。跨入口共享 busy；失败可重试且不自动启动或下载。概览保留清楚的 Zashboard 任务入口，112px 服务开关承担主要状态控制；管理面板的维护细节默认折叠，保留全部功能与原确认。
 
 M73 保留概览、节点、订阅、应用四个日常直达入口；手机使用底部 dock，更多从左侧抽屉进入其余十页，高级页深链接和快速跳转须揭示当前导航。概览依次展示状态与 112px 服务开关、模式/延迟/RSS 摘要、任务链接；进程和综合服务检查放入默认折叠的运行详情，透明模式、热点、Wi-Fi 与服务管理放入默认折叠的网络设置。摘要沿用原字段、单位与未知语义；启停、重启、面板和诊断复用原动作、确认和队列。关键错误、更新与首次设置保持可见，独立路径示意不证明联网。
+
+M73 的桌面导航按 webui UI-NAV-001–002 保持当前项完整可见，覆盖直接加载管理面板/最近输出、视口变矮与俄语重排；定位侧栏不改变正文位置或焦点。导航标题与用途说明分别检查翻译，保存通过断言后的实际截图；既有手机全页验收与设备证据范围保持。
 
 M74 按 runtime CON-006/LIFE-010 处理核心已退出而监督循环仍运行的情形：watchdog 非阻塞取得既有配置/生命周期锁，在锁内重新确认核心仍停止、模块启用且未取消后，复用停止后清理。只撤销已证明归属的 DNS 捕获、guard、自有路由并恢复热点 offload 原值；忙锁、活跃/未知核心、停用或取消不清理。失败保留证据由后续 tick 重试，不启动核心、不新增公网探测，清理后继续报告 paused。手动 check 自身不执行清理；核心停止时仍待处理的观测请求不得阻止后台 tick 按上述条件清理。schema=1 与状态域保持。
 
