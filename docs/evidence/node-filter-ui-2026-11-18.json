@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "title": "MagicNet node list and WebUI follow-up",
+  "date": "2026-11-18",
+  "timezone": "Asia/Taipei",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "base": "a97467513e5f3c9842b470112f31a961e2bc99b0",
+    "commit": "fa0de2e137b9f54d31628b5d899001fb11be8a13",
+    "tree": "af6c70d744cff4682bff41f53a049d213ce0fbd0",
+    "diagnostic_test_fix": "c2ccbd3e03e4757a88fc342018449676a22ca224",
+    "proxy_page_fix": "a432d32c59a613e33bcb79d49bdd859f5d7a0a7f",
+    "shared_ui_fix": "dc90cdd0d7978d02773f93f7ffa4a34f5637e89b"
+  },
+  "recipe": {
+    "repository": "LIghtJUNction/MagicNet",
+    "integration": "09256c46388a596f65c033aa7bee91be81812989",
+    "versions": {
+      "product": "0.3.34",
+      "control": "0.2.14",
+      "webui": "0.2.12",
+      "runtime": "0.1.20"
+    },
+    "packages": 8,
+    "markdown_files": 62,
+    "preserved_upstream": "df985db18d23ad144290a61705a0fef31178728f"
+  },
+  "regressions": {
+    "retired_tags": {
+      "before_exit": 101,
+      "retired_rows": 48,
+      "active": [
+        "JP-test",
+        "US-test"
+      ],
+      "before_list": "48 retired HK rows",
+      "after_list": [
+        "JP-test",
+        "US-test"
+      ]
+    },
+    "cached_page": {
+      "before_exit": 1,
+      "missing_on_return": "US-kept",
+      "after": "fresh snapshot; stale replies rejected; drafts preserved"
+    },
+    "numeric_canary": {
+      "before_exit": 101,
+      "public_mtu": 10112,
+      "private_uid": 10112,
+      "after": "assert exact private field projection; retain public MTU and string canaries",
+      "original_ci_match_field": "unknown"
+    },
+    "empty_outbounds": {
+      "missing_and_null": "authoritative empty",
+      "final_tests_passed": true,
+      "separate_fail_first": "cancelled before assertions; not counted"
+    }
+  },
+  "checks": [
+    {
+      "name": "nodes::tests final",
+      "passed": 9,
+      "exit_code": 0
+    },
+    {
+      "name": "diagnostic_export",
+      "passed": 3,
+      "exit_code": 0
+    },
+    {
+      "name": "webui npm run check",
+      "passed": 399,
+      "exit_code": 0,
+      "typecheck": true,
+      "build": true
+    },
+    {
+      "name": "proxy panel browser",
+      "passed": 10,
+      "exit_code": 0
+    },
+    {
+      "name": "UI navigation browser",
+      "passed": 44,
+      "skipped": 1,
+      "exit_code": 0
+    },
+    {
+      "name": "page layout browser",
+      "passed": 20,
+      "exit_code": 0
+    },
+    {
+      "name": "long list visual",
+      "scenarios": 4,
+      "nodes": 22,
+      "overflow": false,
+      "page_errors": 0,
+      "min_node_height_px": 48
+    },
+    {
+      "name": "recipe complete check and archive",
+      "exit_code": 0,
+      "packages": 8,
+      "markdown_files": 62
+    }
+  ],
+  "ci": {
+    "observed_at": "2026-11-18T12:24:52.223977+00:00",
+    "exit_code": 0,
+    "runs": [
+      {
+        "conclusion": "",
+        "databaseId": 44301604495,
+        "headSha": "fa0de2e137b9f54d31628b5d899001fb11be8a13",
+        "name": "Network Regression Evidence",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44301604495"
+      },
+      {
+        "conclusion": "",
+        "databaseId": 44301604370,
+        "headSha": "fa0de2e137b9f54d31628b5d899001fb11be8a13",
+        "name": "Android KernelSU Acceptance",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44301604370"
+      },
+      {
+        "conclusion": "",
+        "databaseId": 44301604460,
+        "headSha": "fa0de2e137b9f54d31628b5d899001fb11be8a13",
+        "name": "Build MagicNet source",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44301604460"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 44301604401,
+        "headSha": "fa0de2e137b9f54d31628b5d899001fb11be8a13",
+        "name": "Code Quality",
+        "status": "completed",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44301604401"
+      }
+    ],
+    "stderr": ""
+  },
+  "issue": {
+    "url": "https://github.com/LIghtJUNction/MagicNet/issues/436",
+    "state": "open",
+    "remaining": "OEM route-loss trigger requires controlled device evidence"
+  },
+  "limitations": [
+    "Synthetic subscription fixture stubs converter output, core acceptance and lifecycle/journal.",
+    "Browser synthetic bridge results do not establish Android WebView acceptance.",
+    "No new installation or release; v1.9.1 source 5169e071 does not include this follow-up.",
+    "Original CI numeric match location was not retained.",
+    "Browser batches are execution counts, not a deduplicated unique-test total."
+  ],
+  "review": {
+    "backend": "passed after missing/null correction",
+    "ui": "passed",
+    "recipes": "passed after spacing, radius and button-size alignment"
+  },
+  "evidence_files": [
+    "node-list-before.txt",
+    "filter-exclusion-before.txt",
+    "filter-exclusion-after.txt",
+    "node-list-final-checks.json",
+    "node-list-unit-final.txt",
+    "proxy-refresh-before.log",
+    "proxy-refresh-after.log",
+    "ui-refresh/npm-check.log",
+    "ui-refresh/ui-regressions.log",
+    "ui-refresh/page-layout-review.log",
+    "ui-refresh/final/visual-metrics.json"
+  ]
+}

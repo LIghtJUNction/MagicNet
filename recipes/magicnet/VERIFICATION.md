@@ -6,13 +6,21 @@
 
 | 对象 | 固定版本与范围 |
 | --- | --- |
-| 当前主仓配方 | MagicNet `0.3.33` / network-runtime `0.1.20` |
-| 当前 gitlink | [`c2ccbd3e03e4757a88fc342018449676a22ca224`](https://github.com/LIghtJUNction/magicnet-android/commit/c2ccbd3e03e4757a88fc342018449676a22ca224) |
+| 当前主仓配方 | MagicNet `0.3.34` / network-runtime `0.1.20` |
+| 当前 gitlink | [`fa0de2e137b9f54d31628b5d899001fb11be8a13`](https://github.com/LIghtJUNction/magicnet-android/commit/fa0de2e137b9f54d31628b5d899001fb11be8a13) |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 | 公开稳定版 | [v1.9.1 / 10619](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)，源码 `5169e07155a47d16f3c5e610a8aa368cc2d08b02` |
 | 真机验收候选 | 同版本、同源码的本地构建；一台 ARM64 手机 |
 
 当前 gitlink 已包含发布之后的并发修复。公开 v1.9.1 与本轮手机候选均固定在 `5169e071`；较新源码的验证结果只适用于其自身。
+
+## 节点列表与界面修复
+
+2026-11-18，本轮源码固定为 [`fa0de2e1`](https://github.com/LIghtJUNction/magicnet-android/commit/fa0de2e137b9f54d31628b5d899001fb11be8a13)，配方集成为 `09256c46`。节点列表改读当前已提交配置，停止优先读取遗留 tags.txt；合法空出站不再复活旧缓存。代理分组页返回时刷新，并丢弃离开页面后的旧响应。共享界面同步调整留白、层级、导航、按钮与深色样式。
+
+节点测试 9 项、诊断导出测试 3 项、WebUI 单元测试 399 项以及类型检查、构建通过；代理页浏览器执行 10 项通过，界面导航与版式执行合计 64 项通过、1 项按视口条件跳过。浏览器批次不合并为去重测试数。完整配方检查通过 8 包 / 62 份 Markdown。失败复现、截图、提交和范围限制见[报告](../../docs/node-filter-ui-2026-11-18.md)与[JSON 证据](../../docs/evidence/node-filter-ui-2026-11-18.json)。
+
+最终源码 CI 在 2026-11-18 20:24:52（Asia/Taipei）快照中，Code Quality 已 success，其余三项仍 in_progress；运行中不计为通过。本轮未安装手机或发布新版本，以下 v1.9.1 真机证据仍仅适用于 `5169e071`。Issue #436 的 OEM 路由丢失触发原因仍待受控真机证据。
 
 ## 当前 main 的并发迭代
 
