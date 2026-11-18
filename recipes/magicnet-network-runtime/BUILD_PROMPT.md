@@ -8,6 +8,8 @@
 
 ## 生命周期与所有权
 
+runtime 0.1.17 按 CON-005/CON-A08 检查 FIB 路由的流量条件。非零 `tos` / `dsfield`、无法解析的值及缺值均保持未知，不计作无条件 TUN 覆盖；明确数值零保留默认匹配。健康检查、机器 readiness 与 watchdog 共用观察器，未知清除连续缺失且零恢复，独立联网观测及既有预算保留。
+
 runtime 0.1.9 增加 CON-005/CON-A08–A09：独立观察 TUN 自动路由，以双确认、启动宽限、共享冷却和每次开机预算约束标准核心重启；Google 结果保持独立。固定 Android/KernelSU 模拟器必须主动丢失自有规则并验证真实应用流量恢复，日常回归不依赖物理手机。
 
 CON-A09 使用一次性 x86_64 AVD 的受控模拟蜂窝夹具：先验证模拟器身份、adb 控制链路并保存 Wi-Fi 启用状态，通过 Android 服务临时关闭 Wi-Fi，再有界取得连续两次相同的单 eth0 netd/RPDB/出口基线。准备完整后才注入 RPDB 丢失及移动数据关闭/开启；后者先核对唯一默认 phone/数据订阅与当前 WWAN/eth0 连接的归属，再通过 `cmd phone data` 控制。关闭后须证明用户/有效数据均关闭、当前精确连接为空、接口 DOWN、旧 netd 网络消失；仅原逐应用 UID 元数据可精确迁移到 UNREACHABLE，恢复后返回。独立延迟 enable guard 和 finally 负责失败及主机中断后的恢复；三阶段 `cellular_lifecycle` 缺失、超时或畸形均失败。恢复仍须通过路由、就绪和同应用 UID TCP 实测。finally 恢复并核对原 Wi-Fi 启用布尔值；报告缺少夹具准备或恢复证据不能通过。此场景的模拟蜂窝重连证据不覆盖 Wi-Fi 切换恢复。

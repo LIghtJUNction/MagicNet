@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.29）
+# 重建 MagicNet（配方 0.3.30）
 
 为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M78；交付可运行产品。
 
@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@e1c8d1effb1a00cdebe0cf3177381c78b2b5d12d`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@9943eb128aaef46ca3bb01f9151b49c23ac67c41`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -50,6 +50,8 @@ CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状
 connectivity 与 Wi-Fi watcher 的启动、重复启动和停止使用同一有界生命周期互斥，停止等待已进入启动流程的实例完成登记后再清理；常驻子进程不持有控制锁。已退出的 Wi-Fi watcher 可清理，活进程身份读取失败保持 unknown。
 
 TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreachable 路由覆盖时，观察结果保持 unknown，且不授权自动恢复；排除范围及被更具体 TUN 前缀覆盖的宽泛 fallback 保留。
+
+TUN 路由中的非零 `tos` / `dsfield`、无法解析的值与缺值同样保持 unknown，不能计作普通流量的完整覆盖；明确数值零继续默认匹配。健康、机器 readiness 与 watchdog 共用判断，按 runtime 0.1.17 的 CON-A08 回归验证未知不触发恢复、已有联网证据与预算保留。
 
 独立配置保存将配置、原始字节备份、验证标记与 Tailscale 密钥纳入已有文件事务，预检所有目标，并在替换失败时回滚；提交使用与校验一致的目录身份。候选与旧配置备份沿用编辑器 8 MiB 上限，有界读取，超限在任何目标写入前失败。既有提交后暂存清理错误保持明确语义，断电或 SIGKILL 的跨文件持久原子性不在该保证内。
 
