@@ -1,5 +1,13 @@
 # 实现与发行验证
 
+## 2026-11-18 热点参数与 TUN 缓存代际修复
+
+源码 [6d67ce0d](https://github.com/LIghtJUNction/magicnet-android/commit/6d67ce0df8e4dac896e58706e4af6b20f4aff833) 恢复热点查询的规范表参数，收紧曾容忍前导空格的小夹具；原构建的 fake Magisk 热点 active 断言失败得到定位，修复后源码目录模式的完整模拟流程通过。主机 iproute2 容忍两种写法，不能把此回归解释成所有 Android 设备均会断网。
+
+最终源码 [a9746751](https://github.com/LIghtJUNction/magicnet-android/commit/a97467513e5f3c9842b470112f31a961e2bc99b0) 让未过期 present/missing 缓存只属于当前单一 PID/starttime；身份更换、复用、多义或不可读投影 unknown。保留 not_required 及 paused/unknown/stale 前置语义，状态读取不改 canonical、失败计数、探测或预算，不公开进程身份。78 项源码定向测试、19 项配方检查器测试、Clippy、fmt、actionlint 与八包/62 份 Markdown 的完整配方流程通过，两个修复均有修改前失败证据。
+
+主仓 [896c8134](https://github.com/LIghtJUNction/MagicNet/commit/896c813424be189c2fee8cc906e981d1cc6f0132) 同步产品 0.3.33 / runtime 0.1.20，保留并行发布的 v1.9.1 / 10619 索引。该发布固定源码为 5169e071，本轮新提交尚未进入其安装包；本轮没有新的真机验收或发布。详见 [完整报告](../../docs/tun-generation-hotspot-gate-2026-11-18.md) 与 [JSON 证据](../../docs/evidence/tun-generation-hotspot-gate-2026-11-18.json)，CI 结果按报告快照记录。
+
 ## 2026-11-18 目的范围与排队检查恢复边界
 
 源码 [2a7dcddd](https://github.com/LIghtJUNction/magicnet-android/commit/2a7dcddd471ea80f9510b780168a152a067ca5e0) 修复无关目的网段的条件路由污染 TUN 证据，以及排队手动检查持续阻止核心退出后的后台清理。与必需范围相交的未知条件继续保留未知，手动命令自身不清理；既有锁、资源归属和恢复预算保持。两个新增回归均已先验证修改前失败，再验证修复后通过。

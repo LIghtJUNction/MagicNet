@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "title": "MagicNet hotspot observation arguments and TUN cache generation",
+  "observed_at_utc": "2026-11-18T11:30:12.228432+00:00",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "baseline": "ada4f32f90299ec4b25deb591a2eb476a0a9cd17",
+    "hotspot_fix": "6d67ce0df8e4dac896e58706e4af6b20f4aff833",
+    "commit": "a97467513e5f3c9842b470112f31a961e2bc99b0",
+    "tree": "e5accaaba9ed2d4a81743c9d7e3987be42a9fdc8"
+  },
+  "recipe": {
+    "repository": "LIghtJUNction/MagicNet",
+    "integration_commit": "896c813424be189c2fee8cc906e981d1cc6f0132",
+    "product_version": "0.3.33",
+    "network_runtime_version": "0.1.20"
+  },
+  "published_release": {
+    "version": "v1.9.1",
+    "version_code": 10619,
+    "source": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+    "published_at_utc": "2026-11-18T11:22:48Z",
+    "url": "https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1",
+    "published_by_this_iteration": false,
+    "includes_this_iteration_fixes": false
+  },
+  "regressions": [
+    {
+      "name": "hotspot_route_table_argument",
+      "baseline_ci": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44288240688",
+      "failed_gate": "Verify artifact contents / fake-magisk-smoke.sh machine hotspot active assertion",
+      "before": {
+        "production_table_argument": " 2022",
+        "strict_unit_exit_code": 101,
+        "strict_integration_exit_code": 101,
+        "strict_integration_failed": 9
+      },
+      "after": {
+        "production_table_argument": "2022",
+        "unit_group_passed": 8,
+        "integration_group_passed": 9
+      },
+      "host_control": {
+        "iproute2": "7.3.0",
+        "exit_codes": [
+          0,
+          0
+        ],
+        "stdout_equal": true,
+        "stderr_equal": true,
+        "meaning": "Host iproute2 tolerates both spellings; no claim that every Android ip implementation rejects whitespace."
+      }
+    },
+    {
+      "name": "cached_tun_status_requires_the_observed_core_generation",
+      "before": {
+        "exit_code": 101,
+        "actual": "present",
+        "expected": "unknown"
+      },
+      "after": "passed",
+      "cases": [
+        "same PID and start time",
+        "changed PID",
+        "same PID with changed start time",
+        "missing saved identity",
+        "multiple PIDs",
+        "identity read failure",
+        "not_required / paused / unknown / stale precedence"
+      ],
+      "read_only_invariants": [
+        "canonical file bytes unchanged",
+        "recovery attempts unchanged",
+        "failure counts unchanged",
+        "no new network probes",
+        "no actions",
+        "public JSON omits process identity"
+      ],
+      "machine_commands": [
+        "connectivity.status",
+        "service.status"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli network_observation::",
+      "passed": 8,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --test hotspot_observation",
+      "passed": 9,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli connectivity::tun::tests",
+      "passed": 11,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --bin magicnet-cli connectivity:: -- --skip connectivity::tun::tests",
+      "passed": 22,
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo test --locked -p magicnet-cli --test connectivity_runtime",
+      "passed": 28,
+      "exit_code": 0
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/test-check-recipes.py",
+      "passed": 19,
+      "exit_code": 0
+    }
+  ],
+  "totals": {
+    "source_tests": 78,
+    "recipe_checker_tests": 19,
+    "counted_tests": 97,
+    "new_tun_regression_functions": 4,
+    "existing_hotspot_fixtures_tightened": true,
+    "scenario_combinations_are_not_extra_test_functions": true
+  },
+  "checks": [
+    {
+      "workspace": "source",
+      "command": "cargo clippy --locked -p magicnet-cli --all-targets -- -D warnings",
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "cargo fmt --all -- --check",
+      "exit_code": 0
+    },
+    {
+      "workspace": "source",
+      "command": "bash scripts/fake-magisk-smoke.sh",
+      "exit_code": 0,
+      "seconds": 282.77,
+      "scope": "Full isolated host source-directory fixture after the hotspot argument fix, with a rebuilt CLI; no ZIP argument and no Android device."
+    },
+    {
+      "workspace": "recipe",
+      "command": "python3 scripts/check-recipes.py",
+      "exit_code": 0,
+      "packages": 8,
+      "markdown_files": 62,
+      "scope": "check, pack, archive check and complete prompt; repeated after preserving the v1.9.1 release-index commit"
+    },
+    {
+      "workspace": "recipe",
+      "command": "bash scripts/check-workflows.sh",
+      "exit_code": 0,
+      "actionlint": "1.7.12"
+    },
+    {
+      "workspace": "both",
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "setup": {
+    "config_submodule": "da3d375d024e0982265bc67c48a87de7bb4f9424",
+    "kamfw_submodule": "a7788737b938a9ed930645befe2526b626999a22"
+  },
+  "ci": {
+    "observed_at": "2026-11-18T11:30:12.228432+00:00",
+    "runs": [
+      {
+        "conclusion": "",
+        "name": "Code Quality",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729890"
+      },
+      {
+        "conclusion": "",
+        "name": "Android KernelSU Acceptance",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729877"
+      },
+      {
+        "conclusion": "",
+        "name": "Build MagicNet source",
+        "status": "in_progress",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729943"
+      },
+      {
+        "conclusion": "success",
+        "name": "Network Regression Evidence",
+        "status": "completed",
+        "url": "https://github.com/LIghtJUNction/magicnet-android/actions/runs/44293729835"
+      }
+    ]
+  },
+  "review": {
+    "code": "independent read-only review passed",
+    "recipe": "independent read-only review passed",
+    "documentation": "stale precedence clarified after review"
+  },
+  "integration": {
+    "release_index_commit_preserved": "4bbe8da8586544e4c8c1ae502610b86d95f6396f",
+    "release_index_bytes_preserved": true,
+    "existing_parallel_worktrees_preserved": true
+  },
+  "limitations": [
+    "No new physical-device acceptance, installation or release by this iteration.",
+    "Source-directory fake Magisk coverage does not substitute for a new production ZIP or Android gate.",
+    "Only completed successful CI jobs count as passing.",
+    "Issue #436 OEM-specific route disappearance still needs controlled device evidence."
+  ]
+}
