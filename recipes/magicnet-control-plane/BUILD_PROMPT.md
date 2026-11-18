@@ -10,11 +10,7 @@ control 0.2.3 增加 C-SUB-008：公共 sub.status、私密 sub.inspect、canoni
 
 ## 人类入口
 
-control 0.2.5 增加只读 `connectivity.status`，并在 `service.status` 内提供同一缓存。`support bundle` 提供完整脱敏报告；`support export` 是显式文件导出例外，机器写语义、并发/失败与字节/时间上限遵守 DIAGNOSTIC_CONTRACT.md。读取和采集不探测外网、不 reconcile、不自愈；自动恢复由 runtime 的单一 producer 负责。
-
-control 0.2.6 要求诊断保留后台监督启动超时与 connectivity watchdog 创建失败的日志。最多八个固定日志各有尾读限制；Android 上用真实 CLI 校验 export envelope、固定下载路径、回执/设备文件/拉取文件大小、必要章节和结束标记，不能只凭宿主替身成功推断设备导出可用。DIAG-A07还要求解析实际文件中的服务、透明代理与DNS机器状态，按字段脱敏且保留公共状态、数值、布尔/null及真实事务阶段；采集使用支持的纯只读入口，不能因私密URL吞掉整个JSON或因错误命令制造故障。
-
-同版本DIAG-A08要求独立的HTTPS执行器章节：仅用有界版本查询和固定来源文件记录工具版本、TLS/HTTPS/gzip能力及公开构建摘要。缺失、不可执行、损坏来源明确标记，未知字段和私密字符串仍脱敏；不得为证明能力而从诊断导出发起网络请求。探测工具不可用应保留本地原因，不能归因为上游断网。
+connectivity.status 与 service.status 共用缓存观测；support bundle/export 按 DIAGNOSTIC_CONTRACT.md 的 DIAG-A01–A08 执行有界、脱敏、原子导出及机器回执。保留启动失败日志、固定 HTTPS 执行器来源、必要章节与完整性，分别验证主机和 Android 的真实文件。普通读取和采集不探测公网、不 reconcile、不自愈；自动恢复由 runtime 的单一 producer 负责。
 
 保留 CLI_REFERENCE.md 的命令族与参数。`api select` 缺 group/node 返回用法错误，不触发节点选择或写 selector 意图；`service toggle sing-box` 仅据已确认的 running/stopped 决定启停，unknown 报错并保留 watchdog 意图。help 可读；错误非零退出；日志保留原语种/token。health 与 transparent status 是诊断入口，不存在 cli ebpf status。
 Android 模块根必须由可信可执行路径/固定安装位置确定，不能由调用者 MODDIR 重定向特权代码。宿主夹具可显式使用独立 MODDIR；本地 API 仅允许 loopback HTTP 端口，拒绝远端/userinfo/路径混入。
@@ -25,6 +21,8 @@ privileged 子进程不能执行任意拼接 shell；文件 payload 有界、私
 任意位置出现 --json 都由机器 dispatcher 完整接管；恰好一个 flag，未支持命令给结构化错误，禁止回落成人类写路径。stdout 只有一个 JSON，诊断 stderr；错误保留非零退出。
 capabilities 是实际命令/字段能力事实源；status 默认脱敏，inspect 明确私密且用户主动调用。generic MCP 文件读取不得绕过 named inspect：应用 UID/包名、selector/node 名、路由/屏蔽域名清单、block.conf、proxy-chain.json、dns-leak-guard 接口名和 network-access recovery journal 走拒绝或显式私密工具。generic `magicnet_cli` 还拒绝人类 warp/node/route/block 默认清单；named `magicnet_node_list` / `magicnet_node_current` / `magicnet_block_list` 仍是显式路径。显式设计的 override、module-update、network-access 写例外必须保留各自并发、幂等、确认和回滚。
 配置值与运行值用 configured/effective；null/unknown 不等同于 false/stopped/success。有效配置缺失、损坏或重复透明入站时 effective 为 unknown，不回退 configured；事务目录存在但 phase 缺失、空或不可读时为 unknown。机器快照与 canonical 共用判断；普通失败路径的收尾观测发布不表示执行成功。状态读取不应偷偷发布 canonical 或更改用户意图。
+
+service.status 的本地面板增量以 MACHINE_CONTRACT.md 为准：local_zashboard_readiness 声明 api.webui_ready，固定入口文件元数据与独立 api.ready/数据面/进程状态分别报告。人类 webui status 共用观测；不新增命令、状态域、下载或运行依赖。旧 CLI 缺字段按 webui 合同兼容，不能补造成功。
 
 ## 运行资源
 

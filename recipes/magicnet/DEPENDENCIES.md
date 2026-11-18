@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.28 | 产品集成、M01–M77 与完整验收 |
-| magicnet-control-plane | 0.2.12 | CLI/JSON/MCP、文件状态、订阅观察与单文件诊断 |
+| magicnet | 0.3.29 | 产品集成、M01–M78 与完整验收 |
+| magicnet-control-plane | 0.2.13 | CLI/JSON/MCP、文件状态、本地面板就绪与诊断 |
 | magicnet-network-runtime | 0.1.16 | 订阅事务、生命周期、退出后清理与低频联网检查 |
-| magicnet-web-console | 0.2.10 | 日常直达导航、分层概览、订阅草稿与诊断 |
+| magicnet-web-console | 0.2.11 | 本地 Zashboard 入口、日常导航、订阅草稿与诊断 |
 | magicnet-packet-engine | 0.2.4 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.13 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -19,21 +19,19 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
-0.3.28 在保留 webui 0.2.10 日常界面的基础上同步 runtime 0.1.16、control 0.2.12、packet-engine 0.2.4 和 delivery 0.2.13。运行时依赖核心可选的严格 HTTPS 探测，模块构建明确加入 with_lx_probe；CLI 必须检查严格能力标记和 HTTP 204，不接受旧延迟接口的成功作为替代。选择器持久化错误、候选切换补偿、人工即时检查与独立 mixed 观测属于同一闭包，不能只交付其中一层。正式源码固定点、构建工作流与 core revision 必须一起同步。
-
-0.3.27 的已保留基线是 webui 0.2.10 与 runtime 0.1.15 合同：前者定义四项日常直达、更多十页和概览折叠层级，后者定义退出后经既有配置锁复核的自有网络清理。不能只更新界面说明却继续交付旧导航，也不能用 paused 状态代替资源清理。核心退出清理复用既有生命周期 helper、锁与 ownership，不新增常驻进程或运行库。0.3.28 的机器增量按 control 0.2.12 执行；pack 的 LOCK 摘要须反映当前完整闭包。
+本轮仅提升产品、control 与 webui 配方版本。local_zashboard_readiness 与 api.webui_ready 属于只读接口增量；新鲜快照、旧 CLI verify、同源 /ui/ 地址和共享 busy 按 webui 合同集成。运行时的严格探测、with_lx_probe、有界恢复与退出清理保持原合同；不新增运行库、状态域或机器写命令。正式源码、构建 workflow pin 与配方固定点须同步，pack 的 LOCK 包含完整闭包。
 
 本轮 API 正文预算与路由归一化复用现有原生 loopback HTTP、可信 curl 和构建期归一化工具，无新增运行库、常驻服务、机器命令或能力标记。规则集定义、出口、DNS server 和 selector 依赖集合保持；M71 的正文预算、规则结构与设备网络测量分别验收。
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `a25eb7cb8eb2697ec140e3a5877c9cfe4ccf392b`，tree `c51a058235ec81f077468cc61f060bbdee7a83b9`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；本轮当前代理严格检查、选择补偿和界面验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `e1c8d1effb1a00cdebe0cf3177381c78b2b5d12d`，tree `6045ad11bbf610f2945b52ab9c1b2f2ddcff9097`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
 11-16 调优以 `b6f3a37fb5d035105917f844a6a23bb499bc1a61` 为对照，实施提交 `be00fa78f2e26a4d6998eb64e181de4028056aff` 保留 API 正文预算与路由归一化修复；当前固定提交同时保存可复现基准和完整脱敏证据。Android 开发手机仅替换 CLI 并保留经过四阶段短测的 gc_percent=50 覆盖，全局默认和现有依赖固定值保持。实测与范围见 [PERFORMANCE.md](PERFORMANCE.md)。
 
-源码 checkout 的旧 metadata 为 v1.8.5 / 10613；主仓库正式发布计划统一生成版本快照，不能据此回退稳定发行。当前公开稳定包为 v1.8.9 / 10617，[正式发布运行 43936244947](https://github.com/LIghtJUNction/MagicNet/actions/runs/43936244947) 已完整成功；根 `update.json`、Releases 与三语 README 已回读一致。公开安装包及组件内容的实物核验见 [维护验收记录](../../docs/maintenance-2026-11-17.md)。
+源码基线版本由正式发布计划统一覆盖；当前公开稳定版本、versionCode 和下载入口以根 update.json 为准，源码基线不能回退已发布版本。历史发布与实物验收结果见 VERIFICATION.md。
 
 | 源码子模块 | 固定提交 |
 | --- | --- |

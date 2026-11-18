@@ -39,3 +39,11 @@
 | C-CON-001 | 人类 connectivity check；普通/机器 status、health、MCP、诊断；未知 --json check | 显式 check 取得新结果且保留恢复预算；10 秒节流、queued/throttled 错误真实；人工 check 零恢复，其他读取零公网请求，未设计机器写命令结构化拒绝 |
 | C-CON-002 | selected 出站失败而 mixed 成功及反向对照；旧核心、畸形响应、严格失败、0 ms 成功 | selected_proxy 与 mixed_proxy 各自准确，缺标记 unknown/probe_unsupported，真实 204 与合法 0 ms 被正确识别；mixed 失败保持 degraded；机器与人类输出一致并脱敏 |
 | C-CON-003 | 选择保存失败、运行时 PUT/读回失败、外部新选择、原保存项缺省 | 保存失败非零且零 PUT；后续失败补偿原运行与保存值，缺省保持缺省；冲突报告 rollback_conflict 且不覆盖新选择，不宣称多组瞬时原子 |
+
+## 本地面板资源
+
+| ID | 场景 | 必须观察到的结果 |
+| --- | --- | --- |
+| C-UI-001 | 固定入口缺失、目录、文件、删除及元数据失败 | api.webui_ready 如实返回 boolean，人类 local_ready 共用判断；不读正文、不建状态/目录、不启动或下载 |
+| C-UI-002 | 核心停止但文件存在；API ready 但文件缺失；服务与资源齐全 | 文件、API、进程、dataplane/overall 分别准确，面板信号不改变原服务合成或联网结论 |
+| C-UI-003 | capabilities、私密 canary、旧 CLI 缺字段 | 声明 local_zashboard_readiness，命令目录不变；入口正文/canary 不进入公共结果，旧字段缺省可识别 |

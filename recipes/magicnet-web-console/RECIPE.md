@@ -5,20 +5,14 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.10"
+version = "0.2.11"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
 
-0.2.10 将概览、节点、订阅、应用设为日常直达，其余十页放入更多；概览将运行证据和高级设置分为默认折叠的运行详情与网络设置。保留 14 页、三语、原地址、草稿、危险确认和全部真实状态；概览不重复展示流量路径。导航、层级与验收要求见 DESIGN、BUILD_PROMPT 和 ACCEPTANCE 第 20、31、34–35 项。
+交付保留 14 页、三语、浅深主题与现有设备操作的移动界面。当前流程见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，视觉规范见 [DESIGN.md](DESIGN.md)，订阅合同见 [SUBSCRIPTION_FLOW.md](SUBSCRIPTION_FLOW.md)，全部验收见 [ACCEPTANCE.md](ACCEPTANCE.md)。
 
-0.2.9 按选中协议提交有效认证字段，编辑 URL-test 成员时保留已有测速地址与间隔；新建组沿用默认值，提交载荷仍走私密通道。
+0.2.11 将本机 Zashboard 提升为概览主操作，并在管理面板和宽屏顶栏提供同一入口；新鲜机器快照、同源 loopback 地址、setup 参数、旧 CLI 校验和共享 busy 构成完整打开流程。安装与校验等维护细节默认折叠。
 
-0.2.8 增加 UI-SUB-013：接受 HTTP/HTTPS 来源语法，所有来源由设备后端执行同一授权；界面不自动创建信任，拒绝时保留草稿、有效配置与任务所有权。流量路径的名称、状态和说明在 320px 俄语界面中完整换行，不越出各自节点；继续遵守 0.2.7 的克制视觉、可访问性和真实状态合同。复用既有接口与依赖。
-
-0.2.7 以统一的中性色、蓝色操作、留白和静态路径组织全部页面。普通分区去除卡片堆叠，标题减少重复，Logo 返回概览；删除模型署名与装饰性无限动效。视觉合同与验收见 DESIGN.md、BUILD_PROMPT.md 和 ACCEPTANCE.md。
-
-保留基于有效快照的首页下一步、空设备引导、订阅草稿与写入就绪检查、有界私密读取、异步 ownership 收尾、缓存连通性和诊断导出。界面复用既有控制面合同、组件与依赖，设备持久化字段不变。
-
-配方版本与被观察软件版本分开管理；初始来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。本次从 magicnet-android 的 v1.8.0 基线 `0dca28dd984d82333707cbf4b222596934b4d847` 提取订阅编辑、私密载荷、后台完成确认及来源用量行为，并加入 #426 的多来源重建验收；详见 SUBSCRIPTION_FLOW.md。后续未发行源码修复提交为 `ed01282e8ee4bcfc27ce5f95f37723c34aebf745`，未做浏览器/设备验收或 Android 发布。实现源码不属于本包。
+配方不含实现源码，版本与 Android 软件版本独立。来源与历史由根包 PROVENANCE 统一记录；函数夹具、浏览器截图、Android WebView 和设备实测分别记入 VERIFICATION。

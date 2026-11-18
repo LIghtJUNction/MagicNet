@@ -6,6 +6,12 @@ service.status 分开报告受控进程 running/stopped/unknown、API.ready、re
 tun 核对 sysfs magicnet0，并在 auto_route 启用时按有效配置读取必要 RPDB/FIB 证据，未知不当 ready；ebpf 刷新活动程序并检查当前进程的 cgroup/TC attachment，不拿能力探测冒充实际挂载。
 hybrid 无下游时 local 可 ready，shared_tc=pending、shared_ready=false；配置了下游则必须全部验证。shared-only 缺下游不能 ready。local/shared 信号未知用 null，旧版本能力未协商不猜测。
 
+## 本地 Zashboard 资源
+
+features 新增 local_zashboard_readiness，service.status.data.api 新增 webui_ready:boolean；固定 .config/sing-box/zashboard/index.html 的文件元数据表明为文件时 true，缺失、非文件或元数据错误时 false。人类 webui status 的 local_ready 共用判断。不读取正文、不创建 .state/父目录、不启动服务或下载。
+
+api.ready、dataplane、overall、lifecycle 的原语义保持：核心停止但文件存在可为 true，API 正常但文件缺失为 false；该信号不表示面板完整性或公网连通性。旧 CLI 字段缺省由 webui 的只读校验回退处理。保留 schema=1、命令目录与披露边界，不返回入口正文、凭据或设备身份。
+
 ## 0.2.5 增量：联网与诊断
 
 `connectivity.status` 以及 `service.status.data.connectivity` 返回同一缓存观测，状态为 unknown/pending/online/degraded/offline/paused/stale；`target` 固定 Google HTTPS 204 端点，`path=selected_proxy`；`mixed_path=mixed_proxy` 独立说明 mixed 数据面。字段含 reason/primary_reason、warning、checked_at/next_check_at/retry_in_seconds、失败/探测计数、退避、HTTP/延迟、辅助结果和最近动作。未知数值为 null；用户停止后 paused，不借 PID 或辅助成功声称 Google 在线。读取零写入、零外网探测。

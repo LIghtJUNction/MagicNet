@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.28"
+version = "0.3.29"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -23,18 +23,8 @@ source = "../magicnet-module-delivery"
 source = "../software-quality"
 ~~~
 
-0.3.28 增加 M75–M77：当前所选代理的双 HTTPS 204 严格探测、与 mixed 数据面分开的观测，以及最多三个同组已有真实代理候选的有界恢复。候选验证后切换并保存，运行态复验失败则补偿回滚；人类 cli connectivity check 显式重测但保留恢复预算。已有 v1.9.0 导航、概览和核心退出清理合同继续生效。
+[BUILD_PROMPT.md](BUILD_PROMPT.md) 定义产品， [ACCEPTANCE.md](ACCEPTANCE.md) 定义 M01–M78。四个直接依赖组成八包 Markdown 闭包，源码和二进制不进入配方。
 
-本包描述完整 Android root 网络工作台；行为与 M01–M77 验收分别见 [BUILD_PROMPT.md](BUILD_PROMPT.md) 和 [ACCEPTANCE.md](ACCEPTANCE.md)。四个直接依赖递归组成八包，源码和二进制不进入 Markdown 配方负载。
+0.3.29 同步 webui 0.2.11 与 control 0.2.13：显眼的本机 Zashboard 入口，点击时检查新鲜 API/本地资源状态，保留 setup 参数，兼容旧 CLI 并共享忙碌门控。已有严格联网探测、有界恢复、日常导航和退出清理继续按所属合同执行。
 
-配方版本与 Android 软件版本独立。当前依赖、源码固定点见 [DEPENDENCIES.md](DEPENDENCIES.md)；已发布安装物以根 `update.json` 为准，实际验证与未完成范围见 [VERIFICATION.md](VERIFICATION.md)。runtime 0.1.16、control 0.2.12、engine 0.2.4、webui 0.2.10 与 delivery 0.2.13 共同定义当前代理与数据面观测、有界节点恢复、日常操作、TUN 恢复和正式发行证据门禁。
-
-0.3.27 增加 M73–M74：四项日常直达与更多导航、默认折叠的概览技术信息，以及核心退出后在既有锁内清理自有网络资源。保留全部页面、三语、配置意图、schema=1 和运行依赖；候选实现与正式发行的实际结果分别记录。
-
-0.3.26 增加 M72：同步固定 fork、规则与兼容依赖，修复草稿定位和 HTTPS 输入下载，保留文本诊断行为；实际测试和正式发行身份按 VERIFICATION 记录。
-
-0.3.25 增加 M70：watcher 并发启停、退出状态、TUN 冲突观察、配置事务、协议编辑保真与卸载重试。复用现有锁、状态和事务，保持运行依赖与正式发行版本边界。
-
-0.3.24 同步可信本地订阅授权、分流规则稳定插入、链路本地 mDNS 与固定规则资产，并保留简约 WebUI 和窄屏翻译边界。继续遵守 M66 和 runtime CON-A09 的网络重编号验证、完整 selectors 与重复次数核对。
-
-初始观察来源为 MagicNet v1.7.2（`96993ea5c851b8d51cc562c3ca0766a2ca571210`）。来源归属和迭代历史保留于 [PROVENANCE.md](PROVENANCE.md)；旧版本说明可查[精简前的固定记录](https://github.com/LIghtJUNction/MagicNet/blob/26c8d0374ce3eecfdf457eee9f3ba14ed744242a/recipes/magicnet/RECIPE.md)。
+配方版本与 Android 软件版本独立。[DEPENDENCIES.md](DEPENDENCIES.md) 记录当前闭包与源码固定点，根 update.json 记录已发布安装物；实际结果见 [VERIFICATION.md](VERIFICATION.md)，来源与历史见 [PROVENANCE.md](PROVENANCE.md)。配方收录不表示已构建、已安装或已通过设备验收。
