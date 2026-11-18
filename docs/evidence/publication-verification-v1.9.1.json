@@ -1,0 +1,150 @@
+{
+  "verified_at": "2026-11-18T11:30:47.282032+00:00",
+  "verified": true,
+  "release": {
+    "id": 449883136,
+    "url": "https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1",
+    "tag": "v1.9.1",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-18T11:22:48Z"
+  },
+  "public_download": {
+    "downloaded_at": "2026-11-18T11:29:40.693378+00:00",
+    "authenticated_request": false,
+    "downloads": [
+      {
+        "name": "SHA256SUMS",
+        "url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.1/SHA256SUMS",
+        "http": "200 2394",
+        "size": 2394,
+        "sha256": "8f839de5cde4911c9c8e1c7d3bd11618d0cb9c7dd90822f5b1f12aa318741341",
+        "github_size_match": true,
+        "github_digest_match": true
+      },
+      {
+        "name": "build-source.json",
+        "url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.1/build-source.json",
+        "http": "200 287",
+        "size": 287,
+        "sha256": "729d5d9389726ed51f599503f9bea3bebbd0169fd83eb609f18f17cd0d778773",
+        "github_size_match": true,
+        "github_digest_match": true
+      },
+      {
+        "name": "MagicNet-full.zip",
+        "url": "https://github.com/LIghtJUNction/MagicNet/releases/download/v1.9.1/MagicNet-full.zip",
+        "http": "200 61429074",
+        "size": 61429074,
+        "sha256": "a3a6fae7c3959bdd40cbec8abd554337d289fbeca4da15c816dba48b76e6120a",
+        "github_size_match": true,
+        "github_digest_match": true
+      }
+    ]
+  },
+  "manifest": {
+    "schema": 1,
+    "repository": "LIghtJUNction/MagicNet",
+    "source_repository": "LIghtJUNction/magicnet-android",
+    "source_sha": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+    "version": "v1.9.1",
+    "version_code": "10619",
+    "recipe_sha": "d9f6f1546f519d1b1ccbe4ba505936506ff3a9ab"
+  },
+  "asset_checks": [
+    {
+      "name": "SHA256SUMS",
+      "bytes": 2394,
+      "sha256": "8f839de5cde4911c9c8e1c7d3bd11618d0cb9c7dd90822f5b1f12aa318741341",
+      "github_asset_match": true,
+      "sha256sums_match": null
+    },
+    {
+      "name": "build-source.json",
+      "bytes": 287,
+      "sha256": "729d5d9389726ed51f599503f9bea3bebbd0169fd83eb609f18f17cd0d778773",
+      "github_asset_match": true,
+      "sha256sums_match": true
+    },
+    {
+      "name": "MagicNet-full.zip",
+      "bytes": 61429074,
+      "sha256": "a3a6fae7c3959bdd40cbec8abd554337d289fbeca4da15c816dba48b76e6120a",
+      "github_asset_match": true,
+      "sha256sums_match": true
+    }
+  ],
+  "archive": {
+    "crc_ok": true,
+    "files": 364,
+    "directories": 0,
+    "duplicate_members": false,
+    "module_path": "module.prop",
+    "module": {
+      "id": "MagicNet",
+      "name": "MagicNet",
+      "version": "v1.9.1",
+      "versionCode": "10619",
+      "author": "LIghtJUNction",
+      "description": "[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM.",
+      "updateJson": "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
+    },
+    "identity_files": [
+      "licenses/curl/build-provenance.json"
+    ]
+  },
+  "binaries": {
+    "magicnet-cli": {
+      "path": "bin/magicnet-cli",
+      "bytes": 2253528,
+      "sha256": "3773fdd52e860e71c2fef591e0eff76226c58f17c0c1d927f5f2a4a9a37f15ea",
+      "elf_class": 2,
+      "elf_machine": 183,
+      "local_candidate": {
+        "path": "bin/magicnet-cli",
+        "bytes": 2256304,
+        "sha256": "22f221505a85cde22c49a9d4e6d5b993bb72c0bf8ddbc2f72d792072850e583f",
+        "elf_class": 2,
+        "elf_machine": 183
+      },
+      "matches_local_candidate": false
+    },
+    "sing-box": {
+      "path": "bin/sing-box",
+      "bytes": 88539396,
+      "sha256": "ffb8c986e4e23365bdeb6fbea4ab5c04c121e6d509c035fe89ce8ffd17cc8b40",
+      "elf_class": 2,
+      "elf_machine": 183,
+      "local_candidate": {
+        "path": "bin/sing-box",
+        "bytes": 85721346,
+        "sha256": "1eb3dae71a8b1cabdb40bb06693886088f5827c3b98351bfedc97c730aa2995d",
+        "elf_class": 2,
+        "elf_machine": 183
+      },
+      "matches_local_candidate": false
+    }
+  },
+  "notes": [
+    "The official recipe snapshot is the immutable release target, distinct from base main 6b5524d3a64cbcaa13d8a383075d7eeaa32a22a2.",
+    "Different local candidate binary hashes are recorded, not treated as a bitwise reproducibility guarantee. No installation or regression tests were run."
+  ],
+  "git_evidence": {
+    "provider": "GitHub plugin public GET",
+    "recipe_snapshot": {
+      "sha": "d9f6f1546f519d1b1ccbe4ba505936506ff3a9ab",
+      "tree_sha": "df0b3e85ab487189595e61d654edbf961559b0b0",
+      "parent": "6b5524d3a64cbcaa13d8a383075d7eeaa32a22a2",
+      "url": "https://github.com/LIghtJUNction/MagicNet/commit/d9f6f1546f519d1b1ccbe4ba505936506ff3a9ab",
+      "message": "chore(release): prepare v1.9.1 (run 44281871820)"
+    },
+    "source": {
+      "sha": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+      "tree_sha": "1e10419dc9431ba60a68fd11c888c92222161df9",
+      "parent": "9943eb128aaef46ca3bb01f9151b49c23ac67c41",
+      "url": "https://github.com/LIghtJUNction/magicnet-android/commit/5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+      "message": "fix(webui): keep Zashboard visible in landscape and align subscription regression tests\n\nPreserve the named first-screen dashboard action at every supported viewport and retain draft, save, and recovery assertions after the exclusion-label update.\n\nRefs LIghtJUNction/MagicNet#457"
+    }
+  },
+  "temporary_files_remaining": []
+}

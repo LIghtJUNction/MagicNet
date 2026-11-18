@@ -1,0 +1,814 @@
+{
+  "schema": 1,
+  "source_sha": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+  "scope": "one ARM64 phone; local acceptance build, distinct from official release binaries",
+  "install": {
+    "started": "2026-11-18T10:16:40.755458+00:00",
+    "old_version": "v1.8.9",
+    "version": "v1.9.1",
+    "versionCode": 10619,
+    "artifact_sha256": "975f931d40704bcb1599fe2abaaeaa46bc573dfe548c764d712b6fdbe1078526",
+    "source_sha": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+    "artifact_kind": "local_acceptance_candidate",
+    "private_backup_created": true,
+    "install_exit": 0,
+    "install_seconds": 63.32,
+    "staged_version": "v1.9.1",
+    "staged_code": "10619",
+    "reboot_pending": true
+  },
+  "post_reboot": {
+    "time": "2026-11-18T10:21:52.359905+00:00",
+    "installed": {
+      "id": "MagicNet",
+      "version": "v1.9.1",
+      "versionCode": "10619"
+    },
+    "uptime_seconds": 196.75,
+    "boot_completed": "1",
+    "backup_archive_valid": true,
+    "backup_verified_entries": 542,
+    "binary_matches": {
+      "bin/magicnet-cli": true,
+      "bin/sing-box": true
+    },
+    "service": {
+      "api": {
+        "ready": true,
+        "webui_ready": true
+      },
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      },
+      "connectivity": {
+        "checked_at": 1794997280,
+        "latency_ms": 1835,
+        "mixed_reason": "ok",
+        "mixed_status": "online",
+        "path": "selected_proxy",
+        "reason": "ok",
+        "status": "online",
+        "tun_auto_route": {
+          "checked_at": 1794997278,
+          "consecutive_failures": 0,
+          "last_recovery_at": null,
+          "next_check_at": 1794997338,
+          "recovery_attempts": 0,
+          "recovery_limit": 3,
+          "recovery_status": "none",
+          "retry_in_seconds": 25,
+          "status": "present",
+          "warning": false
+        }
+      }
+    },
+    "features": [
+      "versioned_envelope",
+      "structured_errors",
+      "redacted_status",
+      "configured_effective_split",
+      "native_tun_stack",
+      "privacy_safe_network_identifiers",
+      "readiness_signals",
+      "local_zashboard_readiness",
+      "transparent_plane_readiness",
+      "dns_capture_preflight",
+      "low_frequency_connectivity",
+      "strict_selected_proxy_probe",
+      "bounded_selector_failover",
+      "manual_connectivity_check",
+      "bounded_tun_auto_route_recovery",
+      "additive_routing_overlay"
+    ]
+  },
+  "preservation_and_initial_probes": {
+    "time": "2026-11-18T10:24:02.969372+00:00",
+    "selection_preserved": true,
+    "candidate_count": 15,
+    "settings_preserved": {
+      "subscription.url": true,
+      "subscription-filter.list": true
+    },
+    "app_uid_tun_policy": {
+      "included": true,
+      "excluded": false
+    },
+    "ordinary_app_uid_verified": true,
+    "probes": [
+      {
+        "target": "google",
+        "exit": 0,
+        "http_status": 204,
+        "seconds": 0.426824
+      },
+      {
+        "target": "cloudflare",
+        "exit": 28,
+        "http_status": 0,
+        "seconds": 4.002625
+      }
+    ],
+    "initial_network": {
+      "wifi_on": "0",
+      "mobile_data": "1"
+    },
+    "default_route": {
+      "types": [
+        "selector",
+        "selector",
+        "vmess"
+      ],
+      "via_proxy_group": true
+    }
+  },
+  "initial_probe_followup": {
+    "time": "2026-11-18T10:26:30.313133+00:00",
+    "default_route_class": {
+      "types": [
+        "selector",
+        "selector",
+        "vmess"
+      ],
+      "via_proxy_group": true
+    },
+    "matching_exact_app_uid_rules": [],
+    "application_probe_retry": [
+      {
+        "family": "default",
+        "exit": 0,
+        "http_status": 204,
+        "seconds": 0.949634
+      },
+      {
+        "family": "ipv4",
+        "exit": 0,
+        "http_status": 204,
+        "seconds": 0.839004
+      }
+    ],
+    "manual_check_exit": 0,
+    "fresh_connectivity": {
+      "checked_at": 1794997594,
+      "latency_ms": 567,
+      "mixed_reason": "ok",
+      "mixed_status": "online",
+      "path": "selected_proxy",
+      "reason": "ok",
+      "status": "online",
+      "tun_auto_route": {
+        "checked_at": 1794997582,
+        "consecutive_failures": 0,
+        "last_recovery_at": null,
+        "next_check_at": 1794997642,
+        "recovery_attempts": 0,
+        "recovery_limit": 3,
+        "recovery_status": "none",
+        "retry_in_seconds": 48,
+        "status": "present",
+        "warning": false
+      }
+    }
+  },
+  "zashboard": {
+    "physical_click": {
+      "method": "physical_adb_tap",
+      "dashboard_button_guard_passed": true,
+      "chrome_foreground": true,
+      "loopback_address_visible": true,
+      "public_labels": [
+        "代理",
+        "日志",
+        "规则",
+        "设置",
+        "连接"
+      ],
+      "webview_count": 1
+    },
+    "setup": {
+      "dashboard_setup_intent_seen": true,
+      "dashboard_labels": [
+        "代理",
+        "日志",
+        "规则",
+        "设置",
+        "连接"
+      ],
+      "numeric_traffic_readings": [
+        "0 B/s"
+      ]
+    },
+    "rendered_api": {
+      "chrome_foreground": true,
+      "local_api_get_exit": 0,
+      "private_node_count": 12,
+      "rendered_private_node_matches": 3,
+      "public_zashboard_nav_present": true
+    }
+  },
+  "navigation": {
+    "source_sha": "5169e07155a47d16f3c5e610a8aa368cc2d08b02",
+    "method": "actual_phone_webview_via_adb",
+    "viewport": {
+      "width": 354,
+      "height": 736
+    },
+    "pages": [
+      {
+        "page": "流量路径",
+        "fatalPageError": false,
+        "headings": [
+          "流量路径"
+        ],
+        "horizontalOverflow": false,
+        "title": "流量路径 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "拦截规则"
+        ],
+        "horizontalOverflow": false,
+        "page": "拦截规则",
+        "title": "拦截规则 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "链式代理"
+        ],
+        "horizontalOverflow": false,
+        "page": "链式代理",
+        "title": "链式代理 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "Tailscale"
+        ],
+        "horizontalOverflow": false,
+        "page": "Tailscale",
+        "title": "Tailscale · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "配置文件"
+        ],
+        "horizontalOverflow": false,
+        "page": "配置文件",
+        "title": "配置文件 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "Zashboard"
+        ],
+        "horizontalOverflow": false,
+        "page": "管理面板",
+        "title": "管理面板 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "诊断"
+        ],
+        "horizontalOverflow": false,
+        "page": "健康检查",
+        "title": "健康检查 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "终端"
+        ],
+        "horizontalOverflow": false,
+        "page": "终端",
+        "title": "终端 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "工具"
+        ],
+        "horizontalOverflow": false,
+        "page": "工具",
+        "title": "工具 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "最近输出"
+        ],
+        "horizontalOverflow": false,
+        "page": "最近输出",
+        "title": "最近输出 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "节点与代理组"
+        ],
+        "horizontalOverflow": false,
+        "page": "节点",
+        "title": "节点与代理组 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "订阅"
+        ],
+        "horizontalOverflow": false,
+        "page": "订阅",
+        "title": "订阅 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "应用名单"
+        ],
+        "horizontalOverflow": false,
+        "page": "应用",
+        "title": "应用 · MagicNet",
+        "top": 0
+      },
+      {
+        "fatalPageError": false,
+        "headings": [
+          "网络已连接"
+        ],
+        "horizontalOverflow": false,
+        "page": "概览",
+        "title": "概览 · MagicNet",
+        "top": 0
+      }
+    ]
+  },
+  "cellular_reconnect": {
+    "initial_baseline_aborted": {
+      "started": "2026-11-18T11:23:14.566937+00:00",
+      "experiment": "cellular_data_off_10_seconds_then_restore",
+      "observation_seconds": 180,
+      "samples": [],
+      "outcome": "needs_review",
+      "initial_settings": {
+        "wifi_on": "0",
+        "mobile_data": "1"
+      },
+      "manual_baseline_exit": 0,
+      "baseline": {
+        "api_ready": true,
+        "webui_ready": true,
+        "dataplane_ready": true,
+        "overall_ready": true,
+        "proxy_status": "online",
+        "mixed_status": "online",
+        "checked_at": 1795000999,
+        "tun_status": "present",
+        "tun_checked_at": 1795000974,
+        "recovery_attempts": 0,
+        "recovery_status": "none",
+        "consecutive_failures": 0
+      },
+      "baseline_app_probes": [
+        {
+          "target": "google",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001848
+        },
+        {
+          "target": "cloudflare",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001595
+        }
+      ],
+      "error_type": "AssertionError",
+      "error": "Application baseline incomplete",
+      "finished": "2026-11-18T11:23:19.520119+00:00"
+    },
+    "second_baseline_aborted": {
+      "started": "2026-11-18T11:34:10.476681+00:00",
+      "experiment": "cellular_data_off_10_seconds_then_restore",
+      "observation_seconds": 180,
+      "samples": [],
+      "outcome": "needs_review",
+      "initial_settings": {
+        "wifi_on": "0",
+        "mobile_data": "1"
+      },
+      "manual_baseline_exit": 0,
+      "baseline": {
+        "api_ready": true,
+        "webui_ready": true,
+        "dataplane_ready": true,
+        "overall_ready": true,
+        "proxy_status": "online",
+        "mixed_status": "online",
+        "checked_at": 1795001657,
+        "tun_status": "present",
+        "tun_checked_at": 1795001639,
+        "recovery_attempts": 0,
+        "recovery_status": "none",
+        "consecutive_failures": 0
+      },
+      "baseline_app_probes": [
+        {
+          "target": "google",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.003634
+        },
+        {
+          "target": "cloudflare",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001648
+        }
+      ],
+      "error_type": "AssertionError",
+      "error": "Application baseline incomplete",
+      "finished": "2026-11-18T11:34:17.347425+00:00"
+    },
+    "identity_comparison": {
+      "time": "2026-11-18T11:36:03.317585+00:00",
+      "actual_chrome_uid_matches_package": true,
+      "actual_chrome_has_inet_group": true,
+      "plain_su_has_inet_group": false,
+      "tests": [
+        {
+          "target": "google",
+          "identity": "uid_only",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001634,
+          "stderr": "curl: (6) Could not resolve host: www.gstatic.com"
+        },
+        {
+          "target": "google",
+          "identity": "uid_with_actual_inet_group",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001674,
+          "stderr": "curl: (6) Could not resolve host: www.gstatic.com"
+        },
+        {
+          "target": "cloudflare",
+          "identity": "uid_only",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.003903,
+          "stderr": "curl: (6) Could not resolve host: cp.cloudflare.com"
+        },
+        {
+          "target": "cloudflare",
+          "identity": "uid_with_actual_inet_group",
+          "exit": 6,
+          "http_status": 0,
+          "seconds": 0.001715,
+          "stderr": "curl: (6) Could not resolve host: cp.cloudflare.com"
+        }
+      ]
+    },
+    "foreground_comparison": {
+      "time": "2026-11-18T11:37:25.049143+00:00",
+      "chrome_foreground_verified": true,
+      "root_target_requests_used": false,
+      "probes": [
+        {
+          "target": "google",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 0.306569,
+          "stderr": ""
+        },
+        {
+          "target": "cloudflare",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 0.434125,
+          "stderr": ""
+        }
+      ]
+    },
+    "experiment": {
+      "started": "2026-11-18T11:38:28.100800+00:00",
+      "experiment": "cellular_data_off_10_seconds_then_restore",
+      "observation_seconds": 180,
+      "samples": [
+        {
+          "elapsed_seconds": 0,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001882,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 15,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001882,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 30,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001943,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 45,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001943,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 60,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001943,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 75,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795001943,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 90,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002003,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 105,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002003,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 120,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002003,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 135,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002003,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 150,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002064,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 165,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002064,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        },
+        {
+          "elapsed_seconds": 180,
+          "api_ready": true,
+          "webui_ready": true,
+          "dataplane_ready": true,
+          "overall_ready": true,
+          "proxy_status": "online",
+          "mixed_status": "online",
+          "checked_at": 1795001911,
+          "tun_status": "present",
+          "tun_checked_at": 1795002064,
+          "recovery_attempts": 0,
+          "recovery_status": "none",
+          "consecutive_failures": 0
+        }
+      ],
+      "outcome": "needs_review",
+      "initial_settings": {
+        "wifi_on": "0",
+        "mobile_data": "1"
+      },
+      "manual_baseline_exit": 0,
+      "baseline": {
+        "api_ready": true,
+        "webui_ready": true,
+        "dataplane_ready": true,
+        "overall_ready": true,
+        "proxy_status": "online",
+        "mixed_status": "online",
+        "checked_at": 1795001911,
+        "tun_status": "present",
+        "tun_checked_at": 1795001882,
+        "recovery_attempts": 0,
+        "recovery_status": "none",
+        "consecutive_failures": 0
+      },
+      "baseline_chrome_foreground": true,
+      "baseline_app_probes": [
+        {
+          "target": "google",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 1.350391
+        },
+        {
+          "target": "cloudflare",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 0.357762
+        }
+      ],
+      "uptime_before": 4798.26,
+      "disabled_settings": {
+        "wifi_on": "0",
+        "mobile_data": "0"
+      },
+      "disabled_for_seconds": 10,
+      "restored_settings": {
+        "wifi_on": "0",
+        "mobile_data": "1"
+      },
+      "manual_final_exit": 0,
+      "final": {
+        "api_ready": true,
+        "webui_ready": true,
+        "dataplane_ready": true,
+        "overall_ready": true,
+        "proxy_status": "degraded",
+        "mixed_status": "online",
+        "checked_at": 1795002111,
+        "tun_status": "present",
+        "tun_checked_at": 1795002064,
+        "recovery_attempts": 0,
+        "recovery_status": "none",
+        "consecutive_failures": 0
+      },
+      "final_chrome_foreground": true,
+      "final_app_probes": [
+        {
+          "target": "google",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 1.394837
+        },
+        {
+          "target": "cloudflare",
+          "exit": 0,
+          "http_status": 204,
+          "seconds": 0.4463
+        }
+      ],
+      "final_settings": {
+        "wifi_on": "0",
+        "mobile_data": "1"
+      },
+      "missing_observed": false,
+      "automatic_recovery_observed": false,
+      "finished": "2026-11-18T11:41:56.327602+00:00"
+    },
+    "strict_final_detail": {
+      "observed_at": "2026-11-18T11:42:39.681100+00:00",
+      "connectivity": {
+        "checked_at": 1795002111,
+        "latency_ms": null,
+        "status": "degraded",
+        "reason": "endpoint_specific",
+        "path": "selected_proxy",
+        "mixed_status": "online",
+        "mixed_reason": "ok",
+        "warning": true,
+        "retry_in_seconds": 12,
+        "next_check_at": 1795002172,
+        "consecutive_failures": 1
+      }
+    }
+  },
+  "limitations": [
+    "The controlled cellular experiment kept outcome needs_review due to the strict selected-proxy endpoint_specific result.",
+    "No TUN rule loss or automatic recovery occurred in the physical cellular test.",
+    "UI navigation does not verify every configuration mutation, hardware mode or OEM policy.",
+    "No subscription URLs, node names, server addresses, device identifiers or credentials are included."
+  ]
+}
