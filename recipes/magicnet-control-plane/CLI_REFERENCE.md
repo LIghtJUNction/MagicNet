@@ -62,6 +62,6 @@ TLS/GoTLS 文本诊断显式使用 eCapture 的 hook 来源；升级依赖后不
 
 `cli connectivity check` 是显式网络操作，普通 status、health、MCP 和诊断读取仍零公网请求。它通过已启用 with_lx_probe 的核心检查所选出站双 HTTPS 204，并单独观测 mixed 数据面；仅旧 delay 字段不算严格成功。人工 check 不执行 repair/refresh/restart，10 秒节流；忙时返回 `connectivity.check_queued`，节流返回 `connectivity.check_throttled`。实际重测不清空动作冷却、订阅刷新间隔或 TUN 尝试次数。
 
-## 当前节点列表（0.2.14）
+## 当前节点列表（0.2.15）
 
-`cli node list` 从已提交的有效 sing-box 配置读取真实代理节点，按 `proxy` 成员去重；默认最多 48 条，`MAGICNET_NODE_LIST_LIMIT` 可调整且最大 500。旧 `subscription-work/tags.txt` 和临时候选不作为当前节点来源。有效空配置保持空并清除旧节点缓存；配置缺失、不可读或无效时可回退既有节点缓存，`MAGICNET_NODE_CACHE=0` 禁用回退。列表及缓存本身不证明节点可联网或核心已切换。
+`cli node list` 从已提交的有效 sing-box 配置读取真实代理节点，按 `proxy` 成员去重；默认最多 48 条，`MAGICNET_NODE_LIST_LIMIT` 可调整且最大 500。旧 `subscription-work/tags.txt` 和临时候选不作为当前节点来源。有效空配置保持空并清除旧节点缓存；配置缺失、不可读或无效时可回退既有节点缓存，`MAGICNET_NODE_CACHE=0` 禁用回退。真实代理类型的标签可以含“选择”“策略”、Selector、URLTest、Fallback 等文字；内部保留标签与 magicnet-chain- 生成节点仍排除。proxy 选择器不存在与存在但无成员分别处理，后者保持空，不展开嵌套组；新鲜配置和缓存回退使用同一标签规则，默认 node test-all 共用候选解析。列表及缓存本身不证明节点可联网或核心已切换。

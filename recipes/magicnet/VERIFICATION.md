@@ -1,18 +1,34 @@
 # 实现与发行验证
 
-更新日期：2026-11-18。文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录。
+更新日期：2026-11-19（Asia/Taipei）。历史文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录。
 
 ## 当前版本与证据范围
 
 | 对象 | 固定版本与范围 |
 | --- | --- |
-| 当前主仓配方 | MagicNet `0.3.34` / network-runtime `0.1.20` |
-| 当前 gitlink | [`fa0de2e137b9f54d31628b5d899001fb11be8a13`](https://github.com/LIghtJUNction/magicnet-android/commit/fa0de2e137b9f54d31628b5d899001fb11be8a13) |
+| 当前主仓配方 | MagicNet `0.3.35` / web-console `0.2.13` / control-plane `0.2.15` / network-runtime `0.1.20` |
+| 当前 gitlink | [`6c71b1a3992edcff60afc9f971b102915606fc96`](https://github.com/LIghtJUNction/magicnet-android/commit/6c71b1a3992edcff60afc9f971b102915606fc96) |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 | 公开稳定版 | [v1.9.1 / 10619](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)，源码 `5169e07155a47d16f3c5e610a8aa368cc2d08b02` |
-| 真机验收候选 | 同版本、同源码的本地构建；一台 ARM64 手机 |
+| 本轮已发起的本地构建 | 源码 `adbfe716057c4d910eca12ac0698005353c579ea`，测试元数据 v1.9.1 / 10619；失联前进入 OpenSSL 编译，最终状态与新版手机安装尚未验证 |
+| 当前待验收源码 | `6c71b1a3992edcff60afc9f971b102915606fc96`；相对 adbfe716 仅修改两份浏览器测试，生产代码相同 |
 
-当前 gitlink 已包含发布之后的并发修复。公开 v1.9.1 与本轮手机候选均固定在 `5169e071`；较新源码的验证结果只适用于其自身。
+当前 gitlink 包含发布之后的修复和全部 14 个手机页面改版。公开 v1.9.1 继续固定在 `5169e071`；本轮本地构建与公开稳定版源码不同。以下历史章节保留当时版本和结果，不能互相替代。
+
+
+## 2026-11-19：订阅恢复与全部手机页面迭代
+
+源码依次推送节点标签/空列表修复 `920ec2be`、Android awk 与旧 SS 回退修复 `43e0de3e`、首页导航 `1731973d`、工具构建失败传播 `87ce1596`、全部页面 `a5062e1c`、手机交互断言 `adbfe716`、长页滚动前置和翻译标签定位 `6c71b1a3`。配方以 M79–M83 固化这些要求。
+
+真实订阅经过原有用户筛选后恢复为 27 个节点（25 Shadowsocks、2 VMess），当前配置与 CLI 节点标签集合一致。先前只有 2 个节点的直接原因是外部转换遗漏旧 SS，加上 Android awk 解析错误令回退失败。保留订阅链接和筛选意图，不以放宽筛选增加数量。
+
+WebUI 单元测试 399 项、类型检查和生产构建通过。390/430 手机宽度的两种主题与交互共 62 项通过；360 完整批次首次 143 项通过、6 项旧定位失败。修正当前输出、菜单和就绪提示定位后，对应 4 文件 15 项全部通过。两个批次按原始结果分别记录，不宣称首次完整批次零失败。14 页浅色与深色截图已逐页复查。
+
+#436 真机受控删除了 2 条本模块自有 IPv4 捕获规则，健康检查和 readiness 均识别缺失，后台记录 1 次恢复尝试。故障阶段同一普通应用仍可完成两目标严格 HTTPS 204，因此应用断网没有被复现；约 91.93 秒后测试因配置变化守卫终止，严格结果保持 `NOT_VERIFIED`。后续独立只读观察确认核心重启、自有规则与就绪恢复、同一应用两目标 HTTPS 成功。配置差异仅有 selector 标记与出站定义顺序；标记已定位到固定框架正常启动的标准化代码，27 个真实节点参数未变；其他规则变化尚未完全归因，OEM 自然触发原因仍未确定。此观察不替代完整故障恢复验收。
+
+源码 `adbfe716` 的 [CI 构建](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44356085246) 已通过，包含 package smoke、package install smoke 和完整包 smoke；该 push 构建沿用源码元数据 v1.8.5 / 10613，不等同计划中的 v1.9.1 真机候选。[同提交的浏览器 CI](https://github.com/LIghtJUNction/magicnet-android/actions/runs/44356085163) 记录 884 通过、5 失败、5 跳过：1 个手机与 1 个桌面用例的长页前置不成立，2 个翻译标签受新增提示文本影响，另有 1 个桌面直链导航可见性失败。`6c71b1a3` 修正前两类测试前置，保留原断言，CI 结果需另行回读。
+
+本地 v1.9.1 完整模块包已启动并进入 OpenSSL 编译，随后开发机 ssmcp 会话更换，执行接口对最小请求也返回 `INVALID_ARGUMENT`。目前无法回读本地最终构建、安装新版或完成临时测试 APK 清理，因此上述项目保持未验证。此前已装到手机的 CLI/WebUI 为 `1731973d`，73 个文件哈希通过；该记录不覆盖后续全部页面改版。公开稳定版保持原身份。
 
 ## 节点列表与界面修复
 
