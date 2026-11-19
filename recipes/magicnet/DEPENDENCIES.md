@@ -4,10 +4,10 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.35 | 产品集成、M01–M83 与完整验收 |
+| magicnet | 0.3.36 | 产品集成、M01–M84 与完整验收 |
 | magicnet-control-plane | 0.2.15 | CLI/JSON/MCP、文件状态、本地面板就绪与诊断 |
 | magicnet-network-runtime | 0.1.20 | 订阅事务、生命周期、退出后清理与低频联网检查 |
-| magicnet-web-console | 0.2.13 | 本地 Zashboard 入口、日常导航、订阅草稿与诊断 |
+| magicnet-web-console | 0.2.14 | 首页层级、模态快捷键、日常导航与设备操作 |
 | magicnet-packet-engine | 0.2.4 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.13 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -19,13 +19,13 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
-本轮提升产品、control 与 webui 配方版本，明确真实节点的特殊标签保真、空选择器成员约束及扫描/缓存一致性；链式代理页只过滤明确日志前缀，保留合法方括号标签。共享 JSON 编码器兼容 Android awk，转换器逐项拒绝普通坏代理行并沿用完整原生回退；公告/保留标签、来源和排除语义保持。WebUI 同步 112px 服务开关、模式/延迟/RSS、任务链接、中性黑白主题与手机 dock/左抽屉。沿用现有节点缓存文件、CLI 参数与全部机器接口，无新增运行依赖；runtime 0.1.20 保留按有效配置范围判断热点 FIB、规范表查询 argv 及 TUN 核心启动代际核对。未过期 present/missing 只属于当前单一 PID/starttime；缺少身份或代际改变投影 unknown，保留文件、探测和恢复预算。既有目的范围过滤、手动 check 与后台停机清理边界继续适用。local_zashboard_readiness、api.webui_ready 与界面合同保持，沿用现有运行库、状态域和机器接口。正式源码、构建 workflow pin 与配方固定点同步，pack 的 LOCK 包含完整闭包。
+本轮仅提升 magicnet 产品和 webui 配方版本，control 维持 0.2.15。现有合同保留真实节点的特殊标签保真、空选择器成员约束及扫描/缓存一致性；链式代理页只过滤明确日志前缀，保留合法方括号标签。共享 JSON 编码器兼容 Android awk，转换器逐项拒绝普通坏代理行并沿用完整原生回退；公告/保留标签、来源和排除语义保持。WebUI 0.2.14 统一左对齐状态、56px 起的矩形服务按钮与相邻刷新、模式/延迟/RSS、平面任务入口、中性画布和克制蓝色操作；五项手机 dock/左抽屉保持。模态快捷键隔离沿用现有 DOM 事件和界面状态，不新增机器接口、状态文件、npm 包或网络资源。沿用现有节点缓存文件、CLI 参数与全部机器接口，无新增运行依赖；runtime 0.1.20 保留按有效配置范围判断热点 FIB、规范表查询 argv 及 TUN 核心启动代际核对。未过期 present/missing 只属于当前单一 PID/starttime；缺少身份或代际改变投影 unknown，保留文件、探测和恢复预算。既有目的范围过滤、手动 check 与后台停机清理边界继续适用。local_zashboard_readiness、api.webui_ready 与界面合同保持，沿用现有运行库、状态域和机器接口。正式源码、构建 workflow pin 与配方固定点同步，pack 的 LOCK 包含完整闭包。
 
 本轮 API 正文预算与路由归一化复用现有原生 loopback HTTP、可信 curl 和构建期归一化工具，无新增运行库、常驻服务、机器命令或能力标记。规则集定义、出口、DNS server 和 selector 依赖集合保持；M71 的正文预算、规则结构与设备网络测量分别验收。
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `75da8b3064350dd335844da1957cd45b6c347f9c`，tree `c12d49b393ee718d2f2340dcabec93db517396cb`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `bd7e33f6234eeac3894b846eba30745104bbaa2c`，tree `528879478fbfdad7604efcb995c64426013812e5`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 

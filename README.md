@@ -4,7 +4,7 @@
   <p>A transparent networking control plane for rooted Android.</p>
 
   [![Android release](https://img.shields.io/badge/Android-v1.9.1%20%2F%2010619-111111?style=flat-square&logo=android)](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)
-  [![Recipe](https://img.shields.io/badge/recipe-0.3.35-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
+  [![Recipe](https://img.shields.io/badge/recipe-0.3.36-111111?style=flat-square)](recipes/magicnet/BUILD_PROMPT.md)
   [![License](https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square)](LICENSE)
 
   [English](README.en.md) · [Русский](README.ru.md) · [Download](https://github.com/LIghtJUNction/MagicNet/releases) · [Evidence](recipes/magicnet/VERIFICATION.md)
@@ -26,8 +26,8 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 | Layer | Current state |
 | --- | --- |
 | Published Android package | [`v1.9.1 / 10619`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1) |
-| Recipe | `0.3.35` |
-| Fixed implementation commit | `75da8b3064350dd335844da1957cd45b6c347f9c` |
+| Recipe | `0.3.36` |
+| Fixed implementation commit | `bd7e33f6234eeac3894b846eba30745104bbaa2c` |
 | Fixed sing-box core | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 
 The recipe defines required behavior; the pinned source provides the maintained implementation; Releases provide installable artifacts. [Verification](recipes/magicnet/VERIFICATION.md) records source tests, package checks, Android emulator results and physical-device observations separately.
