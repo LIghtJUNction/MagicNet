@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-19",
+  "timezone": "Asia/Taipei",
+  "source": {
+    "repository": "LIghtJUNction/magicnet-android",
+    "commit": "bd7e33f6234eeac3894b846eba30745104bbaa2c",
+    "tree": "528879478fbfdad7604efcb995c64426013812e5"
+  },
+  "recipe": {
+    "repository": "LIghtJUNction/MagicNet",
+    "integration_commit": "ce7f5d2ae828e1a4011837674d97c74a69e3ec26",
+    "versions": {
+      "magicnet": "0.3.36",
+      "magicnet-web-console": "0.2.14",
+      "magicnet-control": "0.2.15"
+    },
+    "validation": {
+      "command": "python3 scripts/check-recipes.py",
+      "exit_code": 0,
+      "packages": 8,
+      "markdown_files": 62,
+      "checks": [
+        "active pins",
+        "README pins",
+        "updater consistency",
+        "recipkg check",
+        "recursive pack",
+        "archive check",
+        "build prompt",
+        "UTF-8 and archive closure"
+      ]
+    }
+  },
+  "validation": [
+    {
+      "scope": "modal shortcut regression",
+      "commit": "c39f04526e2726abb6b4ac5616781982500cfba8",
+      "reproduced_before_fix": {
+        "failed": 2
+      },
+      "after_fix": {
+        "passed": 2
+      },
+      "notes": "Desktop and 390 px phone. Keyboard, focus restoration, cancellation, and absence of destructive backend calls."
+    },
+    {
+      "scope": "unit/typecheck/build",
+      "commit": "84285d5b3e4b2d5fbf7319bb9f7c58173f645b1c",
+      "command": "npm run check",
+      "unit": {
+        "passed": 399,
+        "failed": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed"
+    },
+    {
+      "scope": "responsive browser regression",
+      "commit": "84285d5b3e4b2d5fbf7319bb9f7c58173f645b1c",
+      "passed": 157,
+      "failed": 0,
+      "skipped": 5,
+      "skip_reason": "viewport-specific tests",
+      "viewport_widths": [
+        320,
+        360,
+        390,
+        430,
+        844,
+        1280
+      ],
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "specs": [
+        "mobile.spec.mjs",
+        "mobile-experience.spec.mjs",
+        "navigation-layout.spec.mjs",
+        "navigation-usability.spec.mjs",
+        "overview-refinement.spec.mjs",
+        "modal-shortcuts.spec.mjs",
+        "interaction-finish.spec.mjs"
+      ],
+      "browser": "system Chromium"
+    },
+    {
+      "scope": "final narrow-screen label refinement",
+      "commit": "bd7e33f6234eeac3894b846eba30745104bbaa2c",
+      "typecheck": "passed",
+      "build": "passed",
+      "spec": "overview-refinement.spec.mjs",
+      "project": "phone-360",
+      "passed": 2,
+      "failed": 0,
+      "themes": [
+        "light",
+        "dark"
+      ]
+    },
+    {
+      "scope": "final actual Android WebView",
+      "commit": "bd7e33f6234eeac3894b846eba30745104bbaa2c",
+      "entry_scripts": [
+        "index-CROo2RLO.js"
+      ],
+      "overview_mode": "TUN",
+      "pages": [
+        {
+          "alerts": 0,
+          "heading": "流量路径",
+          "horizontal_overflow": false,
+          "id": "about",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "拦截规则",
+          "horizontal_overflow": false,
+          "id": "block",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "链式代理",
+          "horizontal_overflow": false,
+          "id": "chain",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "Tailscale",
+          "horizontal_overflow": false,
+          "id": "tailscale",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "配置文件",
+          "horizontal_overflow": false,
+          "id": "config",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "Zashboard",
+          "horizontal_overflow": false,
+          "id": "webui",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "诊断",
+          "horizontal_overflow": false,
+          "id": "health",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "终端",
+          "horizontal_overflow": false,
+          "id": "terminal",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "工具",
+          "horizontal_overflow": false,
+          "id": "tools",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "最近输出",
+          "horizontal_overflow": false,
+          "id": "output",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "节点与代理组",
+          "horizontal_overflow": false,
+          "id": "proxies",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "订阅",
+          "horizontal_overflow": false,
+          "id": "subs",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "应用名单",
+          "horizontal_overflow": false,
+          "id": "apps",
+          "loading": false,
+          "mounted": true
+        },
+        {
+          "alerts": 0,
+          "heading": "网络已连接",
+          "horizontal_overflow": false,
+          "id": "control",
+          "loading": false,
+          "mounted": true
+        }
+      ],
+      "resource_or_script_errors": 0,
+      "theme": "dark",
+      "viewport": {
+        "height": 736,
+        "width": 354
+      }
+    }
+  ],
+  "device": {
+    "deployment": {
+      "source": "bd7e33f6234eeac3894b846eba30745104bbaa2c",
+      "files": 77,
+      "installed_matches_build": true,
+      "configuration_unchanged": true,
+      "core_pid_unchanged": true,
+      "service_ready": true,
+      "dataplane_ready": true,
+      "connectivity": "online",
+      "phone_staging_cleaned": true,
+      "backup": "device-webroot-before.tar"
+    },
+    "health": {
+      "ok": 13,
+      "warn": 0,
+      "fail": 0
+    },
+    "module_version": "v1.9.1",
+    "module_version_code": 10619,
+    "modal_check": {
+      "confirmation_opened": true,
+      "shortcut_isolation": true,
+      "cancelled": true,
+      "focus_restored": true,
+      "body_unlocked": true,
+      "stop_confirmed": false
+    },
+    "final_ui": {
+      "route": "#/control",
+      "theme": "dark",
+      "browser_debug_connection_detached": true,
+      "task_adb_forward_removed": true
+    },
+    "observations": [
+      "One fresh connectivity check transiently degraded; connectivity recovered without configuration changes or a core restart. Final health was 13 OK / 0 WARN / 0 FAIL."
+    ],
+    "validation_scope": "Page loading, data rendering, navigation, layout, and confirmation cancellation were checked on the connected device. The run does not establish successful writes for every feature or connectivity of every imported node."
+  },
+  "screenshots": [
+    {
+      "file": "ui-polish-2026-11-19-dark.jpg",
+      "theme": "dark",
+      "source": "actual device WebView",
+      "css_viewport": {
+        "width": 354,
+        "height": 736
+      }
+    },
+    {
+      "file": "ui-polish-2026-11-19-light.jpg",
+      "theme": "light",
+      "source": "actual device WebView",
+      "css_viewport": {
+        "width": 354,
+        "height": 736
+      }
+    }
+  ],
+  "delivery_folder": "https://drive.google.com/drive/folders/1hjtZvLpPRBDrLujJP3kGzXCAnouOyD3h",
+  "privacy": "Raw configuration, subscription URLs, tokens, node names, device identifiers, and process identifiers are excluded."
+}
