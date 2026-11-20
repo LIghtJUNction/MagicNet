@@ -8,7 +8,11 @@
 
 ## 生命周期与所有权
 
-runtime 0.1.20 的只读 TUN 投影必须在既有 paused/unknown/stale 前置判断后，核对未过期 present/missing 缓存的单一已归属 PID 与实时启动时间；不同代际、PID 复用、多核心或不可读显示 unknown。not_required 不要求启动代际核对。读取不探测网络或路由、不重扫归属、不改 canonical、失败计数或恢复预算；公共 JSON 不增加进程标识。CON-A08 同时覆盖真实 connectivity.status 与 service.status 消费链。
+路由 ownership 与清理新增遵守 LIFE-011：完整 RPDB 观测和内核数值表过滤相互核验，保留重复计数及外部同优先级占位；只有身份明确的 lookup 才归一化。命名变化和数字外观别名不得改变数值目标。首次删除前未知须保留 ledger、返回失败且零写入；删除中途观测失败停止后续并保留 ledger，不回滚已完成的明确归属删除。prepared 基线须有 `rule_table_format=verified-2022`；旧基线仅在核心停止且无 TUN 路由时由 `state_begin` 重建。active schema 2 保持兼容，旧漏记规则不得自动追认。
+
+显式停止按 LIFE-012 先完整读取三类维护身份，任一未知时零静止动作；身份明确后在等待配置锁前静止自有 hotspot 周期循环，新增步骤不强杀已执行 reconcile；原事务协议保持。quiesce/拿锁失败先 try 共享配置锁，持有 guard 后逐项核验核心/归属，再按此前确认运行的 kernel watchdog、hotspot watchdog、fswatch 集合恢复；锁忙或 I/O 未知须保留原错误并标明 restoration deferred，不新建后台任务或继续争锁；未知或原停止状态不补启，恢复失败不能掩盖原错误。分别验收锁等待、核心退出和网络恢复，不用配方收录代替设备耗时改进。
+
+从 runtime 0.1.20 延续的只读 TUN 投影必须在既有 paused/unknown/stale 前置判断后，核对未过期 present/missing 缓存的单一已归属 PID 与实时启动时间；不同代际、PID 复用、多核心或不可读显示 unknown。not_required 不要求启动代际核对。读取不探测网络或路由、不重扫归属、不改 canonical、失败计数或恢复预算；公共 JSON 不增加进程标识。CON-A08 同时覆盖真实 connectivity.status 与 service.status 消费链。
 
 runtime 0.1.18 按 CON-005/CON-A08 先检查 FIB 路由目的前缀是否与静态排除后的必要范围相交，再评估流量条件。无关或已排除区间内的条件路由不改变完整与明确缺失结论；相交范围内的非零 `tos` / `dsfield`、无法解析的值及缺值均保持未知，不计作无条件 TUN 覆盖；明确数值零保留默认匹配。健康检查、机器 readiness 与 watchdog 共用观察器，未知清除连续缺失且零恢复，独立联网观测及既有预算保留。
 
@@ -53,7 +57,7 @@ URL 规范化清单、来源索引或缓存映射写入失败时立即停止该�
 
 ## 应用、Wi-Fi、热点和 DNS
 
-热点的 IPv4 FIB 覆盖必须来自有界读取的唯一有效 tun-in，而非仅寻找 default 或两条 /1。按 route_address（缺省全族）减静态 route_exclude_address 计算必要范围，复用普通 TUN 的区间、条件及竞争路由观察。合法分段覆盖可 active；必要路由缺失、linkdown 或全 IPv4 排除为 pending；相交的非零/未知 TOS/DS、源地址、多路径或竞争路由为 unknown，排除范围内条件不干扰结果。配置缺失/损坏/多义、非 tun、非 magicnet0、非固定数字表 2022 或动态范围无法观察保持 unknown。原有 RPDB、FORWARD、内部 peer 回程证据继续必需，已知 RPDB/FORWARD 缺失优先 pending。向 ip 传递独立且规范的十进制表参数 `2022`，不能把额外空白写入 argv 或由测试夹具容忍。只读状态不改配置/归属记录、不发公网请求，机器与 canonical 使用同一结果；eBPF shared 路径保持独立。
+热点的 IPv4 FIB 覆盖必须来自有界读取的唯一有效 tun-in，而非仅寻找 default 或两条 /1。按 route_address（缺省全族）减静态 route_exclude_address 计算必要范围，复用普通 TUN 的区间、条件及竞争路由观察。合法分段覆盖可 active；必要路由缺失、linkdown 或全 IPv4 排除为 pending；相交的非零/未知 TOS/DS、源地址、多路径或竞争路由为 unknown，排除范围内条件不干扰结果。配置缺失/损坏/多义、非 tun、非 magicnet0、非固定数字表 2022 或动态范围无法观察保持 unknown。原有 RPDB、FORWARD、内部 peer 回程证据继续必需，已知 RPDB/FORWARD 缺失优先 pending。向 ip 传递的独立表参数必须按 LIFE-011 选择数值 2022，数字外观名称不能劫持查询；参数字节与实际解析必须由严格夹具及 Android 对照验证。只读状态不改配置/归属记录、不发公网请求，机器与 canonical 使用同一结果；eBPF shared 路径保持独立。
 
 包身份在当前 Android 所有用户中解析，支持共享 UID、卸载重装；proxy/direct/bypass 语义按根行为保留。bypass 同时从两种数据面和 DNS 捕获排除；netd UID 0 代发 DNS 的设备保守保留 bypass 边界，不能谎称所有 DNS 必被代理。
 Wi-Fi 读取失败不是空名单，64 KiB 有界并验证普通文件；非法/过大编辑保留旧文件且不切模式。后台轮询状态改变主动发布。
@@ -95,3 +99,9 @@ repair/reapply 与 rollback 部分成功后，journal 继续保留整个已确�
 自动恢复最多验证三个同组已有真实代理候选，双目标通过后在现有配置锁内重查、checked 保存、运行时 PUT 与双读回，立即复验真实路径。任何失败补偿旧运行值与旧保存值，外部新选择不覆盖并报告 rollback_conflict；原缺省值不变成新持久意图。跨组变更使用有补偿的顺序批次。
 
 人工 connectivity check 和切换即时检查提供新观测，保持单 producer 与停止优先级；人工 check 仅探测，10 秒节流，不执行恢复，也不清空动作/刷新冷却或 TUN 次数。status、health、MCP 与导出继续零公网请求；无新常驻服务、运行依赖或机器写入口。
+
+## 运行中服务与 DNS 安装成本
+
+start/ensure 按 LIFE-013 在共享配置锁内确认精确自有核心存活、停用/移除和恢复入口均不存在、相关元数据明确且无 disruptive 请求，才允许快路。start 保留原取锁协议；ensure 只 try 锁，忙或 I/O 未知回原 shell。保留 bootstrap 和其后的 disruptive 二次判断；start 快路沿用幂等维护启动与原 cgroup 脱离，ensure 快路不补启维护进程，冷启动与不确定条件保持原命令。
+
+DNS capture 按 LIFE-014 在同一次重建中只完整 detach 一次，新建空链免重复 flush，已有链仍先 detach 再 flush。所有规则成功后才挂接，通用入口的清理前置、失败清理、外部规则和重试幂等保持。性能验收绑定同一设备/配置/产物，分别记录调用数、阶段耗时、核心身份、维护进程和普通应用网络。

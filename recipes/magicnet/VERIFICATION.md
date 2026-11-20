@@ -1,20 +1,35 @@
 # 实现与发行验证
 
-更新日期：2026-11-19（Asia/Taipei）。历史文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录。
+更新日期：2026-11-20（Asia/Taipei）。历史文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录，历史结果不自动延伸到当前候选。
 
 ## 当前版本与证据范围
 
 | 对象 | 固定版本与范围 |
 | --- | --- |
-| 当前主仓配方 | MagicNet `0.3.35` / web-console `0.2.13` / control-plane `0.2.15` / network-runtime `0.1.20` |
-| 当前 gitlink | [`75da8b3064350dd335844da1957cd45b6c347f9c`](https://github.com/LIghtJUNction/magicnet-android/commit/75da8b3064350dd335844da1957cd45b6c347f9c) |
+| 当前主仓配方 | MagicNet `0.3.37` / web-console `0.2.14` / control-plane `0.2.15` / network-runtime `0.1.21` |
+| 当前 gitlink | [`edf2d9926e9a71000667596c9f80edd547e96363`](https://github.com/LIghtJUNction/magicnet-android/commit/edf2d9926e9a71000667596c9f80edd547e96363)，tree `694aa5b7a661c4e237c89762d12061c9062610fa` |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
-| 公开稳定版 | [v1.9.1 / 10619](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.1)，源码 `5169e07155a47d16f3c5e610a8aa368cc2d08b02` |
-| 此前本地构建快照 | 源码 `adbfe716057c4d910eca12ac0698005353c579ea`，测试元数据 v1.9.1 / 10619；失联前进入 OpenSSL 编译，最终状态与新版手机安装尚未验证 |
-| 当前导航验证源码 | `75da8b3064350dd335844da1957cd45b6c347f9c`；开发机类型检查、构建和定向浏览器 76 通过、2 视口条件跳过；完整模块与真机证据另行记录 |
+| 公开稳定版 | [v1.9.2 / 10620](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.2)，源码 `bd7e33f6234eeac3894b846eba30745104bbaa2c` |
+| 11-20 手机基线 | 模块元数据 v1.9.1 / 10619；安装文件组合的单一源码身份为 not_claimed |
+| 11-20 ARM64 候选 | 2262512 字节 CLI，SHA-256 `424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2`；CLI 与 lifecycle/network 两份脚本的文件级替换，元数据保持 v1.9.1 |
 
-当前 gitlink 包含发布之后的修复和全部 14 个手机页面改版。公开 v1.9.1 继续固定在 `5169e071`；本轮本地构建与公开稳定版源码不同。以下历史章节保留当时版本和结果，不能互相替代。
+当前维护源码包含公开稳定版之后的路由身份、DNS 安装和生命周期修复，公开 update.json 继续指向 v1.9.2。候选文件级后测与完整发行包安装验收分别记录；本节不把旧元数据当作候选源码证明。详细范围见[反馈迭代报告](../../docs/feedback-iteration-2026-11-20.md)与[结构化证据](../../docs/evidence/feedback-iteration-2026-11-20.json)。
 
+## 2026-11-20：反馈驱动的路由、DNS 与生命周期迭代
+
+源码分三次推送：`862239b` 修正数值路由表身份及旧 prepared 基线迁移；`49d3c63` 删除 DNS 新空链 flush 和同次安装中的重复跳转扫描；`edf2d99` 暂停停止前的自有热点周期提交，并为已确认运行核心增加保守 start/ensure 快路。路由身份未知保持 ledger；停止失败恢复先 try 共享配置锁，锁忙/I/O 未知保持 restoration deferred；快路继续 bootstrap/disruptive 复核、维护幂等与 cgroup 脱离。
+
+已完成的宿主与隔离内核验证分别为：路由所有权 66 项（其中别名 8 项与迁移 1 项另在 BusyBox 通过，不重复计数）、boot 分派 6 项、隔离 Linux netns；DNS 顺序/故障 15 项和快路 6 项；Rust service 定向模块 44 通过、1 项既有 Android mksh 专用 fixture ignored。它们覆盖相应分支，不代表全项目 Rust 测试、所有 Android OEM 或公网长时间稳定性。
+
+同设备基线为热 start 2844/5061/2488 ms（PID 均不变）、ensure 2538 ms、stop 19698/15571 ms、cold start 37065/35712 ms。两次停止后 TUN 规则均为 0、普通应用国内 HTTPS 200，重新启动后 Google 严格 HTTPS 204；启动分段观察中 network-ready 为 6640 ms、core-launch 为 5810 ms。候选重复 start 为 2952/479/544 ms，ensure 为 373/313/2507 ms，核心身份均保持；stop 为 16342/16915 ms，cold start 为 34695/34193 ms，部署后的首次 cold start 34419 ms 单列。停止后两族 TUN 规则均为 0、普通应用国内 HTTPS 200，候选双站点严格 204 通过。热调用仍有慢样本，停止没有稳定提速证据，冷启动仍约 34–35 秒。
+
+验收期间的节点 27→25 对应到已记录的 WebUI apply_subscription_filter 成功操作及来源刷新；新增第 7 条过滤精确匹配 2 个 VMess，保留当前 25 SS 与过滤设置，不指认具体操作者。普通 start 均为 cached skip，三组隔离实际 cached 分支均退出 0、配置字节不变且无 replay/refresh。25 个共有节点的 server 变化与同次源更新相符，但缺少响应前后对照，不能精确归因。未变的 24 份文件仅属于 config/magicnet 与 env，前后性能不称严格同配置 A/B。
+
+该次单来源订阅刷新成功仍耗 225 秒，native 48 / import 25 / skip 23，converter failed 后原生回退成功。134 秒是整个 convert 与 native fallback 阶段，不是 converter 超时；单次 file 调用默认名义预算 12 秒加 1 秒 TERM 宽限。现有 failed 原因未细分，多遍原生解析/校验仍需计时定位；未删除完整性门或修改生产订阅策略，225 秒更新列为本轮未修重点。
+
+三轮基线蜂窝重连在 5666/6382/6647 ms、候选额外一轮在 6649 ms 的轮询窗口内观察到双站点严格 HTTPS 204。各轮前后核心身份与两族各 2 条自有规则保持，候选前后 route present、warning=false，health 退出 0；#436 保持 NOT_REPRODUCED/open。窗口不是准确恢复时延，不覆盖真实 Wi-Fi 切换或实际规则丢失后的恢复，历史 NOT_VERIFIED 继续保留。
+
+结束时三类维护进程 3/3 自有，app_cgroup、unknown、unavailable 均为 0；core、overall/dataplane readiness 为 true，fswatch running，TUN present、warning=false、当前恢复计数 0。探针 APK 卸载退出 0 且已确认不存在，7 个自有临时路径清理完成。主仓 test-check-recipes.py 19、test-release.py 18、test-release-plan.py 42 项通过，check-workflows.sh/actionlint 退出 0；完整配方闭包已在主仓集成 HEAD 上通过 check → pack → archive check → build，包含 8 个包与 62 份 Markdown，固定源码与公开版本索引一致。
 
 ## 2026-11-19：导航布局本机验证
 

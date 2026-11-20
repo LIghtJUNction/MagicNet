@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.36"
+version = "0.3.37"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -23,7 +23,9 @@ source = "../magicnet-module-delivery"
 source = "../software-quality"
 ~~~
 
-[BUILD_PROMPT.md](BUILD_PROMPT.md) 定义产品， [ACCEPTANCE.md](ACCEPTANCE.md) 定义 M01–M84。四个直接依赖组成八包 Markdown 闭包，源码和二进制不进入配方。
+[BUILD_PROMPT.md](BUILD_PROMPT.md) 定义产品， [ACCEPTANCE.md](ACCEPTANCE.md) 定义 M01–M87。四个直接依赖组成八包 Markdown 闭包，源码和二进制不进入配方。
+
+0.3.37 同步 runtime 0.1.21：M85–M87 固化数值路由表身份、停服前热点周期循环静止及运行中 start/ensure 的保守快路；M26 补充 DNS 安装的冗余内核调用验收。沿用配置锁、所有权、恢复日志和原 shell bootstrap，未知条件回原路径。反馈来源、宿主回归、当前设备基线与尚待验收的场景分别记录；不以闭单或调用次数减少代替实机性能结论。
 
 0.3.36 同步 webui 0.2.14：概览使用左对齐状态、56px 起的矩形服务按钮与相邻刷新、平面日常入口和克制的蓝色操作层级，保持五项底栏、左抽屉与原设备流程。M84 增加模态确认期间的快捷键隔离、焦点恢复、滚动锁和零设备写入验收；机器接口、状态面与运行依赖保持。
 

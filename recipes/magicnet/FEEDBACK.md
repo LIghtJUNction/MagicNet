@@ -1,5 +1,25 @@
 # 用户走查与 Issue 反馈
 
+## 2026-11-20：按用户反馈验收稳定性与操作耗时
+
+本轮优先验收启停、订阅和真实应用网络。公开 Issue 的 closed 状态只表示仓库流程结束；标明“转入配方”的条目，在当前固定源码与目标设备取得对应证据前继续记为 pending。下表是回归清单，不是本轮测试通过记录。
+
+| 跟踪项 | 反馈来源与已知范围 | 当前验收与状态 |
+| --- | --- | --- |
+| F01 换网后应用断流 | [#436](https://github.com/LIghtJUNction/MagicNet/issues/436)：原报告使用官方 sing-box 1.14.3 的本地包；健康检测改进不证明规则消失根因已修 | pending：M62/M66；同应用 UID 验证换网前后 RPDB、FIB、DNS/TCP/UDP 与恢复时长，mixed 成功不替代 TUN 成功；OEM 触发与受控注入分开 |
+| F02 启停太慢 | [#396](https://github.com/LIghtJUNction/MagicNet/issues/396#issuecomment-6466056964) 关闭仅表示转入性能配方；旧版本耗时与本地改动样本不可直接比较 | pending：M26/M86/M87；固定设备、核心、配置和观察窗口，对照分段耗时、exec 次数、锁等待与后台任务；原版基线和候选结果分别留证 |
+| F03 停服后网络恢复 | [#336](https://github.com/LIghtJUNction/MagicNet/issues/336#issuecomment-6434550114) 有旧版本三轮无残留记录；[#337](https://github.com/LIghtJUNction/MagicNet/issues/337#issuecomment-6466064505) 关闭不等于新实现验收 | pending：M22/M85；至少五轮启停，逐轮核对普通应用直连、系统 DNS、模块规则/路由清理及重新启动；别名表、残留和 unknown 不能报清理成功 |
+| F04 连续订阅更新后停核 | [#439](https://github.com/LIghtJUNction/MagicNet/issues/439)、[#437](https://github.com/LIghtJUNction/MagicNet/issues/437)：首次成功后 activate 失败、维护集合恢复不完整；已有源码修复 | pending：M61；重复更新后核对核心和完整配置维护集合，分别注入 fetch/activate/恢复失败，旧配置与恢复证据保留 |
+| F05 多订阅与下载失败 | [#426](https://github.com/LIghtJUNction/MagicNet/issues/426#issuecomment-6557544785) 关闭未证明原现场根因；[#434](https://github.com/LIghtJUNction/MagicNet/issues/434#issuecomment-6595031353) 已交付默认 UA 的 403 回退，缺原报告者复验 | pending：M30–M35/SUB-A21；来源各自与合并对照、逐源数量/阶段、403 默认与自定义 UA、预算和失败旧配置；受控端点不替代原订阅复验 |
+| F06 热点开关耗时 | [#393](https://github.com/LIghtJUNction/MagicNet/issues/393#issuecomment-6336711777)：跳过无变化 apply 的代码修复不等于设备耗时已改善 | pending：M23/M26；开关前后核对配置哈希、实际 apply 次数、锁等待和客户端网络，分别记录无客户端与有客户端 |
+| F07 热点重复规则 | [#394](https://github.com/LIghtJUNction/MagicNet/issues/394#issuecomment-6336712785)：已修重复 ingress/误报范围，不代表全部热点联网问题解决 | pending：M23/M85；实际规则集合、重复计数、enable/disable 后客户端往返和外部规则保留；没有第二客户端或有效 IPv6 时明确未覆盖 |
+
+11-20 的[设备审计](../../docs/feedback-iteration-2026-11-20.md)记录一次 WebUI 过滤提交及来源刷新：当前 25 SS 符合新增排除规则，普通 start 的 cached 分支未刷新或重放。该次成功更新仍耗 225 秒，转换与原生回退阶段 134 秒不等于 converter 超时；该体验问题继续 pending，保留现有过滤与完整性门。
+
+“box4root”在本轮是用户给出的体验对照，未找到 MagicNet 公开 Issue 中对应的逐项对比原文。官方 [Box for Root](https://github.com/taamarin/box_for_magisk) 文档给出的顺序是启动核心后启用透明规则、先停透明规则再停核心；[boxproxy/box](https://github.com/boxproxy/box) 是同名相关实现。MagicNet 借此核对生命周期顺序、失败反馈与实际网络结果，模式仍仅为 tun/ebpf；未做同设备 A/B 前，不宣称性能或可靠性已超过 BFR。
+
+命名路由表与停止前后台调度的新增要求见 M85–M87、runtime LIFE-011–014。表名只是展示，清理授权来自数值表身份和已有 ownership；旧 prepared 的基线重建及删除中途失败按 LIFE-011 保留证据，不追认旧漏记；暂停自有热点周期循环只能阻止新的周期提交，不能作为强杀已执行 reconcile 的新授权。失败恢复先取得共享配置锁再核验当前归属，锁忙或 I/O 未知保持 restoration deferred。实际结果统一写入 VERIFICATION：主机夹具、内核规则、Android 模拟器、物理设备和真实公网分别记录，未执行项保留 pending。
+
 ## 2026-11-03：#434 定位为 HTTP 403
 
 报告者补充 v1.8.2 / Android 17 的脱敏日志：`HTTP status: 403`、curl 退出码 22，UA 未自定义。结论是请求被订阅服务或 CDN 拒绝，常见原因是拒绝 curl 默认标识；不是 DNS、TLS 或 mapped 地址问题。v1.8.4 对默认 UA 的 403 增加一次 `clash.meta` 回退，源码 [`d22086d28499ceb25c9f2b7d965e783ded6c286a`](https://github.com/LIghtJUNction/magicnet-android/commit/d22086d28499ceb25c9f2b7d965e783ded6c286a)。若提供商要求特定客户端，仍需用户在订阅设置中选择对应 UA。

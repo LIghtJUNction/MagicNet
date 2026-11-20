@@ -1,0 +1,1705 @@
+{
+  "schema": 1,
+  "date": "2026-11-20",
+  "timezone": "Asia/Taipei",
+  "device": {
+    "physical": true,
+    "android": 16,
+    "architecture": "arm64",
+    "root": "KernelSU"
+  },
+  "baseline_installation": {
+    "module_version": "v1.9.1",
+    "version_code": 10619,
+    "source_commit_attestation": "not_claimed"
+  },
+  "baseline_application_and_idempotent_start": [
+    {
+      "label": "identity",
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "identity",
+        "http": 0,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 0,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "google204",
+      "round": 1,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 528,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "google204",
+      "round": 2,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 395,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "cloudflare204",
+      "round": 1,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 720,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "cloudflare204",
+      "round": 2,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 469,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "idempotent_start",
+      "round": 1,
+      "exit": 0,
+      "elapsed_ms": 2844,
+      "pid_unchanged": true
+    },
+    {
+      "label": "idempotent_start",
+      "round": 2,
+      "exit": 0,
+      "elapsed_ms": 5061,
+      "pid_unchanged": true
+    },
+    {
+      "label": "idempotent_start",
+      "round": 3,
+      "exit": 0,
+      "elapsed_ms": 2488,
+      "pid_unchanged": true
+    }
+  ],
+  "baseline_lifecycle": [
+    {
+      "label": "domestic_before",
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 200,
+        "redirects": 0,
+        "received_bytes": 2443,
+        "elapsed_ms": 630,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "stop",
+      "round": 1,
+      "exit": 0,
+      "elapsed_ms": 19698
+    },
+    {
+      "label": "stopped_state",
+      "round": 1,
+      "core_stopped": true,
+      "tun_rule_lines": 0
+    },
+    {
+      "label": "domestic_stopped",
+      "round": 1,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 200,
+        "redirects": 0,
+        "received_bytes": 2443,
+        "elapsed_ms": 276,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "cold_start",
+      "round": 1,
+      "exit": 0,
+      "elapsed_ms": 37065
+    },
+    {
+      "label": "google_started",
+      "round": 1,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 389,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "stop",
+      "round": 2,
+      "exit": 0,
+      "elapsed_ms": 15571
+    },
+    {
+      "label": "stopped_state",
+      "round": 2,
+      "core_stopped": true,
+      "tun_rule_lines": 0
+    },
+    {
+      "label": "domestic_stopped",
+      "round": 2,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 200,
+        "redirects": 0,
+        "received_bytes": 2443,
+        "elapsed_ms": 284,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    },
+    {
+      "label": "cold_start",
+      "round": 2,
+      "exit": 0,
+      "elapsed_ms": 35712
+    },
+    {
+      "label": "google_started",
+      "round": 2,
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 373,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    }
+  ],
+  "startup_profile": [
+    {
+      "phase": "stop",
+      "exit": 0,
+      "elapsed_ms": 18500
+    },
+    {
+      "phase": "profile_start",
+      "exit": 0,
+      "elapsed_ms": 38685,
+      "stages": [
+        {
+          "stage": "preamble",
+          "elapsed_ms": 1590,
+          "exit": 0
+        },
+        {
+          "stage": "dns-preflight",
+          "elapsed_ms": 230,
+          "exit": 0
+        },
+        {
+          "stage": "disable-dns",
+          "elapsed_ms": 580,
+          "exit": 0
+        },
+        {
+          "stage": "disable-dns-guard",
+          "elapsed_ms": 470,
+          "exit": 0
+        },
+        {
+          "stage": "require-subscription",
+          "elapsed_ms": 160,
+          "exit": 0
+        },
+        {
+          "stage": "hotspot-snapshot",
+          "elapsed_ms": 70,
+          "exit": 0
+        },
+        {
+          "stage": "hotspot-offload",
+          "elapsed_ms": 450,
+          "exit": 0
+        },
+        {
+          "stage": "subscription",
+          "elapsed_ms": 2100,
+          "exit": 0
+        },
+        {
+          "stage": "chain",
+          "elapsed_ms": 230,
+          "exit": 0
+        },
+        {
+          "stage": "transparent",
+          "elapsed_ms": 1420,
+          "exit": 0
+        },
+        {
+          "stage": "hotspot",
+          "elapsed_ms": 890,
+          "exit": 0
+        },
+        {
+          "stage": "dns",
+          "elapsed_ms": 690,
+          "exit": 0
+        },
+        {
+          "stage": "tailscale",
+          "elapsed_ms": 500,
+          "exit": 0
+        },
+        {
+          "stage": "apps",
+          "elapsed_ms": 710,
+          "exit": 0
+        },
+        {
+          "stage": "warp",
+          "elapsed_ms": 530,
+          "exit": 0
+        },
+        {
+          "stage": "overrides",
+          "elapsed_ms": 180,
+          "exit": 0
+        },
+        {
+          "stage": "auth",
+          "elapsed_ms": 90,
+          "exit": 0
+        },
+        {
+          "stage": "config-check",
+          "elapsed_ms": 870,
+          "exit": 0
+        },
+        {
+          "stage": "route-baseline",
+          "elapsed_ms": 1870,
+          "exit": 0
+        },
+        {
+          "stage": "core-launch",
+          "elapsed_ms": 5810,
+          "exit": 0
+        },
+        {
+          "stage": "route-capture",
+          "elapsed_ms": 2590,
+          "exit": 0
+        },
+        {
+          "stage": "network-ready",
+          "elapsed_ms": 6640,
+          "exit": 0
+        }
+      ],
+      "stderr_unparsed": false
+    },
+    {
+      "phase": "profile_restored",
+      "exact_bytes": true
+    },
+    {
+      "phase": "app_after_profile",
+      "result": {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 424,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    }
+  ],
+  "network_reconnect": {
+    "schema": 1,
+    "scenario": "cellular_disconnect_reconnect",
+    "rounds": [
+      {
+        "round": 1,
+        "disable_exit": 0,
+        "disconnected": {
+          "transport": "none",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133254,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133315,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 7,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        },
+        "during_outage": {
+          "ok": false,
+          "complete": true,
+          "reason": "dns",
+          "http": 0,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 12,
+          "rc": 1,
+          "ordinary_application_uid_verified": true
+        },
+        "restore_exit": 0,
+        "attempts": [
+          {
+            "elapsed_ms": 1009,
+            "probes": [
+              {
+                "ok": false,
+                "complete": true,
+                "reason": "dns",
+                "http": 0,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 5,
+                "rc": 1,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": false,
+                "complete": true,
+                "reason": "dns",
+                "http": 0,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 7,
+                "rc": 1,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          },
+          {
+            "elapsed_ms": 5666,
+            "probes": [
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 338,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 308,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          }
+        ],
+        "after": {
+          "transport": "cellular",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133254,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133375,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 60,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        }
+      },
+      {
+        "round": 2,
+        "disable_exit": 0,
+        "disconnected": {
+          "transport": "none",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133315,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133375,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 57,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        },
+        "restore_exit": 0,
+        "attempts": [
+          {
+            "elapsed_ms": 1650,
+            "probes": [
+              {
+                "ok": false,
+                "complete": true,
+                "reason": "dns",
+                "http": 0,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 10,
+                "rc": 1,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 369,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          },
+          {
+            "elapsed_ms": 6382,
+            "probes": [
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 397,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 266,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          }
+        ],
+        "after": {
+          "transport": "cellular",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133315,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133375,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 50,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        }
+      },
+      {
+        "round": 3,
+        "disable_exit": 0,
+        "disconnected": {
+          "transport": "none",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133315,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133375,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 46,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        },
+        "restore_exit": 0,
+        "attempts": [
+          {
+            "elapsed_ms": 1569,
+            "probes": [
+              {
+                "ok": false,
+                "complete": true,
+                "reason": "dns",
+                "http": 0,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 5,
+                "rc": 1,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 295,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          },
+          {
+            "elapsed_ms": 6647,
+            "probes": [
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 493,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              },
+              {
+                "ok": true,
+                "complete": true,
+                "reason": "https_response",
+                "http": 204,
+                "redirects": 0,
+                "received_bytes": 0,
+                "elapsed_ms": 321,
+                "rc": 0,
+                "ordinary_application_uid_verified": true
+              }
+            ]
+          }
+        ],
+        "after": {
+          "transport": "cellular",
+          "dataplane_ready": true,
+          "tun_auto_route": {
+            "checked_at": 1795133315,
+            "consecutive_failures": 0,
+            "last_recovery_at": null,
+            "next_check_at": 1795133375,
+            "recovery_attempts": 0,
+            "recovery_limit": 3,
+            "recovery_status": "none",
+            "retry_in_seconds": 39,
+            "status": "present",
+            "warning": false
+          },
+          "rule_counts": {
+            "-4": 2,
+            "-6": 2
+          }
+        }
+      }
+    ],
+    "initial": {
+      "transport": "cellular",
+      "dataplane_ready": true,
+      "tun_auto_route": {
+        "checked_at": 1795133254,
+        "consecutive_failures": 0,
+        "last_recovery_at": null,
+        "next_check_at": 1795133314,
+        "recovery_attempts": 0,
+        "recovery_limit": 3,
+        "recovery_status": "none",
+        "retry_in_seconds": 12,
+        "status": "present",
+        "warning": false
+      },
+      "rule_counts": {
+        "-4": 2,
+        "-6": 2
+      }
+    },
+    "baseline": [
+      {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 409,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      },
+      {
+        "ok": true,
+        "complete": true,
+        "reason": "https_response",
+        "http": 204,
+        "redirects": 0,
+        "received_bytes": 0,
+        "elapsed_ms": 436,
+        "rc": 0,
+        "ordinary_application_uid_verified": true
+      }
+    ],
+    "restored": {
+      "mobile_data_matches": true,
+      "wifi_matches": true
+    },
+    "final": {
+      "transport": "cellular",
+      "dataplane_ready": true,
+      "tun_auto_route": {
+        "checked_at": 1795133315,
+        "consecutive_failures": 0,
+        "last_recovery_at": null,
+        "next_check_at": 1795133375,
+        "recovery_attempts": 0,
+        "recovery_limit": 3,
+        "recovery_status": "none",
+        "retry_in_seconds": 38,
+        "status": "present",
+        "warning": false
+      },
+      "rule_counts": {
+        "-4": 2,
+        "-6": 2
+      }
+    }
+  },
+  "network_reconnect_core_pid_unchanged": true,
+  "source_fixes": [
+    {
+      "commit": "862239b73b9caa863b9af6e04cb389042c30086b",
+      "scope": "route_table_identity",
+      "host_route_ownership_passed": 66,
+      "busybox_alias_passed": 8,
+      "busybox_migration_passed": 1,
+      "boot_dispatch_passed": 6,
+      "isolated_linux_netns": "passed"
+    },
+    {
+      "commit": "49d3c63fabae19aec5cdcbc6033df4c0f113458d",
+      "scope": "dns_installation_work",
+      "dns_order_passed": 15,
+      "dns_fast_path_passed": 6,
+      "xtables_calls_saved_per_supported_family": {
+        "new_chain": 4,
+        "existing_chain": 3
+      }
+    },
+    {
+      "commit": "edf2d9926e9a71000667596c9f80edd547e96363",
+      "scope": "lifecycle_quiesce_restore_and_live_core_fast_path",
+      "rust_service_passed": 44,
+      "rust_service_ignored": 1,
+      "ignored_reason": "existing dedicated Android mksh fixture unavailable on host",
+      "new_regressions": 17,
+      "independent_source_review": "passed"
+    }
+  ],
+  "issue_436": {
+    "status": "NOT_REPRODUCED",
+    "reason": "cellular_reconnect_preserved_tun_rules",
+    "closed": false
+  },
+  "baseline_service_ensure": {
+    "elapsed_ms": 2538,
+    "exit_code": 0,
+    "sample_count": 1
+  },
+  "build": {
+    "source_commit": "edf2d9926e9a71000667596c9f80edd547e96363",
+    "source_tree": "694aa5b7a661c4e237c89762d12061c9062610fa",
+    "architecture": "aarch64-linux-android",
+    "command": "cargo ndk -t arm64-v8a build --release --locked -p magicnet-cli",
+    "exit_code": 0,
+    "cli_sha256": "424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2",
+    "bytes": 2262512
+  },
+  "candidate_device_validation": {
+    "schema": 1,
+    "source_commit": "edf2d9926e9a71000667596c9f80edd547e96363",
+    "cli_sha256": "424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2",
+    "events": [
+      {
+        "label": "before_deployment",
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "original_stop_for_install",
+        "elapsed_ms": 16726,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "original_stopped",
+        "status": {
+          "core_running": false,
+          "process_state": "stopped",
+          "readiness": {
+            "dataplane": false,
+            "overall": false
+          },
+          "fswatch": "stopped",
+          "table2022_rule_counts": {
+            "ipv4": 0,
+            "ipv6": 0
+          },
+          "tun_auto_route": {
+            "status": "paused",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "deployment",
+        "all_files_match": true,
+        "sha256": {
+          "lifecycle.sh": "2b4737898594ecd37912548fafad195bfe52a42459e4ea880d512d6386866eb8",
+          "network.sh": "3a02583f227cce9d228c38dae12b627ba3eac4d8091c4ac7112639119c26ae5c",
+          "magicnet-cli": "424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2"
+        }
+      },
+      {
+        "label": "candidate_initial_cold_start",
+        "elapsed_ms": 34419,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_initial_google",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 830,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_initial_cloudflare",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 568,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "measurement_harness_resumed",
+        "supervisor_status_format_normalized": true
+      },
+      {
+        "label": "candidate_supervisors_ready",
+        "observed_after_ms": 416,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_live_start_1",
+        "elapsed_ms": 2952,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_live_start_identity_1",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_live_start_2",
+        "elapsed_ms": 479,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_live_start_identity_2",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_live_start_3",
+        "elapsed_ms": 544,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_live_start_identity_3",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_ensure_1",
+        "elapsed_ms": 373,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_ensure_identity_1",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_ensure_2",
+        "elapsed_ms": 313,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_ensure_identity_2",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_ensure_3",
+        "elapsed_ms": 2507,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_ensure_identity_3",
+        "core_identity_unchanged": true,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_pre_stop_ready_1",
+        "observed_after_ms": 468,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "present",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_stop_1",
+        "elapsed_ms": 16342,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_stopped_1",
+        "status": {
+          "core_running": false,
+          "process_state": "stopped",
+          "readiness": {
+            "dataplane": false,
+            "overall": false
+          },
+          "fswatch": "stopped",
+          "table2022_rule_counts": {
+            "ipv4": 0,
+            "ipv6": 0
+          },
+          "tun_auto_route": {
+            "status": "paused",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_direct_after_stop_1",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 200,
+          "redirects": 0,
+          "received_bytes": 2443,
+          "elapsed_ms": 331,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_cold_start_1",
+        "elapsed_ms": 34695,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_google_1",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 495,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_cloudflare_1",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 464,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_pre_stop_ready_2",
+        "observed_after_ms": 14104,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "unknown",
+            "warning": true,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_stop_2",
+        "elapsed_ms": 16915,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_stopped_2",
+        "status": {
+          "core_running": false,
+          "process_state": "stopped",
+          "readiness": {
+            "dataplane": false,
+            "overall": false
+          },
+          "fswatch": "stopped",
+          "table2022_rule_counts": {
+            "ipv4": 0,
+            "ipv6": 0
+          },
+          "tun_auto_route": {
+            "status": "paused",
+            "warning": false,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_direct_after_stop_2",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 200,
+          "redirects": 0,
+          "received_bytes": 2443,
+          "elapsed_ms": 258,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_cold_start_2",
+        "elapsed_ms": 34193,
+        "exit_code": 0,
+        "config_lock_wait": false
+      },
+      {
+        "label": "candidate_google_2",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 820,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_cloudflare_2",
+        "result": {
+          "ok": true,
+          "complete": true,
+          "reason": "https_response",
+          "http": 204,
+          "redirects": 0,
+          "received_bytes": 0,
+          "elapsed_ms": 486,
+          "rc": 0,
+          "ordinary_application_uid": true
+        }
+      },
+      {
+        "label": "candidate_final_ready",
+        "observed_after_ms": 14241,
+        "status": {
+          "core_running": true,
+          "process_state": "running",
+          "readiness": {
+            "dataplane": true,
+            "overall": true
+          },
+          "fswatch": "running",
+          "table2022_rule_counts": {
+            "ipv4": 2,
+            "ipv6": 2
+          },
+          "tun_auto_route": {
+            "status": "stale",
+            "warning": true,
+            "recovery_status": "none",
+            "recovery_attempts": 0
+          }
+        }
+      },
+      {
+        "label": "candidate_validation_complete",
+        "private_preferences_unchanged": true,
+        "network_settings_unchanged": true
+      }
+    ],
+    "preference_files_checked": 24,
+    "compatibility": {
+      "matching_runtime_scripts": 45,
+      "changed_runtime_scripts": 2,
+      "installer_only_file_absent": true
+    },
+    "preference_comparison": "original pre-iteration backup; persistent magicnet preferences and env/envrc files",
+    "harness_note": "Normalized supervisor PID summary to running; only host measurement loop paused, service remained running; deployment and initial app probes retained.",
+    "private_preferences_unchanged": true,
+    "network_settings_unchanged": true,
+    "complete": true,
+    "preference_comparison_scope": "24 persistent config/magicnet and env/envrc files, compared with original pre-iteration private backup; excludes subscription filter, generated config and remote source results"
+  },
+  "candidate_final_checks": {
+    "schema": 1,
+    "cli_attestation": {
+      "symlink_target_matches": true,
+      "both_entry_hashes_match_candidate": true
+    },
+    "private_node_parameters": {
+      "nonempty": true,
+      "unchanged": false
+    },
+    "pre_reconnect": {
+      "core_running": true,
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      },
+      "fswatch": "running",
+      "tun_auto_route": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "none",
+        "recovery_attempts": 0
+      },
+      "table2022_rule_counts": {
+        "4": 2,
+        "6": 2
+      }
+    },
+    "candidate_offline_probe": {
+      "ok": false,
+      "complete": true,
+      "reason": "dns",
+      "http": 0,
+      "redirects": 0,
+      "received_bytes": 0,
+      "elapsed_ms": 8,
+      "rc": 1,
+      "ordinary_application_uid": true
+    },
+    "candidate_reconnect": {
+      "paired_app_success": true,
+      "timing_is_polling_window": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "results": [
+            {
+              "ok": false,
+              "complete": true,
+              "reason": "dns",
+              "http": 0,
+              "redirects": 0,
+              "received_bytes": 0,
+              "elapsed_ms": 9,
+              "rc": 1,
+              "ordinary_application_uid": true
+            },
+            {
+              "ok": true,
+              "complete": true,
+              "reason": "https_response",
+              "http": 204,
+              "redirects": 0,
+              "received_bytes": 0,
+              "elapsed_ms": 433,
+              "rc": 0,
+              "ordinary_application_uid": true
+            }
+          ],
+          "elapsed_since_enable_ms": 1821
+        },
+        {
+          "attempt": 2,
+          "results": [
+            {
+              "ok": true,
+              "complete": true,
+              "reason": "https_response",
+              "http": 204,
+              "redirects": 0,
+              "received_bytes": 0,
+              "elapsed_ms": 427,
+              "rc": 0,
+              "ordinary_application_uid": true
+            },
+            {
+              "ok": true,
+              "complete": true,
+              "reason": "https_response",
+              "http": 204,
+              "redirects": 0,
+              "received_bytes": 0,
+              "elapsed_ms": 343,
+              "rc": 0,
+              "ordinary_application_uid": true
+            }
+          ],
+          "elapsed_since_enable_ms": 6649
+        }
+      ],
+      "core_identity_unchanged": true,
+      "network_settings_unchanged": true,
+      "status": {
+        "core_running": true,
+        "readiness": {
+          "dataplane": true,
+          "overall": true
+        },
+        "fswatch": "running",
+        "tun_auto_route": {
+          "status": "present",
+          "warning": false,
+          "recovery_status": "none",
+          "recovery_attempts": 0
+        },
+        "table2022_rule_counts": {
+          "4": 2,
+          "6": 2
+        }
+      },
+      "snapshot_completed_by_ms": 7020,
+      "paired_success_observed_by_ms": 6649
+    },
+    "health": {
+      "exit_code": 0,
+      "format": "human_text",
+      "check_counts_not_parsed": true
+    },
+    "service_final": {
+      "core_running": true,
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      },
+      "fswatch": "running",
+      "tun_auto_route": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "none",
+        "recovery_attempts": 0
+      },
+      "table2022_rule_counts": {
+        "4": 2,
+        "6": 2
+      }
+    }
+  },
+  "supervisor_cgroup_check": {
+    "exit_code": 0,
+    "result": {
+      "is_app_cgroup": false,
+      "expected_count": 3,
+      "checked_count": 3,
+      "app_cgroup_count": 0,
+      "unavailable_count": 0,
+      "unknown_count": 0
+    }
+  },
+  "cleanup": {
+    "probe_uninstall_exit": 0,
+    "probe_package_absent": true,
+    "owned_staging_files_removed": true,
+    "owned_staging_paths_checked": 7,
+    "final_service": {
+      "core_running": true,
+      "readiness": {
+        "dataplane": true,
+        "overall": true
+      },
+      "fswatch": "running",
+      "tun_auto_route": {
+        "status": "present",
+        "warning": false,
+        "recovery_status": "none",
+        "recovery_attempts": 0
+      }
+    }
+  },
+  "configuration_change_audit": {
+    "subscription_status": {
+      "phase": "complete",
+      "result": "success",
+      "attempt_epoch": "1795133874",
+      "success_epoch": "1795134099",
+      "configured_count": "1",
+      "source_count": "1",
+      "imported_count": "25",
+      "skipped_count": "23",
+      "source_mode": "url",
+      "native_parser": "share-links",
+      "native_node_count": "48",
+      "converter_enabled": "1",
+      "converter_available": "1",
+      "converter_attempted": "1",
+      "converter_format": "file",
+      "converter_result": "failed"
+    },
+    "connectivity_state": {
+      "last_action": "failover",
+      "action_status": "ok",
+      "action_at": "1795107875",
+      "refresh_at": "1795096342",
+      "phase": "online",
+      "checked_at": "1795136150"
+    },
+    "webui_events": [
+      {
+        "mtime_taipei": "2026-11-20T08:22:03+08:00",
+        "kind": "apply_subscription_filter",
+        "launch_marker": true,
+        "exit_marker": true,
+        "exit_codes": [
+          0
+        ]
+      }
+    ],
+    "kam_log_fixed_event_counts": {
+      "cached_startup_no_refresh": 11,
+      "subscription_fetch": 2,
+      "subscription_convert": 2,
+      "subscription_validate": 2,
+      "subscription_activate": 2
+    },
+    "kam_log_recent_events": [
+      {
+        "log_timestamp": "2026-11-19 12:30:33",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-19 13:02:08",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-19 16:27:08",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-19 21:52:29",
+        "kind": "subscription_fetch"
+      },
+      {
+        "log_timestamp": "2026-11-19 21:53:22",
+        "kind": "subscription_convert"
+      },
+      {
+        "log_timestamp": "2026-11-19 21:55:24",
+        "kind": "subscription_validate"
+      },
+      {
+        "log_timestamp": "2026-11-19 21:55:25",
+        "kind": "subscription_activate"
+      },
+      {
+        "log_timestamp": "2026-11-19 21:56:59",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 07:58:01",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 07:58:56",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:04:59",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:17:57",
+        "kind": "subscription_fetch"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:18:49",
+        "kind": "subscription_convert"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:21:03",
+        "kind": "subscription_validate"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:21:04",
+        "kind": "subscription_activate"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:22:49",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:38:15",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:41:01",
+        "kind": "cached_startup_no_refresh"
+      },
+      {
+        "log_timestamp": "2026-11-20 08:42:10",
+        "kind": "cached_startup_no_refresh"
+      }
+    ]
+  },
+  "configuration_change_diagnosis": {
+    "before_proxy_nodes": 27,
+    "after_proxy_nodes": 25,
+    "before_vmess_nodes": 2,
+    "after_vmess_nodes": 0,
+    "common_shadowsocks_nodes": 25,
+    "filter_rule_counts": [
+      6,
+      7
+    ],
+    "original_filter_matches": 0,
+    "current_filter_matches_original_vmess": 2,
+    "current_filter_matches_original_shadowsocks": 0,
+    "common_node_changed_fields": [
+      "server"
+    ],
+    "server_change_class": "hostname_to_hostname",
+    "same_subscription_url_bytes": true,
+    "webui_filter_update_recorded": true,
+    "operation_exit_code": 0,
+    "specific_operator": "not_attributed",
+    "server_response_provenance": "not_verified_no_before_after_remote_response_capture",
+    "cached_startup_isolated_cases_passed": 3,
+    "cached_startup_config_bytes_unchanged": true,
+    "cached_startup_network_refresh_called": false,
+    "current_filter_and_generated_configuration_preserved": true,
+    "production_subscription_logic_modified": false,
+    "update_elapsed_seconds": 225,
+    "convert_and_native_fallback_stage_seconds": 134,
+    "converter_failure_reason": "not_distinguished_in_existing_status",
+    "converter_single_call_time": "not_measured",
+    "full_subscription_operation_budget_seconds": 1200
+  },
+  "measurement_limits": [
+    "Small sample counts; wall-clock CLI measurements include ADB overhead.",
+    "A WebUI filter update changed the serving configuration during this task; this is not a strictly controlled same-configuration A/B benchmark.",
+    "Both baseline and candidate slow samples are retained; no guaranteed hot-start latency is claimed.",
+    "Cold start remains about 34-35 seconds and stop about 16-17 seconds in the candidate samples.",
+    "Network trials toggled cellular data; Wi-Fi was enabled but not associated.",
+    "Reconnect measurements are polling observation windows, not exact recovery latencies.",
+    "Issue 436 route loss and the associated automatic recovery were not reproduced.",
+    "Cgroup inspection confirms the current owned workers are outside app cgroups; manager-app close/kill behavior was not separately exercised.",
+    "Repeated subscription updates and real hotspot-client traffic were not tested as end-to-end scenarios."
+  ],
+  "main_repository_validation": {
+    "test_check_recipes_passed": 19,
+    "test_release_passed": 18,
+    "test_release_plan_passed": 42,
+    "check_workflows_exit_code": 0,
+    "recipe_closure": "passed",
+    "full_CI_rerun": false,
+    "recipe_package_count": 8,
+    "recipe_markdown_count": 62,
+    "recipe_gate_command": "python3 scripts/check-recipes.py",
+    "recipe_gate_exit_code": 0,
+    "source_pin": "edf2d9926e9a71000667596c9f80edd547e96363",
+    "stable_release_preserved": "v1.9.2 / 10620"
+  }
+}

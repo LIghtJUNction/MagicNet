@@ -1,13 +1,13 @@
-# 重建 MagicNet（配方 0.3.36）
+# 重建 MagicNet（配方 0.3.37）
 
-为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M84；交付可运行产品。
+为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M87；交付可运行产品。
 
 ## 平台、材料与布局
 
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@bd7e33f6234eeac3894b846eba30745104bbaa2c`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@edf2d9926e9a71000667596c9f80edd547e96363`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -38,6 +38,8 @@
 - **路由与 DNS（M38、M49、M50、M55、M60）：** 保留 POLICY_INVENTORY 的五个指定拒绝目标及端口边界、16 个教育后缀和完整优先级。删除 Voice 专用脚本、Sukka 数据及 IP/端口规则，保留普通 ChatGPT 域名/应用、meta-openai、ai-chatgpt 和 DNS。受管未知域名使用经 proxy 的 doh-cloudflare；代理不可用时失败。缺失的 default_domain_resolver 使用 bootstrap-local-dns；已有 resolver、显式 profile、独立配置 DNS 图、国内/Direct/LAN/Tailnet 规则保留。只迁移精确旧官方模板 pin，保留自定义 repo/ref/digest。托管应用、自定义域名、广告规则按该顺序插入；保护 DNS、sniff/resolve/route-options 准备动作、模式、拒绝、LAN 与真实 Tailnet 规则，显式 action:route 不提高业务优先级，原数组保持原序。交错于后置保护前的用户规则保持已有优先级；六种物化顺序与重复应用结果一致。`.local` 与 RFC 6762 的 IPv4/IPv6 链路本地反向区域使用原生 mDNS，先于模式的公网 DNS；失败无公共后备，home.arpa 与 .lan 不因此获得本地解析。范围、边界与固定规则资产按 POLICY-A26–A33 验收。
 - **安装与升级（M51、M54）：** 状态统一 `.state`，缓存/私密临时载荷统一 `.cache`；旧 `.local/state`、`.tmp` 作一次迁移输入。冲突保留目标并私密保存旧数据，失败不丢数据；移除旧 network-card 图标。安装/卸载共用固定 kamfw/launcher.sh，移除重复 lib/kamfw-web，保留浏览器回退、有界等待与错误传播。
 - **锁与监督（M52）：** 配置锁记录实际执行 shell PID 和启动身份，活/暂停/未知 owner 保留互斥。停止先清理自有热点路由/DNS，再结束核心。fswatch 在有界锁内重查，重复启动保留健康 PID；长期进程不继承锁 FD。controller 与框架 lifecycle 锁分离、顺序固定；生成文件相对路径排除保留。用真实固定框架验证首次/重复/并发启停、忙锁与排除规则。
+- **反馈驱动的停服验收（M85–M86）：** 按 [FEEDBACK.md](FEEDBACK.md) 的 F01–F07 追踪来源、当前证据和 pending。路由快照与清理按 runtime LIFE-011 取得数值表身份，命名变化、数字外观别名和不一致观测不能漏记自有规则或误删外部规则。prepared 基线须有数值格式证明，旧基线仅在核心停止且无 TUN 路由时重建；删除中途观测失败停止后续并保留 ledger，active schema 2 不变且旧漏记不追认。显式停止按 LIFE-012 在取配置锁前暂停自有热点周期循环；新增步骤不强杀已执行 reconcile，沿用原事务协议。quiesce/取锁失败先 try 共享配置锁，持有 guard 后逐项核验核心/归属再恢复此前确认运行的维护集合；锁忙或 I/O 未知保留原错误并标明 restoration deferred，不新建后台任务或继续争锁。实际耗时、五轮启停、应用网络与恢复分别留证，闭单与源码回归不能代替当前设备验收。
+- **重复启动与 DNS 安装成本（M26、M87）：** 按 runtime LIFE-013–014，在共享配置锁内确认核心精确归属与存活、停用/移除及恢复事务入口均无、disruptive 未请求，才允许 start/ensure 快路。仍加载原 shell bootstrap 并再次判断 disruptive；start 保留幂等维护启动和原 cgroup 脱离，ensure 快路不另启维护进程，unknown 或任一前置不满足回原命令。DNS 重建只在本事务完整 detach 一次，新空链免重复 flush，完整安装后才挂接；故障与重试仍保持精确清理。同设备分别测冷启动、重复 start、ensure 与网络结果。
 - **原生 TUN（M53）：** 按 sing-box 1.15 省略弃用 stack，生成器、模板、旧快照恢复与健康状态一致；更新 M29 的默认栈要求。native_tun_stack 与 effective.stack=default 表示配置。Android CLI 选择系统路由且无显式接口/网络绑定时，监控为空仍允许系统路由尝试；依赖真实接口的配置继续等待。失网取消旧异步更新，恢复后重置，不伪造接口或联网状态。
 - **联网、诊断、打包（M56–M58）：** 低频 Google 检查、明确警告、持久指数退避及按证据恢复遵守 CONNECTIVITY_CONTRACT，界面只读缓存。正式包提供固定 curl/OpenSSL/zlib、内嵌 CA、许可和来源，在无系统 curl 的 Android 验证执行器及 TLS 正负控制。单文件诊断有界、脱敏、关联路由/核心/订阅，含 detached supervisor 日志与 HTTPS 能力；保留可解析 JSON 和真实阶段，只用已支持的只读入口。最终 core/full/别名/全部组件 ZIP 独立拒绝测试开发目录，夹具遵守 sanitize→split 次序。
 - **Issue 修复（M61–M64）：** 订阅重启后恢复整组维护进程；TUN 健康检查读取实时路由；升级补全默认文件与订阅历史；TLS 与就绪失败保留有界脱敏诊断。采集失败保持原错误和验收条件。#436 现场路由丢失根因、#440 可信 NAS 入口的真机验证范围见 [ISSUE_TRIAGE_2026-11-06.md](ISSUE_TRIAGE_2026-11-06.md)。
@@ -47,7 +49,7 @@ CON-A09 先验证模拟器身份与 adb 控制链路，保存原 Wi-Fi 启用状
 
 ## 故障恢复一致性（M70）
 
-M23 热点状态按 runtime 0.1.20 的有效配置范围与 FIB 共用观察器判断：合法静态排除后的分段路由可就绪；条件、竞争及不确定配置保持 unknown，已知必要证据缺失保持 pending。机器 JSON 与 canonical 一致，继承只读与脱敏边界，不能以配置或单条默认路由证明转发。查询表 2022 使用规范的独立 argv，严格夹具与完整模拟安装环境都必须验证。
+M23 热点状态按 runtime 0.1.21 的有效配置范围与 FIB 共用观察器判断：合法静态排除后的分段路由可就绪；条件、竞争及不确定配置保持 unknown，已知必要证据缺失保持 pending。机器 JSON 与 canonical 一致，继承只读与脱敏边界，不能以配置或单条默认路由证明转发。查询表 2022 的独立 argv 必须按 LIFE-011 保证数值身份，严格夹具与真实 Android 解析都必须验证。
 
 connectivity 与 Wi-Fi watcher 的启动、重复启动和停止使用同一有界生命周期互斥，停止等待已进入启动流程的实例完成登记后再清理；常驻子进程不持有控制锁。已退出的 Wi-Fi watcher 可清理，活进程身份读取失败保持 unknown。
 
@@ -55,7 +57,7 @@ TUN 所需地址被同前缀或更具体的其他接口、blackhole 或 unreacha
 
 未过期的 TUN present/missing 缓存必须属于当前单一核心的 PID/starttime；核心更换、PID 复用、多核心或不可读时只读投影为 unknown。paused、clock/summary unknown 与 stale 前置语义保留，not_required 不核对启动代际；读取不改文件、预算或探测次数，不能把旧核心的绿色显示给新核心。
 
-FIB 先根据 route_address 扣除 route_exclude_address，忽略目的前缀完全位于必要范围之外的路由。相交路由的非零 `tos` / `dsfield`、未知或缺失条件值、源地址及多路径选择器保持 unknown；明确数值零继续默认匹配。无关条件路由不得使完整覆盖变为未知，也不得掩盖必要范围的明确缺失。健康、机器 readiness 与 watchdog 共用判断，按 runtime 0.1.20 的 CON-A08 验证 IPv4/IPv6、范围外、排除区间与相交对照。
+FIB 先根据 route_address 扣除 route_exclude_address，忽略目的前缀完全位于必要范围之外的路由。相交路由的非零 `tos` / `dsfield`、未知或缺失条件值、源地址及多路径选择器保持 unknown；明确数值零继续默认匹配。无关条件路由不得使完整覆盖变为未知，也不得掩盖必要范围的明确缺失。健康、机器 readiness 与 watchdog 共用判断，按 runtime 0.1.21 的 CON-A08 验证 IPv4/IPv6、范围外、排除区间与相交对照。
 
 独立配置保存将配置、原始字节备份、验证标记与 Tailscale 密钥纳入已有文件事务，预检所有目标，并在替换失败时回滚；提交使用与校验一致的目录身份。候选与旧配置备份沿用编辑器 8 MiB 上限，有界读取，超限在任何目标写入前失败。既有提交后暂存清理错误保持明确语义，断电或 SIGKILL 的跨文件持久原子性不在该保证内。
 

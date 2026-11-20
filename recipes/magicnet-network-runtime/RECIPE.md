@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-network-runtime"
-version = "0.1.20"
+version = "0.1.21"
 kind = "software"
 description = "MagicNet Android 网络策略与可恢复运行时"
 entry = "BUILD_PROMPT.md"
@@ -16,6 +16,8 @@ source = "../magicnet-packet-engine"
 [dependencies.policy]
 source = "../magicnet-routing-policy"
 ~~~
+
+0.1.21 增加 LIFE-011–014 / LIFE-A17–A24：路由表的数值身份与旧 prepared 基线迁移、停服前热点周期循环静止和持锁失败恢复、已确认自有运行核心的保守 start/ensure 快路，以及 DNS 私有链的单次 detach 与新空链免 flush。保留原所有权、事务日志、bootstrap、未知回退、幂等维护和失败清理；运行依赖、机器接口与公共状态字段保持。
 
 0.1.20 补齐 CON-A08 的缓存代际投影：未过期 present/missing 必须匹配当前单一已归属 PID/starttime，身份更换/复用/多义/不可读为 unknown，状态读取不改文件、探测或恢复预算；同时修正热点表查询 argv 并保留严格独立夹具。
 
