@@ -5,13 +5,15 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-routing-policy"
-version = "0.2.6"
+version = "0.2.7"
 kind = "software"
 description = "MagicNet 默认路由、DNS 与规则数据合同"
 entry = "BUILD_PROMPT.md"
 ~~~
 
 配方版本与被观察软件版本分开管理；来源为 MagicNet v1.7.2，提交 96993ea5c851b8d51cc562c3ca0766a2ca571210。实现源码不属于本包。
+
+0.2.7 更新 MagicNetRules 的固定提交与已发布运行归档，复用模板现有的规则引用。构建核验归档内清单与所有被引用的 SRS。
 
 0.2.6 明确应用、域名和广告策略的稳定插入合同：显式与隐式 `action: route` 按相同业务优先级处理，保护规则与原数组保持原序，六种应用顺序收敛且重复应用幂等。默认 DNS 增加 `lan-mdns`，仅处理 `.local` 和 RFC 6762 的链路本地反向区域；`home.arpa`、`.lan` 保留既有策略。规则资产更新至固定 revision、release 和 manifest 摘要，新增 POLICY-A26–A33；实际验证与发行状态见根配方 VERIFICATION.md。
 

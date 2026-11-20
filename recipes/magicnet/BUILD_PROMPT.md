@@ -1,4 +1,4 @@
-# 重建 MagicNet（配方 0.3.37）
+# 重建 MagicNet（配方 0.3.38）
 
 为 Android root 用户实现完整网络工作台：安装、订阅、应用/Wi-Fi/热点分流、节点、DNS、诊断与自动化控制。保留 [BEHAVIOR.md](BEHAVIOR.md) 的用户流程和 [ACCEPTANCE.md](ACCEPTANCE.md) 的 M01–M87；交付可运行产品。
 
@@ -7,7 +7,7 @@
 - 生产目标为 Android root/arm64，支持 Magisk、KernelSU、APatch；WebUI 使用模块管理器的 WebView/浏览器桥。Linux 与 x86_64 模拟器用于开发验证。最低 Android/WebView 版本未知；Java 桥的 API 26 目标不构成全产品兼容承诺。
 - 语言、框架由实现者按特权边界、协议兼容和维护成本选择。WebUI 保留 zh-CN/en/ru；安装向导和菜单保留已有中、英、俄、日、韩及回退。机器 token、参数、配置和日志不翻译。
 - 项目名保持 MagicNet。`recipes/` 为主要输入；实现放在独立小写连字符源码仓库，并以同名固定子模块接入 `generated/`。跟踪 `.gitmodules` 和 gitlink，不向容器提交普通源码。
-- 当前维护实现为 `LIghtJUNction/magicnet-android@edf2d9926e9a71000667596c9f80edd547e96363`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
+- 当前维护实现为 `LIghtJUNction/magicnet-android@97543ae821ce41c6024b300e65148542f2f35627`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
 ## 依赖与合同入口
@@ -85,7 +85,7 @@ M71 将本地 API 正文预算和保守路由归一化纳入集成：原生后�
 
 新构建上下文只接收完整递归 Markdown 配方和明确允许的通用工具/外部资源。从空实现目录开始，不读取、复制、调用旧 MagicNet 实现、历史源码或旧测试作为产品基线。源码路径不能成为补需求的前提。
 
-允许复用经许可的固定 sing-box 协议/密码学实现、规则数据和第三方工具，范围由 engine 与 delivery/EXTERNAL_ASSETS 定义；标注复用来源。MagicNetRules 固定 `c4ad0a94f35af2b7950b47362e1c23e583209790`，仅复用规则及必要描述/许可，并核实发行资产与提交对应。MagicSingBox 历史模板是观察来源；新默认配置依据 policy 完整合同生成。旧实现的六个嵌套子模块不是独立实现必须继承的结构。
+允许复用经许可的固定 sing-box 协议/密码学实现、规则数据和第三方工具，范围由 engine 与 delivery/EXTERNAL_ASSETS 定义；标注复用来源。MagicNetRules 固定 `e7aa2143b841512f2009917289c29cb11549d3c9`，仅复用规则及必要描述/许可，并核实发行资产与提交对应。MagicSingBox 历史模板是观察来源；新默认配置依据 policy 完整合同生成。旧实现的六个嵌套子模块不是独立实现必须继承的结构。
 
 [REWRITE_CONTRACT.md](REWRITE_CONTRACT.md) 的 M59 另定义观察原版后的跨层替换：同输入比较框架、Shell、CLI/MCP、WebUI、安装与打包的外部结果及持久化副作用，包含联网维护与诊断。该路径与无旧源码独立重建分别记录。只检查/打包配方无需初始化旧源码子模块。
 
@@ -104,6 +104,8 @@ M65 与 delivery/RELEASE_CONTRACT 规定：主仓库选择 bump 或自定义 ver
 ## 可复现依赖与发布（M72）
 
 固定 fork 提交、规则清单和组件摘要；兼容依赖更新同步所有锁文件。输入下载成功后仍须校验摘要，损坏缓存重新获取，错误页面与摘要不符的内容保持失败。新建发行从创建响应取得数字 ID，再按既有身份和资产门禁上传公开。TLS/GoTLS 文本诊断显式选择 hook 来源，继续遵守时长、输出和进程过滤限制。
+
+规则更新时核对发布目标提交、归档与归档内清单的摘要，并用生产构建钩子安装当前模板引用的全部本地规则。维护实现的 WebUI 兼容更新同时验证 npm 干净安装、Bun 冻结锁安装、测试、类型检查和构建。Rust 兼容更新使用提交后的锁文件运行 CLI 测试。
 
 生产组件、AVD 安装载荷与 WebUI 的审核过的下载候选须同步固定版本。yq 的 AVD 构建直接读取生产锁；eCapture 的跨 ABI 资产分别固定并审核摘要，生产版本变化但 AVD 未审核时在早期合同检查失败。Zashboard 默认与候选下载使用审核过的同版资产，不使重装操作回退到旧版。
 

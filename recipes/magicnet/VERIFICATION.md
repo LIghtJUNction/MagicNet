@@ -6,14 +6,20 @@
 
 | 对象 | 固定版本与范围 |
 | --- | --- |
-| 当前主仓配方 | MagicNet `0.3.37` / web-console `0.2.14` / control-plane `0.2.15` / network-runtime `0.1.21` |
-| 当前 gitlink | [`edf2d9926e9a71000667596c9f80edd547e96363`](https://github.com/LIghtJUNction/magicnet-android/commit/edf2d9926e9a71000667596c9f80edd547e96363)，tree `694aa5b7a661c4e237c89762d12061c9062610fa` |
+| 当前主仓配方 | MagicNet `0.3.38` / web-console `0.2.14` / control-plane `0.2.15` / network-runtime `0.1.21` |
+| 当前 gitlink | [`97543ae821ce41c6024b300e65148542f2f35627`](https://github.com/LIghtJUNction/magicnet-android/commit/97543ae821ce41c6024b300e65148542f2f35627)，tree `cb20ed3f724e9dcb60373a7785dabda67e5fe814` |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 | 公开稳定版 | [v1.9.2 / 10620](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.2)，源码 `bd7e33f6234eeac3894b846eba30745104bbaa2c` |
 | 11-20 手机基线 | 模块元数据 v1.9.1 / 10619；安装文件组合的单一源码身份为 not_claimed |
 | 11-20 ARM64 候选 | 2262512 字节 CLI，SHA-256 `424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2`；CLI 与 lifecycle/network 两份脚本的文件级替换，元数据保持 v1.9.1 |
 
 当前维护源码包含公开稳定版之后的路由身份、DNS 安装和生命周期修复，公开 update.json 继续指向 v1.9.2。候选文件级后测与完整发行包安装验收分别记录；本节不把旧元数据当作候选源码证明。详细范围见[反馈迭代报告](../../docs/feedback-iteration-2026-11-20.md)与[结构化证据](../../docs/evidence/feedback-iteration-2026-11-20.json)。
+
+## 2026-11-20 依赖刷新
+
+对应源码本地提交 `97543ae8`，包含 Vue 3.5.46、tailwind-merge 3.7.1、zeroize 1.9.2 及 `rules-20261120-f9ca12142db40053`。公开规则归档与发布摘要、SHA256SUMS 和运行清单一致。逐个校验了 116 个 SRS；生产构建钩子在隔离模块目录安装了固定模板引用的 54 个规则，规则与状态摘要各 54 份。20 项规则安装回归、3 项下载重试回归通过。
+
+Rust 锁定的 CLI 测试 931 通过、1 忽略。npm 干净安装与 Bun 冻结锁安装均通过，WebUI 399 项测试、类型检查与生产构建完成。这里记录宿主验证，更新后的依赖尚未随 Android 包安装或发行。
 
 ## 2026-11-20：反馈驱动的路由、DNS 与生命周期迭代
 

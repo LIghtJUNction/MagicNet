@@ -4,12 +4,12 @@
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.37 | 产品集成、M01–M87 与完整验收 |
+| magicnet | 0.3.38 | 产品集成、M01–M87 与完整验收 |
 | magicnet-control-plane | 0.2.15 | CLI/JSON/MCP、文件状态、本地面板就绪与诊断 |
 | magicnet-network-runtime | 0.1.21 | 订阅事务、生命周期、退出后清理与低频联网检查 |
 | magicnet-web-console | 0.2.14 | 首页层级、模态快捷键、日常导航与设备操作 |
 | magicnet-packet-engine | 0.2.4 | 协议、Encryption、连接清理与原生 TUN |
-| magicnet-routing-policy | 0.2.6 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
+| magicnet-routing-policy | 0.2.7 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.13 | 安装升级、组件、版本选择、构建和正式发布 |
 | software-quality | 0.1.0 | 设计、代码质量、性能证据与工程合同 |
 
@@ -27,7 +27,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `edf2d9926e9a71000667596c9f80edd547e96363`，tree `694aa5b7a661c4e237c89762d12061c9062610fa`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `97543ae821ce41c6024b300e65148542f2f35627`，tree `cb20ed3f724e9dcb60373a7785dabda67e5fe814`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
@@ -39,12 +39,12 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 | --- | --- |
 | sing-box | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` |
 | MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
-| MagicNetRules | `c4ad0a94f35af2b7950b47362e1c23e583209790` |
+| MagicNetRules | `e7aa2143b841512f2009917289c29cb11549d3c9` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
 | KamHooks | `13cff0dc1f30d8d0842e563008c7e2712233243f` |
 | KamModuleX | `f21050a31c33f0ebcbf429af3056ec43c1b816ef` |
 
-模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261116-df4863416dd56ad6`，manifest SHA-256 为 `701c103ede587ca83ed6852a2a9bd0b093248cc843e8e221c9b3b7cac6f116cc`，下载归档与各个规则文件均按发布清单核验。
+模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261120-f9ca12142db40053`，manifest SHA-256 为 `c1e7e6912efe7bf3346af2462b9d15eb9378877a76b3123a17e7b69d23286cc6`，下载归档与各个规则文件均按发布清单核验。
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
@@ -59,6 +59,10 @@ Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及�
 外部工具使用 yq 4.54.3、eCapture 2.11.0、Zashboard 3.30.0；jq 1.8.2 保持当前正式版。HTTPS 执行器固定 curl 8.23.0、OpenSSL 3.5.9 LTS、zlib 1.4 和 2026-11-05 Mozilla CA，全部摘要见 delivery/EXTERNAL_ASSETS。新规则归档摘要为 df4863416dd56ad6637fdc3edc395d488463b9079d845a27085052a8e69e9e28。
 
 规则、源码、依赖与发布说明已经分阶段提交；验证范围见 VERIFICATION，稳定软件版本继续由根 update.json 表示。
+
+## 2026-11-20 依赖维护
+
+维护实现的 Vue 锁定 3.5.46，tailwind-merge 锁定 3.7.1，Rust 的间接依赖 zeroize 锁定 1.9.2。规则运行归档 SHA-256 为 `f9ca12142db400539fe08e7b47b02af9f1f123d113c5590ff59b4b6420461ee2`。对应的发布目标、源码 gitlink 与归档内清单摘要见上文；安装逐一校验当前模板引用的全部本地 SRS。
 
 ## 外部前提
 

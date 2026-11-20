@@ -103,7 +103,7 @@
 
 ## 本地分类标签
 
-规则来源固定为 [MagicNetRules `c4ad0a94f35af2b7950b47362e1c23e583209790`](https://github.com/LIghtJUNction/MagicNetRules/commit/c4ad0a94f35af2b7950b47362e1c23e583209790)，发行资产为 [rules-20261116-df4863416dd56ad6](https://github.com/LIghtJUNction/MagicNetRules/releases/tag/rules-20261116-df4863416dd56ad6)。manifest SHA-256 为 `701c103ede587ca83ed6852a2a9bd0b093248cc843e8e221c9b3b7cac6f116cc`；构建须同时校验清单和被引用资产，开机不依赖上游可用性。
+规则来源固定为 [MagicNetRules `e7aa2143b841512f2009917289c29cb11549d3c9`](https://github.com/LIghtJUNction/MagicNetRules/commit/e7aa2143b841512f2009917289c29cb11549d3c9)，发行资产为 [rules-20261120-f9ca12142db40053](https://github.com/LIghtJUNction/MagicNetRules/releases/tag/rules-20261120-f9ca12142db40053)。manifest SHA-256 为 `c1e7e6912efe7bf3346af2462b9d15eb9378877a76b3123a17e7b69d23286cc6`；构建须同时校验清单和被引用资产，开机不依赖上游可用性。
 
 - lyc-geosite-ads：local / binary
 - lyc-geosite-cn：local / binary
