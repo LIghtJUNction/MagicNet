@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.37"
+version = "0.3.38"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -24,6 +24,8 @@ source = "../software-quality"
 ~~~
 
 [BUILD_PROMPT.md](BUILD_PROMPT.md) 定义产品， [ACCEPTANCE.md](ACCEPTANCE.md) 定义 M01–M87。四个直接依赖组成八包 Markdown 闭包，源码和二进制不进入配方。
+
+0.3.38 同步 webui 0.2.15：在概览前部提供切换节点和管理订阅的直达入口，按 M81 验证手机首屏、三语与只读切页。
 
 0.3.37 同步 runtime 0.1.21：M85–M87 固化数值路由表身份、停服前热点周期循环静止及运行中 start/ensure 的保守快路；M26 补充 DNS 安装的冗余内核调用验收。沿用配置锁、所有权、恢复日志和原 shell bootstrap，未知条件回原路径。反馈来源、宿主回归、当前设备基线与尚待验收的场景分别记录；不以闭单或调用次数减少代替实机性能结论。
 
