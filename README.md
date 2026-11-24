@@ -27,7 +27,7 @@ MagicNet manages subscriptions, app/domain/Wi-Fi/hotspot routing, DNS, selectors
 | --- | --- |
 | Published Android package | [`v1.9.3 / 10621`](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.3) |
 | Recipe | `0.3.37` |
-| Fixed implementation commit | `a27f2889d236d2ffa36e1970a4d9f9e1a4baab1b` |
+| Fixed implementation commit | `396ab7c77e7e3759eda9423148c2b71e387ea644` |
 | Fixed sing-box core | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
 
 The recipe defines required behavior; the pinned source provides the maintained implementation; Releases provide installable artifacts. [Verification](recipes/magicnet/VERIFICATION.md) records source tests, package checks, Android emulator results and physical-device observations separately.

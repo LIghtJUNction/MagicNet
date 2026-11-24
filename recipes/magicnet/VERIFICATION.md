@@ -134,3 +134,11 @@ python3 scripts/test-release-plan.py
 python3 scripts/test-check-recipes.py
 bash scripts/check-workflows.sh
 ```
+
+## 2026-11-24 — #460 stop completion and stale service observations
+
+Reporter evidence is limited to v1.9.3 and “stop then refresh still running”; no device environment was inferred. Source changes are reviewed separately in LIghtJUNction/magicnet-android PR #13. Reproduced client defects: successful launcher exit ignored failed/running post-stop observations; same-owner older status responses could overwrite newer stopped observations. No claim that these explain all device-side failure or restart cases.
+
+Baseline production functions failed the three added negative regression cases. Fixed WebUI full `npm run check`: 403 tests passed, typecheck and Vite production build passed. Two final controls additionally verify unknown -> stopped reconciliation and nonzero command exit despite stopped observation; focused suite 33/33 passed. Mock device I/O only; no Android device/WebView, real traffic, user computer, private subscription or production service used. Device-side stop/restart diagnosis and reload recovery remain unverified.
+
+Recipe validation passed: `recipkg check`, pack, archive check and complete Chinese prompt generation; archive contained 8 packages / 62 UTF-8 Markdown files. Recipe pin regression suite 19/19, release validation suite 18/18, release-plan suite 42/42 passed. No release or deployment was invoked. Source PR #13 CI was still running when this record was written.
