@@ -5,7 +5,7 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet"
-version = "0.3.38"
+version = "0.3.39"
 kind = "software"
 description = "MagicNet Android root 透明网络工作台"
 entry = "BUILD_PROMPT.md"
@@ -24,6 +24,8 @@ source = "../software-quality"
 ~~~
 
 [BUILD_PROMPT.md](BUILD_PROMPT.md) 定义产品， [ACCEPTANCE.md](ACCEPTANCE.md) 定义 M01–M87。四个直接依赖组成八包 Markdown 闭包，源码和二进制不进入配方。
+
+0.3.39 同步 webui 0.2.16：停止服务必须核对新鲜停止观测，淘汰同 owner 的过期状态响应；不将退出码或未知状态当成停服成功。
 
 0.3.38 同步 webui 0.2.15：在概览前部提供切换节点和管理订阅的直达入口，按 M81 验证手机首屏、三语与只读切页。
 

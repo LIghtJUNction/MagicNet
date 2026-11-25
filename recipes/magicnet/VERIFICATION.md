@@ -134,3 +134,17 @@ python3 scripts/test-release-plan.py
 python3 scripts/test-check-recipes.py
 bash scripts/check-workflows.sh
 ```
+
+## 2026-11-24 — #460 stop completion and stale service observations
+
+Reporter evidence is limited to v1.9.3 and “stop then refresh still running”; no device environment was inferred. Source changes are reviewed separately in LIghtJUNction/magicnet-android PR #13. Reproduced client defects: successful launcher exit ignored failed/running post-stop observations; same-owner older status responses could overwrite newer stopped observations. No claim that these explain all device-side failure or restart cases.
+
+Baseline production functions failed the three added negative regression cases. Fixed WebUI full `npm run check`: 403 tests passed, typecheck and Vite production build passed. Two final controls additionally verify unknown -> stopped reconciliation and nonzero command exit despite stopped observation; focused suite 33/33 passed. Mock device I/O only; no Android device/WebView, real traffic, user computer, private subscription or production service used. Device-side stop/restart diagnosis and reload recovery remain unverified.
+
+Recipe validation passed: `recipkg check`, pack, archive check and complete Chinese prompt generation; archive contained 8 packages / 62 UTF-8 Markdown files. Recipe pin regression suite 19/19, release validation suite 18/18, release-plan suite 42/42 passed. No release or deployment was invoked. Source PR #13 CI was still running when this record was written.
+
+
+2026-11-25: Source candidate `1078f7802a10faea49d55baefab704bb9587b710` adds an independent test-only smoke model correction. Baseline and original tested merge both reproduced the missing route for legal `table ' 2022'`; new regression failed before the model correction, then 23 kernel-model tests passed. The model now normalizes the numeric table token, filters table-specific rule queries and retains live-core/unscoped-flush rejection. Production routes and lifecycle scripts are untouched. Exact production readiness in the mock changes from exit 1 to 0, with absent-core negative control still exit 1. Hosted CI for this candidate is pending; no claim of full artifact acceptance.
+
+
+Source `ad77c2bb8825840a65632c4b07fe55c33b487db5` independently corrects test-only Kamfw instance enumeration. An 8-second Ubuntu 26.04 process sampler captured 22 distinct multiple-PID sets: live shell descendants shared the loop argv with their parent. These snapshots establish a reproduced false instance count mechanism, not the identities of the historic hosted PIDs. mksh 59c-43 matches the failed job log; container BusyBox is 1:1.37.0-7ubuntu1 (historic hosted version was not logged), kernel is the cloud host 6.18.57 rather than the hosted 7.0.0-1020-azure. Bounded unchanged test repetition passed 10/10; corrected suite passed 4/4 across all four shells and both backends. A deterministic inventory regression fails against the old enumerator and passes fixed; two independent live service trees remain two instances, and an orphan remains visible after its parent exits. No lifecycle or signaling code changed. Latest hosted CI remains pending.
