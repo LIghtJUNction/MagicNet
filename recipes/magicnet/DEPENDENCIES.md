@@ -1,13 +1,17 @@
 # 依赖与外部前提
 
+## Astra Pro 本地构建
+
+`generated/magicnet-astra-pro` 与 `generated/magicbox` 分别固定模块和核心源码。后者的提交须与模块的 `core.lock` 一致，`tun.lock` 固定 hev-socks5-tunnel。KAM 按 ABI 打包核心、TUN 转发器和许可证。
+
 ## 配方闭包
 
 | 包 | 版本 | 职责 |
 | --- | --- | --- |
-| magicnet | 0.3.38 | 产品集成、M01–M87 与完整验收 |
+| magicnet | 0.3.40 | 产品集成、M01–M87 与完整验收 |
 | magicnet-control-plane | 0.2.15 | CLI/JSON/MCP、文件状态、本地面板就绪与诊断 |
 | magicnet-network-runtime | 0.1.21 | 订阅事务、生命周期、退出后清理与低频联网检查 |
-| magicnet-web-console | 0.2.14 | 首页层级、模态快捷键、日常导航与设备操作 |
+| magicnet-web-console | 0.2.16 | 首页首屏快捷入口、模态快捷键、日常导航与设备操作 |
 | magicnet-packet-engine | 0.2.4 | 协议、Encryption、连接清理与原生 TUN |
 | magicnet-routing-policy | 0.2.7 | 路由次序、指定拒绝目标、教育分类与 DNS 出口 |
 | magicnet-module-delivery | 0.2.13 | 安装升级、组件、版本选择、构建和正式发布 |
@@ -19,7 +23,9 @@ control 统一公共状态、参数错误和有界只读订阅观察；runtime �
 
 WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器接口；configured/effective、unknown/pending、危险确认与草稿语义保持。界面不增加设备持久字段、机器写接口、外部字体、网络资源或运行依赖。
 
-本轮提升 magicnet 至 0.3.37、runtime 至 0.1.21；control 维持 0.2.15，webui 维持 0.2.14。现有合同保留真实节点的特殊标签保真、空选择器成员约束及扫描/缓存一致性；链式代理页只过滤明确日志前缀，保留合法方括号标签。共享 JSON 编码器兼容 Android awk，转换器逐项拒绝普通坏代理行并沿用完整原生回退；公告/保留标签、来源和排除语义保持。WebUI 0.2.14 统一左对齐状态、56px 起的矩形服务按钮与相邻刷新、模式/延迟/RSS、平面任务入口、中性画布和克制蓝色操作；五项手机 dock/左抽屉保持。模态快捷键隔离沿用现有 DOM 事件和界面状态，不新增机器接口、状态文件、npm 包或网络资源。沿用现有节点缓存文件、CLI 参数与全部机器接口，无新增运行依赖；runtime 0.1.21 继续保留按有效配置范围判断热点 FIB、规范表查询 argv 及 TUN 核心启动代际核对。未过期 present/missing 只属于当前单一 PID/starttime；缺少身份或代际改变投影 unknown，保留文件、探测和恢复预算。既有目的范围过滤、手动 check 与后台停机清理边界继续适用。local_zashboard_readiness、api.webui_ready 与界面合同保持，沿用现有运行库、状态域和机器接口。正式源码、构建 workflow pin 与配方固定点同步，pack 的 LOCK 包含完整闭包。
+0.3.38 引用 webui 0.2.15，并复用现有路由、组件和翻译目录。
+
+0.3.37 提升 runtime 至 0.1.21；control 维持 0.2.15，webui 维持 0.2.14。现有合同保留真实节点的特殊标签保真、空选择器成员约束及扫描/缓存一致性；链式代理页只过滤明确日志前缀，保留合法方括号标签。共享 JSON 编码器兼容 Android awk，转换器逐项拒绝普通坏代理行并沿用完整原生回退；公告/保留标签、来源和排除语义保持。WebUI 0.2.14 统一左对齐状态、56px 起的矩形服务按钮与相邻刷新、模式/延迟/RSS、平面任务入口、中性画布和克制蓝色操作；五项手机 dock/左抽屉保持。模态快捷键隔离沿用现有 DOM 事件和界面状态，不新增机器接口、状态文件、npm 包或网络资源。沿用现有节点缓存文件、CLI 参数与全部机器接口，无新增运行依赖；runtime 0.1.21 继续保留按有效配置范围判断热点 FIB、规范表查询 argv 及 TUN 核心启动代际核对。未过期 present/missing 只属于当前单一 PID/starttime；缺少身份或代际改变投影 unknown，保留文件、探测和恢复预算。既有目的范围过滤、手动 check 与后台停机清理边界继续适用。local_zashboard_readiness、api.webui_ready 与界面合同保持，沿用现有运行库、状态域和机器接口。正式源码、构建 workflow pin 与配方固定点同步，pack 的 LOCK 包含完整闭包。
 
 本轮 API 正文预算与路由归一化复用现有原生 loopback HTTP、可信 curl 和构建期归一化工具，无新增运行库、常驻服务、机器命令或能力标记。规则集定义、出口、DNS server 和 selector 依赖集合保持；M71 的正文预算、规则结构与设备网络测量分别验收。
 
@@ -27,7 +33,7 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 
 ## 维护实现的固定来源
 
-`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的主线提交 `97543ae821ce41c6024b300e65148542f2f35627`，tree `cb20ed3f724e9dcb60373a7785dabda67e5fe814`。gitlink、可复用工作流和三语 README 使用同一固定值；源码提交已进入 main 历史；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
+`generated/magicnet-android/` 固定独立源码仓库 [LIghtJUNction/magicnet-android](https://github.com/LIghtJUNction/magicnet-android) 的实现提交 `d35ccffba60d8db84f7dc75f93904413b40d0369`，tree `dad376f538be83ed940e317ac7403aacf345d578`。gitlink、可复用工作流和三语 README 使用同一固定值；既有严格联网检查与选择补偿的验证见[连接恢复验收](../../docs/connectivity-recovery-2026-11-18.md)。历史 2026-11-15 的七次增量提交修复 watcher 生命周期、分流编辑、TUN 冲突观察、配置事务及卸载中断恢复，完整复现、七个提交和验证范围见[11-15 检查报告](../../docs/comprehensive-audit-2026-11-15.md)与 [VERIFICATION.md](VERIFICATION.md)。
 
 11-15 检查从源码 `73722038ab527c8d9926bc2ab532ba212bfab31e` 继续，保留此前已合入的可信本地订阅、克制 WebUI、规则次序、mDNS 和固定发行资产。此前 `af72e043` 及其对应 PR/构建/Android 结果继续按原始身份保存在 [VERIFICATION.md](VERIFICATION.md)，不用于替代本轮验证。
 
@@ -39,12 +45,12 @@ WebUI 的静态路径、简化导航和公共视觉组件沿用 schema=1 机器�
 | --- | --- |
 | sing-box | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` |
 | MagicSingBox 默认模板 | `da3d375d024e0982265bc67c48a87de7bb4f9424` |
-| MagicNetRules | `e7aa2143b841512f2009917289c29cb11549d3c9` |
+| MagicNetRules（配方 0.3.40 目标） | `e7aa2143b841512f2009917289c29cb11549d3c9` |
 | kamfw | `a7788737b938a9ed930645befe2526b626999a22` |
 | KamHooks | `13cff0dc1f30d8d0842e563008c7e2712233243f` |
 | KamModuleX | `f21050a31c33f0ebcbf429af3056ec43c1b816ef` |
 
-模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。MagicNetRules 运行资产固定 `rules-20261120-f9ca12142db40053`，manifest SHA-256 为 `c1e7e6912efe7bf3346af2462b9d15eb9378877a76b3123a17e7b69d23286cc6`，下载归档与各个规则文件均按发布清单核验。
+模板 `config.json` SHA-256 为 `fe741b83040191dfeca2543c6bd630d92b06a3e6e373506a2ee32cc87fc8c9b8`。默认业务 DNS 经 proxy，节点域名使用引导解析；只迁移精确旧官方 pin，自定义 repo/ref/digest 保留。规则与完整次序由 policy/POLICY_INVENTORY 定义，历史 Voice 数据不得重新引入。`.local` 与链路本地 PTR 使用原生 mDNS；home.arpa/.lan 不在新增范围。配方 0.3.40 的 MagicNetRules 运行资产固定 `rules-20261120-f9ca12142db40053`，manifest SHA-256 为 `c1e7e6912efe7bf3346af2462b9d15eb9378877a76b3123a17e7b69d23286cc6`，下载归档与各个规则文件均按发布清单核验。
 
 正式包携带 curl/OpenSSL/zlib、内嵌 CA、许可证和构建来源；这些是实际运行依赖，不能假定 Android 自带 curl。固定版本与摘要由源码 `scripts/android-curl-lock.json` 和 delivery/EXTERNAL_ASSETS 维护。安装/卸载共用固定 kamfw 的 launcher.sh，核心生命周期共用该框架；不恢复 lib/kamfw-web 或重复 overlay。
 
@@ -60,9 +66,9 @@ Android 路由恢复验收使用现有 netd 与 ip 的只读观测。全局及�
 
 规则、源码、依赖与发布说明已经分阶段提交；验证范围见 VERIFICATION，稳定软件版本继续由根 update.json 表示。
 
-## 2026-11-20 依赖维护
+## 规则与锁文件的验收目标
 
-维护实现的 Vue 锁定 3.5.46，tailwind-merge 锁定 3.7.1，Rust 的间接依赖 zeroize 锁定 1.9.2。规则运行归档 SHA-256 为 `f9ca12142db400539fe08e7b47b02af9f1f123d113c5590ff59b4b6420461ee2`。对应的发布目标、源码 gitlink 与归档内清单摘要见上文；安装逐一校验当前模板引用的全部本地 SRS。
+规则发行归档的 SHA-256 为 `f9ca12142db400539fe08e7b47b02af9f1f123d113c5590ff59b4b6420461ee2`。维护实现需将 Vue 锁定到 3.5.46、tailwind-merge 锁定到 3.7.1、Rust 间接依赖 zeroize 锁定到 1.9.2。源码整合时须核对规则 gitlink、发布清单、Cargo.lock 和两套 WebUI 锁文件。
 
 ## 外部前提
 

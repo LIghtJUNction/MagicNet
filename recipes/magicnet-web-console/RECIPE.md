@@ -5,13 +5,17 @@ format = "recipkg/1"
 
 [package]
 name = "magicnet-web-console"
-version = "0.2.14"
+version = "0.2.16"
 kind = "software"
 description = "MagicNet 移动网络控制界面"
 entry = "BUILD_PROMPT.md"
 ~~~
 
 交付保留 14 页、三语、浅深主题与现有设备操作的移动界面。当前流程见 [BUILD_PROMPT.md](BUILD_PROMPT.md)，视觉规范见 [DESIGN.md](DESIGN.md)，订阅合同见 [SUBSCRIPTION_FLOW.md](SUBSCRIPTION_FLOW.md)，全部验收见 [ACCEPTANCE.md](ACCEPTANCE.md)。
+
+0.2.16 修复停止完成判定与状态响应乱序；UI-STOP-460 要求命令成功和新鲜停止证据同时成立，未知继续对账，运行或命令失败不能误报成功。
+
+0.2.15 将“切换节点”和“管理订阅”移到概览前部；首次配置建议显示时，两项仍可从手机首屏直达。
 
 0.2.14 将概览组织为左对齐状态、56px 起的矩形服务操作与相邻刷新、模式/延迟/RSS 摘要和平面日常入口。中性白与近黑画布上，以克制的蓝色标识操作、选中与焦点；五项底栏、左侧更多抽屉和全部 14 页保持。已有模态确认打开时，Ctrl/Command+K 和 / 保持当前弹层；取消后恢复焦点、滚动锁和快捷键。接口、持久化字段与运行依赖保持，实际验收另行记录。
 

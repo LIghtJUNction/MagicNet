@@ -1,25 +1,33 @@
 # 实现与发行验证
 
-更新日期：2026-11-20（Asia/Taipei）。历史文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录，历史结果不自动延伸到当前候选。
+## 2026-11-26：依赖更新与首页快捷入口的整合验收
 
-## 当前版本与证据范围
+整合源码为 `d35ccffba60d8db84f7dc75f93904413b40d0369`。其中规则、Cargo 和 WebUI 依赖来自 `97543ae8`；停止确认及测试夹具来自 `ae5bb87c`；首页的节点切换和订阅管理入口与已发行的 v1.9.3 行为一致。以下为宿主与浏览器检查，完整 Android 安装另行验收。
+
+- 规则发行归档和 manifest 的 SHA-256 与源码固定值一致。全部 116 个 SRS 的大小与摘要均通过检查；生产预打包钩子按固定模板安装 54 个文件，逐一核对了 54 个状态标记。
+- 在未修复基线上，320px 中文首页缺少可见的「切换节点」按钮。应用相同的五个 WebUI 文件后，320、360、390、430px 四种宽度的 20 项 Chromium 回归全部通过，另有 44 项状态和并发用例通过。
+
+
+更新日期：2026-11-26（Asia/Taipei）。历史文档整理基准为主仓 [`5094b8ad`](https://github.com/LIghtJUNction/MagicNet/commit/5094b8adffddd89547b5d198fcbf998546914842)；以下每组结果均绑定自己的源码与运行记录，历史结果不自动延伸到当前候选。
+
+## 配方 0.3.40 的验收范围
+
+公开的 Android 包为 [v1.9.3 / 10621](../../docs/releases/v1.9.3.md)，发布源码为 `a27f2889d236d2ffa36e1970a4d9f9e1a4baab1b`。当前维护源码与树见 [DEPENDENCIES.md](DEPENDENCIES.md)。以下规则和依赖结果属于单独测试的源码候选。Astra Pro 的 Android 15 前台 TUN 验收属于其模块提交 `45c2c520f53896e616c02bfc2ea12733e4b46a7e`，使用该模块的 core.lock 固定 MagicBox。
+
+主仓本地提交 `9ee3d620` 将 11 月 20 日的依赖回归绑定到源码 `97543ae821ce41c6024b300e65148542f2f35627`。该记录报告校验 116 个 SRS，生产钩子安装模板引用的 54 个规则，20 项规则安装和 3 项下载重试测试通过。Rust CLI 931 项通过、1 项忽略。npm 干净安装、Bun 冻结锁安装、399 项 WebUI 测试、类型检查与生产构建通过。最终整合提交仍需独立的 Android 安装和发布验收。
+
+## 2026-11-20 反馈迭代的版本与证据范围
 
 | 对象 | 固定版本与范围 |
 | --- | --- |
-| 当前主仓配方 | MagicNet `0.3.38` / web-console `0.2.14` / control-plane `0.2.15` / network-runtime `0.1.21` |
-| 当前 gitlink | [`97543ae821ce41c6024b300e65148542f2f35627`](https://github.com/LIghtJUNction/magicnet-android/commit/97543ae821ce41c6024b300e65148542f2f35627)，tree `cb20ed3f724e9dcb60373a7785dabda67e5fe814` |
+| 当日主仓配方 | MagicNet `0.3.37` / web-console `0.2.14` / control-plane `0.2.15` / network-runtime `0.1.21` |
+| 当日 gitlink | [`edf2d9926e9a71000667596c9f80edd547e96363`](https://github.com/LIghtJUNction/magicnet-android/commit/edf2d9926e9a71000667596c9f80edd547e96363)，tree `694aa5b7a661c4e237c89762d12061c9062610fa` |
 | 固定核心 | `3a155d21872b22e6b9b75326c98d11f7ff159a2e` / `1.15.0-alpha.13` |
-| 公开稳定版 | [v1.9.2 / 10620](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.2)，源码 `bd7e33f6234eeac3894b846eba30745104bbaa2c` |
+| 当日公开稳定版 | [v1.9.2 / 10620](https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.9.2)，源码 `bd7e33f6234eeac3894b846eba30745104bbaa2c` |
 | 11-20 手机基线 | 模块元数据 v1.9.1 / 10619；安装文件组合的单一源码身份为 not_claimed |
 | 11-20 ARM64 候选 | 2262512 字节 CLI，SHA-256 `424ab31f1d635b649d954866d1c1c5569aa8c4a30890085ff7c7e53c838583c2`；CLI 与 lifecycle/network 两份脚本的文件级替换，元数据保持 v1.9.1 |
 
-当前维护源码包含公开稳定版之后的路由身份、DNS 安装和生命周期修复，公开 update.json 继续指向 v1.9.2。候选文件级后测与完整发行包安装验收分别记录；本节不把旧元数据当作候选源码证明。详细范围见[反馈迭代报告](../../docs/feedback-iteration-2026-11-20.md)与[结构化证据](../../docs/evidence/feedback-iteration-2026-11-20.json)。
-
-## 2026-11-20 依赖刷新
-
-对应源码本地提交 `97543ae8`，包含 Vue 3.5.46、tailwind-merge 3.7.1、zeroize 1.9.2 及 `rules-20261120-f9ca12142db40053`。公开规则归档与发布摘要、SHA256SUMS 和运行清单一致。逐个校验了 116 个 SRS；生产构建钩子在隔离模块目录安装了固定模板引用的 54 个规则，规则与状态摘要各 54 份。20 项规则安装回归、3 项下载重试回归通过。
-
-Rust 锁定的 CLI 测试 931 通过、1 忽略。npm 干净安装与 Bun 冻结锁安装均通过，WebUI 399 项测试、类型检查与生产构建完成。这里记录宿主验证，更新后的依赖尚未随 Android 包安装或发行。
+11 月 20 日的维护源码包含当时稳定版之后的路由身份、DNS 安装和生命周期修复，当日 update.json 指向 v1.9.2。候选文件级后测与完整发行包安装验收分别记录；本节不把旧元数据当作候选源码证明。详细范围见[反馈迭代报告](../../docs/feedback-iteration-2026-11-20.md)与[结构化证据](../../docs/evidence/feedback-iteration-2026-11-20.json)。
 
 ## 2026-11-20：反馈驱动的路由、DNS 与生命周期迭代
 
@@ -140,3 +148,17 @@ python3 scripts/test-release-plan.py
 python3 scripts/test-check-recipes.py
 bash scripts/check-workflows.sh
 ```
+
+## 2026-11-24 — #460 stop completion and stale service observations
+
+Reporter evidence is limited to v1.9.3 and “stop then refresh still running”; no device environment was inferred. Source changes are reviewed separately in LIghtJUNction/magicnet-android PR #13. Reproduced client defects: successful launcher exit ignored failed/running post-stop observations; same-owner older status responses could overwrite newer stopped observations. No claim that these explain all device-side failure or restart cases.
+
+Baseline production functions failed the three added negative regression cases. Fixed WebUI full `npm run check`: 403 tests passed, typecheck and Vite production build passed. Two final controls additionally verify unknown -> stopped reconciliation and nonzero command exit despite stopped observation; focused suite 33/33 passed. Mock device I/O only; no Android device/WebView, real traffic, user computer, private subscription or production service used. Device-side stop/restart diagnosis and reload recovery remain unverified.
+
+Recipe validation passed: `recipkg check`, pack, archive check and complete Chinese prompt generation; archive contained 8 packages / 62 UTF-8 Markdown files. Recipe pin regression suite 19/19, release validation suite 18/18, release-plan suite 42/42 passed. No release or deployment was invoked. Source PR #13 CI was still running when this record was written.
+
+
+2026-11-25: Source candidate `1078f7802a10faea49d55baefab704bb9587b710` adds an independent test-only smoke model correction. Baseline and original tested merge both reproduced the missing route for legal `table ' 2022'`; new regression failed before the model correction, then 23 kernel-model tests passed. The model now normalizes the numeric table token, filters table-specific rule queries and retains live-core/unscoped-flush rejection. Production routes and lifecycle scripts are untouched. Exact production readiness in the mock changes from exit 1 to 0, with absent-core negative control still exit 1. Hosted CI for this candidate is pending; no claim of full artifact acceptance.
+
+
+Source `ad77c2bb8825840a65632c4b07fe55c33b487db5` independently corrects test-only Kamfw instance enumeration. An 8-second Ubuntu 26.04 process sampler captured 22 distinct multiple-PID sets: live shell descendants shared the loop argv with their parent. These snapshots establish a reproduced false instance count mechanism, not the identities of the historic hosted PIDs. mksh 59c-43 matches the failed job log; container BusyBox is 1:1.37.0-7ubuntu1 (historic hosted version was not logged), kernel is the cloud host 6.18.57 rather than the hosted 7.0.0-1020-azure. Bounded unchanged test repetition passed 10/10; corrected suite passed 4/4 across all four shells and both backends. A deterministic inventory regression fails against the old enumerator and passes fixed; two independent live service trees remain two instances, and an orphan remains visible after its parent exits. No lifecycle or signaling code changed. Latest hosted CI remains pending.
