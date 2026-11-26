@@ -10,6 +10,10 @@
 - 当前维护实现为 `LIghtJUNction/magicnet-android@ad77c2bb8825840a65632c4b07fe55c33b487db5`；全部固定依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)，来源归属见 [PROVENANCE.md](PROVENANCE.md)。源码和观察 checkout 不属于 Recipkg 依赖或归档负载。
 - 完整阅读本文件、BEHAVIOR、ACCEPTANCE、FEEDBACK、SOURCE_AUDIT、PERFORMANCE、REWRITE_CONTRACT、PROVENANCE、DEPENDENCIES、LICENSE，以及四个直接依赖和所有递归依赖的全部 Markdown。归档按 alias 展开，完整闭包为八包。
 
+## Astra Pro 本地候选
+
+`generated/magicnet-astra-pro` 是同名独立源码仓库的固定子模块，Android 模块 ID 为 `magicnet-astra-pro`，显示名为 `MagicNet Astra Pro`。首次安装选择 TUN，经有效上游启动后，以真实应用 UID 验证流量确实经过 `magicnet0`。原有 Android 实现与 Astra Pro 各自生成安装包。
+
 ## 依赖与合同入口
 
 下表前缀为职责别名，实际包位置由 RECIPE/LOCK 确定。合同正文随递归配方交付，源码仅为证据索引。

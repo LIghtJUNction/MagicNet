@@ -1,5 +1,9 @@
 # 依赖与外部前提
 
+## Astra Pro 本地构建
+
+`generated/magicnet-astra-pro` 与 `generated/magicbox` 分别固定模块和核心源码。后者的提交须与模块的 `core.lock` 一致，`tun.lock` 固定 hev-socks5-tunnel。KAM 按 ABI 打包核心、TUN 转发器和许可证。
+
 ## 配方闭包
 
 | 包 | 版本 | 职责 |

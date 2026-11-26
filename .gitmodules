@@ -37,3 +37,9 @@
 [submodule ".agents/skills/maintain-recipkg-standard-library"]
 	path = .agents/skills/maintain-recipkg-standard-library
 	url = https://github.com/recipkg/maintain-recipkg-standard-library.git
+[submodule "magicnet-astra-pro"]
+	path = generated/magicnet-astra-pro
+	url = https://github.com/LIghtJUNction/magicnet-astra-pro.git
+[submodule "magicbox"]
+	path = generated/magicbox
+	url = https://github.com/LIghtJUNction/magicbox.git
